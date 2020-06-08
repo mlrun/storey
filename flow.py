@@ -147,9 +147,11 @@ class JoinWithTable(Flow, NeedsV3ioAccess):
         response_object = None
         try:
             while True:
-                request = await self._q.get()
-                if request is _termination_obj:
+                job = await self._q.get()
+                if job is _termination_obj:
                     break
+                element = job[0]
+                request = job[1]
                 response = await request
                 response_body = await response.text()
                 if response.status == 200:
@@ -172,7 +174,8 @@ class JoinWithTable(Flow, NeedsV3ioAccess):
                 else:
                     raise Exception(f'Failed to get item. Response status code was {response.status}: {response_body}')
                 if self._outlet and response_object:
-                    await self._outlet.do(response_object)
+                    joined_element = self._join_function(element, response_object)
+                    await self._outlet.do(joined_element)
         except BaseException as ex:
             if not self._q.empty():
                 await self._q.get()
@@ -201,7 +204,7 @@ class JoinWithTable(Flow, NeedsV3ioAccess):
             key = self._key_extractor(element)
             request = self._client_session.put(f'{self._webapi_url}/{self._table_path}/{key}',
                                                headers=self._get_item_headers, data=self._body, verify_ssl=False)
-            await self._q.put(asyncio.get_running_loop().create_task(request))
+            await self._q.put((element, asyncio.get_running_loop().create_task(request)))
             if self._worker_awaitable.done():
                 await self._worker_awaitable
 
