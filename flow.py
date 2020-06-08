@@ -186,10 +186,10 @@ flow = build_flow([
     Source(),
     Map(lambda x: x + 1),
     JoinWithTable(lambda x: x, lambda x, y: y['secret'], '/bigdata/gal'),
-    Map(aprint)
+    # Map(aprint)
 ])
 
-start = time.time()
+start = time.monotonic()
 
 mat = flow.run()
 for outer in range(100):
@@ -198,5 +198,5 @@ for outer in range(100):
 mat.terminate()
 mat.await_termination()
 
-end = time.time()
+end = time.monotonic()
 print(end - start)
