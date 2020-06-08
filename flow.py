@@ -7,7 +7,7 @@ import threading
 import time
 from windowed_store import WindowedStore
 from datetime import datetime, timedelta
-from types import *
+from dtypes import *
 import aiohttp
 
 _termination_obj = object()
@@ -195,7 +195,8 @@ class JoinWithTable(Flow, NeedsV3ioAccess):
             await self._worker_awaitable
         else:
             key = self._key_extractor(element)
-            request = self._client_session.put(f'{self._webapi_url}/{self._table_path}/{key}', headers=self._get_item_headers, data=self._body, verify_ssl=False)
+            request = self._client_session.put(f'{self._webapi_url}/{self._table_path}/{key}',
+                                               headers=self._get_item_headers, data=self._body, verify_ssl=False)
             await self._q.put(asyncio.get_running_loop().create_task(request))
             if self._worker_awaitable.done():
                 await self._worker_awaitable
