@@ -153,12 +153,15 @@ class JoinWithTable(Flow, NeedsV3ioAccess):
 
         await self._client_session.close()
 
+    def _lazy_init(self):
+        connector = aiohttp.TCPConnector()
+        self._client_session = aiohttp.ClientSession(connector=connector)
+        self._q = asyncio.queues.Queue(8)
+        self._worker_awaitable = asyncio.get_running_loop().create_task(self._worker())
+
     async def do(self, element):
         if not self._client_session:
-            connector = aiohttp.TCPConnector()
-            self._client_session = aiohttp.ClientSession(connector=connector)
-            self._q = asyncio.queues.Queue(8)
-            self._worker_awaitable = asyncio.get_running_loop().create_task(self._worker())
+            self._lazy_init()
 
         if element is _termination_obj:
             await self._q.put(_termination_obj)
