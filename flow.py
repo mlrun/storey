@@ -8,6 +8,8 @@ import time
 
 import aiohttp
 
+_termination_obj = object()
+
 
 class Flow:
     def __init__(self):
@@ -31,6 +33,9 @@ class MaterializedFlow:
     def emit(self, element):
         self._emit_fn(element)
 
+    def terminate(self):
+        self.emit(_termination_obj)
+
     def await_termination(self):
         self._await_termination_fn()
 
@@ -49,7 +54,7 @@ class Source(Flow):
             element = await loop.run_in_executor(None, self._q.get)
             if self._outlet:
                 await self._outlet.do(element)
-            if element is None:
+            if element is _termination_obj:
                 break
 
     def _loop_thread_main(self):
@@ -70,8 +75,8 @@ class Map(Flow):
         self._fn = fn
 
     async def do(self, element):
-        if element is None:
-            await self._outlet.do(None)
+        if element is _termination_obj:
+            await self._outlet.do(_termination_obj)
         else:
             mapped_elem = self._fn(element)
             if self._is_async:
@@ -118,7 +123,7 @@ class JoinWithTable(Flow, NeedsV3ioAccess):
         response_object = None
         while True:
             request = await self._q.get()
-            if request is None:
+            if request is _termination_obj:
                 break
             response = await request
             response_body = await response.text()
@@ -155,13 +160,13 @@ class JoinWithTable(Flow, NeedsV3ioAccess):
             self._q = asyncio.queues.Queue(8)
             self._worker_awaitable = asyncio.get_running_loop().create_task(self._worker())
 
-        if element:
+        if element is _termination_obj:
+            await self._q.put(_termination_obj)
+            await self._worker_awaitable
+        else:
             key = self._key_extractor(element)
             request = self._client_session.put(f'{self._webapi_url}/{self._table_path}/{key}', headers=self._get_item_headers, data=self._body, verify_ssl=False)
             await self._q.put(asyncio.get_running_loop().create_task(request))
-        else:
-            await self._q.put(None)
-            await self._worker_awaitable
 
 
 def build_flow(steps):
@@ -184,17 +189,13 @@ flow = build_flow([
     Map(aprint)
 ])
 
-# mat.emit(1)
-# mat.emit(2)
-# mat.emit(None)
-
 start = time.time()
 
 mat = flow.run()
 for outer in range(100):
     for i in range(10):
         mat.emit(i)
-mat.emit(None)
+mat.terminate()
 mat.await_termination()
 
 end = time.time()
