@@ -5,10 +5,11 @@ import queue
 import re
 import threading
 import time
-from windowed_store import WindowedStore
-from datetime import datetime, timedelta
-from dtypes import *
+
 import aiohttp
+
+from dtypes import *
+from windowed_store import WindowedStore
 
 _termination_obj = object()
 
@@ -156,15 +157,13 @@ class JoinWithTable(Flow, NeedsV3ioAccess):
                     for name, type_to_value in response_object.items():
                         val = None
                         for typ, value in type_to_value.items():
-                            if typ == 'S':
+                            if typ == 'S' or typ == 'BOOL':
                                 val = value
                             elif typ == 'N':
                                 if self.non_int_char_pattern.search(value):
                                     val = float(value)
                                 else:
                                     val = int(value)
-                            elif typ == 'BOOL':
-                                val = bool(value)
                             else:
                                 raise Exception(f'Type {typ} in get item response is not supported')
                         response_object[name] = val
