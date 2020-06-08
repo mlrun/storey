@@ -70,17 +70,22 @@ class Source(Flow):
         asyncio.run(self._run_loop())
         self._termination_q.put(self._ex)
 
+    def _raise_on_error(self, ex):
+        if ex:
+            raise Exception('Flow execution terminated due to an error') from self._ex
+
+    def _get_and_raise_on_error(self):
+        self._raise_on_error(self._termination_q.get())
+
     def _emit(self, element):
-        if self._ex:
-            raise self._ex
+        self._raise_on_error(self._ex)
         self._q.put(element)
-        if self._ex:
-            raise self._ex
+        self._raise_on_error(self._ex)
 
     def run(self):
         thread = threading.Thread(target=self._loop_thread_main)
         thread.start()
-        return MaterializedFlow(self._emit, self._termination_q.get)
+        return MaterializedFlow(self._emit, self._get_and_raise_on_error)
 
 
 class Map(Flow):
@@ -212,15 +217,21 @@ async def aprint(element):
     print(element)
 
 
+_counter = 0
+
+
 async def raise_ex(element):
-    raise Exception("test")
+    global _counter
+    if _counter == 500:
+        raise Exception("test")
+    _counter += 1
+    return element
 
 
 flow = build_flow([
     Source(),
     Map(lambda x: x + 1),
     JoinWithTable(lambda x: x, lambda x, y: y['secret'], '/bigdata/gal'),
-    # Map(raise_ex)
     # Map(aprint)
 ])
 
