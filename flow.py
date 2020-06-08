@@ -22,17 +22,17 @@ class Flow:
     def run(self):
         return self._inlet.run()
 
-    async def _teardown(self):
-        if self._outlet:
-            await self._outlet._teardown()
-
 
 class MaterializedFlow:
-    def __init__(self, emit_fn):
+    def __init__(self, emit_fn, await_termination_fn):
         self._emit_fn = emit_fn
+        self._await_termination_fn = await_termination_fn
 
     def emit(self, element):
         self._emit_fn(element)
+
+    def await_termination(self):
+        self._await_termination_fn()
 
 
 class Source(Flow):
@@ -40,26 +40,26 @@ class Source(Flow):
         super().__init__()
         assert buffer_size > 0, 'Buffer size must be positive'
         self._q = queue.Queue(buffer_size)
+        self._termination_q = queue.Queue(1)
 
     async def _run_loop(self):
         loop = asyncio.get_running_loop()
 
         while True:
             element = await loop.run_in_executor(None, self._q.get)
-            if element is None:
-                break
             if self._outlet:
                 await self._outlet.do(element)
-
-        await self._teardown()
+            if element is None:
+                break
 
     def _loop_thread_main(self):
         asyncio.run(self._run_loop())
+        self._termination_q.put(None)
 
     def run(self):
         thread = threading.Thread(target=self._loop_thread_main)
         thread.start()
-        return MaterializedFlow(self._q.put)
+        return MaterializedFlow(self._q.put, self._termination_q.get)
 
 
 class Map(Flow):
@@ -70,11 +70,14 @@ class Map(Flow):
         self._fn = fn
 
     async def do(self, element):
-        mapped_elem = self._fn(element)
-        if self._is_async:
-            mapped_elem = await mapped_elem
-        if self._outlet:
-            await self._outlet.do(mapped_elem)
+        if element is None:
+            await self._outlet.do(None)
+        else:
+            mapped_elem = self._fn(element)
+            if self._is_async:
+                mapped_elem = await mapped_elem
+            if self._outlet:
+                await self._outlet.do(mapped_elem)
 
 
 class NeedsV3ioAccess:
@@ -115,6 +118,8 @@ class JoinWithTable(Flow, NeedsV3ioAccess):
         response_object = None
         while True:
             request = await self._q.get()
+            if request is None:
+                break
             response = await request
             response_body = await response.text()
             if response.status == 200:
@@ -141,21 +146,22 @@ class JoinWithTable(Flow, NeedsV3ioAccess):
             if self._outlet and response_object:
                 await self._outlet.do(response_object)
 
+        await self._client_session.close()
+
     async def do(self, element):
         if not self._client_session:
             connector = aiohttp.TCPConnector()
             self._client_session = aiohttp.ClientSession(connector=connector)
             self._q = asyncio.queues.Queue(8)
-            asyncio.get_running_loop().create_task(self._worker())
+            self._worker_awaitable = asyncio.get_running_loop().create_task(self._worker())
 
-        key = self._key_extractor(element)
-        request = self._client_session.put(f'{self._webapi_url}/{self._table_path}/{key}', headers=self._get_item_headers, data=self._body, verify_ssl=False)
-        await self._q.put(asyncio.get_running_loop().create_task(request))
-
-    async def _teardown(self):
-        await super()._teardown()
-        if self._client_session:
-            await self._client_session.close()
+        if element:
+            key = self._key_extractor(element)
+            request = self._client_session.put(f'{self._webapi_url}/{self._table_path}/{key}', headers=self._get_item_headers, data=self._body, verify_ssl=False)
+            await self._q.put(asyncio.get_running_loop().create_task(request))
+        else:
+            await self._q.put(None)
+            await self._worker_awaitable
 
 
 def build_flow(steps):
@@ -189,6 +195,7 @@ for outer in range(100):
     for i in range(10):
         mat.emit(i)
 mat.emit(None)
+mat.await_termination()
 
 end = time.time()
 print(end - start)
