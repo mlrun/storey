@@ -5,7 +5,9 @@ import queue
 import re
 import threading
 import time
-
+from windowed_store import WindowedStore
+from datetime import datetime, timedelta
+from types import *
 import aiohttp
 
 _termination_obj = object()
@@ -199,6 +201,45 @@ class JoinWithTable(Flow, NeedsV3ioAccess):
                 await self._worker_awaitable
 
 
+class Window(Flow, NeedsV3ioAccess):
+    def __init__(self, window, key_column, time_column, emit_policy=EmitAfterMaxEvent(10), webapi=None,
+                 access_key=None):
+        Flow.__init__(self)
+        NeedsV3ioAccess.__init__(self, webapi, access_key)
+        self._windowed_store = WindowedStore(window)
+        self._window = window
+        self._key_column = key_column
+        self._time_column = time_column
+        self._emit_policy = emit_policy
+        self._events_in_batch = 0
+        self._emit_worker_running = False
+
+    async def _emit_worker(self):
+        while True:
+            if isinstance(self._emit_policy, EmitAfterPeriod):
+                await asyncio.sleep(self._window.period_millis / 1000)
+            elif isinstance(self._emit_policy, EmitAfterWindow):
+                await asyncio.sleep(self._window.window_millis / 1000)
+
+            await self._outlet.do(self._windowed_store)
+
+    async def do(self, element):
+        if (not self._emit_worker_running) and \
+                (isinstance(self._emit_policy, EmitAfterPeriod) or isinstance(self._emit_policy, EmitAfterWindow)):
+            asyncio.get_running_loop().create_task(self._emit_worker())
+            self._emit_worker_running = True
+        key = element.pop(self._key_column)
+        timestamp = element.pop(self._time_column)
+        self._windowed_store.add(key, element, timestamp)
+        self._events_in_batch = self._events_in_batch + 1
+
+        if isinstance(self._emit_policy, EmitEveryEvent) or \
+                isinstance(self._emit_policy,
+                           EmitAfterMaxEvent) and self._events_in_batch == self._emit_policy.max_events:
+            await self._outlet.do(self._windowed_store)
+            self._events_in_batch = 0
+
+
 def build_flow(steps):
     if len(steps) == 0:
         print('Cannot build an empty flow')
@@ -214,6 +255,14 @@ async def aprint(element):
 
 async def raise_ex(element):
     raise Exception("test")
+
+
+async def aprint_store(store):
+    cache = store.cache
+    print('store: ')
+    for elem in cache:
+        print(elem, '-', cache[elem].features, f'start time - {cache[elem].first_bucket_start_time}')
+    print()
 
 
 flow = build_flow([
