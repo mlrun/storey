@@ -143,10 +143,27 @@ class JoinWithTable(Flow, NeedsV3ioAccess):
 
         self._client_session = None
 
+    def _parse_response(self, response_body):
+        response_object = json.loads(response_body)["Item"]
+        for name, type_to_value in response_object.items():
+            val = None
+            for typ, value in type_to_value.items():
+                if typ == 'S' or typ == 'BOOL':
+                    val = value
+                elif typ == 'N':
+                    if self._non_int_char_pattern.search(value):
+                        val = float(value)
+                    else:
+                        val = int(value)
+                else:
+                    raise Exception(f'Type {typ} in get item response is not supported')
+            response_object[name] = val
+        return response_object
+
     async def _worker(self):
-        response_object = None
         try:
             while True:
+                response_object = None
                 job = await self._q.get()
                 if job is _termination_obj:
                     break
@@ -155,20 +172,7 @@ class JoinWithTable(Flow, NeedsV3ioAccess):
                 response = await request
                 response_body = await response.text()
                 if response.status == 200:
-                    response_object = json.loads(response_body)["Item"]
-                    for name, type_to_value in response_object.items():
-                        val = None
-                        for typ, value in type_to_value.items():
-                            if typ == 'S' or typ == 'BOOL':
-                                val = value
-                            elif typ == 'N':
-                                if self._non_int_char_pattern.search(value):
-                                    val = float(value)
-                                else:
-                                    val = int(value)
-                            else:
-                                raise Exception(f'Type {typ} in get item response is not supported')
-                        response_object[name] = val
+                    response_object = self._parse_response(response_body)
                 elif response.status == 404:
                     pass
                 else:
