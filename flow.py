@@ -131,7 +131,7 @@ class NeedsV3ioAccess:
 
 
 class JoinWithTable(Flow, NeedsV3ioAccess):
-    non_int_char_pattern = re.compile(r"[^-0-9]")
+    _non_int_char_pattern = re.compile(r"[^-0-9]")
 
     def __init__(self, key_extractor, join_function, table_path, attributes='*', webapi=None, access_key=None):
         Flow.__init__(self)
@@ -162,7 +162,7 @@ class JoinWithTable(Flow, NeedsV3ioAccess):
                             if typ == 'S' or typ == 'BOOL':
                                 val = value
                             elif typ == 'N':
-                                if self.non_int_char_pattern.search(value):
+                                if self._non_int_char_pattern.search(value):
                                     val = float(value)
                                 else:
                                     val = int(value)
