@@ -37,7 +37,9 @@ class MaterializedFlow:
         self.emit(_termination_obj)
 
     def await_termination(self):
-        self._await_termination_fn()
+        ex = self._await_termination_fn()
+        if ex:
+            raise ex
 
 
 class Source(Flow):
@@ -46,6 +48,7 @@ class Source(Flow):
         assert buffer_size > 0, 'Buffer size must be positive'
         self._q = queue.Queue(buffer_size)
         self._termination_q = queue.Queue(1)
+        self._ex = None
 
     async def _run_loop(self):
         loop = asyncio.get_running_loop()
@@ -53,18 +56,31 @@ class Source(Flow):
         while True:
             element = await loop.run_in_executor(None, self._q.get)
             if self._outlet:
-                await self._outlet.do(element)
+                try:
+                    await self._outlet.do(element)
+                except BaseException as ex:
+                    self._ex = ex
+                    if not self._q.empty():
+                        self._q.get()
+                    break
             if element is _termination_obj:
                 break
 
     def _loop_thread_main(self):
         asyncio.run(self._run_loop())
-        self._termination_q.put(None)
+        self._termination_q.put(self._ex)
+
+    def _emit(self, element):
+        if self._ex:
+            raise self._ex
+        self._q.put(element)
+        if self._ex:
+            raise self._ex
 
     def run(self):
         thread = threading.Thread(target=self._loop_thread_main)
         thread.start()
-        return MaterializedFlow(self._q.put, self._termination_q.get)
+        return MaterializedFlow(self._emit, self._termination_q.get)
 
 
 class Map(Flow):
@@ -121,37 +137,42 @@ class JoinWithTable(Flow, NeedsV3ioAccess):
 
     async def _worker(self):
         response_object = None
-        while True:
-            request = await self._q.get()
-            if request is _termination_obj:
-                break
-            response = await request
-            response_body = await response.text()
-            if response.status == 200:
-                response_object = json.loads(response_body)["Item"]
-                for name, type_to_value in response_object.items():
-                    val = None
-                    for typ, value in type_to_value.items():
-                        if typ == 'S':
-                            val = value
-                        elif typ == 'N':
-                            if self.non_int_char_pattern.search(value):
-                                val = float(value)
+        try:
+            while True:
+                request = await self._q.get()
+                if request is _termination_obj:
+                    break
+                response = await request
+                response_body = await response.text()
+                if response.status == 200:
+                    response_object = json.loads(response_body)["Item"]
+                    for name, type_to_value in response_object.items():
+                        val = None
+                        for typ, value in type_to_value.items():
+                            if typ == 'S':
+                                val = value
+                            elif typ == 'N':
+                                if self.non_int_char_pattern.search(value):
+                                    val = float(value)
+                                else:
+                                    val = int(value)
+                            elif typ == 'BOOL':
+                                val = bool(value)
                             else:
-                                val = int(value)
-                        elif typ == 'BOOL':
-                            val = bool(value)
-                        else:
-                            raise Exception(f'Type {typ} in get item response is not supported')
-                    response_object[name] = val
-            elif response.status == 404:
-                pass
-            else:
-                print(f'Failed to get item. Response status code was {response.status}: {response_body}')
-            if self._outlet and response_object:
-                await self._outlet.do(response_object)
-
-        await self._client_session.close()
+                                raise Exception(f'Type {typ} in get item response is not supported')
+                        response_object[name] = val
+                elif response.status == 404:
+                    pass
+                else:
+                    raise Exception(f'Failed to get item. Response status code was {response.status}: {response_body}')
+                if self._outlet and response_object:
+                    await self._outlet.do(response_object)
+        except BaseException as ex:
+            if not self._q.empty():
+                await self._q.get()
+            raise ex
+        finally:
+            await self._client_session.close()
 
     def _lazy_init(self):
         connector = aiohttp.TCPConnector()
@@ -163,6 +184,10 @@ class JoinWithTable(Flow, NeedsV3ioAccess):
         if not self._client_session:
             self._lazy_init()
 
+        if self._worker_awaitable.done():
+            await self._worker_awaitable
+            raise Exception("JoinWithTable worker has already terminated")
+
         if element is _termination_obj:
             await self._q.put(_termination_obj)
             await self._worker_awaitable
@@ -170,6 +195,8 @@ class JoinWithTable(Flow, NeedsV3ioAccess):
             key = self._key_extractor(element)
             request = self._client_session.put(f'{self._webapi_url}/{self._table_path}/{key}', headers=self._get_item_headers, data=self._body, verify_ssl=False)
             await self._q.put(asyncio.get_running_loop().create_task(request))
+            if self._worker_awaitable.done():
+                await self._worker_awaitable
 
 
 def build_flow(steps):
@@ -185,10 +212,15 @@ async def aprint(element):
     print(element)
 
 
+async def raise_ex(element):
+    raise Exception("test")
+
+
 flow = build_flow([
     Source(),
     Map(lambda x: x + 1),
     JoinWithTable(lambda x: x, lambda x, y: y['secret'], '/bigdata/gal'),
+    # Map(raise_ex)
     # Map(aprint)
 ])
 
