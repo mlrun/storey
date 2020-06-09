@@ -307,7 +307,8 @@ for outer in range(100):
         mat.emit(i)
 mat.terminate()
 materialized_result = mat.await_termination()
-print(materialized_result)
+if materialized_result:
+    print(materialized_result)
 
 end = time.monotonic()
 print(end - start)
