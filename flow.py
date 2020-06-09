@@ -125,6 +125,12 @@ class Filter(UnaryFunctionFlow):
             await self._outlet.do(element)
 
 
+class FlatMap(UnaryFunctionFlow):
+    async def _do_internal(self, element, result_elements):
+        for result_element in result_elements:
+            await self._outlet.do(result_element)
+
+
 class NeedsV3ioAccess:
     def __init__(self, webapi=None, access_key=None):
         if not webapi:
@@ -257,6 +263,7 @@ flow = build_flow([
     Source(),
     Map(lambda x: x + 1),
     Filter(lambda x: x < 3),
+    FlatMap(lambda x: [x, x * 10]),
     # JoinWithTable(lambda x: x, lambda x, y: y['secret'], '/bigdata/gal'),
     Map(aprint)
 ])
