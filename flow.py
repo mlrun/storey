@@ -91,22 +91,46 @@ class Source(Flow):
         return MaterializedFlow(self._emit, self._get_and_raise_on_error)
 
 
-class Map(Flow):
+class UnaryFunctionFlow(Flow):
     def __init__(self, fn):
         super().__init__()
         assert callable(fn), f'Expected a callable, got {type(fn)}'
         self._is_async = asyncio.iscoroutinefunction(fn)
         self._fn = fn
 
+    async def _call(self, element):
+        res = self._fn(element)
+        if self._is_async:
+            res = await res
+        return res
+
+
+class Map(UnaryFunctionFlow):
+    def __init__(self, fn):
+        super().__init__(fn)
+
     async def do(self, element):
         if element is _termination_obj:
-            await self._outlet.do(_termination_obj)
+            if self._outlet:
+                await self._outlet.do(_termination_obj)
         else:
-            mapped_elem = self._fn(element)
-            if self._is_async:
-                mapped_elem = await mapped_elem
+            mapped_elem = await self._call(element)
             if self._outlet:
                 await self._outlet.do(mapped_elem)
+
+
+class Filter(UnaryFunctionFlow):
+    def __init__(self, fn):
+        super().__init__(fn)
+
+    async def do(self, element):
+        if element is _termination_obj:
+            if self._outlet:
+                await self._outlet.do(_termination_obj)
+        else:
+            keep = await self._call(element)
+            if self._outlet and keep:
+                await self._outlet.do(element)
 
 
 class NeedsV3ioAccess:
@@ -287,6 +311,7 @@ async def aprint_store(store):
 flow = build_flow([
     Source(),
     Map(lambda x: x + 1),
+    # Filter(lambda x: x < 3),
     JoinWithTable(lambda x: x, lambda x, y: y['secret'], '/bigdata/gal'),
     # Map(aprint)
 ])
