@@ -115,17 +115,11 @@ class UnaryFunctionFlow(Flow):
 
 
 class Map(UnaryFunctionFlow):
-    def __init__(self, fn):
-        super().__init__(fn)
-
     async def _do_internal(self, element, mapped_elem):
         await self._outlet.do(mapped_elem)
 
 
 class Filter(UnaryFunctionFlow):
-    def __init__(self, fn):
-        super().__init__(fn)
-
     async def _do_internal(self, element, keep):
         if keep:
             await self._outlet.do(element)
