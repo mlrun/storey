@@ -101,33 +101,34 @@ class UnaryFunctionFlow(Flow):
             res = await res
         return res
 
-
-class Map(UnaryFunctionFlow):
-    def __init__(self, fn):
-        super().__init__(fn)
+    async def _do_internal(self, element, fn_result):
+        raise NotImplementedError()
 
     async def do(self, element):
         if element is _termination_obj:
             if self._outlet:
                 await self._outlet.do(_termination_obj)
         else:
-            mapped_elem = await self._call(element)
+            fn_result = await self._call(element)
             if self._outlet:
-                await self._outlet.do(mapped_elem)
+                await self._do_internal(element, fn_result)
+
+
+class Map(UnaryFunctionFlow):
+    def __init__(self, fn):
+        super().__init__(fn)
+
+    async def _do_internal(self, element, mapped_elem):
+        await self._outlet.do(mapped_elem)
 
 
 class Filter(UnaryFunctionFlow):
     def __init__(self, fn):
         super().__init__(fn)
 
-    async def do(self, element):
-        if element is _termination_obj:
-            if self._outlet:
-                await self._outlet.do(_termination_obj)
-        else:
-            keep = await self._call(element)
-            if self._outlet and keep:
-                await self._outlet.do(element)
+    async def _do_internal(self, element, keep):
+        if keep:
+            await self._outlet.do(element)
 
 
 class NeedsV3ioAccess:
@@ -261,9 +262,9 @@ async def raise_ex(element):
 flow = build_flow([
     Source(),
     Map(lambda x: x + 1),
-    # Filter(lambda x: x < 3),
-    JoinWithTable(lambda x: x, lambda x, y: y['secret'], '/bigdata/gal'),
-    # Map(aprint)
+    Filter(lambda x: x < 3),
+    # JoinWithTable(lambda x: x, lambda x, y: y['secret'], '/bigdata/gal'),
+    Map(aprint)
 ])
 
 start = time.monotonic()
