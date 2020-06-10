@@ -22,7 +22,12 @@ class Flow:
         return outlet
 
     def run(self):
-        return self._inlet.run()
+        future = asyncio.futures.Future()
+        future.set_result(None)
+        return self._internal_run(future)
+
+    def _internal_run(self, future):
+        return self._inlet._internal_run(future)
 
 
 class MaterializedFlow:
@@ -37,9 +42,7 @@ class MaterializedFlow:
         self.emit(_termination_obj)
 
     def await_termination(self):
-        ex = self._await_termination_fn()
-        if ex:
-            raise ex
+        return self._await_termination_fn()
 
 
 class Source(Flow):
@@ -74,18 +77,20 @@ class Source(Flow):
         if ex:
             raise Exception('Flow execution terminated due to an error') from self._ex
 
-    def _get_and_raise_on_error(self):
-        self._raise_on_error(self._termination_q.get())
-
     def _emit(self, element):
         self._raise_on_error(self._ex)
         self._q.put(element)
         self._raise_on_error(self._ex)
 
-    def run(self):
+    def _internal_run(self, future):
         thread = threading.Thread(target=self._loop_thread_main)
         thread.start()
-        return MaterializedFlow(self._emit, self._get_and_raise_on_error)
+
+        def raise_error_or_materialize_value():
+            self._raise_on_error(self._termination_q.get())
+            return future.result()
+
+        return MaterializedFlow(self._emit, raise_error_or_materialize_value)
 
 
 class UnaryFunctionFlow(Flow):
@@ -101,33 +106,59 @@ class UnaryFunctionFlow(Flow):
             res = await res
         return res
 
-
-class Map(UnaryFunctionFlow):
-    def __init__(self, fn):
-        super().__init__(fn)
+    async def _do_internal(self, element, fn_result):
+        raise NotImplementedError()
 
     async def do(self, element):
         if element is _termination_obj:
             if self._outlet:
                 await self._outlet.do(_termination_obj)
         else:
-            mapped_elem = await self._call(element)
+            fn_result = await self._call(element)
             if self._outlet:
-                await self._outlet.do(mapped_elem)
+                await self._do_internal(element, fn_result)
+
+
+class Map(UnaryFunctionFlow):
+    async def _do_internal(self, element, mapped_elem):
+        await self._outlet.do(mapped_elem)
 
 
 class Filter(UnaryFunctionFlow):
-    def __init__(self, fn):
-        super().__init__(fn)
+    async def _do_internal(self, element, keep):
+        if keep:
+            await self._outlet.do(element)
+
+
+class FlatMap(UnaryFunctionFlow):
+    async def _do_internal(self, element, result_elements):
+        for result_element in result_elements:
+            await self._outlet.do(result_element)
+
+
+class Reduce(Flow):
+    def __init__(self, inital_value, fn):
+        super().__init__()
+        assert callable(fn), f'Expected a callable, got {type(fn)}'
+        self._is_async = asyncio.iscoroutinefunction(fn)
+        self._fn = fn
+        self._result = inital_value
+        self._future = asyncio.futures.Future()
+
+    def to(self, outlet):
+        raise Exception("Reduce is a terminal step. It cannot be piped further.")
 
     async def do(self, element):
         if element is _termination_obj:
-            if self._outlet:
-                await self._outlet.do(_termination_obj)
+            self._future.set_result(self._result)
         else:
-            keep = await self._call(element)
-            if self._outlet and keep:
-                await self._outlet.do(element)
+            res = self._fn(self._result, element)
+            if self._is_async:
+                res = await res
+            self._result = res
+
+    def run(self):
+        return self._internal_run(self._future)
 
 
 class NeedsV3ioAccess:
@@ -261,8 +292,10 @@ async def raise_ex(element):
 flow = build_flow([
     Source(),
     Map(lambda x: x + 1),
-    # Filter(lambda x: x < 3),
-    JoinWithTable(lambda x: x, lambda x, y: y['secret'], '/bigdata/gal'),
+    Filter(lambda x: x < 3),
+    FlatMap(lambda x: [x, x * 10]),
+    Reduce(0, lambda acc, x: acc + x),
+    # JoinWithTable(lambda x: x, lambda x, y: y['secret'], '/bigdata/gal'),
     # Map(aprint)
 ])
 
@@ -273,7 +306,9 @@ for outer in range(100):
     for i in range(10):
         mat.emit(i)
 mat.terminate()
-mat.await_termination()
+materialized_result = mat.await_termination()
+if materialized_result:
+    print(materialized_result)
 
 end = time.monotonic()
 print(end - start)
