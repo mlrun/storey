@@ -35,7 +35,6 @@ class Broadcast(Flow):
     def __init__(self, matfn):
         super().__init__()
         self._outlets = []
-        self._run_count = 0
         self._matfn = matfn
 
     def to(self, outlet):
