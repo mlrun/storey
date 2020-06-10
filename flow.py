@@ -295,6 +295,16 @@ def build_flow(steps):
     if len(steps) == 0:
         print('Cannot build an empty flow')
     cur_step = steps[0]
+    is_broadcast = False
     for next_step in steps[1:]:
-        cur_step = cur_step.to(next_step)
-    return cur_step
+        if isinstance(cur_step, Broadcast):
+            is_broadcast = True
+        if is_broadcast:
+            if isinstance(next_step, list):
+                cur_step.to(build_flow(next_step))
+            else:
+                cur_step.to(next_step)
+        else:
+            cur_step.to(next_step)
+            cur_step = next_step
+    return steps[0]
