@@ -20,7 +20,7 @@ class RaiseEx:
         return element
 
 
-class TestStringMethods(unittest.TestCase):
+class TestFlow(unittest.TestCase):
     def test_functional_flow(self):
         flow = build_flow([
             Source(),
@@ -50,6 +50,55 @@ class TestStringMethods(unittest.TestCase):
                 mat.emit(i)
         except FlowException as flow_ex:
             self.assertEqual(TestException, type(flow_ex.__cause__))
+
+    def test_broadcast(self):
+        broadcast = Broadcast(lambda x, y: x + y)
+
+        build_flow([
+            Source(),
+            Map(lambda x: x + 1),
+            Filter(lambda x: x < 3),
+            broadcast
+        ])
+
+        reduce = Reduce(0, lambda acc, x: acc + x)
+
+        broadcast.to(reduce)
+        broadcast.to(reduce)
+
+        mat = reduce.run()
+        for i in range(10):
+            mat.emit(i)
+        mat.terminate()
+        materialized_result = mat.await_termination()
+        self.assertEqual(6, materialized_result)
+
+    def test_broadcast_complex(self):
+        broadcast = Broadcast(lambda x, y: x + y)
+
+        build_flow([
+            Source(),
+            Map(lambda x: x + 1),
+            Filter(lambda x: x < 3),
+            broadcast
+        ])
+
+        reduce = Reduce(0, lambda acc, x: acc + x)
+
+        broadcast.to(reduce)
+
+        build_flow([
+            broadcast,
+            Map(lambda x: x * 100),
+            reduce
+        ])
+
+        mat = reduce.run()
+        for i in range(10):
+            mat.emit(i)
+        mat.terminate()
+        materialized_result = mat.await_termination()
+        self.assertEqual(303, materialized_result)
 
 
 if __name__ == '__main__':
