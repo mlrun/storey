@@ -1,4 +1,4 @@
-import datetime
+from datetime import datetime, timedelta
 
 from flow import *
 from windowed_store import *
@@ -42,7 +42,7 @@ def test_windowed_flow():
     start = time.monotonic()
     running_flow = flow.run()
     for i in range(32):
-        data = {'key': f'{i % 4}', 'time': datetime.datetime.now() + datetime.timedelta(minutes=i), 'col1': i, 'other_col': i * 2}
+        data = {'key': f'{i % 4}', 'time': datetime.now() + timedelta(minutes=i), 'col1': i, 'other_col': i * 2}
         running_flow.emit(data)
 
     end = time.monotonic()

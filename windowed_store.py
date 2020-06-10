@@ -5,9 +5,6 @@ from dtypes import *
 from flow import Flow, NeedsV3ioAccess
 
 
-# a class that accepts - window, (data, key, timestamp)
-
-
 class Window(Flow, NeedsV3ioAccess):
     def __init__(self, window, key_column, time_column, emit_policy=EmitAfterMaxEvent(10), webapi=None,
                  access_key=None):
@@ -47,6 +44,7 @@ class Window(Flow, NeedsV3ioAccess):
             self._events_in_batch = 0
 
 
+# a class that accepts - window, (data, key, timestamp)
 class WindowedStoreElement:
     def __init__(self, key, window):
         self.key = key
