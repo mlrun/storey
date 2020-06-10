@@ -4,11 +4,14 @@ import os
 import queue
 import re
 import threading
-import time
 
 import aiohttp
 
 _termination_obj = object()
+
+
+class FlowException(Exception):
+    pass
 
 
 class Flow:
@@ -75,7 +78,7 @@ class Source(Flow):
 
     def _raise_on_error(self, ex):
         if ex:
-            raise Exception('Flow execution terminated due to an error') from self._ex
+            raise FlowException('Flow execution terminated due to an error') from self._ex
 
     def _emit(self, element):
         self._raise_on_error(self._ex)
@@ -272,43 +275,3 @@ def build_flow(steps):
     for next_step in steps[1:]:
         cur_step = cur_step.to(next_step)
     return cur_step
-
-
-async def aprint(element):
-    print(element)
-
-
-_counter = 0
-
-
-async def raise_ex(element):
-    global _counter
-    if _counter == 500:
-        raise Exception("test")
-    _counter += 1
-    return element
-
-
-flow = build_flow([
-    Source(),
-    Map(lambda x: x + 1),
-    Filter(lambda x: x < 3),
-    FlatMap(lambda x: [x, x * 10]),
-    Reduce(0, lambda acc, x: acc + x),
-    # JoinWithTable(lambda x: x, lambda x, y: y['secret'], '/bigdata/gal'),
-    # Map(aprint)
-])
-
-start = time.monotonic()
-
-mat = flow.run()
-for outer in range(100):
-    for i in range(10):
-        mat.emit(i)
-mat.terminate()
-materialized_result = mat.await_termination()
-if materialized_result:
-    print(materialized_result)
-
-end = time.monotonic()
-print(end - start)
