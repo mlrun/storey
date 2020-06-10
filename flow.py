@@ -14,33 +14,19 @@ class FlowException(Exception):
     pass
 
 
-class _InletWrapper:
-    def __init__(self, inlet):
-        self._inlet = inlet
-
-    def run(self):
-        return self._inlet.run()
-
-
 class Flow:
     def __init__(self):
-        self._inlets = []
         self._outlet = None
 
     def to(self, outlet):
         self._outlet = outlet
-        outlet._inlets.append(self)
         return outlet
 
     def run(self):
-        result = None
-        for inlet in self._inlets:
-            res = inlet.run()
-            if res:
-                result = res
-        return result
+        if self._outlet:
+            return self._outlet.run()
 
-    async def do(self, inlet, element):
+    async def do(self, element):
         if self._outlet:
             return await self._outlet.do(self, element)
 
@@ -48,42 +34,25 @@ class Flow:
 class Broadcast(Flow):
     def __init__(self, matfn):
         super().__init__()
-        self._inlets = []
         self._outlets = []
         self._run_count = 0
         self._matfn = matfn
-        self._termination_count = 0
-        self._was_run = False
-        self._wrapped_selves = []
 
     def to(self, outlet):
         self._outlets.append(outlet)
-        wrapped_self = _InletWrapper(self)
-        outlet._inlets.append(wrapped_self)
-        self._wrapped_selves.append(wrapped_self)
         return outlet
 
-    async def do(self, inlet, element):
+    async def do(self, element):
         if element is _termination_obj:
-            self._termination_count += 1
-            if self._termination_count == len(self._inlets):
-                mat_result = await self._outlets[0].do(self._wrapped_selves[0], _termination_obj)
-                for i in range(1, len(self._outlets)):
-                    mat_result = self._matfn(mat_result, await self._outlets[i].do(self._wrapped_selves[i], _termination_obj))
-                return mat_result
+            mat_result = await self._outlets[0].do(_termination_obj)
+            for i in range(1, len(self._outlets)):
+                mat_result = self._matfn(mat_result, await self._outlets[i].do(_termination_obj))
+            return mat_result
         tasks = []
         for i in range(len(self._outlets)):
-            tasks.append(asyncio.get_running_loop().create_task(self._outlets[i].do(self._wrapped_selves[i], element)))
+            tasks.append(asyncio.get_running_loop().create_task(self._outlets[i].do(element)))
         for task in tasks:
             await task
-
-    def run(self):
-        if not self._was_run:
-            self._was_run = True
-            result = None
-            for inlet in self._inlets:
-                result = inlet.run()
-            return result
 
 
 class MaterializedFlow:
@@ -117,7 +86,7 @@ class Source(Flow):
             element = await loop.run_in_executor(None, self._q.get)
             if self._outlet:
                 try:
-                    mat_result = await self._outlet.do(self, element)
+                    mat_result = await self._outlet.do(element)
                     if element is _termination_obj:
                         self._termination_future.set_result(mat_result)
                 except BaseException as ex:
@@ -143,6 +112,8 @@ class Source(Flow):
         self._raise_on_error(self._ex)
 
     def run(self):
+        super().run()
+
         thread = threading.Thread(target=self._loop_thread_main)
         thread.start()
 
@@ -169,10 +140,10 @@ class UnaryFunctionFlow(Flow):
     async def _do_internal(self, element, fn_result):
         raise NotImplementedError()
 
-    async def do(self, inlet, element):
+    async def do(self, element):
         if element is _termination_obj:
             if self._outlet:
-                return await self._outlet.do(self, _termination_obj)
+                return await self._outlet.do(_termination_obj)
         else:
             fn_result = await self._call(element)
             if self._outlet:
@@ -181,19 +152,19 @@ class UnaryFunctionFlow(Flow):
 
 class Map(UnaryFunctionFlow):
     async def _do_internal(self, element, mapped_elem):
-        await self._outlet.do(self, mapped_elem)
+        await self._outlet.do(mapped_elem)
 
 
 class Filter(UnaryFunctionFlow):
     async def _do_internal(self, element, keep):
         if keep:
-            await self._outlet.do(self, element)
+            await self._outlet.do(element)
 
 
 class FlatMap(UnaryFunctionFlow):
     async def _do_internal(self, element, result_elements):
         for result_element in result_elements:
-            await self._outlet.do(self, result_element)
+            await self._outlet.do(result_element)
 
 
 class Reduce(Flow):
@@ -202,26 +173,19 @@ class Reduce(Flow):
         assert callable(fn), f'Expected a callable, got {type(fn)}'
         self._is_async = asyncio.iscoroutinefunction(fn)
         self._fn = fn
-        self._result_by_inlet = {}
-        self._inital_value = inital_value
+        self._result = inital_value
 
     def to(self, outlet):
         raise Exception("Reduce is a terminal step. It cannot be piped further.")
 
-    def _lazy_init(self):
-        for inlet in self._inlets:
-            self._result_by_inlet[inlet] = self._inital_value
-
-    async def do(self, inlet, element):
-        if not self._result_by_inlet:
-            self._lazy_init()
+    async def do(self, element):
         if element is _termination_obj:
-            return self._result_by_inlet[inlet]
+            return self._result
         else:
-            res = self._fn(self._result_by_inlet[inlet], element)
+            res = self._fn(self._result, element)
             if self._is_async:
                 res = await res
-            self._result_by_inlet[inlet] = res
+            self._result = res
 
 
 class NeedsV3ioAccess:
@@ -294,7 +258,7 @@ class JoinWithTable(Flow, NeedsV3ioAccess):
                     raise Exception(f'Failed to get item. Response status code was {response.status}: {response_body}')
                 if self._outlet and response_object:
                     joined_element = self._join_function(element, response_object)
-                    await self._outlet.do(self, joined_element)
+                    await self._outlet.do(joined_element)
         except BaseException as ex:
             if not self._q.empty():
                 await self._q.get()
@@ -308,7 +272,7 @@ class JoinWithTable(Flow, NeedsV3ioAccess):
         self._q = asyncio.queues.Queue(8)
         self._worker_awaitable = asyncio.get_running_loop().create_task(self._worker())
 
-    async def do(self, inlet, element):
+    async def do(self, element):
         if not self._client_session:
             self._lazy_init()
 
