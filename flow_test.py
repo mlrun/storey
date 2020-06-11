@@ -55,10 +55,13 @@ class TestFlow(unittest.TestCase):
         controller = build_flow([
             Source(),
             Map(lambda x: x + 1),
-            Filter(lambda x: x < 3),
-            Broadcast(lambda x, y: x + y),
-            Reduce(0, lambda acc, x: acc + x),
-            Reduce(0, lambda acc, x: acc + x)
+            Filter(lambda x: x < 3, termination_result_fn=lambda x, y: x + y),
+            [
+                Reduce(0, lambda acc, x: acc + x)
+            ],
+            [
+                Reduce(0, lambda acc, x: acc + x)
+            ]
         ]).run()
 
         for i in range(10):
@@ -71,9 +74,10 @@ class TestFlow(unittest.TestCase):
         controller = build_flow([
             Source(),
             Map(lambda x: x + 1),
-            Filter(lambda x: x < 3),
-            Broadcast(lambda x, y: x + y),
-            Reduce(0, lambda acc, x: acc + x),
+            Filter(lambda x: x < 3, termination_result_fn=lambda x, y: x + y),
+            [
+                Reduce(0, lambda acc, x: acc + x),
+            ],
             [
                 Map(lambda x: x * 100),
                 Reduce(0, lambda acc, x: acc + x)
@@ -83,6 +87,22 @@ class TestFlow(unittest.TestCase):
                 Reduce(0, lambda acc, x: acc + x)
             ]
         ]).run()
+
+        for i in range(10):
+            controller.emit(i)
+        controller.terminate()
+        termination_result = controller.await_termination()
+        self.assertEqual(3303, termination_result)
+
+    # Same as test_broadcast_complex but without using build_flow
+    def test_broadcast_complex_no_sugar(self):
+        source = Source()
+        filter = Filter(lambda x: x < 3, termination_result_fn=lambda x, y: x + y)
+        source.to(Map(lambda x: x + 1)).to(filter)
+        filter.to(Reduce(0, lambda acc, x: acc + x), )
+        filter.to(Map(lambda x: x * 100)).to(Reduce(0, lambda acc, x: acc + x))
+        filter.to(Map(lambda x: x * 1000)).to(Reduce(0, lambda acc, x: acc + x))
+        controller = source.run()
 
         for i in range(10):
             controller.emit(i)
