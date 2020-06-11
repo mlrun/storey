@@ -22,7 +22,7 @@ class RaiseEx:
 
 class TestFlow(unittest.TestCase):
     def test_functional_flow(self):
-        mat = build_flow([
+        controller = build_flow([
             Source(),
             Map(lambda x: x + 1),
             Filter(lambda x: x < 3),
@@ -32,13 +32,13 @@ class TestFlow(unittest.TestCase):
 
         for _ in range(100):
             for i in range(10):
-                mat.emit(i)
-        mat.terminate()
-        materialized_result = mat.await_termination()
-        self.assertEqual(3300, materialized_result)
+                controller.emit(i)
+        controller.terminate()
+        termination_result = controller.await_termination()
+        self.assertEqual(3300, termination_result)
 
     def test_error_flow(self):
-        mat = build_flow([
+        controller = build_flow([
             Source(),
             Map(lambda x: x + 1),
             Map(RaiseEx(500).raise_ex),
@@ -47,12 +47,12 @@ class TestFlow(unittest.TestCase):
 
         try:
             for i in range(1000):
-                mat.emit(i)
+                controller.emit(i)
         except FlowException as flow_ex:
             self.assertEqual(TestException, type(flow_ex.__cause__))
 
     def test_broadcast(self):
-        mat = build_flow([
+        controller = build_flow([
             Source(),
             Map(lambda x: x + 1),
             Filter(lambda x: x < 3),
@@ -62,13 +62,13 @@ class TestFlow(unittest.TestCase):
         ]).run()
 
         for i in range(10):
-            mat.emit(i)
-        mat.terminate()
-        materialized_result = mat.await_termination()
-        self.assertEqual(6, materialized_result)
+            controller.emit(i)
+        controller.terminate()
+        termination_result = controller.await_termination()
+        self.assertEqual(6, termination_result)
 
     def test_broadcast_complex(self):
-        mat = build_flow([
+        controller = build_flow([
             Source(),
             Map(lambda x: x + 1),
             Filter(lambda x: x < 3),
@@ -85,10 +85,10 @@ class TestFlow(unittest.TestCase):
         ]).run()
 
         for i in range(10):
-            mat.emit(i)
-        mat.terminate()
-        materialized_result = mat.await_termination()
-        self.assertEqual(3303, materialized_result)
+            controller.emit(i)
+        controller.terminate()
+        termination_result = controller.await_termination()
+        self.assertEqual(3303, termination_result)
 
 
 if __name__ == '__main__':

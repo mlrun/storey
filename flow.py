@@ -32,10 +32,10 @@ class Flow:
 
 
 class Broadcast(Flow):
-    def __init__(self, matfn):
+    def __init__(self, termination_result_fn):
         super().__init__()
         self._outlets = []
-        self._matfn = matfn
+        self._termination_result_fn = termination_result_fn
 
     def to(self, outlet):
         self._outlets.append(outlet)
@@ -43,10 +43,10 @@ class Broadcast(Flow):
 
     async def do(self, element):
         if element is _termination_obj:
-            mat_result = await self._outlets[0].do(_termination_obj)
+            termination_result = await self._outlets[0].do(_termination_obj)
             for i in range(1, len(self._outlets)):
-                mat_result = self._matfn(mat_result, await self._outlets[i].do(_termination_obj))
-            return mat_result
+                termination_result = self._termination_result_fn(termination_result, await self._outlets[i].do(_termination_obj))
+            return termination_result
         tasks = []
         for i in range(len(self._outlets)):
             tasks.append(asyncio.get_running_loop().create_task(self._outlets[i].do(element)))
@@ -54,7 +54,7 @@ class Broadcast(Flow):
             await task
 
 
-class MaterializedFlow:
+class FlowController:
     def __init__(self, emit_fn, await_termination_fn):
         self._emit_fn = emit_fn
         self._await_termination_fn = await_termination_fn
@@ -85,9 +85,9 @@ class Source(Flow):
             element = await loop.run_in_executor(None, self._q.get)
             if self._outlet:
                 try:
-                    mat_result = await self._outlet.do(element)
+                    termination_result = await self._outlet.do(element)
                     if element is _termination_obj:
-                        self._termination_future.set_result(mat_result)
+                        self._termination_future.set_result(termination_result)
                 except BaseException as ex:
                     self._ex = ex
                     if not self._q.empty():
@@ -116,11 +116,11 @@ class Source(Flow):
         thread = threading.Thread(target=self._loop_thread_main)
         thread.start()
 
-        def raise_error_or_materialize_value():
+        def raise_error_or_return_termination_result():
             self._raise_on_error(self._termination_q.get())
             return self._termination_future.result()
 
-        return MaterializedFlow(self._emit, raise_error_or_materialize_value)
+        return FlowController(self._emit, raise_error_or_return_termination_result)
 
 
 class UnaryFunctionFlow(Flow):
