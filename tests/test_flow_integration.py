@@ -1,6 +1,10 @@
-from storey import build_flow, Source, Map, Filter, JoinWithTable
+from conftest import has_v3io_creds
+from storey import Filter, JoinWithTable, Map, Source, build_flow
+
+import pytest
 
 
+@pytest.mark.skipif(not has_v3io_creds, reason='missing v3io credentials')
 def test_functional_flow():
     flow = build_flow([
         Source(),
