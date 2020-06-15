@@ -25,17 +25,16 @@ def test_normal_flow():
 
 
 async def aprint_store(store):
-    cache = store.cache
     print('store: ')
-    for elem in cache:
-        print(elem, '-', cache[elem].features, f'start time - {cache[elem].first_bucket_start_time}')
+    for elem in store:
+        print(elem[0], '-', elem[1].features, f'start time - {elem[1].first_bucket_start_time}')
     print()
 
 
 def test_windowed_flow():
     flow = build_flow([
         Source(),
-        Window(SlidingWindow('30s', '5s'), 'key', 'time', EmitAfterPeriod()),
+        Window(FixedWindow('1h'), 'key', 'time', EmitAfterMaxEvent(10)),
         Map(aprint_store)
     ])
 
@@ -48,5 +47,4 @@ def test_windowed_flow():
     end = time.monotonic()
     print(end - start)
 
-    time.sleep(12)
-    running_flow.emit(None)
+    running_flow.terminate()

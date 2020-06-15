@@ -1,4 +1,6 @@
 from utils import parse_duration
+from enum import Enum
+from datetime import datetime
 
 bucketPerWindow = 10
 
@@ -18,6 +20,15 @@ class FixedWindow(WindowBase):
     def get_total_number_of_buckets(self):
         return bucketPerWindow * 2
 
+    def get_window_start_time(self):
+        return self.get_current_window()
+
+    def get_current_window(self):
+        return int((datetime.now().timestamp() * 1000) / self.window_millis) * self.window_millis
+
+    def get_current_period(self):
+        return int((datetime.now().timestamp() * 1000) / self.period_millis) * self.period_millis
+
 
 class SlidingWindow(WindowBase):
     def __init__(self, window, period):
@@ -30,19 +41,44 @@ class SlidingWindow(WindowBase):
     def get_total_number_of_buckets(self):
         return int(self.window_millis / self.period_millis)
 
+    def get_window_start_time(self):
+        return datetime.now().timestamp() * 1000
 
-class EmitAfterPeriod:
+
+class EmissionType(Enum):
+    All = 1
+    Incremental = 2
+
+
+class EmitBase:
+    def __init__(self, emission_type=EmissionType.All):
+        self.emission_type = emission_type
+
+
+class EmitAfterPeriod(EmitBase):
     pass
 
 
-class EmitAfterWindow:
+class EmitAfterWindow(EmitBase):
     pass
 
 
-class EmitAfterMaxEvent:
-    def __init__(self, max_events):
+class EmitAfterMaxEvent(EmitBase):
+    def __init__(self, max_events, emission_type=EmissionType.All):
         self.max_events = max_events
+        EmitBase.__init__(self, emission_type)
 
 
-class EmitEveryEvent:
+class EmitAfterDelay(EmitBase):
+    def __init__(self, delay_in_seconds, emission_type=EmissionType.All):
+        self.delay_in_seconds = delay_in_seconds
+        EmitBase.__init__(self, emission_type)
+
+
+class EmitEveryEvent(EmitBase):
     pass
+
+
+class LateDataHandling(Enum):
+    Nothing = 1
+    Sort_before_emit = 2
