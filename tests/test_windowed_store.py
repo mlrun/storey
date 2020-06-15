@@ -1,27 +1,9 @@
-from datetime import datetime, timedelta
 import time
-from flow import *
-from windowed_store import *
+from datetime import timedelta, datetime
 
-
-def test_normal_flow():
-    flow = build_flow([
-        Source(),
-        Map(lambda x: x + 1),
-        JoinWithTable(lambda x: x, lambda x, y: y['secret'], '/bigdata/gal'),
-        Map(aprint)
-    ])
-
-    start = time.monotonic()
-
-    mat = flow.run()
-    for outer in range(100):
-        for i in range(10):
-            mat.emit(i)
-    mat.emit(None)
-
-    end = time.monotonic()
-    print(end - start)
+from storey import build_flow, Source, Map
+from storey.dtypes import FixedWindow
+from storey.windowed_store import Window, EmitAfterMaxEvent
 
 
 async def aprint_store(store):

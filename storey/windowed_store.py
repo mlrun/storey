@@ -1,8 +1,8 @@
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime
 
-from dtypes import *
-from flow import Flow, NeedsV3ioAccess
+from .dtypes import EmitAfterMaxEvent, LateDataHandling, EmitAfterPeriod, EmitAfterWindow, EmitAfterDelay, EmitEveryEvent, EmissionType
+from .flow import Flow, NeedsV3ioAccess
 
 
 class Window(Flow, NeedsV3ioAccess):

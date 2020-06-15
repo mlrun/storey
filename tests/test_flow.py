@@ -1,6 +1,6 @@
 import unittest
 
-from flow import *
+from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError
 
 
 class TestException(Exception):
