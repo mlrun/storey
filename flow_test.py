@@ -48,7 +48,7 @@ class TestFlow(unittest.TestCase):
         try:
             for i in range(1000):
                 controller.emit(i)
-        except FlowException as flow_ex:
+        except FlowError as flow_ex:
             self.assertEqual(TestException, type(flow_ex.__cause__))
 
     def test_broadcast(self):
