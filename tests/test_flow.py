@@ -54,8 +54,7 @@ def test_broadcast():
     controller = build_flow([
         Source(),
         Map(lambda x: x + 1),
-        Filter(
-            lambda x: x < 3, termination_result_fn=lambda x, y: x + y),
+        Filter(lambda x: x < 3, termination_result_fn=lambda x, y: x + y),
         [
             Reduce(0, lambda acc, x: acc + x)
         ],
@@ -75,8 +74,7 @@ def test_broadcast_complex():
     controller = build_flow([
         Source(),
         Map(lambda x: x + 1),
-        Filter(
-            lambda x: x < 3, termination_result_fn=lambda x, y: x + y),
+        Filter(lambda x: x < 3, termination_result_fn=lambda x, y: x + y),
         [
             Reduce(0, lambda acc, x: acc + x),
         ],
@@ -100,8 +98,7 @@ def test_broadcast_complex():
 # Same as test_broadcast_complex but without using build_flow
 def test_broadcast_complex_no_sugar():
     source = Source()
-    filter = Filter(
-        lambda x: x < 3, termination_result_fn=lambda x, y: x + y)
+    filter = Filter(lambda x: x < 3, termination_result_fn=lambda x, y: x + y)
     source.to(Map(lambda x: x + 1)).to(filter)
     filter.to(Reduce(0, lambda acc, x: acc + x), )
     filter.to(Map(lambda x: x * 100)).to(Reduce(0, lambda acc, x: acc + x))
