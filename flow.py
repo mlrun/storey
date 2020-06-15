@@ -10,7 +10,11 @@ import aiohttp
 _termination_obj = object()
 
 
-class FlowException(Exception):
+class FlowError(Exception):
+    pass
+
+
+class V3ioError(Exception):
     pass
 
 
@@ -91,7 +95,7 @@ class Source(Flow):
 
     def _raise_on_error(self, ex):
         if ex:
-            raise FlowException('Flow execution terminated due to an error') from self._ex
+            raise FlowError('Flow execution terminated due to an error') from self._ex
 
     def _emit(self, element):
         self._raise_on_error(self._ex)
@@ -161,7 +165,7 @@ class Reduce(Flow):
         self._result = inital_value
 
     def to(self, outlet):
-        raise Exception("Reduce is a terminal step. It cannot be piped further.")
+        raise ValueError("Reduce is a terminal step. It cannot be piped further.")
 
     async def do(self, element):
         if element is _termination_obj:
@@ -220,7 +224,7 @@ class JoinWithTable(Flow, NeedsV3ioAccess):
                     else:
                         val = int(value)
                 else:
-                    raise Exception(f'Type {typ} in get item response is not supported')
+                    raise V3ioError(f'Type {typ} in get item response is not supported')
             response_object[name] = val
         return response_object
 
@@ -240,7 +244,7 @@ class JoinWithTable(Flow, NeedsV3ioAccess):
                 elif response.status == 404:
                     pass
                 else:
-                    raise Exception(f'Failed to get item. Response status code was {response.status}: {response_body}')
+                    raise V3ioError(f'Failed to get item. Response status code was {response.status}: {response_body}')
                 if response_object:
                     joined_element = self._join_function(element, response_object)
                     await self._do_downstream(joined_element)
@@ -263,7 +267,7 @@ class JoinWithTable(Flow, NeedsV3ioAccess):
 
         if self._worker_awaitable.done():
             await self._worker_awaitable
-            raise Exception("JoinWithTable worker has already terminated")
+            raise AssertionError("JoinWithTable worker has already terminated")
 
         if element is _termination_obj:
             await self._q.put(_termination_obj)
