@@ -47,7 +47,7 @@ class Window(Flow, NeedsV3ioAccess):
             self._events_in_batch = 0
 
     async def emit_window(self):
-        await self._outlet.do(self._windowed_store)
+        await self._do_downstream(self._windowed_store)
 
         # when emission type is incremental we need to flush the window after every emit
         if self._emit_policy.emission_type == EmissionType.Incremental:
