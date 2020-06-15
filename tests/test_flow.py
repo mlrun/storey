@@ -1,7 +1,7 @@
 from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError
 
 
-class TestException(Exception):
+class ATestException(Exception):
     pass
 
 
@@ -13,7 +13,7 @@ class RaiseEx:
 
     def raise_ex(self, element):
         if self._counter == self._raise_after:
-            raise TestException("test")
+            raise ATestException("test")
         self._counter += 1
         return element
 
@@ -47,7 +47,7 @@ def test_error_flow():
         for i in range(1000):
             controller.emit(i)
     except FlowError as flow_ex:
-        assert isinstance(flow_ex.__cause__, TestException)
+        assert isinstance(flow_ex.__cause__, ATestException)
 
 
 def test_broadcast():
