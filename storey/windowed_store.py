@@ -109,7 +109,7 @@ class WindowedStoreElement:
 
     def initialize_column(self, column):
         self.features[column] = []
-        for i in range(self.window.get_total_number_of_buckets()):
+        for _ in range(self.window.get_total_number_of_buckets()):
             self.features[column].append(WindowBucket(self.late_data_handling))
 
     def get_or_advance_bucket_index_by_timestamp(self, timestamp):
@@ -133,7 +133,7 @@ class WindowedStoreElement:
             else:
                 for column in self.features:
                     self.features[column] = self.features[column][buckets_to_advnace:]
-                    for i in range(buckets_to_advnace):
+                    for _ in range(buckets_to_advnace):
                         self.features[column].extend([WindowBucket(self.late_data_handling)])
 
             self.first_bucket_start_time = \
