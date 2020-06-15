@@ -4,33 +4,46 @@ import os
 import queue
 import re
 import threading
-import time
 
 import aiohttp
 
 _termination_obj = object()
 
 
+class FlowException(Exception):
+    pass
+
+
 class Flow:
-    def __init__(self):
-        self._inlet = None
-        self._outlet = None
+    def __init__(self, termination_result_fn=lambda x, y: None):
+        self._outlets = []
+        self._termination_result_fn = termination_result_fn
 
     def to(self, outlet):
-        self._outlet = outlet
-        outlet._inlet = self
+        self._outlets.append(outlet)
         return outlet
 
     def run(self):
-        future = asyncio.futures.Future()
-        future.set_result(None)
-        return self._internal_run(future)
+        for outlet in self._outlets:
+            outlet.run()
 
-    def _internal_run(self, future):
-        return self._inlet._internal_run(future)
+    async def do(self, element):
+        raise NotImplementedError
+
+    async def _do_downstream(self, element):
+        if element is _termination_obj:
+            termination_result = await self._outlets[0].do(_termination_obj)
+            for i in range(1, len(self._outlets)):
+                termination_result = self._termination_result_fn(termination_result, await self._outlets[i].do(_termination_obj))
+            return termination_result
+        tasks = []
+        for i in range(len(self._outlets)):
+            tasks.append(asyncio.get_running_loop().create_task(self._outlets[i].do(element)))
+        for task in tasks:
+            await task
 
 
-class MaterializedFlow:
+class FlowController:
     def __init__(self, emit_fn, await_termination_fn):
         self._emit_fn = emit_fn
         self._await_termination_fn = await_termination_fn
@@ -46,8 +59,8 @@ class MaterializedFlow:
 
 
 class Source(Flow):
-    def __init__(self, buffer_size=1):
-        super().__init__()
+    def __init__(self, buffer_size=1, **kwargs):
+        super().__init__(**kwargs)
         assert buffer_size > 0, 'Buffer size must be positive'
         self._q = queue.Queue(buffer_size)
         self._termination_q = queue.Queue(1)
@@ -55,17 +68,20 @@ class Source(Flow):
 
     async def _run_loop(self):
         loop = asyncio.get_running_loop()
+        self._termination_future = asyncio.futures.Future()
 
         while True:
             element = await loop.run_in_executor(None, self._q.get)
-            if self._outlet:
-                try:
-                    await self._outlet.do(element)
-                except BaseException as ex:
-                    self._ex = ex
-                    if not self._q.empty():
-                        self._q.get()
-                    break
+            try:
+                termination_result = await self._do_downstream(element)
+                if element is _termination_obj:
+                    self._termination_future.set_result(termination_result)
+            except BaseException as ex:
+                self._ex = ex
+                if not self._q.empty():
+                    self._q.get()
+                self._termination_future.set_result(None)
+                break
             if element is _termination_obj:
                 break
 
@@ -75,27 +91,29 @@ class Source(Flow):
 
     def _raise_on_error(self, ex):
         if ex:
-            raise Exception('Flow execution terminated due to an error') from self._ex
+            raise FlowException('Flow execution terminated due to an error') from self._ex
 
     def _emit(self, element):
         self._raise_on_error(self._ex)
         self._q.put(element)
         self._raise_on_error(self._ex)
 
-    def _internal_run(self, future):
+    def run(self):
+        super().run()
+
         thread = threading.Thread(target=self._loop_thread_main)
         thread.start()
 
-        def raise_error_or_materialize_value():
+        def raise_error_or_return_termination_result():
             self._raise_on_error(self._termination_q.get())
-            return future.result()
+            return self._termination_future.result()
 
-        return MaterializedFlow(self._emit, raise_error_or_materialize_value)
+        return FlowController(self._emit, raise_error_or_return_termination_result)
 
 
 class UnaryFunctionFlow(Flow):
-    def __init__(self, fn):
-        super().__init__()
+    def __init__(self, fn, **kwargs):
+        super().__init__(**kwargs)
         assert callable(fn), f'Expected a callable, got {type(fn)}'
         self._is_async = asyncio.iscoroutinefunction(fn)
         self._fn = fn
@@ -111,29 +129,27 @@ class UnaryFunctionFlow(Flow):
 
     async def do(self, element):
         if element is _termination_obj:
-            if self._outlet:
-                await self._outlet.do(_termination_obj)
+            return await self._do_downstream(element)
         else:
             fn_result = await self._call(element)
-            if self._outlet:
-                await self._do_internal(element, fn_result)
+            await self._do_internal(element, fn_result)
 
 
 class Map(UnaryFunctionFlow):
     async def _do_internal(self, element, mapped_elem):
-        await self._outlet.do(mapped_elem)
+        await self._do_downstream(mapped_elem)
 
 
 class Filter(UnaryFunctionFlow):
     async def _do_internal(self, element, keep):
         if keep:
-            await self._outlet.do(element)
+            await self._do_downstream(element)
 
 
 class FlatMap(UnaryFunctionFlow):
     async def _do_internal(self, element, result_elements):
         for result_element in result_elements:
-            await self._outlet.do(result_element)
+            await self._do_downstream(result_element)
 
 
 class Reduce(Flow):
@@ -143,22 +159,18 @@ class Reduce(Flow):
         self._is_async = asyncio.iscoroutinefunction(fn)
         self._fn = fn
         self._result = inital_value
-        self._future = asyncio.futures.Future()
 
     def to(self, outlet):
         raise Exception("Reduce is a terminal step. It cannot be piped further.")
 
     async def do(self, element):
         if element is _termination_obj:
-            self._future.set_result(self._result)
+            return self._result
         else:
             res = self._fn(self._result, element)
             if self._is_async:
                 res = await res
             self._result = res
-
-    def run(self):
-        return self._internal_run(self._future)
 
 
 class NeedsV3ioAccess:
@@ -185,8 +197,8 @@ class NeedsV3ioAccess:
 class JoinWithTable(Flow, NeedsV3ioAccess):
     _non_int_char_pattern = re.compile(r"[^-0-9]")
 
-    def __init__(self, key_extractor, join_function, table_path, attributes='*', webapi=None, access_key=None):
-        Flow.__init__(self)
+    def __init__(self, key_extractor, join_function, table_path, attributes='*', webapi=None, access_key=None, **kwargs):
+        Flow.__init__(self, **kwargs)
         NeedsV3ioAccess.__init__(self, webapi, access_key)
         self._key_extractor = key_extractor
         self._join_function = join_function
@@ -229,9 +241,9 @@ class JoinWithTable(Flow, NeedsV3ioAccess):
                     pass
                 else:
                     raise Exception(f'Failed to get item. Response status code was {response.status}: {response_body}')
-                if self._outlet and response_object:
+                if response_object:
                     joined_element = self._join_function(element, response_object)
-                    await self._outlet.do(joined_element)
+                    await self._do_downstream(joined_element)
         except BaseException as ex:
             if not self._q.empty():
                 await self._q.get()
@@ -270,45 +282,9 @@ def build_flow(steps):
         print('Cannot build an empty flow')
     cur_step = steps[0]
     for next_step in steps[1:]:
-        cur_step = cur_step.to(next_step)
-    return cur_step
-
-
-async def aprint(element):
-    print(element)
-
-
-_counter = 0
-
-
-async def raise_ex(element):
-    global _counter
-    if _counter == 500:
-        raise Exception("test")
-    _counter += 1
-    return element
-
-
-flow = build_flow([
-    Source(),
-    Map(lambda x: x + 1),
-    Filter(lambda x: x < 3),
-    FlatMap(lambda x: [x, x * 10]),
-    Reduce(0, lambda acc, x: acc + x),
-    # JoinWithTable(lambda x: x, lambda x, y: y['secret'], '/bigdata/gal'),
-    # Map(aprint)
-])
-
-start = time.monotonic()
-
-mat = flow.run()
-for outer in range(100):
-    for i in range(10):
-        mat.emit(i)
-mat.terminate()
-materialized_result = mat.await_termination()
-if materialized_result:
-    print(materialized_result)
-
-end = time.monotonic()
-print(end - start)
+        if isinstance(next_step, list):
+            cur_step.to(build_flow(next_step))
+        else:
+            cur_step.to(next_step)
+            cur_step = next_step
+    return steps[0]
