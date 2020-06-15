@@ -31,18 +31,18 @@ class Flow:
         for outlet in self._outlets:
             outlet.run()
 
-    async def do(self, element):
+    async def _do(self, element):
         raise NotImplementedError
 
     async def _do_downstream(self, element):
         if element is _termination_obj:
-            termination_result = await self._outlets[0].do(_termination_obj)
+            termination_result = await self._outlets[0]._do(_termination_obj)
             for i in range(1, len(self._outlets)):
-                termination_result = self._termination_result_fn(termination_result, await self._outlets[i].do(_termination_obj))
+                termination_result = self._termination_result_fn(termination_result, await self._outlets[i]._do(_termination_obj))
             return termination_result
         tasks = []
         for i in range(len(self._outlets)):
-            tasks.append(asyncio.get_running_loop().create_task(self._outlets[i].do(element)))
+            tasks.append(asyncio.get_running_loop().create_task(self._outlets[i]._do(element)))
         for task in tasks:
             await task
 
@@ -131,7 +131,7 @@ class UnaryFunctionFlow(Flow):
     async def _do_internal(self, element, fn_result):
         raise NotImplementedError()
 
-    async def do(self, element):
+    async def _do(self, element):
         if element is _termination_obj:
             return await self._do_downstream(element)
         else:
@@ -167,7 +167,7 @@ class Reduce(Flow):
     def to(self, outlet):
         raise ValueError("Reduce is a terminal step. It cannot be piped further.")
 
-    async def do(self, element):
+    async def _do(self, element):
         if element is _termination_obj:
             return self._result
         else:
@@ -261,7 +261,7 @@ class JoinWithTable(Flow, NeedsV3ioAccess):
         self._q = asyncio.queues.Queue(8)
         self._worker_awaitable = asyncio.get_running_loop().create_task(self._worker())
 
-    async def do(self, element):
+    async def _do(self, element):
         if not self._client_session:
             self._lazy_init()
 

@@ -28,9 +28,9 @@ class Window(Flow, NeedsV3ioAccess):
             elif isinstance(self._emit_policy, EmitAfterWindow):
                 await asyncio.sleep(self._window.window_millis / 1000)
 
-            await self._outlet.do(self._windowed_store)
+            await self._outlet._do(self._windowed_store)
 
-    async def do(self, element):
+    async def _do(self, element):
         if (not self._emit_worker_running) and \
                 (isinstance(self._emit_policy, EmitAfterPeriod) or isinstance(self._emit_policy, EmitAfterWindow)):
             asyncio.get_running_loop().create_task(self._emit_worker())
@@ -43,7 +43,7 @@ class Window(Flow, NeedsV3ioAccess):
         if isinstance(self._emit_policy, EmitEveryEvent) or \
                 isinstance(self._emit_policy,
                            EmitAfterMaxEvent) and self._events_in_batch == self._emit_policy.max_events:
-            await self._outlet.do(self._windowed_store)
+            await self._outlet._do(self._windowed_store)
             self._events_in_batch = 0
 
 
