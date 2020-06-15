@@ -4,6 +4,7 @@ all:
 test:
 	find storey -name '*.pyc' -exec rm {} \;
 	find tests -name '*.pyc' -exec rm {} \;
+	flake8 storey tests
 	./venv/bin/python -m pytest -rf -v tests
 
 env:
