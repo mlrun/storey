@@ -1,5 +1,5 @@
-import struct
 import base64
+import struct
 from array import array
 
 
@@ -9,11 +9,11 @@ def parse_duration(string_time):
     if unit == 's':
         multiplier = 1000
     elif unit == 'm':
-        multiplier = 60*1000
+        multiplier = 60 * 1000
     elif unit == 'h':
-        multiplier = 60*60*1000
+        multiplier = 60 * 60 * 1000
     elif unit == 'd':
-        multiplier = 24*60*60*1000
+        multiplier = 24 * 60 * 60 * 1000
     else:
         raise Exception(f'Failed to parse time "{string_time}" ')
 
@@ -35,11 +35,11 @@ def convert_array_tlv(a):
     array_type = 259 if a.typecode == 'l' else 261
     size = len(a)
     if a.typecode == 'l':
-        values = struct.pack("l"*size, *a)
+        values = struct.pack("l" * size, *a)
     else:
-        values = struct.pack("d"*size, *a)
-    structure = struct.pack("IhII", 11223344, 1, size*8, array_type)
-    converted_blob = base64.b64encode(structure+values)
+        values = struct.pack("d" * size, *a)
+    structure = struct.pack("IhII", 11223344, 1, size * 8, array_type)
+    converted_blob = base64.b64encode(structure + values)
     return converted_blob
 
 
@@ -60,7 +60,7 @@ def extract_array_tlv(b):
     tl = converted_blob[:16]
     v = converted_blob[16:]
     structure = struct.unpack("IhII", tl)  # I=unsigned_int, h=short
-    size = int(structure[2]/8)
+    size = int(structure[2] / 8)
     array_type = 'l' if structure[3] == 259 else 'd'
     if array_type == 'l':
         values = [v for v in struct.unpack("{}".format("l" * size), v)]

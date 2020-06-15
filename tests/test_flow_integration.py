@@ -1,6 +1,6 @@
 import unittest
 
-from flow import *
+from storey import *
 
 
 class TestJoinWithTable(unittest.TestCase):

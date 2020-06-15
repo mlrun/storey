@@ -1,7 +1,8 @@
-from datetime import datetime, timedelta
 import time
-from flow import *
-from windowed_store import *
+from datetime import timedelta
+
+from storey import *
+from storey.windowed_store import *
 
 
 def test_normal_flow():
@@ -9,7 +10,7 @@ def test_normal_flow():
         Source(),
         Map(lambda x: x + 1),
         JoinWithTable(lambda x: x, lambda x, y: y['secret'], '/bigdata/gal'),
-        Map(aprint)
+        Map(lambda x: print(x))
     ])
 
     start = time.monotonic()
