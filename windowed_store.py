@@ -10,7 +10,7 @@ class Window(Flow, NeedsV3ioAccess):
                  late_data_handling=LateDataHandling.Nothing, webapi=None, access_key=None):
         Flow.__init__(self)
         NeedsV3ioAccess.__init__(self, webapi, access_key)
-        self._windowed_store = WindowedStore(window)
+        self._windowed_store = WindowedStore(window, late_data_handling)
         self._window = window
         self._key_column = key_column
         self._time_column = time_column
@@ -55,16 +55,23 @@ class Window(Flow, NeedsV3ioAccess):
 
 
 class WindowBucket:
-    def __init__(self):
+    def __init__(self, late_data_handling):
         self.data = []
         self.max_time = 0
+        self.late_data_handling = late_data_handling
 
     def add(self, t, v):
-        if t >= self.max_time:
-            self.max_time = t
-            self.data.append((t, v))
+        if t < self.max_time and self.late_data_handling == LateDataHandling.Sort_before_emit:
+            index = 0
+            for data_point in self.data:
+                if t < data_point[0]:
+                    self.data.insert(index, (t, v))
+                    break
+                index = index + 1
         else:
-            pass  # need to sort maybe
+            self.data.append((t, v))
+            if t > self.max_time:
+                self.max_time = t
 
     def __repr__(self):
         return str(self)
@@ -75,9 +82,9 @@ class WindowBucket:
 
 # a class that accepts - window, (data, key, timestamp)
 class WindowedStoreElement:
-    def __init__(self, key, window):
+    def __init__(self, key, window, late_data_handling):
         self.key = key
-
+        self.late_data_handling = late_data_handling
         self.window = window
         self.features = {}
         self.first_bucket_start_time = self.window.get_window_start_time()
@@ -103,7 +110,7 @@ class WindowedStoreElement:
     def initialize_column(self, column):
         self.features[column] = []
         for i in range(self.window.get_total_number_of_buckets()):
-            self.features[column].append(WindowBucket())
+            self.features[column].append(WindowBucket(self.late_data_handling))
 
     def get_or_advance_bucket_index_by_timestamp(self, timestamp):
         if timestamp < self.last_bucket_start_time + self.window.period_millis:
@@ -113,7 +120,9 @@ class WindowedStoreElement:
             self.advance_window_period(timestamp)
             return self.window.get_total_number_of_buckets() - 1  # return last index
 
-    def advance_window_period(self, advance_to=datetime.now().timestamp() * 1000):
+    def advance_window_period(self, advance_to=None):
+        if not advance_to:
+            advance_to = datetime.now().timestamp() * 1000
         desired_bucket_index = int((advance_to - self.first_bucket_start_time) / self.window.period_millis)
         buckets_to_advnace = desired_bucket_index - (self.window.get_total_number_of_buckets() - 1)
 
@@ -125,7 +134,7 @@ class WindowedStoreElement:
                 for column in self.features:
                     self.features[column] = self.features[column][buckets_to_advnace:]
                     for i in range(buckets_to_advnace):
-                        self.features[column].extend([WindowBucket()])
+                        self.features[column].extend([WindowBucket(self.late_data_handling)])
 
             self.first_bucket_start_time = \
                 self.first_bucket_start_time + buckets_to_advnace * self.window.period_millis
@@ -153,8 +162,9 @@ def aggregate(self, aggregation, old_value, new_value):
 
 
 class WindowedStore:
-    def __init__(self, window):
+    def __init__(self, window, late_data_handling):
         self.window = window
+        self.late_data_handling = late_data_handling
         self.cache = {}
 
     def __iter__(self):
@@ -162,7 +172,7 @@ class WindowedStore:
 
     def add(self, key, data, timestamp):
         if key not in self.cache:
-            self.cache[key] = WindowedStoreElement(key, self.window)
+            self.cache[key] = WindowedStoreElement(key, self.window, self.late_data_handling)
 
         if isinstance(timestamp, datetime):
             timestamp = timestamp.timestamp() * 1000
