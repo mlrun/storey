@@ -1,6 +1,6 @@
 name: CI
 
-on: [push]
+on: [push, pull_request]
 
 jobs:
   test:
@@ -10,18 +10,18 @@ jobs:
         python-version: [3.7, 3.8]
 
     steps:
-    - uses: actions/checkout@v2
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v1
-      with:
-        python-version: ${{ matrix.python-version }}
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt -r dev-requirements.txt
-    - name: test
-      # FIXME
-      #env: # Or as an environment variable
-      #  V3IO_API: ${{ secrets.V3IO_API }}
-      #  V3IO_ACCESS_KEY: ${{ secrets.V3IO_ACCESS_KEY }}
-      run: python -m pytest -rf -v tests
+      - uses: actions/checkout@v2
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v1
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r dev-requirements.txt
+      - name: test
+        # FIXME
+        #env: # Or as an environment variable
+        #  V3IO_API: ${{ secrets.V3IO_API }}
+        #  V3IO_ACCESS_KEY: ${{ secrets.V3IO_ACCESS_KEY }}
+        run: python -m pytest -rf -v tests
