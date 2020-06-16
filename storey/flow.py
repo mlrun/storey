@@ -1,9 +1,11 @@
 import asyncio
+import collections
 import json
 import os
 import queue
 import re
 import threading
+import time
 
 import aiohttp
 
@@ -31,20 +33,23 @@ class Flow:
         for outlet in self._outlets:
             outlet.run()
 
-    async def _do(self, element):
+    async def _do(self, event):
         raise NotImplementedError
 
-    async def _do_downstream(self, element):
-        if element is _termination_obj:
+    async def _do_downstream(self, event):
+        if event is _termination_obj:
             termination_result = await self._outlets[0]._do(_termination_obj)
             for i in range(1, len(self._outlets)):
                 termination_result = self._termination_result_fn(termination_result, await self._outlets[i]._do(_termination_obj))
             return termination_result
         tasks = []
         for i in range(len(self._outlets)):
-            tasks.append(asyncio.get_running_loop().create_task(self._outlets[i]._do(element)))
+            tasks.append(asyncio.get_running_loop().create_task(self._outlets[i]._do(event)))
         for task in tasks:
             await task
+
+
+Event = collections.namedtuple('Event', 'element key time')
 
 
 class FlowController:
@@ -52,11 +57,13 @@ class FlowController:
         self._emit_fn = emit_fn
         self._await_termination_fn = await_termination_fn
 
-    def emit(self, element):
-        self._emit_fn(element)
+    def emit(self, element, key=None, event_time=None):
+        if event_time is None:
+            event_time = time.time()
+        self._emit_fn(Event(element, key, event_time))
 
     def terminate(self):
-        self.emit(_termination_obj)
+        self._emit_fn(_termination_obj)
 
     def await_termination(self):
         return self._await_termination_fn()
@@ -75,10 +82,10 @@ class Source(Flow):
         self._termination_future = asyncio.futures.Future()
 
         while True:
-            element = await loop.run_in_executor(None, self._q.get)
+            event = await loop.run_in_executor(None, self._q.get)
             try:
-                termination_result = await self._do_downstream(element)
-                if element is _termination_obj:
+                termination_result = await self._do_downstream(event)
+                if event is _termination_obj:
                     self._termination_future.set_result(termination_result)
             except BaseException as ex:
                 self._ex = ex
@@ -86,7 +93,7 @@ class Source(Flow):
                     self._q.get()
                 self._termination_future.set_result(None)
                 break
-            if element is _termination_obj:
+            if event is _termination_obj:
                 break
 
     def _loop_thread_main(self):
@@ -97,9 +104,9 @@ class Source(Flow):
         if ex:
             raise FlowError('Flow execution terminated due to an error') from self._ex
 
-    def _emit(self, element):
+    def _emit(self, event):
         self._raise_on_error(self._ex)
-        self._q.put(element)
+        self._q.put(event)
         self._raise_on_error(self._ex)
 
     def run(self):
@@ -131,29 +138,32 @@ class UnaryFunctionFlow(Flow):
     async def _do_internal(self, element, fn_result):
         raise NotImplementedError()
 
-    async def _do(self, element):
-        if element is _termination_obj:
-            return await self._do_downstream(element)
+    async def _do(self, event):
+        if event is _termination_obj:
+            return await self._do_downstream(event)
         else:
+            element = event.element
             fn_result = await self._call(element)
-            await self._do_internal(element, fn_result)
+            await self._do_internal(event, fn_result)
 
 
 class Map(UnaryFunctionFlow):
-    async def _do_internal(self, element, mapped_elem):
-        await self._do_downstream(mapped_elem)
+    async def _do_internal(self, event, mapped_element):
+        mapped_event = Event(mapped_element, event.key, event.time)
+        await self._do_downstream(mapped_event)
 
 
 class Filter(UnaryFunctionFlow):
-    async def _do_internal(self, element, keep):
+    async def _do_internal(self, event, keep):
         if keep:
-            await self._do_downstream(element)
+            await self._do_downstream(event)
 
 
 class FlatMap(UnaryFunctionFlow):
-    async def _do_internal(self, element, result_elements):
-        for result_element in result_elements:
-            await self._do_downstream(result_element)
+    async def _do_internal(self, event, mapped_elements):
+        for mapped_element in mapped_elements:
+            mapped_event = Event(mapped_element, event.key, event.time)
+            await self._do_downstream(mapped_event)
 
 
 class Reduce(Flow):
@@ -167,10 +177,11 @@ class Reduce(Flow):
     def to(self, outlet):
         raise ValueError("Reduce is a terminal step. It cannot be piped further.")
 
-    async def _do(self, element):
-        if element is _termination_obj:
+    async def _do(self, event):
+        if event is _termination_obj:
             return self._result
         else:
+            element = event.element
             res = self._fn(self._result, element)
             if self._is_async:
                 res = await res
@@ -235,7 +246,7 @@ class JoinWithTable(Flow, NeedsV3ioAccess):
                 job = await self._q.get()
                 if job is _termination_obj:
                     break
-                element = job[0]
+                event = job[0]
                 request = job[1]
                 response = await request
                 response_body = await response.text()
@@ -246,8 +257,8 @@ class JoinWithTable(Flow, NeedsV3ioAccess):
                 else:
                     raise V3ioError(f'Failed to get item. Response status code was {response.status}: {response_body}')
                 if response_object:
-                    joined_element = self._join_function(element, response_object)
-                    await self._do_downstream(joined_element)
+                    joined_element = self._join_function(event.element, response_object)
+                    await self._do_downstream(Event(joined_element, event.key, event.time))
         except BaseException as ex:
             if not self._q.empty():
                 await self._q.get()
@@ -261,7 +272,7 @@ class JoinWithTable(Flow, NeedsV3ioAccess):
         self._q = asyncio.queues.Queue(8)
         self._worker_awaitable = asyncio.get_running_loop().create_task(self._worker())
 
-    async def _do(self, element):
+    async def _do(self, event):
         if not self._client_session:
             self._lazy_init()
 
@@ -269,14 +280,15 @@ class JoinWithTable(Flow, NeedsV3ioAccess):
             await self._worker_awaitable
             raise AssertionError("JoinWithTable worker has already terminated")
 
-        if element is _termination_obj:
+        if event is _termination_obj:
             await self._q.put(_termination_obj)
             await self._worker_awaitable
         else:
+            element = event.element
             key = self._key_extractor(element)
             request = self._client_session.put(f'{self._webapi_url}/{self._table_path}/{key}',
                                                headers=self._get_item_headers, data=self._body, verify_ssl=False)
-            await self._q.put((element, asyncio.get_running_loop().create_task(request)))
+            await self._q.put((event, asyncio.get_running_loop().create_task(request)))
             if self._worker_awaitable.done():
                 await self._worker_awaitable
 

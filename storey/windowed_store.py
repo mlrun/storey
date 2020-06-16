@@ -6,14 +6,12 @@ from .flow import Flow, NeedsV3ioAccess, _termination_obj
 
 
 class Window(Flow, NeedsV3ioAccess):
-    def __init__(self, window, key_column, time_column, emit_policy=EmitAfterMaxEvent(10),
+    def __init__(self, window, emit_policy=EmitAfterMaxEvent(10),
                  late_data_handling=LateDataHandling.Nothing, webapi=None, access_key=None):
         Flow.__init__(self)
         NeedsV3ioAccess.__init__(self, webapi, access_key)
         self._windowed_store = WindowedStore(window, late_data_handling)
         self._window = window
-        self._key_column = key_column
-        self._time_column = time_column
         self._emit_policy = emit_policy
         self._late_data_handling = late_data_handling
         self._events_in_batch = 0
@@ -31,7 +29,8 @@ class Window(Flow, NeedsV3ioAccess):
 
             await self.emit_window()
 
-    async def _do(self, element):
+    async def _do(self, event):
+        element = event.element
         if (not self._emit_worker_running) and \
                 (isinstance(self._emit_policy, EmitAfterPeriod) or isinstance(self._emit_policy, EmitAfterWindow)):
             asyncio.get_running_loop().create_task(self._emit_worker())
@@ -41,9 +40,9 @@ class Window(Flow, NeedsV3ioAccess):
             self._terminate_worker = True
             await self._do_downstream(_termination_obj)
 
-        key = element.pop(self._key_column)
-        timestamp = element.pop(self._time_column)
-        self._windowed_store.add(key, element, timestamp)
+        key = event.key
+        event_time = event.time
+        self._windowed_store.add(key, element, event_time)
         self._events_in_batch = self._events_in_batch + 1
 
         if isinstance(self._emit_policy, EmitEveryEvent) or \
@@ -115,7 +114,7 @@ class WindowedStoreElement:
 
     def initialize_column(self, column):
         self.features[column] = []
-        for i in range(self.window.get_total_number_of_buckets()):
+        for _ in range(self.window.get_total_number_of_buckets()):
             self.features[column].append(WindowBucket(self.late_data_handling))
 
     def get_or_advance_bucket_index_by_timestamp(self, timestamp):
@@ -139,7 +138,7 @@ class WindowedStoreElement:
             else:
                 for column in self.features:
                     self.features[column] = self.features[column][buckets_to_advnace:]
-                    for i in range(buckets_to_advnace):
+                    for _ in range(buckets_to_advnace):
                         self.features[column].extend([WindowBucket(self.late_data_handling)])
 
             self.first_bucket_start_time = \

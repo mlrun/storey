@@ -1,9 +1,12 @@
 import time
-from datetime import timedelta, datetime
+from datetime import datetime, timedelta
 
-from storey import build_flow, Source, Map
+import pytest
+
+from conftest import has_v3io_creds
+from storey import Map, Source, build_flow
 from storey.dtypes import FixedWindow
-from storey.windowed_store import Window, EmitAfterMaxEvent
+from storey.windowed_store import EmitAfterMaxEvent, Window
 
 
 async def aprint_store(store):
@@ -13,6 +16,7 @@ async def aprint_store(store):
     print()
 
 
+@pytest.mark.skipif(not has_v3io_creds, reason='missing v3io credentials')
 def test_windowed_flow():
     flow = build_flow([
         Source(),
