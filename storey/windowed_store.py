@@ -2,7 +2,7 @@ import asyncio
 from datetime import datetime
 
 from .dtypes import EmitAfterMaxEvent, LateDataHandling, EmitAfterPeriod, EmitAfterWindow, EmitAfterDelay, EmitEveryEvent, EmissionType
-from .flow import Flow, NeedsV3ioAccess
+from .flow import Flow, NeedsV3ioAccess, _termination_obj
 
 
 class Window(Flow, NeedsV3ioAccess):
@@ -18,9 +18,10 @@ class Window(Flow, NeedsV3ioAccess):
         self._late_data_handling = late_data_handling
         self._events_in_batch = 0
         self._emit_worker_running = False
+        self._terminate_worker = False
 
     async def _emit_worker(self):
-        while True:
+        while not self._terminate_worker:
             if isinstance(self._emit_policy, EmitAfterPeriod):
                 await asyncio.sleep(self._window.period_millis / 1000)
             elif isinstance(self._emit_policy, EmitAfterWindow):
@@ -35,6 +36,11 @@ class Window(Flow, NeedsV3ioAccess):
                 (isinstance(self._emit_policy, EmitAfterPeriod) or isinstance(self._emit_policy, EmitAfterWindow)):
             asyncio.get_running_loop().create_task(self._emit_worker())
             self._emit_worker_running = True
+
+        if element == _termination_obj:
+            self._terminate_worker = True
+            await self._do_downstream(_termination_obj)
+
         key = element.pop(self._key_column)
         timestamp = element.pop(self._time_column)
         self._windowed_store.add(key, element, timestamp)
