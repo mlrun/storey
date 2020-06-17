@@ -3,9 +3,8 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from conftest import has_v3io_creds
-from storey import Map, Source, build_flow
-from storey.dtypes import FixedWindow
+from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError
+from storey.dtypes import FixedWindow, EmissionType, SlidingWindow
 from storey.windowed_store import EmitAfterMaxEvent, Window
 
 
@@ -16,21 +15,53 @@ async def aprint_store(store):
     print()
 
 
-@pytest.mark.skipif(not has_v3io_creds, reason='missing v3io credentials')
+def append_return(l, x):
+    l.append(x)
+    return l
+
+
+def validate_window(expected, window):
+    for elem in window:
+        key = elem[0]
+        data = elem[1]
+        for column in data.features:
+            index = 0
+            for bucket in data.features[column]:
+                if len(bucket.data) > 0:
+                    assert expected[key][index] == bucket.data
+
+                index = index + 1
+
+
+def to_millis(t):
+    return t.timestamp() * 1000
+
+
 def test_windowed_flow():
-    flow = build_flow([
+    controller = build_flow([
         Source(),
-        Window(FixedWindow('1h'), 'key', 'time', EmitAfterMaxEvent(10)),
-        Map(aprint_store)
-    ])
+        Filter(lambda x: x['col1'] > 3),
+        Window(SlidingWindow('30m', '5m'), EmitAfterMaxEvent(3, EmissionType.Incremental)),
+        Reduce([], lambda acc, x: append_return(acc, x)),
+    ]).run()
 
-    start = time.monotonic()
-    running_flow = flow.run()
-    for i in range(32):
-        data = {'key': f'{i % 4}', 'time': datetime.now() + timedelta(minutes=i), 'col1': i, 'other_col': i * 2}
-        running_flow.emit(data)
+    base_time = datetime.now()
 
-    end = time.monotonic()
-    print(end - start)
+    for i in range(10):
+        data = {'col1': i}
+        controller.emit(data, f'{i % 2}', base_time + timedelta(minutes=i))
 
-    running_flow.terminate()
+    controller.terminate()
+    window_list = controller.await_termination()
+    assert len(window_list) == 2
+
+    expected_window_1 = {'0': {0: [(to_millis(base_time + timedelta(minutes=4)), 4)],
+                               1: [(to_millis(base_time + timedelta(minutes=6)), 6)]},
+                         '1': {0: [(to_millis(base_time + timedelta(minutes=5)), 5)]}}
+
+    expected_window_2 = {'0': {1: [(to_millis(base_time + timedelta(minutes=8)), 8)]},
+                         '1': {1: [(to_millis(base_time + timedelta(minutes=7)), 7),
+                                   (to_millis(base_time + timedelta(minutes=9)), 9)]}}
+
+    validate_window(expected_window_1, window_list[0])
+    validate_window(expected_window_2, window_list[1])

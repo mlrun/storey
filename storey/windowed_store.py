@@ -1,15 +1,14 @@
 import asyncio
 from datetime import datetime
+import copy
 
 from .dtypes import EmitAfterMaxEvent, LateDataHandling, EmitAfterPeriod, EmitAfterWindow, EmitAfterDelay, EmitEveryEvent, EmissionType
-from .flow import Flow, NeedsV3ioAccess, _termination_obj
+from .flow import Flow, _termination_obj, Event
 
 
-class Window(Flow, NeedsV3ioAccess):
-    def __init__(self, window, emit_policy=EmitAfterMaxEvent(10),
-                 late_data_handling=LateDataHandling.Nothing, webapi=None, access_key=None):
+class Window(Flow):
+    def __init__(self, window, emit_policy=EmitAfterMaxEvent(10), late_data_handling=LateDataHandling.Nothing):
         Flow.__init__(self)
-        NeedsV3ioAccess.__init__(self, webapi, access_key)
         self._windowed_store = WindowedStore(window, late_data_handling)
         self._window = window
         self._emit_policy = emit_policy
@@ -30,16 +29,16 @@ class Window(Flow, NeedsV3ioAccess):
             await self.emit_window()
 
     async def _do(self, event):
-        element = event.element
+        if event == _termination_obj:
+            self._terminate_worker = True
+            return await self._do_downstream(_termination_obj)
+
         if (not self._emit_worker_running) and \
                 (isinstance(self._emit_policy, EmitAfterPeriod) or isinstance(self._emit_policy, EmitAfterWindow)):
             asyncio.get_running_loop().create_task(self._emit_worker())
             self._emit_worker_running = True
 
-        if element == _termination_obj:
-            self._terminate_worker = True
-            await self._do_downstream(_termination_obj)
-
+        element = event.element
         key = event.key
         event_time = event.time
         self._windowed_store.add(key, element, event_time)
@@ -52,7 +51,8 @@ class Window(Flow, NeedsV3ioAccess):
             self._events_in_batch = 0
 
     async def emit_window(self):
-        await self._do_downstream(self._windowed_store)
+        store_to_emit = copy.deepcopy(self._windowed_store)
+        await self._do_downstream(Event(store_to_emit, None, None))
 
         # when emission type is incremental we need to flush the window after every emit
         if self._emit_policy.emission_type == EmissionType.Incremental:
@@ -95,11 +95,6 @@ class WindowedStoreElement:
         self.first_bucket_start_time = self.window.get_window_start_time()
         self.last_bucket_start_time = \
             self.first_bucket_start_time + (window.get_total_number_of_buckets() - 1) * window.period_millis
-
-        # for feature in aggregations:
-        #     for aggr in aggregations[feature]:
-        #         self.features[self.get_column_name(feature, aggr)] = \
-        #             [0.0] * window.get_total_number_of_buckets()
 
     def add(self, data, timestamp):
         # add a new point and aggregate
