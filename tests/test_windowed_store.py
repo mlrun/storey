@@ -12,9 +12,9 @@ async def aprint_store(store):
     print()
 
 
-def append_return(l, x):
-    l.append(x)
-    return l
+def append_return(lst, x):
+    lst.append(x)
+    return lst
 
 
 def validate_window(expected, window):

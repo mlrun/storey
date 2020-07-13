@@ -5,9 +5,11 @@ import copy
 from .dtypes import EmitAfterMaxEvent, LateDataHandling, EmitAfterPeriod, EmitAfterWindow, EmitAfterDelay, EmitEveryEvent, EmissionType
 from .flow import Flow, _termination_obj, Event
 
+_default_emit_policy = EmitAfterMaxEvent(10)
+
 
 class Window(Flow):
-    def __init__(self, window, emit_policy=EmitAfterMaxEvent(10), late_data_handling=LateDataHandling.Nothing):
+    def __init__(self, window, emit_policy=_default_emit_policy, late_data_handling=LateDataHandling.Nothing):
         Flow.__init__(self)
         self._windowed_store = WindowedStore(window, late_data_handling)
         self._window = window

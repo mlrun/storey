@@ -16,11 +16,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt -r dev-requirements.txt
+        run: make dev-env
+      - name: lint
+        run: make lint
       - name: test
-        env:
-          V3IO_API: ${{ secrets.V3IO_API }}
-          V3IO_ACCESS_KEY: ${{ secrets.V3IO_ACCESS_KEY }}
-        run: python -m pytest -rf -v tests
+        run: make test

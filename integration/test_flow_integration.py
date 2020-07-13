@@ -1,10 +1,8 @@
-from .conftest import has_v3io_creds
 from storey import Filter, JoinWithV3IOTable, JoinWithHttp, Map, Reduce, Source, NeedsV3ioAccess, HttpRequest, build_flow
 
 import aiohttp
 import asyncio
 import json
-import pytest
 import time
 
 
@@ -19,7 +17,6 @@ class Setup(NeedsV3ioAccess):
             assert response.status == 200, f'Bad response {response} to request {request_body}'
 
 
-@pytest.mark.skipif(not has_v3io_creds, reason='missing v3io credentials')
 def test_join_with_v3io_table():
     table_path = f'bigdata/{int(time.time_ns() / 1000)}'
     asyncio.run(Setup().setup(table_path))
@@ -38,7 +35,6 @@ def test_join_with_v3io_table():
     assert termination_result == 42
 
 
-@pytest.mark.skipif(not has_v3io_creds, reason='missing v3io credentials')
 def test_join_with_http():
     controller = build_flow([
         Source(),
