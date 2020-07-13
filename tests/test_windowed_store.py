@@ -1,10 +1,7 @@
-import time
 from datetime import datetime, timedelta
 
-import pytest
-
-from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError
-from storey.dtypes import FixedWindow, EmissionType, SlidingWindow
+from storey import build_flow, Source, Filter, Reduce
+from storey.dtypes import EmissionType, SlidingWindow
 from storey.windowed_store import EmitAfterMaxEvent, Window
 
 

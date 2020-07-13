@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import collections
 import json
 import os
@@ -6,6 +7,7 @@ import queue
 import re
 import threading
 import time
+from datetime import datetime
 
 import aiohttp
 
@@ -140,7 +142,7 @@ class UnaryFunctionFlow(Flow):
 
     async def _do(self, event):
         if event is _termination_obj:
-            return await self._do_downstream(event)
+            return await self._do_downstream(_termination_obj)
         else:
             element = event.element
             fn_result = await self._call(element)
@@ -208,41 +210,40 @@ class NeedsV3ioAccess:
             'X-v3io-session-key': access_key
         }
 
+        self._put_item_headers = {
+            'X-v3io-function': 'PutItem',
+            'X-v3io-session-key': access_key
+        }
 
-class JoinWithTable(Flow, NeedsV3ioAccess):
-    _non_int_char_pattern = re.compile(r"[^-0-9]")
 
-    def __init__(self, key_extractor, join_function, table_path, attributes='*', webapi=None, access_key=None, **kwargs):
+class HttpRequest:
+    def __init__(self, method, url, body, headers=None):
+        self.method = method
+        self.url = url
+        self.body = body
+        if headers is None:
+            headers = {}
+        self.headers = headers
+
+
+class HttpResponse:
+    def __init__(self, status, body):
+        self.status = status
+        self.body = body
+
+
+class JoinWithHttp(Flow):
+    def __init__(self, request_builder, join_from_response, max_in_flight=8, **kwargs):
         Flow.__init__(self, **kwargs)
-        NeedsV3ioAccess.__init__(self, webapi, access_key)
-        self._key_extractor = key_extractor
-        self._join_function = join_function
-        self._table_path = table_path
-        self._body = json.dumps({'AttributesToGet': attributes})
+        self._request_builder = request_builder
+        self._join_from_response = join_from_response
+        self._max_in_flight = max_in_flight
 
         self._client_session = None
-
-    def _parse_response(self, response_body):
-        response_object = json.loads(response_body)["Item"]
-        for name, type_to_value in response_object.items():
-            val = None
-            for typ, value in type_to_value.items():
-                if typ == 'S' or typ == 'BOOL':
-                    val = value
-                elif typ == 'N':
-                    if self._non_int_char_pattern.search(value):
-                        val = float(value)
-                    else:
-                        val = int(value)
-                else:
-                    raise V3ioError(f'Type {typ} in get item response is not supported')
-            response_object[name] = val
-        return response_object
 
     async def _worker(self):
         try:
             while True:
-                response_object = None
                 job = await self._q.get()
                 if job is _termination_obj:
                     break
@@ -250,14 +251,8 @@ class JoinWithTable(Flow, NeedsV3ioAccess):
                 request = job[1]
                 response = await request
                 response_body = await response.text()
-                if response.status == 200:
-                    response_object = self._parse_response(response_body)
-                elif response.status == 404:
-                    pass
-                else:
-                    raise V3ioError(f'Failed to get item. Response status code was {response.status}: {response_body}')
-                if response_object:
-                    joined_element = self._join_function(event.element, response_object)
+                joined_element = self._join_from_response(event.element, HttpResponse(response.status, response_body))
+                if joined_element is not None:
                     await self._do_downstream(Event(joined_element, event.key, event.time))
         except BaseException as ex:
             if not self._q.empty():
@@ -269,7 +264,7 @@ class JoinWithTable(Flow, NeedsV3ioAccess):
     def _lazy_init(self):
         connector = aiohttp.TCPConnector()
         self._client_session = aiohttp.ClientSession(connector=connector)
-        self._q = asyncio.queues.Queue(8)
+        self._q = asyncio.queues.Queue(self._max_in_flight)
         self._worker_awaitable = asyncio.get_running_loop().create_task(self._worker())
 
     async def _do(self, event):
@@ -278,19 +273,69 @@ class JoinWithTable(Flow, NeedsV3ioAccess):
 
         if self._worker_awaitable.done():
             await self._worker_awaitable
-            raise AssertionError("JoinWithTable worker has already terminated")
+            raise AssertionError("JoinWithHttp worker has already terminated")
 
         if event is _termination_obj:
             await self._q.put(_termination_obj)
             await self._worker_awaitable
+            return await self._do_downstream(_termination_obj)
         else:
             element = event.element
-            key = self._key_extractor(element)
-            request = self._client_session.put(f'{self._webapi_url}/{self._table_path}/{key}',
-                                               headers=self._get_item_headers, data=self._body, verify_ssl=False)
+            req = self._request_builder(element)
+            request = self._client_session.request(req.method, req.url, headers=req.headers, data=req.body, ssl=False)
             await self._q.put((event, asyncio.get_running_loop().create_task(request)))
             if self._worker_awaitable.done():
                 await self._worker_awaitable
+
+
+_non_int_char_pattern = re.compile(r"[^-0-9]")
+
+
+def _v3io_parse_response(response_body):
+    response_object = json.loads(response_body)["Item"]
+    for name, type_to_value in response_object.items():
+        val = None
+        for typ, value in type_to_value.items():
+            if typ == 'S' or typ == 'BOOL':
+                val = value
+            elif typ == 'N':
+                if _non_int_char_pattern.search(value):
+                    val = float(value)
+                else:
+                    val = int(value)
+            elif typ == 'B':
+                val = base64.b64decode(value)
+            elif typ == 'TS':
+                splits = value.split(':', 1)
+                secs = int(splits[0])
+                nanosecs = int(splits[1])
+                val = datetime.utcfromtimestamp(secs + nanosecs / 1000000000)
+            else:
+                raise V3ioError(f'Type {typ} in get item response is not supported')
+        response_object[name] = val
+    return response_object
+
+
+class JoinWithV3IOTable(JoinWithHttp, NeedsV3ioAccess):
+
+    def __init__(self, key_extractor, join_function, table_path, attributes='*', webapi=None, access_key=None, **kwargs):
+        NeedsV3ioAccess.__init__(self, webapi, access_key)
+        request_body = json.dumps({'AttributesToGet': attributes})
+
+        def request_builder(event):
+            key = key_extractor(event)
+            return HttpRequest('PUT', f'{self._webapi_url}/{table_path}/{key}', request_body, self._get_item_headers)
+
+        def join_from_response(element, response):
+            if response.status == 200:
+                response_object = _v3io_parse_response(response.body)
+                return join_function(element, response_object)
+            elif response.status == 404:
+                return None
+            else:
+                raise V3ioError(f'Failed to get item. Response status code was {response.status}: {response.body}')
+
+        JoinWithHttp.__init__(self, request_builder, join_from_response, **kwargs)
 
 
 def build_flow(steps):
