@@ -5,13 +5,6 @@ from storey.dtypes import EmissionType, SlidingWindow
 from storey.windowed_store import EmitAfterMaxEvent, Window
 
 
-async def aprint_store(store):
-    print('store: ')
-    for elem in store:
-        print(elem[0], '-', elem[1].features, f'start time - {elem[1].first_bucket_start_time}')
-    print()
-
-
 def append_return(lst, x):
     lst.append(x)
     return lst
