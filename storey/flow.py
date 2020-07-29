@@ -168,6 +168,38 @@ class FlatMap(UnaryFunctionFlow):
             await self._do_downstream(mapped_event)
 
 
+class FunctionWithStateFlow(Flow):
+    def __init__(self, initial_state, fn, **kwargs):
+        super().__init__(**kwargs)
+        assert callable(fn), f'Expected a callable, got {type(fn)}'
+        self._is_async = asyncio.iscoroutinefunction(fn)
+        self._state = initial_state
+        self._fn = fn
+
+    async def _call(self, element):
+        res, self._state = self._fn(element, self._state)
+        if self._is_async:
+            res = await res
+        return res
+
+    async def _do_internal(self, element, fn_result):
+        raise NotImplementedError()
+
+    async def _do(self, event):
+        if event is _termination_obj:
+            return await self._do_downstream(_termination_obj)
+        else:
+            element = event.element
+            fn_result = await self._call(element)
+            await self._do_internal(event, fn_result)
+
+
+class MapWithState(FunctionWithStateFlow):
+    async def _do_internal(self, event, mapped_element):
+        mapped_event = Event(mapped_element, event.key, event.time)
+        await self._do_downstream(mapped_event)
+
+
 class Reduce(Flow):
     def __init__(self, inital_value, fn):
         super().__init__()

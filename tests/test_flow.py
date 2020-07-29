@@ -1,4 +1,4 @@
-from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError
+from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState
 
 
 class ATestException(Exception):
@@ -32,7 +32,7 @@ def test_functional_flow():
             controller.emit(i)
     controller.terminate()
     termination_result = controller.await_termination()
-    assert 3300 == termination_result
+    assert termination_result == 3300
 
 
 def test_error_flow():
@@ -67,7 +67,7 @@ def test_broadcast():
         controller.emit(i)
     controller.terminate()
     termination_result = controller.await_termination()
-    assert 6 == termination_result
+    assert termination_result == 6
 
 
 def test_broadcast_complex():
@@ -92,7 +92,7 @@ def test_broadcast_complex():
         controller.emit(i)
     controller.terminate()
     termination_result = controller.await_termination()
-    assert 3303 == termination_result
+    assert termination_result == 3303
 
 
 # Same as test_broadcast_complex but without using build_flow
@@ -109,4 +109,18 @@ def test_broadcast_complex_no_sugar():
         controller.emit(i)
     controller.terminate()
     termination_result = controller.await_termination()
-    assert 3303 == termination_result
+    assert termination_result == 3303
+
+
+def test_map_with_state_flow():
+    controller = build_flow([
+        Source(),
+        MapWithState(1000, lambda x, state: (state, x)),
+        Reduce(0, lambda acc, x: acc + x),
+    ]).run()
+
+    for i in range(10):
+        controller.emit(i)
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == 1036
