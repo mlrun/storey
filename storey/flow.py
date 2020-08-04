@@ -77,7 +77,8 @@ class FlowController:
 class Source(Flow):
     def __init__(self, buffer_size=1, **kwargs):
         super().__init__(**kwargs)
-        assert buffer_size > 0, 'Buffer size must be positive'
+        if buffer_size <= 0:
+            raise ValueError('Buffer size must be positive')
         self._q = queue.Queue(buffer_size)
         self._termination_q = queue.Queue(1)
         self._ex = None
@@ -130,7 +131,8 @@ class Source(Flow):
 class UnaryFunctionFlow(Flow):
     def __init__(self, fn, **kwargs):
         super().__init__(**kwargs)
-        assert callable(fn), f'Expected a callable, got {type(fn)}'
+        if not callable(fn):
+            raise TypeError(f'Expected a callable, got {type(fn)}')
         self._is_async = asyncio.iscoroutinefunction(fn)
         self._fn = fn
 
@@ -174,7 +176,8 @@ class FlatMap(UnaryFunctionFlow):
 class FunctionWithStateFlow(Flow):
     def __init__(self, initial_state, fn, **kwargs):
         super().__init__(**kwargs)
-        assert callable(fn), f'Expected a callable, got {type(fn)}'
+        if not callable(fn):
+            raise TypeError(f'Expected a callable, got {type(fn)}')
         self._is_async = asyncio.iscoroutinefunction(fn)
         self._state = initial_state
         self._fn = fn
@@ -206,7 +209,8 @@ class MapWithState(FunctionWithStateFlow):
 class Reduce(Flow):
     def __init__(self, inital_value, fn):
         super().__init__()
-        assert callable(fn), f'Expected a callable, got {type(fn)}'
+        if not callable(fn):
+            raise TypeError(f'Expected a callable, got {type(fn)}')
         self._is_async = asyncio.iscoroutinefunction(fn)
         self._fn = fn
         self._result = inital_value
@@ -227,18 +231,18 @@ class Reduce(Flow):
 
 class NeedsV3ioAccess:
     def __init__(self, webapi=None, access_key=None):
+        webapi = webapi or os.getenv('V3IO_API')
         if not webapi:
-            webapi = os.getenv('V3IO_API')
-        assert webapi, 'Missing webapi parameter or V3IO_API environment variable'
+            raise ValueError('Missing webapi parameter or V3IO_API environment variable')
 
         if not webapi.startswith('http://') and not webapi.startswith('https://'):
             webapi = f'http://{webapi}'
 
         self._webapi_url = webapi
 
+        access_key = access_key or os.getenv('V3IO_ACCESS_KEY')
         if not access_key:
-            access_key = os.getenv('V3IO_ACCESS_KEY')
-        assert access_key, 'Missing access_key parameter or V3IO_ACCESS_KEY environment variable'
+            raise ValueError('Missing access_key parameter or V3IO_ACCESS_KEY environment variable')
 
         self._get_item_headers = {
             'X-v3io-function': 'GetItem',
@@ -333,7 +337,7 @@ class JoinWithHttp(Flow):
 
         if self._worker_awaitable.done():
             await self._worker_awaitable
-            raise AssertionError("JoinWithHttp worker has already terminated")
+            raise FlowError("JoinWithHttp worker has already terminated")
 
         if event is _termination_obj:
             await self._q.put(_termination_obj)

@@ -15,7 +15,7 @@ def parse_duration(string_time):
     elif unit == 'd':
         multiplier = 24 * 60 * 60 * 1000
     else:
-        raise Exception(f'Failed to parse time "{string_time}" ')
+        raise ValueError(f'Failed to parse time "{string_time}"')
 
     return int(string_time[:-1]) * multiplier
 

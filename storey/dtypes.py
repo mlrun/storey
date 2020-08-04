@@ -35,7 +35,7 @@ class SlidingWindow(WindowBase):
     def __init__(self, window, period):
         window_millis, period_millis = parse_duration(window), parse_duration(period)
         if not window_millis % period_millis == 0:
-            raise Exception('period must be a divider of the window')
+            raise ValueError('period must be a divider of the window')
 
         WindowBase.__init__(self, window_millis, period_millis, window)
 
