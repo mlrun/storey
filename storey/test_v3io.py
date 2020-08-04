@@ -2,10 +2,10 @@ import base64
 import json
 from datetime import datetime
 
-from .flow import _v3io_parse_response
+from .flow import _v3io_parse_get_item_response
 
 
-def test_v3io_parse_response():
+def test_v3io_parse_get_item_response():
     request = json.dumps({'Item': {
         'int': {'N': '55'},
         'float': {'N': '55.4'},
@@ -14,7 +14,7 @@ def test_v3io_parse_response():
         'blob': {'B': base64.b64encode(b'message in a bottle').decode('ascii')},
         'timestamp': {'TS': '1594289596:123456'}
     }})
-    response = _v3io_parse_response(request)
+    response = _v3io_parse_get_item_response(request)
     expected = {
         'int': 55,
         'float': 55.4,

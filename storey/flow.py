@@ -8,6 +8,7 @@ import re
 import threading
 import time
 from datetime import datetime
+import random
 
 import aiohttp
 
@@ -39,6 +40,8 @@ class Flow:
         raise NotImplementedError
 
     async def _do_downstream(self, event):
+        if not self._outlets:
+            return
         if event is _termination_obj:
             termination_result = await self._outlets[0]._do(_termination_obj)
             for i in range(1, len(self._outlets)):
@@ -247,6 +250,31 @@ class NeedsV3ioAccess:
             'X-v3io-session-key': access_key
         }
 
+        self._put_records_headers = {
+            'X-v3io-function': 'PutRecords',
+            'X-v3io-session-key': access_key
+        }
+
+        self._create_stream_headers = {
+            'X-v3io-function': 'CreateStream',
+            'X-v3io-session-key': access_key
+        }
+
+        self._describe_stream_headers = {
+            'X-v3io-function': 'DescribeStream',
+            'X-v3io-session-key': access_key
+        }
+
+        self._seek_headers = {
+            'X-v3io-function': 'Seek',
+            'X-v3io-session-key': access_key
+        }
+
+        self._get_records_headers = {
+            'X-v3io-function': 'GetRecords',
+            'X-v3io-session-key': access_key
+        }
+
 
 class HttpRequest:
     def __init__(self, method, url, body, headers=None):
@@ -312,8 +340,7 @@ class JoinWithHttp(Flow):
             await self._worker_awaitable
             return await self._do_downstream(_termination_obj)
         else:
-            element = event.element
-            req = self._request_builder(element)
+            req = self._request_builder(event)
             request = self._client_session.request(req.method, req.url, headers=req.headers, data=req.body, ssl=False)
             await self._q.put((event, asyncio.get_running_loop().create_task(request)))
             if self._worker_awaitable.done():
@@ -323,7 +350,7 @@ class JoinWithHttp(Flow):
 _non_int_char_pattern = re.compile(r"[^-0-9]")
 
 
-def _v3io_parse_response(response_body):
+def _v3io_parse_get_item_response(response_body):
     response_object = json.loads(response_body)["Item"]
     for name, type_to_value in response_object.items():
         val = None
@@ -360,7 +387,7 @@ class JoinWithV3IOTable(JoinWithHttp, NeedsV3ioAccess):
 
         def join_from_response(element, response):
             if response.status == 200:
-                response_object = _v3io_parse_response(response.body)
+                response_object = _v3io_parse_get_item_response(response.body)
                 return join_function(element, response_object)
             elif response.status == 404:
                 return None
@@ -370,9 +397,145 @@ class JoinWithV3IOTable(JoinWithHttp, NeedsV3ioAccess):
         JoinWithHttp.__init__(self, request_builder, join_from_response, **kwargs)
 
 
+def _build_request_put_records(shard_id, events):
+    record_list_for_json = []
+    for event in events:
+        record = event.element
+        if isinstance(record, bytes):
+            record_as_bytes = record
+        elif isinstance(record, str):
+            record_as_bytes = record.encode("utf-8")
+        elif isinstance(record, dict):
+            record_as_bytes = json.dumps(record).encode("utf-8")
+        else:
+            raise Exception(f'Unsupported record type {type(record)}')
+        record_as_b64_string = str(base64.b64encode(record_as_bytes), "utf-8")
+        record_list_for_json.append({'ShardId': shard_id, 'Data': record_as_b64_string})
+
+    payload_obj = {
+        'Records': record_list_for_json
+    }
+    return json.dumps(payload_obj)
+
+
+class WriteToV3IOStream(Flow, NeedsV3ioAccess):
+
+    def __init__(self, stream_path, sharding_func=None, batch_size=8, webapi=None, access_key=None, **kwargs):
+        Flow.__init__(self, **kwargs)
+        NeedsV3ioAccess.__init__(self, webapi, access_key)
+
+        if sharding_func is not None and not callable(sharding_func):
+            raise TypeError(f'Expected a callable, got {type(sharding_func)}')
+
+        self.stream_path = stream_path
+        self._sharding_func = sharding_func
+
+        self._batch_size = batch_size
+
+        self._client_session = None
+
+    @staticmethod
+    async def _handle_response(request):
+        if request:
+            response = await request
+            response_body = await response.text()
+            if response.status == 200:
+                response_obj = json.loads(response_body)
+                if response_obj['FailedRecordCount'] == 0:
+                    return
+            raise V3ioError(f'Failed to put records to V3IO. Got {response.status} response: {response_body}')
+
+    def _send_batch(self, buffers, in_flight_reqs, shard_id):
+        buffer = buffers[shard_id]
+        buffers[shard_id] = []
+        request_body = _build_request_put_records(shard_id, buffer)
+        request = self._client_session.request('POST', f'{self._webapi_url}/{self.stream_path}/',
+                                               headers=self._put_records_headers,
+                                               data=request_body, ssl=False)
+        in_flight_reqs[shard_id] = asyncio.get_running_loop().create_task(request)
+
+    async def _worker(self):
+        try:
+            buffers = []
+            in_flight_reqs = []
+            for _ in range(self._shard_count):
+                buffers.append([])
+                in_flight_reqs.append(None)
+            while True:
+                for shard_id in range(self._shard_count):
+                    if self._q.empty():
+                        req = in_flight_reqs[shard_id]
+                        in_flight_reqs[shard_id] = None
+                        await self._handle_response(req)
+                        if len(buffers[shard_id]) >= self._batch_size:
+                            self._send_batch(buffers, in_flight_reqs, shard_id)
+                event = await self._q.get()
+                if event is _termination_obj:  # handle outstanding batches and in flight requests on termination
+                    for req in in_flight_reqs:
+                        await self._handle_response(req)
+                    for shard_id in range(self._shard_count):
+                        if buffers[shard_id]:
+                            self._send_batch(buffers, in_flight_reqs, shard_id)
+                    for req in in_flight_reqs:
+                        await self._handle_response(req)
+                    break
+                shard_id = self._sharding_func(event) % self._shard_count
+                buffers[shard_id].append(event)
+                if len(buffers[shard_id]) >= self._batch_size:
+                    if in_flight_reqs[shard_id]:
+                        req = in_flight_reqs[shard_id]
+                        in_flight_reqs[shard_id] = None
+                        await self._handle_response(req)
+                    self._send_batch(buffers, in_flight_reqs, shard_id)
+
+        except BaseException as ex:
+            if not self._q.empty():
+                await self._q.get()
+            raise ex
+        finally:
+            await self._client_session.close()
+
+    async def _lazy_init(self):
+        connector = aiohttp.TCPConnector()
+        self._client_session = aiohttp.ClientSession(connector=connector)
+        req = self._client_session.request("PUT", f'{self._webapi_url}/{self.stream_path}/', headers=self._describe_stream_headers,
+                                           data='{}', ssl=False)
+        response = await req
+        response_body = await response.text()
+        if response.status != 200:
+            raise V3ioError(f'Failed to get number of shards. Got {response.status} response: {response_body}')
+
+        self._shard_count = int(json.loads(response_body)['ShardCount'])
+        if self._sharding_func is None:
+            def f(_):
+                return random.randint(0, self._shard_count - 1)
+
+            self._sharding_func = f
+
+        self._q = asyncio.queues.Queue(self._batch_size * self._shard_count)
+        self._worker_awaitable = asyncio.get_running_loop().create_task(self._worker())
+
+    async def _do(self, event):
+        if not self._client_session:
+            await self._lazy_init()
+
+        if self._worker_awaitable.done():
+            await self._worker_awaitable
+            raise AssertionError("JoinWithHttp worker has already terminated")
+
+        if event is _termination_obj:
+            await self._q.put(_termination_obj)
+            await self._worker_awaitable
+            return await self._do_downstream(_termination_obj)
+        else:
+            await self._q.put(event)
+            if self._worker_awaitable.done():
+                await self._worker_awaitable
+
+
 def build_flow(steps):
     if len(steps) == 0:
-        print('Cannot build an empty flow')
+        raise ValueError('Cannot build an empty flow')
     cur_step = steps[0]
     for next_step in steps[1:]:
         if isinstance(next_step, list):
