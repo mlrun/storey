@@ -1,1 +1,2 @@
 aiohttp~=3.6.2
+aiofiles-ext~=0.4.0

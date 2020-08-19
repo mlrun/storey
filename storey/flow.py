@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import collections
+import csv
 import json
 import os
 import queue
@@ -10,6 +11,7 @@ import time
 from datetime import datetime
 import random
 
+import aiofiles
 import aiohttp
 
 _termination_obj = object()
@@ -74,6 +76,14 @@ class FlowController:
         return self._await_termination_fn()
 
 
+class FlowAwaiter:
+    def __init__(self, await_termination_fn):
+        self._await_termination_fn = await_termination_fn
+
+    def await_termination(self):
+        return self._await_termination_fn()
+
+
 class Source(Flow):
     def __init__(self, buffer_size=1, **kwargs):
         super().__init__(**kwargs)
@@ -126,6 +136,55 @@ class Source(Flow):
             return self._termination_future.result()
 
         return FlowController(self._emit, raise_error_or_return_termination_result)
+
+
+class ReadCSV(Flow):
+    def __init__(self, paths, skip_header=False, **kwargs):
+        super().__init__(**kwargs)
+        if isinstance(paths, str):
+            paths = [paths]
+        self._paths = paths
+        self._skip_header = skip_header
+
+        self._termination_q = queue.Queue(1)
+        self._ex = None
+
+    async def _run_loop(self):
+        self._termination_future = asyncio.futures.Future()
+
+        try:
+            for path in self._paths:
+                async with aiofiles.open(path, mode='r') as f:
+                    if self._skip_header:
+                        await f.readline()
+                    async for line in f:
+                        parsed_line = next(csv.reader([line]))
+                        await self._do_downstream(Event(parsed_line, None, datetime.now()))
+            termination_result = await self._do_downstream(_termination_obj)
+            self._termination_future.set_result(termination_result)
+        except BaseException as ex:
+            self._ex = ex
+            self._termination_future.set_result(None)
+
+    def _loop_thread_main(self):
+        asyncio.run(self._run_loop())
+        self._termination_q.put(self._ex)
+
+    def _raise_on_error(self, ex):
+        if ex:
+            raise FlowError('Flow execution terminated due to an error') from self._ex
+
+    def run(self):
+        super().run()
+
+        thread = threading.Thread(target=self._loop_thread_main)
+        thread.start()
+
+        def raise_error_or_return_termination_result():
+            self._raise_on_error(self._termination_q.get())
+            return self._termination_future.result()
+
+        return FlowAwaiter(raise_error_or_return_termination_result)
 
 
 class UnaryFunctionFlow(Flow):
