@@ -1,4 +1,4 @@
-from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV
+from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV, Complete
 
 
 class ATestException(Exception):
@@ -136,3 +136,23 @@ def test_map_with_state_flow():
     controller.terminate()
     termination_result = controller.await_termination()
     assert termination_result == 1036
+
+
+def test_awaitable_result():
+    controller = build_flow([
+        Source(),
+        Map(lambda x: x + 1, termination_result_fn=lambda _, x: x),
+        [
+            Complete()
+        ],
+        [
+            Reduce(0, lambda acc, x: acc + x)
+        ]
+    ]).run()
+
+    for i in range(10):
+        awaitable_result = controller.emit(i, return_awaitable_result=True)
+        assert awaitable_result.await_result() == i + 1
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == 55

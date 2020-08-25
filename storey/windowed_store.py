@@ -54,7 +54,7 @@ class Window(Flow):
 
     async def emit_window(self):
         store_to_emit = copy.deepcopy(self._windowed_store)
-        await self._do_downstream(Event(store_to_emit, None, None))
+        await self._do_downstream(Event(store_to_emit, None, None, None))
 
         # when emission type is incremental we need to flush the window after every emit
         if self._emit_policy.emission_type == EmissionType.Incremental:

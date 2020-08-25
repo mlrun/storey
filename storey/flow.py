@@ -56,7 +56,18 @@ class Flow:
             await task
 
 
-Event = collections.namedtuple('Event', 'element key time')
+Event = collections.namedtuple('Event', 'element key time awaitable_result')
+
+
+class AwaitableResult:
+    def __init__(self):
+        self._q = queue.Queue(1)
+
+    def await_result(self):
+        return self._q.get()
+
+    def _set_result(self, element):
+        self._q.put(element)
 
 
 class FlowController:
@@ -64,10 +75,14 @@ class FlowController:
         self._emit_fn = emit_fn
         self._await_termination_fn = await_termination_fn
 
-    def emit(self, element, key=None, event_time=None):
+    def emit(self, element, key=None, event_time=None, return_awaitable_result=False):
         if event_time is None:
             event_time = time.time()
-        self._emit_fn(Event(element, key, event_time))
+        awaitable_result = None
+        if return_awaitable_result:
+            awaitable_result = AwaitableResult()
+        self._emit_fn(Event(element, key, event_time, awaitable_result))
+        return awaitable_result
 
     def terminate(self):
         self._emit_fn(_termination_obj)
@@ -159,7 +174,7 @@ class ReadCSV(Flow):
                         await f.readline()
                     async for line in f:
                         parsed_line = next(csv.reader([line]))
-                        await self._do_downstream(Event(parsed_line, None, datetime.now()))
+                        await self._do_downstream(Event(parsed_line, None, datetime.now(), None))
             termination_result = await self._do_downstream(_termination_obj)
             self._termination_future.set_result(termination_result)
         except BaseException as ex:
@@ -215,7 +230,7 @@ class UnaryFunctionFlow(Flow):
 
 class Map(UnaryFunctionFlow):
     async def _do_internal(self, event, mapped_element):
-        mapped_event = Event(mapped_element, event.key, event.time)
+        mapped_event = Event(mapped_element, event.key, event.time, event.awaitable_result)
         await self._do_downstream(mapped_event)
 
 
@@ -228,7 +243,7 @@ class Filter(UnaryFunctionFlow):
 class FlatMap(UnaryFunctionFlow):
     async def _do_internal(self, event, mapped_elements):
         for mapped_element in mapped_elements:
-            mapped_event = Event(mapped_element, event.key, event.time)
+            mapped_event = Event(mapped_element, event.key, event.time, event.awaitable_result)
             await self._do_downstream(mapped_event)
 
 
@@ -261,8 +276,15 @@ class FunctionWithStateFlow(Flow):
 
 class MapWithState(FunctionWithStateFlow):
     async def _do_internal(self, event, mapped_element):
-        mapped_event = Event(mapped_element, event.key, event.time)
+        mapped_event = Event(mapped_element, event.key, event.time, event.awaitable_result)
         await self._do_downstream(mapped_event)
+
+
+class Complete(Flow):
+    async def _do(self, event):
+        await self._do_downstream(event)
+        if event is not _termination_obj:
+            event.awaitable_result._set_result(event.element)
 
 
 class Reduce(Flow):
@@ -376,7 +398,7 @@ class JoinWithHttp(Flow):
                 response_body = await response.text()
                 joined_element = self._join_from_response(event.element, HttpResponse(response.status, response_body))
                 if joined_element is not None:
-                    await self._do_downstream(Event(joined_element, event.key, event.time))
+                    await self._do_downstream(Event(joined_element, event.key, event.time, event.awaitable_result))
         except BaseException as ex:
             if not self._q.empty():
                 await self._q.get()
