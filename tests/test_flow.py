@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV, Complete
 
 
@@ -37,8 +39,63 @@ def test_functional_flow():
 
 def test_csv_reader():
     controller = build_flow([
-        ReadCSV('tests/test.csv', skip_header=True),
+        ReadCSV('tests/test.csv', with_header=True),
         FlatMap(lambda x: x),
+        Map(lambda x: int(x)),
+        Reduce(0, lambda acc, x: acc + x),
+    ]).run()
+
+    termination_result = controller.await_termination()
+    assert termination_result == 21
+
+
+def test_csv_reader_as_dict():
+    controller = build_flow([
+        ReadCSV('tests/test.csv', with_header=True, build_dict=True),
+        FlatMap(lambda x: [x['n1'], x['n2'], x['n3']]),
+        Map(lambda x: int(x)),
+        Reduce(0, lambda acc, x: acc + x),
+    ]).run()
+
+    termination_result = controller.await_termination()
+    assert termination_result == 21
+
+
+def append_and_return(lst, x):
+    lst.append(x)
+    return lst
+
+
+def test_csv_reader_as_dict_with_key_and_timestamp():
+    controller = build_flow([
+        ReadCSV('tests/test-with-timestamp.csv', with_header=True, build_dict=True, key_field='k',
+                timestamp_field='t', timestamp_format='%d/%m/%Y %H:%M:%S'),
+        Reduce([], append_and_return, reify_metadata=True),
+    ]).run()
+
+    termination_result = controller.await_termination()
+    expected = [{'key': 'm1', 'time': datetime(2020, 2, 15, 2, 0), 'data': {'k': 'm1', 't': '15/02/2020 02:00:00', 'v': '8'}},
+                {'key': 'm2', 'time': datetime(2020, 2, 16, 2, 0), 'data': {'k': 'm2', 't': '16/02/2020 02:00:00', 'v': '14'}}]
+    assert termination_result == expected
+
+
+def test_csv_reader_with_key_and_timestamp():
+    controller = build_flow([
+        ReadCSV('tests/test-with-timestamp.csv', with_header=True, key_field='k',
+                timestamp_field='t', timestamp_format='%d/%m/%Y %H:%M:%S'),
+        Reduce([], append_and_return, reify_metadata=True),
+    ]).run()
+
+    termination_result = controller.await_termination()
+    expected = [{'key': 'm1', 'time': datetime(2020, 2, 15, 2, 0), 'data': ['m1', '15/02/2020 02:00:00', '8']},
+                {'key': 'm2', 'time': datetime(2020, 2, 16, 2, 0), 'data': ['m2', '16/02/2020 02:00:00', '14']}]
+    assert termination_result == expected
+
+
+def test_csv_reader_as_dict_no_header():
+    controller = build_flow([
+        ReadCSV('tests/test-no-header.csv', with_header=False, build_dict=True),
+        FlatMap(lambda x: [x[0], x[1], x[2]]),
         Map(lambda x: int(x)),
         Reduce(0, lambda acc, x: acc + x),
     ]).run()
