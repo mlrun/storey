@@ -721,6 +721,19 @@ class V3ioTable(NeedsV3ioAccess):
 
         await client_session.close()
 
+    async def save_key(self, key, aggr_item):
+        connector = aiohttp.TCPConnector()
+        client_session = aiohttp.ClientSession(connector=connector)
+
+        data = {'Item': self._get_attributes_as_blob(aggr_item), 'UpdateMode': 'CreateOrReplaceAttributes'}
+        response = await client_session.put(f'{self._webapi_url}/{self.table}/{key}',
+                                            headers=self._put_item_headers, data=json.dumps(data), ssl=False)
+        if not response.status == 200:
+            body = await response.text()
+            raise V3ioError(f'Failed to save aggregation for key: {key}. Response status code was {response.status}: {body}')
+
+        await client_session.close()
+
     def _get_attributes_as_blob(self, aggregation_element):
         data = {}
         for name, bucket in aggregation_element.aggregation_buckets.items():

@@ -191,7 +191,7 @@ class AggregateStore:
 
         key_to_aggregate = await self._get_or_load_key(key, timestamp)
         key_to_aggregate.aggregate(data, timestamp)
-        await self._save_store()
+        await self._save_key(key)
 
     async def get_features(self, key, timestamp):
         if not self.schema:
@@ -270,6 +270,9 @@ class AggregateStore:
 
     async def _save_store(self):
         await self._table.save_store(self.cache)
+
+    async def _save_key(self, key):
+        await self._table.save_key(key, self.cache[key])
 
     def _aggregates_to_schema(self):
         schema = {}
