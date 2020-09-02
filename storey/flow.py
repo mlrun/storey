@@ -744,7 +744,7 @@ class V3ioTable(NeedsV3ioAccess):
 
         return data
 
-    def load_store(self):
+    async def load_store(self):
         pass
 
     # Loads a specific key from the store, and returns it in the following format

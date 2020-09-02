@@ -17,7 +17,10 @@ class MockTable:
     async def save_store(self, aggr_store):
         pass
 
-    def load_store(self):
+    async def save_key(self, key, aggr_item):
+        pass
+
+    async def load_store(self):
         pass
 
     async def load_key(self, key):
