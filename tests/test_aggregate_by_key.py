@@ -3,7 +3,7 @@ import asyncio
 import random
 import string
 from storey import build_flow, Source, Reduce, Map, V3ioTable
-from storey.aggregations import AggregateByKey, FieldAggregator, AggregateStore, QueryAggregateByKey
+from storey.aggregations import AggregateByKey, FieldAggregator, AggregateStore, QueryAggregationByKey
 from storey.dtypes import SlidingWindows, FixedWindows, EmitAfterMaxEvent
 import pytest
 
@@ -13,11 +13,6 @@ test_base_time = datetime.fromisoformat("2020-07-21T21:40:00+00:00")
 def _generate_table_name(prefix='aggr_test'):
     random_table = ''.join([random.choice(string.ascii_letters) for i in range(10)])
     return f'{prefix}/{random_table}'
-
-
-def _delete_dir(path):
-    print('todo - delete:', path)
-    pass
 
 
 class MockTable:
@@ -39,9 +34,15 @@ class MockTable:
 
 @pytest.fixture()
 def setup_teardown_test():
+    # Setup
     table_name = _generate_table_name()
-    yield table_name
-    _delete_dir(table_name)
+    v3io_table = V3ioTable(table_name)
+
+    # Test runs
+    yield v3io_table
+
+    # Teardown
+    asyncio.run(v3io_table.delete())
 
 
 def append_return(lst, x):
@@ -350,29 +351,12 @@ def test_emit_max_event_sliding_window_multiple_keys_aggregation_flow():
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
 
-def test_t():
-    asyncio.run(test_tal())
-
-
-async def test_tal():
-    store = AggregateStore([FieldAggregator("number_of_stuff", "col1", ["sum", "avg"],
-                                            SlidingWindows(['1h', '2h', '24h'], '10m')),
-                            FieldAggregator("number_of_things", "col2", ["count"],
-                                            SlidingWindows(['1h', '2h'], '15m')),
-                            FieldAggregator("abc", "col3", ["sum"],
-                                            SlidingWindows(['24h'], '10m'))],
-                           V3ioTable("tal_table_2"))
-
-    await store.aggregate('my-key', {'col1': 423, 'col2': 423, 'col3': 423}, datetime.now())
-    print('tal')
-
-
 def test_query_aggregate_by_key(setup_teardown_test):
     controller = build_flow([
         Source(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg", "min", "max"],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
-                       V3ioTable(setup_teardown_test)),
+                       setup_teardown_test),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -426,9 +410,9 @@ def test_query_aggregate_by_key(setup_teardown_test):
 
     controller = build_flow([
         Source(),
-        QueryAggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg", "min", "max"],
-                                             SlidingWindows(['1h', '2h', '24h'], '10m'))],
-                            V3ioTable(setup_teardown_test)),
+        QueryAggregationByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg", "min", "max"],
+                                               SlidingWindows(['1h', '2h', '24h'], '10m'))],
+                              setup_teardown_test),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 

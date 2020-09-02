@@ -333,6 +333,11 @@ class NeedsV3ioAccess:
             'X-v3io-session-key': access_key
         }
 
+        self._get_items_headers = {
+            'X-v3io-function': 'GetItems',
+            'X-v3io-session-key': access_key
+        }
+
         self._put_item_headers = {
             'X-v3io-function': 'PutItem',
             'X-v3io-session-key': access_key
@@ -452,23 +457,41 @@ def _v3io_parse_get_item_response(response_body):
     for name, type_to_value in response_object.items():
         val = None
         for typ, value in type_to_value.items():
-            if typ == 'S' or typ == 'BOOL':
-                val = value
-            elif typ == 'N':
-                if _non_int_char_pattern.search(value):
-                    val = float(value)
-                else:
-                    val = int(value)
-            elif typ == 'B':
-                val = base64.b64decode(value)
-            elif typ == 'TS':
-                splits = value.split(':', 1)
-                secs = int(splits[0])
-                nanosecs = int(splits[1])
-                val = datetime.utcfromtimestamp(secs + nanosecs / 1000000000)
-            else:
-                raise V3ioError(f'Type {typ} in get item response is not supported')
+            val = _convert_nginx_to_python_type(typ, value)
         response_object[name] = val
+    return response_object
+
+
+def _convert_nginx_to_python_type(typ, value):
+    if typ == 'S' or typ == 'BOOL':
+        return value
+    elif typ == 'N':
+        if _non_int_char_pattern.search(value):
+            return float(value)
+        else:
+            return int(value)
+    elif typ == 'B':
+        return base64.b64decode(value)
+    elif typ == 'TS':
+        splits = value.split(':', 1)
+        secs = int(splits[0])
+        nanosecs = int(splits[1])
+        return datetime.utcfromtimestamp(secs + nanosecs / 1000000000)
+    else:
+        raise V3ioError(f'Type {typ} in get item response is not supported')
+
+
+def _v3io_parse_get_items_response(response_body):
+    response_object = json.loads(response_body)
+    i = 0
+    for item in response_object['Items']:
+        parsed_item = {}
+        for name, type_to_value in item.items():
+            for typ, value in type_to_value.items():
+                val = _convert_nginx_to_python_type(typ, value)
+                parsed_item[name] = val
+        response_object['Items'][i] = parsed_item
+        i = i + 1
     return response_object
 
 
@@ -663,22 +686,20 @@ class V3ioTable(NeedsV3ioAccess):
         finally:
             await client_session.close()
 
-        return schema
-
     async def load_schema(self):
         connector = aiohttp.TCPConnector()
         client_session = aiohttp.ClientSession(connector=connector)
 
         try:
-            response = await client_session.get(f'{self._webapi_url}/{self.table}/{schema_file_name}',
-                                                headers=self._get_put_file_headers, ssl=False)
+            schema_path = f'{self._webapi_url}/{self.table}/{schema_file_name}'
+            response = await client_session.get(schema_path, headers=self._get_put_file_headers, ssl=False)
             body = await response.text()
             if response.status == 404:
                 schema = None
             elif response.status == 200:
                 schema = json.loads(body)
             else:
-                raise V3ioError(f'Failed to get item. Response status code was {response.status}: {body}')
+                raise V3ioError(f'Failed to get schema at {schema_path}. Response status code was {response.status}: {body}')
         except BaseException as ex:
             raise ex
         finally:
@@ -696,7 +717,7 @@ class V3ioTable(NeedsV3ioAccess):
                                                 headers=self._put_item_headers, data=json.dumps(data), ssl=False)
             if not response.status == 200:
                 body = await response.text()
-                raise V3ioError(f'Failed to save schema file. Response status code was {response.status}: {body}')
+                raise V3ioError(f'Failed to save aggregation for key: {key}. Response status code was {response.status}: {body}')
 
         await client_session.close()
 
@@ -742,3 +763,38 @@ class V3ioTable(NeedsV3ioAccess):
             raise ex
         finally:
             await client_session.close()
+
+    # Deletes the entire table
+    async def delete(self):
+        connector = aiohttp.TCPConnector()
+        client_session = aiohttp.ClientSession(connector=connector)
+        has_more = True
+        next_marker = ''
+        try:
+            while has_more:
+                get_items_body = {'AttributesToGet': '__name', 'Marker': next_marker}
+                response = await client_session.put(f'{self._webapi_url}/{self.table}/',
+                                                    headers=self._get_items_headers, data=json.dumps(get_items_body), ssl=False)
+                body = await response.text()
+                if response.status == 200:
+                    res = _v3io_parse_get_items_response(body)
+                    for item in res['Items']:
+                        await self._delete_item(f'{self._webapi_url}/{self.table}/{item["__name"]}', client_session)
+
+                    has_more = 'NextMarker' in res
+                    if has_more:
+                        next_marker = res['NextMarker']
+                elif response.status != 404:
+                    raise V3ioError(f'Failed to delete table {self.table}. Response status code was {response.status}: {body}')
+
+            await self._delete_item(f'{self._webapi_url}/{self.table}/', client_session)
+        except BaseException as ex:
+            raise ex
+        finally:
+            await client_session.close()
+
+    async def _delete_item(self, path, session):
+        response = await session.delete(path, headers=self._get_put_file_headers, ssl=False)
+        if response.status > 500:
+            body = await response.text()
+            raise V3ioError(f'Failed to delete item at {path}. Response status code was {response.status}: {body}')

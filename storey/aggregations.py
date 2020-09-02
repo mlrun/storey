@@ -95,7 +95,7 @@ class AggregateByKey(Flow):
 
 
 # Serving side for AggregateByKey, for every (key, timestamp) pair provided QueryAggregateByKey will emit the relevant feature set
-class QueryAggregateByKey(AggregateByKey):
+class QueryAggregationByKey(AggregateByKey):
     def __init__(self, aggregates, table, key=None, emit_policy=_default_emit_policy, augmentation_fn=None):
         AggregateByKey.__init__(self, aggregates, table, key, emit_policy, augmentation_fn)
         self._aggregates_store.read_only = True
@@ -207,11 +207,7 @@ class AggregateStore:
         if key not in self.cache:
             # Try load from the store, and create a new one only if the key really is new
             initial_data = await self._table.load_key(key)
-            if initial_data:
-                # Create the store based on the existing data
-                self.cache[key] = AggregatedStoreElement(key, self.aggregates, timestamp, initial_data)
-            else:
-                self.cache[key] = AggregatedStoreElement(key, self.aggregates, timestamp)
+            self.cache[key] = AggregatedStoreElement(key, self.aggregates, timestamp, initial_data)
 
         return self.cache[key]
 
@@ -231,7 +227,9 @@ class AggregateStore:
         schema = self._aggregates_to_schema()
         if self.schema:
             schema = self.merge_schemas(self.schema, schema)
-        return await self._table.save_schema(schema)
+
+        await self._table.save_schema(schema)
+        return schema
 
     def merge_schemas(self, old, new):
         for name, schema_aggr in new.items():
