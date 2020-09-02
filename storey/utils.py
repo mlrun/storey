@@ -3,6 +3,7 @@ import struct
 from array import array
 
 bucketPerWindow = 10
+schema_file_name = '.schema'
 
 
 def parse_duration(string_time):

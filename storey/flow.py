@@ -335,6 +335,11 @@ class NeedsV3ioAccess:
             'X-v3io-session-key': access_key
         }
 
+        self._update_item_headers = {
+            'X-v3io-function': 'UpdateItem',
+            'X-v3io-session-key': access_key
+        }
+
         self._put_records_headers = {
             'X-v3io-function': 'PutRecords',
             'X-v3io-session-key': access_key
@@ -357,6 +362,10 @@ class NeedsV3ioAccess:
 
         self._get_records_headers = {
             'X-v3io-function': 'GetRecords',
+            'X-v3io-session-key': access_key
+        }
+
+        self._get_put_file_headers = {
             'X-v3io-session-key': access_key
         }
 
