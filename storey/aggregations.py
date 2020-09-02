@@ -96,6 +96,10 @@ class AggregateByKey(Flow):
 
 # Serving side for AggregateByKey, for every (key, timestamp) pair provided QueryAggregateByKey will emit the relevant feature set
 class QueryAggregateByKey(AggregateByKey):
+    def __init__(self, aggregates, table, key=None, emit_policy=_default_emit_policy, augmentation_fn=None):
+        AggregateByKey.__init__(self, aggregates, table, key, emit_policy, augmentation_fn)
+        self._aggregates_store.read_only = True
+
     async def _do(self, event):
         if event == _termination_obj:
             self._terminate_worker = True
@@ -173,6 +177,7 @@ class AggregateStore:
         self.aggregates = aggregates
         self._table = table
         self.schema = None
+        self.read_only = False
 
     def __iter__(self):
         return iter(self.cache.items())
@@ -215,19 +220,27 @@ class AggregateStore:
 
     async def get_or_save_schema(self):
         self.schema = await self._table.load_schema()
+        should_update = not self.schema
         if self.schema:
-            self._validate_schema_fit_aggregations(self.schema)
-        else:
+            should_update = self._validate_schema_fit_aggregations(self.schema)
+
+        if should_update:
             self.schema = await self._save_schema()
 
     async def _save_schema(self):
         schema = self._aggregates_to_schema()
         return await self._table.save_schema(schema)
 
+    # Validated if schema corresponds to the requested aggregates, and return whether the schema needs to be updated
     def _validate_schema_fit_aggregations(self, schema):
+        should_update = False
         for aggr in self.aggregates:
-            if not aggr.name in schema:
-                raise ValueError(f'requested aggregate {aggr.name}, does not exist in existing feature store at {self._table}')
+            if aggr.name not in schema:
+                if self.read_only:
+                    raise ValueError(f'requested aggregate {aggr.name}, does not exist in existing feature store at {self._table}')
+                else:
+                    should_update = True
+                    continue
             schema_aggr = schema[aggr.name]
             if not aggr.windows.period_millis == schema_aggr['period_millis']:
                 raise ValueError(f'requested period for aggregate {aggr.name} does not match existing period at {self._table}. '
@@ -235,9 +248,14 @@ class AggregateStore:
             requested_raw_aggregates = aggr.get_all_raw_aggregates()
             existing_raw_aggregates = get_all_raw_aggregates(schema_aggr['aggregates'])
             # validate if current feature store contains all aggregates needed for the requested calculations
-            if not requested_raw_aggregates.issubset(existing_raw_aggregates):
+            if self.read_only and not requested_raw_aggregates.issubset(existing_raw_aggregates):
                 raise ValueError(f'requested aggregates for feature {aggr.name} do not match with existing aggregates at {self._table}. '
                                  f"requested: {aggr.aggregations}, existing: {schema_aggr['aggregates']}")
+            # Check if more raw aggregates are requested, in which case a schema update is required
+            if not self.read_only and requested_raw_aggregates != existing_raw_aggregates:
+                should_update = True
+
+        return should_update
 
     async def _save_store(self):
         await self._table.save_store(self.cache)
