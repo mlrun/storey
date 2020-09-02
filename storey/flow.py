@@ -767,7 +767,7 @@ class V3ioTable(NeedsV3ioAccess):
             elif response.status == 200:
                 parsed_response = _v3io_parse_get_item_response(body)
                 for name, blob in parsed_response.items():
-                    parsed_response[name] = pickle.loads(parsed_response[name])
+                    parsed_response[name] = pickle.loads(blob)
 
                 return parsed_response
             else:
