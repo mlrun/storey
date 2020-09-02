@@ -229,7 +229,20 @@ class AggregateStore:
 
     async def _save_schema(self):
         schema = self._aggregates_to_schema()
+        if self.schema:
+            schema = self.merge_schemas(self.schema, schema)
         return await self._table.save_schema(schema)
+
+    def merge_schemas(self, old, new):
+        for name, schema_aggr in new.items():
+            if name not in old:
+                old[name] = schema_aggr
+            else:
+                new_aggregates = get_all_raw_aggregates(schema_aggr['aggregates'])
+                old_aggregates = get_all_raw_aggregates(old[name]['aggregates'])
+                old[name] = {'period_millis': schema_aggr['period_millis'], 'aggregates': list(new_aggregates.union(old_aggregates))}
+
+        return old
 
     # Validated if schema corresponds to the requested aggregates, and return whether the schema needs to be updated
     def _validate_schema_fit_aggregations(self, schema):
