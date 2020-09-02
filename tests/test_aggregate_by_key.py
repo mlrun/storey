@@ -20,6 +20,23 @@ def _delete_dir(path):
     pass
 
 
+class MockTable:
+    async def save_schema(self, schema):
+        pass
+
+    async def load_schema(self):
+        pass
+
+    async def save_store(self, aggr_store):
+        pass
+
+    def load_store(self):
+        pass
+
+    async def load_key(self, key):
+        pass
+
+
 @pytest.fixture()
 def setup_teardown_test():
     table_name = _generate_table_name()
@@ -32,12 +49,12 @@ def append_return(lst, x):
     return lst
 
 
-def test_sliding_window_simple_aggregation_flow(setup_teardown_test):
+def test_sliding_window_simple_aggregation_flow():
     controller = build_flow([
         Source(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg", "min", "max"],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
-                       V3ioTable(setup_teardown_test)),
+                       MockTable()),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -84,12 +101,12 @@ def test_sliding_window_simple_aggregation_flow(setup_teardown_test):
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
 
-def test_sliding_window_multiple_keys_aggregation_flow(setup_teardown_test):
+def test_sliding_window_multiple_keys_aggregation_flow():
     controller = build_flow([
         Source(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg"],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
-                       V3ioTable(setup_teardown_test)),
+                       MockTable()),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -125,13 +142,13 @@ def test_sliding_window_multiple_keys_aggregation_flow(setup_teardown_test):
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
 
-def test_sliding_window_aggregations_with_filters_flow(setup_teardown_test):
+def test_sliding_window_aggregations_with_filters_flow():
     controller = build_flow([
         Source(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg"],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'),
                                         aggr_filter=lambda element: element['is_valid'] == 0)],
-                       V3ioTable(setup_teardown_test)),
+                       MockTable()),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -176,13 +193,13 @@ def test_sliding_window_aggregations_with_filters_flow(setup_teardown_test):
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
 
-def test_sliding_window_aggregations_with_max_values_flow(setup_teardown_test):
+def test_sliding_window_aggregations_with_max_values_flow():
     controller = build_flow([
         Source(),
         AggregateByKey([FieldAggregator("num_hours_with_stuff_in_the_last_24h", "col1", ["count"],
                                         SlidingWindows(['24h'], '1h'),
                                         max_value=1)],
-                       V3ioTable(setup_teardown_test)),
+                       MockTable()),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -207,7 +224,7 @@ def test_sliding_window_aggregations_with_max_values_flow(setup_teardown_test):
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
 
-def test_sliding_window_simple_aggregation_flow_multiple_fields(setup_teardown_test):
+def test_sliding_window_simple_aggregation_flow_multiple_fields():
     controller = build_flow([
         Source(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg"],
@@ -216,7 +233,7 @@ def test_sliding_window_simple_aggregation_flow_multiple_fields(setup_teardown_t
                                         SlidingWindows(['1h', '2h'], '15m')),
                         FieldAggregator("abc", "col3", ["sum"],
                                         SlidingWindows(['24h'], '10m'))],
-                       V3ioTable(setup_teardown_test)),
+                       MockTable()),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -264,12 +281,12 @@ def test_sliding_window_simple_aggregation_flow_multiple_fields(setup_teardown_t
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
 
-def test_fixed_window_simple_aggregation_flow(setup_teardown_test):
+def test_fixed_window_simple_aggregation_flow():
     controller = build_flow([
         Source(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["count"],
                                         FixedWindows(['1h', '2h', '3h', '24h']))],
-                       V3ioTable(setup_teardown_test)),
+                       MockTable()),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -304,12 +321,12 @@ def test_fixed_window_simple_aggregation_flow(setup_teardown_test):
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
 
-def test_emit_max_event_sliding_window_multiple_keys_aggregation_flow(setup_teardown_test):
+def test_emit_max_event_sliding_window_multiple_keys_aggregation_flow():
     controller = build_flow([
         Source(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg"],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
-                       V3ioTable(setup_teardown_test), emit_policy=EmitAfterMaxEvent(3)),
+                       MockTable(), emit_policy=EmitAfterMaxEvent(3)),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 

@@ -664,7 +664,6 @@ class V3ioTable(NeedsV3ioAccess):
             await client_session.close()
 
         return schema
-        pass
 
     async def load_schema(self):
         connector = aiohttp.TCPConnector()
@@ -700,7 +699,6 @@ class V3ioTable(NeedsV3ioAccess):
                 raise V3ioError(f'Failed to save schema file. Response status code was {response.status}: {body}')
 
         await client_session.close()
-        pass
 
     def _get_attributes_as_blob(self, aggregation_element):
         data = {}
