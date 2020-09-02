@@ -10,9 +10,12 @@ import threading
 import time
 from datetime import datetime
 import random
+import pickle
 
 import aiofiles
 import aiohttp
+
+from .utils import schema_file_name
 
 _termination_obj = object()
 
@@ -638,3 +641,106 @@ def build_flow(steps):
             cur_step.to(next_step)
             cur_step = next_step
     return steps[0]
+
+
+class V3ioTable(NeedsV3ioAccess):
+    def __init__(self, table, webapi=None, access_key=None):
+        NeedsV3ioAccess.__init__(self, webapi, access_key)
+        self.table = table
+
+    async def save_schema(self, schema):
+        connector = aiohttp.TCPConnector()
+        client_session = aiohttp.ClientSession(connector=connector)
+
+        try:
+            response = await client_session.put(f'{self._webapi_url}/{self.table}/{schema_file_name}',
+                                                headers=self._get_put_file_headers, data=json.dumps(schema), ssl=False)
+            if not response.status == 200:
+                body = await response.text()
+                raise V3ioError(f'Failed to save schema file. Response status code was {response.status}: {body}')
+        except BaseException as ex:
+            raise ex
+        finally:
+            await client_session.close()
+
+        return schema
+        pass
+
+    async def load_schema(self):
+        connector = aiohttp.TCPConnector()
+        client_session = aiohttp.ClientSession(connector=connector)
+
+        try:
+            response = await client_session.get(f'{self._webapi_url}/{self.table}/{schema_file_name}',
+                                                headers=self._get_put_file_headers, ssl=False)
+            body = await response.text()
+            if response.status == 404:
+                schema = None
+            elif response.status == 200:
+                schema = json.loads(body)
+            else:
+                raise V3ioError(f'Failed to get item. Response status code was {response.status}: {body}')
+        except BaseException as ex:
+            raise ex
+        finally:
+            await client_session.close()
+
+        return schema
+
+    async def save_store(self, aggr_store):
+        connector = aiohttp.TCPConnector()
+        client_session = aiohttp.ClientSession(connector=connector)
+
+        for key, aggregation_element in aggr_store.items():
+            data = {'Item': self._get_attributes_as_blob(aggregation_element), 'UpdateMode': 'CreateOrReplaceAttributes'}
+            response = await client_session.put(f'{self._webapi_url}/{self.table}/{key}',
+                                                headers=self._put_item_headers, data=json.dumps(data), ssl=False)
+            if not response.status == 200:
+                body = await response.text()
+                raise V3ioError(f'Failed to save schema file. Response status code was {response.status}: {body}')
+
+        await client_session.close()
+        pass
+
+    def _get_attributes_as_blob(self, aggregation_element):
+        data = {}
+        for name, bucket in aggregation_element.aggregation_buckets.items():
+            # Only save raw aggregates, not virtual
+            if bucket.should_persist:
+                blob = pickle.dumps(bucket.to_dict())
+                data[name] = {'B': base64.b64encode(blob).decode('ascii')}
+
+        return data
+
+    def load_store(self):
+        pass
+
+    # Loads a specific key from the store, and returns it in the following format
+    # {
+    #   'feature_name_1': {'first_bucket_time': <time> 'values': []},
+    #   'feature_name_2': {'first_bucket_time': <time> 'values': []}
+    # }
+    async def load_key(self, key):
+        connector = aiohttp.TCPConnector()
+        client_session = aiohttp.ClientSession(connector=connector)
+
+        request_body = json.dumps({'AttributesToGet': '*'})
+
+        try:
+            response = await client_session.put(f'{self._webapi_url}/{self.table}/{key}',
+                                                headers=self._get_item_headers, data=request_body, ssl=False)
+            body = await response.text()
+            if response.status == 404:
+                return None
+            elif response.status == 200:
+                parsed_response = _v3io_parse_get_item_response(body)
+                for name, blob in parsed_response.items():
+                    parsed_response[name] = pickle.loads(parsed_response[name])
+
+                return parsed_response
+            else:
+                raise V3ioError(f'Failed to get item. Response status code was {response.status}: {body}')
+        except BaseException as ex:
+            raise ex
+        finally:
+            await client_session.close()

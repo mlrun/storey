@@ -1,14 +1,10 @@
 import asyncio
 from datetime import datetime
-import aiohttp
-import json
-import pickle
-import base64
+
 from .aggregation_utils import is_raw_aggregate, get_virtual_aggregation_func, get_dependant_aggregates, get_all_raw_aggregates, \
     get_all_raw_aggregates_with_hidden
 from .dtypes import EmitEveryEvent, FixedWindows, EmitAfterPeriod, EmitAfterWindow, EmitAfterMaxEvent
-from .flow import Flow, _termination_obj, Event, NeedsV3ioAccess, V3ioError, _v3io_parse_get_item_response
-from .utils import schema_file_name
+from .flow import Flow, _termination_obj, Event
 
 _default_emit_policy = EmitEveryEvent()
 
@@ -16,9 +12,9 @@ _default_emit_policy = EmitEveryEvent()
 # Aggregate data by key, aggregates the events based on the specified aggregations and emitting features based on the emit policy.
 # Also manages schema and feature persistence
 class AggregateByKey(Flow):
-    def __init__(self, aggregates, table, key=None, emit_policy=_default_emit_policy, augmentation_fn=None, web_api=None, access_key=None):
+    def __init__(self, aggregates, table, key=None, emit_policy=_default_emit_policy, augmentation_fn=None):
         Flow.__init__(self)
-        self._aggregates_store = AggregateStore(aggregates, table, web_api, access_key)
+        self._aggregates_store = AggregateStore(aggregates, table)
         self.table = table
         self.aggregates_metadata = aggregates
 
@@ -170,19 +166,9 @@ class AggregatedStoreElement:
 
         return result
 
-    def get_attributes_as_blob(self):
-        data = {}
-        for name, bucket in self.aggregation_buckets.items():
-            # Only save raw aggregates, not virtual
-            if isinstance(bucket, AggregationBuckets):
-                data[name] = {'B': base64.b64encode(bucket.to_blob()).decode('ascii')}
 
-        return data
-
-
-class AggregateStore(NeedsV3ioAccess):
-    def __init__(self, aggregates, table, web_api=None, access_key=None):
-        NeedsV3ioAccess.__init__(self, web_api, access_key)
+class AggregateStore:
+    def __init__(self, aggregates, table):
         self.cache = {}
         self.aggregates = aggregates
         self._table = table
@@ -215,10 +201,10 @@ class AggregateStore(NeedsV3ioAccess):
     async def _get_or_load_key(self, key, timestamp=None):
         if key not in self.cache:
             # Try load from the store, and create a new one only if the key really is new
-            v3io_data = await self._load_key(key)
-            if v3io_data:
+            initial_data = await self._table.load_key(key)
+            if initial_data:
                 # Create the store based on the existing data
-                self.cache[key] = AggregatedStoreElement(key, self.aggregates, timestamp, v3io_data)
+                self.cache[key] = AggregatedStoreElement(key, self.aggregates, timestamp, initial_data)
             else:
                 self.cache[key] = AggregatedStoreElement(key, self.aggregates, timestamp)
 
@@ -228,7 +214,7 @@ class AggregateStore(NeedsV3ioAccess):
         return self.cache.keys()
 
     async def get_or_save_schema(self):
-        self.schema = await self._get_schema()
+        self.schema = await self._table.load_schema()
         if self.schema:
             self._validate_schema_fit_aggregations(self.schema)
         else:
@@ -236,21 +222,7 @@ class AggregateStore(NeedsV3ioAccess):
 
     async def _save_schema(self):
         schema = self._aggregates_to_schema()
-        connector = aiohttp.TCPConnector()
-        client_session = aiohttp.ClientSession(connector=connector)
-
-        try:
-            response = await client_session.put(f'{self._webapi_url}/{self._table}/{schema_file_name}',
-                                                headers=self._get_put_file_headers, data=json.dumps(schema), ssl=False)
-            if not response.status == 200:
-                body = await response.text()
-                raise V3ioError(f'Failed to save schema file. Response status code was {response.status}: {body}')
-        except BaseException as ex:
-            raise ex
-        finally:
-            await client_session.close()
-
-        return schema
+        return await self._table.save_schema(schema)
 
     def _validate_schema_fit_aggregations(self, schema):
         for aggr in self.aggregates:
@@ -267,61 +239,8 @@ class AggregateStore(NeedsV3ioAccess):
                 raise ValueError(f'requested aggregates for feature {aggr.name} do not match with existing aggregates at {self._table}. '
                                  f"requested: {aggr.aggregations}, existing: {schema_aggr['aggregates']}")
 
-    async def _get_schema(self):
-        connector = aiohttp.TCPConnector()
-        client_session = aiohttp.ClientSession(connector=connector)
-
-        try:
-            response = await client_session.get(f'{self._webapi_url}/{self._table}/{schema_file_name}',
-                                                headers=self._get_put_file_headers, ssl=False)
-            body = await response.text()
-            if response.status == 404:
-                schema = None
-            elif response.status == 200:
-                schema = json.loads(body)
-            else:
-                raise V3ioError(f'Failed to get item. Response status code was {response.status}: {body}')
-        except BaseException as ex:
-            raise ex
-        finally:
-            await client_session.close()
-
-        return schema
-
     async def _save_store(self):
-        connector = aiohttp.TCPConnector()
-        client_session = aiohttp.ClientSession(connector=connector)
-
-        for key, aggregation_element in self.cache.items():
-            data = {'Item': aggregation_element.get_attributes_as_blob(), 'UpdateMode': 'CreateOrReplaceAttributes'}
-            response = await client_session.put(f'{self._webapi_url}/{self._table}/{key}',
-                                                headers=self._put_item_headers, data=json.dumps(data), ssl=False)
-            if not response.status == 200:
-                body = await response.text()
-                raise V3ioError(f'Failed to save schema file. Response status code was {response.status}: {body}')
-
-        await client_session.close()
-
-    async def _load_key(self, key):
-        connector = aiohttp.TCPConnector()
-        client_session = aiohttp.ClientSession(connector=connector)
-
-        request_body = json.dumps({'AttributesToGet': '*'})
-
-        try:
-            response = await client_session.put(f'{self._webapi_url}/{self._table}/{key}',
-                                                headers=self._get_item_headers, data=request_body, ssl=False)
-            body = await response.text()
-            if response.status == 404:
-                return None
-            elif response.status == 200:
-                return _v3io_parse_get_item_response(body)
-            else:
-                raise V3ioError(f'Failed to get item. Response status code was {response.status}: {body}')
-        except BaseException as ex:
-            raise ex
-        finally:
-            await client_session.close()
+        await self._table.save_store(self.cache)
 
     def _aggregates_to_schema(self):
         schema = {}
@@ -338,9 +257,10 @@ class AggregationBuckets:
         self.max_value = max_value
         self.buckets = []
         self.is_hidden = is_hidden
+        self.should_persist = True
 
         if initial_data:
-            self.initialize_from_blob(initial_data)
+            self.initialize_from_data(initial_data)
         else:
             self.first_bucket_start_time = self.window.get_window_start_time_by_time(base_time)
             self.last_bucket_start_time = \
@@ -436,16 +356,13 @@ class AggregationBuckets:
 
         return result
 
-    def to_blob(self):
-        data = {
+    def to_dict(self):
+        return {
             'first_bucket_time': self.first_bucket_start_time,
             'values': [bucket.get_value() for bucket in self.buckets],
         }
 
-        return pickle.dumps(data)
-
-    def initialize_from_blob(self, initial_data):
-        data = pickle.loads(initial_data)
+    def initialize_from_data(self, data):
         self.first_bucket_start_time = data['first_bucket_time']
         self.last_bucket_start_time = \
             self.first_bucket_start_time + (self.window.total_number_of_buckets - 1) * self.window.period_millis
@@ -464,6 +381,8 @@ class VirtualAggregationBuckets:
         self.aggregation_func = get_virtual_aggregation_func(aggregation)
         self.window = window
         self.is_hidden = False
+        self.should_persist = False
+
         self.first_bucket_start_time = self.window.get_window_start_time_by_time(base_time)
         self.last_bucket_start_time = \
             self.first_bucket_start_time + (window.total_number_of_buckets - 1) * window.period_millis

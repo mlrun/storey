@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 import asyncio
 import random
 import string
-from storey import build_flow, Source, Reduce, Map
+from storey import build_flow, Source, Reduce, Map, V3ioTable
 from storey.aggregations import AggregateByKey, FieldAggregator, AggregateStore, QueryAggregateByKey
 from storey.dtypes import SlidingWindows, FixedWindows, EmitAfterMaxEvent
 import pytest
@@ -37,7 +37,7 @@ def test_sliding_window_simple_aggregation_flow(setup_teardown_test):
         Source(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg", "min", "max"],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
-                       setup_teardown_test),
+                       V3ioTable(setup_teardown_test)),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -89,7 +89,7 @@ def test_sliding_window_multiple_keys_aggregation_flow(setup_teardown_test):
         Source(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg"],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
-                       setup_teardown_test),
+                       V3ioTable(setup_teardown_test)),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -131,7 +131,7 @@ def test_sliding_window_aggregations_with_filters_flow(setup_teardown_test):
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg"],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'),
                                         aggr_filter=lambda element: element['is_valid'] == 0)],
-                       setup_teardown_test),
+                       V3ioTable(setup_teardown_test)),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -182,7 +182,7 @@ def test_sliding_window_aggregations_with_max_values_flow(setup_teardown_test):
         AggregateByKey([FieldAggregator("num_hours_with_stuff_in_the_last_24h", "col1", ["count"],
                                         SlidingWindows(['24h'], '1h'),
                                         max_value=1)],
-                       setup_teardown_test),
+                       V3ioTable(setup_teardown_test)),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -216,7 +216,7 @@ def test_sliding_window_simple_aggregation_flow_multiple_fields(setup_teardown_t
                                         SlidingWindows(['1h', '2h'], '15m')),
                         FieldAggregator("abc", "col3", ["sum"],
                                         SlidingWindows(['24h'], '10m'))],
-                       setup_teardown_test),
+                       V3ioTable(setup_teardown_test)),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -269,7 +269,7 @@ def test_fixed_window_simple_aggregation_flow(setup_teardown_test):
         Source(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["count"],
                                         FixedWindows(['1h', '2h', '3h', '24h']))],
-                       setup_teardown_test),
+                       V3ioTable(setup_teardown_test)),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -309,7 +309,7 @@ def test_emit_max_event_sliding_window_multiple_keys_aggregation_flow(setup_tear
         Source(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg"],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
-                       setup_teardown_test, emit_policy=EmitAfterMaxEvent(3)),
+                       V3ioTable(setup_teardown_test), emit_policy=EmitAfterMaxEvent(3)),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -344,8 +344,7 @@ async def test_tal():
                                             SlidingWindows(['1h', '2h'], '15m')),
                             FieldAggregator("abc", "col3", ["sum"],
                                             SlidingWindows(['24h'], '10m'))],
-                           "tal_table", 'https://webapi.default-tenant.app.dev60.lab.iguazeng.com/bigdata/',
-                           'f15588f4-9079-461e-8d9a-4f4529d686ae')
+                           V3ioTable("tal_table_2"))
 
     await store.aggregate('my-key', {'col1': 423, 'col2': 423, 'col3': 423}, datetime.now())
     print('tal')
@@ -356,14 +355,13 @@ def test_query_aggregate_by_key(setup_teardown_test):
         Source(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg", "min", "max"],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
-                       setup_teardown_test),
+                       V3ioTable(setup_teardown_test)),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
     items_in_ingest_batch = 10
     for i in range(items_in_ingest_batch):
         data = {'col1': i}
-        print({'col1': i, 'time': test_base_time + timedelta(minutes=25 * i)})
         controller.emit(data, 'tal', test_base_time + timedelta(minutes=25 * i))
 
     controller.terminate()
@@ -413,7 +411,7 @@ def test_query_aggregate_by_key(setup_teardown_test):
         Source(),
         QueryAggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg", "min", "max"],
                                              SlidingWindows(['1h', '2h', '24h'], '10m'))],
-                            setup_teardown_test),
+                            V3ioTable(setup_teardown_test)),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
