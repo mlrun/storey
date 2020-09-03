@@ -12,7 +12,7 @@ from storey.dtypes import SlidingWindows
 test_base_time = datetime.fromisoformat("2020-07-21T21:40:00+00:00")
 
 
-def _generate_table_name(prefix='aggr_test'):
+def _generate_table_name(prefix='bigdata/aggr_test'):
     random_table = ''.join([random.choice(string.ascii_letters) for i in range(10)])
     return f'{prefix}/{random_table}'
 
