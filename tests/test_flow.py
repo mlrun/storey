@@ -1,6 +1,7 @@
+import asyncio
 from datetime import datetime
 
-from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV, Complete
+from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV, Complete, AsyncSource
 
 
 class ATestException(Exception):
@@ -213,3 +214,48 @@ def test_awaitable_result():
     controller.terminate()
     termination_result = controller.await_termination()
     assert termination_result == 55
+
+
+async def async_test_async_source():
+    controller = await build_flow([
+        AsyncSource(),
+        Map(lambda x: x + 1, termination_result_fn=lambda _, x: x),
+        [
+            Complete()
+        ],
+        [
+            Reduce(0, lambda acc, x: acc + x)
+        ]
+    ]).run()
+
+    for i in range(10):
+        result = await controller.emit(i, await_result=True)
+        assert result == i + 1
+    await controller.terminate()
+    termination_result = await controller.await_termination()
+    assert termination_result == 55
+
+
+def test_async_source():
+    loop = asyncio.new_event_loop()
+    loop.run_until_complete(async_test_async_source())
+
+
+async def async_test_error_async_flow():
+    controller = await build_flow([
+        AsyncSource(),
+        Map(lambda x: x + 1),
+        Map(RaiseEx(500).raise_ex),
+        Reduce(0, lambda acc, x: acc + x),
+    ]).run()
+
+    try:
+        for i in range(1000):
+            await controller.emit(i)
+    except FlowError as flow_ex:
+        assert isinstance(flow_ex.__cause__, ATestException)
+
+
+def test_error_async_flow():
+    loop = asyncio.new_event_loop()
+    loop.run_until_complete(async_test_error_async_flow())

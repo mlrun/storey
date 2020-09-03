@@ -69,6 +69,9 @@ class AwaitableResult:
     def _set_result(self, element):
         self._q.put(element)
 
+    def _set_error(self, element):
+        pass
+
 
 class FlowController:
     def __init__(self, emit_fn, await_termination_fn):
@@ -110,7 +113,7 @@ class Source(Flow):
 
     async def _run_loop(self):
         loop = asyncio.get_running_loop()
-        self._termination_future = asyncio.futures.Future()
+        self._termination_future = asyncio.get_running_loop().create_future()
 
         while True:
             event = await loop.run_in_executor(None, self._q.get)
@@ -153,6 +156,84 @@ class Source(Flow):
         return FlowController(self._emit, raise_error_or_return_termination_result)
 
 
+class AsyncAwaitableResult:
+    def __init__(self):
+        self._q = asyncio.Queue(1)
+
+    async def await_result(self):
+        return await self._q.get()
+
+    async def _set_result(self, element):
+        await self._q.put(element)
+
+    async def _set_error(self, ex):
+        await self._set_result(ex)
+
+
+class AsyncFlowController:
+    def __init__(self, emit_fn, loop_task):
+        self._emit_fn = emit_fn
+        self._loop_task = loop_task
+
+    async def emit(self, element, key=None, event_time=None, await_result=False):
+        awaitable = None
+        if event_time is None:
+            event_time = time.time()
+        if await_result:
+            awaitable = AsyncAwaitableResult()
+        await self._emit_fn(Event(element, key, event_time, awaitable))
+        if await_result:
+            result = await awaitable.await_result()
+            if isinstance(result, BaseException):
+                raise result
+            return result
+
+    async def terminate(self):
+        await self._emit_fn(_termination_obj)
+
+    async def await_termination(self):
+        return await self._loop_task
+
+
+class AsyncSource(Flow):
+    def __init__(self, buffer_size=1, **kwargs):
+        super().__init__(**kwargs)
+        if buffer_size <= 0:
+            raise ValueError('Buffer size must be positive')
+        self._q = asyncio.Queue(buffer_size, loop=asyncio.get_running_loop())
+        self._ex = None
+
+    async def _run_loop(self):
+        while True:
+            event = await self._q.get()
+            try:
+                termination_result = await self._do_downstream(event)
+                if event is _termination_obj:
+                    return termination_result
+            except BaseException as ex:
+                self._ex = ex
+                if event.awaitable_result:
+                    awaitable = event.awaitable_result._set_error(ex)
+                    if awaitable:
+                        await awaitable
+                if not self._q.empty():
+                    await self._q.get()
+                return None
+
+    def _raise_on_error(self):
+        if self._ex:
+            raise FlowError('Flow execution terminated due to an error') from self._ex
+
+    async def _emit(self, event):
+        self._raise_on_error()
+        await self._q.put(event)
+        self._raise_on_error()
+
+    async def run(self):
+        loop_task = asyncio.get_running_loop().create_task(self._run_loop())
+        return AsyncFlowController(self._emit, loop_task)
+
+
 class ReadCSV(Flow):
     def __init__(self, paths, with_header=False, build_dict=False, key_field=None, timestamp_field=None, timestamp_format=None, **kwargs):
         super().__init__(**kwargs)
@@ -174,7 +255,7 @@ class ReadCSV(Flow):
             raise ValueError('timestamp_field can only be set to an integer when with_header is false')
 
     async def _run_loop(self):
-        self._termination_future = asyncio.futures.Future()
+        self._termination_future = asyncio.get_running_loop().create_future()
 
         try:
             for path in self._paths:
@@ -322,9 +403,12 @@ class MapWithState(FunctionWithStateFlow):
 
 class Complete(Flow):
     async def _do(self, event):
-        await self._do_downstream(event)
+        termination_result = await self._do_downstream(event)
         if event is not _termination_obj:
-            event.awaitable_result._set_result(event.element)
+            res = event.awaitable_result._set_result(event.element)
+            if res:
+                await res
+        return termination_result
 
 
 class Reduce(Flow):
