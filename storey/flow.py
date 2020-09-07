@@ -681,7 +681,7 @@ class V3ioTable(NeedsV3ioAccess):
             self.lazy_init()
 
         response = await self.client_session.put(f'{self._webapi_url}/{self.table}/{schema_file_name}',
-                                            headers=self._get_put_file_headers, data=json.dumps(schema), ssl=False)
+                                                 headers=self._get_put_file_headers, data=json.dumps(schema), ssl=False)
         if not response.status == 200:
             body = await response.text()
             raise V3ioError(f'Failed to save schema file. Response status code was {response.status}: {body}')
@@ -712,7 +712,7 @@ class V3ioTable(NeedsV3ioAccess):
         for key, aggregation_element in aggr_store.items():
             data = {'Item': self._get_attributes_as_blob(aggregation_element), 'UpdateMode': 'CreateOrReplaceAttributes'}
             response = await self.client_session.put(f'{self._webapi_url}/{self.table}/{key}',
-                                                headers=self._put_item_headers, data=json.dumps(data), ssl=False)
+                                                     headers=self._put_item_headers, data=json.dumps(data), ssl=False)
             if not response.status == 200:
                 body = await response.text()
                 raise V3ioError(f'Failed to save aggregation for key: {key}. Response status code was {response.status}: {body}')
@@ -723,7 +723,7 @@ class V3ioTable(NeedsV3ioAccess):
 
         data = {'Item': self._get_attributes_as_blob(aggr_item), 'UpdateMode': 'CreateOrReplaceAttributes'}
         response = await self.client_session.put(f'{self._webapi_url}/{self.table}/{key}',
-                                            headers=self._put_item_headers, data=json.dumps(data), ssl=False)
+                                                 headers=self._put_item_headers, data=json.dumps(data), ssl=False)
         if not response.status == 200:
             body = await response.text()
             raise V3ioError(f'Failed to save aggregation for key: {key}. Response status code was {response.status}: {body}')
@@ -750,7 +750,7 @@ class V3ioTable(NeedsV3ioAccess):
         request_body = json.dumps({'AttributesToGet': '*'})
 
         response = await self.client_session.put(f'{self._webapi_url}/{self.table}/{key}',
-                                            headers=self._get_item_headers, data=request_body, ssl=False)
+                                                 headers=self._get_item_headers, data=request_body, ssl=False)
         body = await response.text()
         if response.status == 404:
             return None
