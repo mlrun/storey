@@ -4,7 +4,7 @@ from datetime import datetime
 from .aggregation_utils import is_raw_aggregate, get_virtual_aggregation_func, get_dependant_aggregates, get_all_raw_aggregates, \
     get_all_raw_aggregates_with_hidden
 from .dtypes import EmitEveryEvent, FixedWindows, EmitAfterPeriod, EmitAfterWindow, EmitAfterMaxEvent
-from .flow import Flow, _termination_obj, Event
+from .flow import Flow, _termination_obj, Event, new_storage_table
 
 _default_emit_policy = EmitEveryEvent()
 
@@ -12,11 +12,11 @@ _default_emit_policy = EmitEveryEvent()
 # Aggregate data by key, aggregates the events based on the specified aggregations and emitting features based on the emit policy.
 # Also manages schema and feature persistence
 class AggregateByKey(Flow):
-    def __init__(self, aggregates, table, key=None, emit_policy=_default_emit_policy, augmentation_fn=None):
+    def __init__(self, aggregates, storage, table, key=None, emit_policy=_default_emit_policy, augmentation_fn=None, **kw):
         Flow.__init__(self)
-        self._aggregates_store = AggregateStore(aggregates, table)
-        self.table = table
-        self.aggregates_metadata = aggregates
+        self.table = new_storage_table(storage, table, kw)
+        self._aggregates_store = AggregateStore(aggregates, self.table)
+        self._aggregates_metadata = aggregates
 
         self._emit_policy = emit_policy
         self._events_in_batch = {}
@@ -75,9 +75,9 @@ class AggregateByKey(Flow):
 
     async def _emit_worker(self):
         if isinstance(self._emit_policy, EmitAfterPeriod):
-            seconds_to_sleep_between_emits = self.aggregates_metadata[0].windows.period_millis / 1000
+            seconds_to_sleep_between_emits = self._aggregates_metadata[0].windows.period_millis / 1000
         elif isinstance(self._emit_policy, EmitAfterWindow):
-            seconds_to_sleep_between_emits = self.aggregates_metadata[0].windows.windows[0][0] / 1000
+            seconds_to_sleep_between_emits = self._aggregates_metadata[0].windows.windows[0][0] / 1000
         else:
             raise TypeError(f'Emit policy "{type(self._emit_policy)}" is not supported')
 
@@ -96,8 +96,8 @@ class AggregateByKey(Flow):
 
 # Serving side for AggregateByKey, for every (key, timestamp) pair provided QueryAggregateByKey will emit the relevant feature set
 class QueryAggregationByKey(AggregateByKey):
-    def __init__(self, aggregates, table, key=None, emit_policy=_default_emit_policy, augmentation_fn=None):
-        AggregateByKey.__init__(self, aggregates, table, key, emit_policy, augmentation_fn)
+    def __init__(self, aggregates, storage, table, key=None, emit_policy=_default_emit_policy, augmentation_fn=None):
+        AggregateByKey.__init__(self, aggregates, storage, table, key, emit_policy, augmentation_fn)
         self._aggregates_store.read_only = True
 
     async def _do(self, event):

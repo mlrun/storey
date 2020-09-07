@@ -670,69 +670,63 @@ class V3ioTable(NeedsV3ioAccess):
     def __init__(self, table, webapi=None, access_key=None):
         NeedsV3ioAccess.__init__(self, webapi, access_key)
         self.table = table
+        self.client_session = None
+
+    def lazy_init(self):
+        connector = aiohttp.TCPConnector()
+        self.client_session = aiohttp.ClientSession(connector=connector)
 
     async def save_schema(self, schema):
-        connector = aiohttp.TCPConnector()
-        client_session = aiohttp.ClientSession(connector=connector)
+        if not self.client_session:
+            self.lazy_init()
 
-        try:
-            response = await client_session.put(f'{self._webapi_url}/{self.table}/{schema_file_name}',
-                                                headers=self._get_put_file_headers, data=json.dumps(schema), ssl=False)
-            if not response.status == 200:
-                body = await response.text()
-                raise V3ioError(f'Failed to save schema file. Response status code was {response.status}: {body}')
-        except BaseException as ex:
-            raise ex
-        finally:
-            await client_session.close()
+        response = await self.client_session.put(f'{self._webapi_url}/{self.table}/{schema_file_name}',
+                                            headers=self._get_put_file_headers, data=json.dumps(schema), ssl=False)
+        if not response.status == 200:
+            body = await response.text()
+            raise V3ioError(f'Failed to save schema file. Response status code was {response.status}: {body}')
 
     async def load_schema(self):
-        connector = aiohttp.TCPConnector()
-        client_session = aiohttp.ClientSession(connector=connector)
+        if not self.client_session:
+            self.lazy_init()
 
-        try:
-            schema_path = f'{self._webapi_url}/{self.table}/{schema_file_name}'
-            response = await client_session.get(schema_path, headers=self._get_put_file_headers, ssl=False)
-            body = await response.text()
-            if response.status == 404:
-                schema = None
-            elif response.status == 200:
-                schema = json.loads(body)
-            else:
-                raise V3ioError(f'Failed to get schema at {schema_path}. Response status code was {response.status}: {body}')
-        except BaseException as ex:
-            raise ex
-        finally:
-            await client_session.close()
+        connector = aiohttp.TCPConnector()
+        self.client_session = aiohttp.ClientSession(connector=connector)
+
+        schema_path = f'{self._webapi_url}/{self.table}/{schema_file_name}'
+        response = await self.client_session.get(schema_path, headers=self._get_put_file_headers, ssl=False)
+        body = await response.text()
+        if response.status == 404:
+            schema = None
+        elif response.status == 200:
+            schema = json.loads(body)
+        else:
+            raise V3ioError(f'Failed to get schema at {schema_path}. Response status code was {response.status}: {body}')
 
         return schema
 
     async def save_store(self, aggr_store):
-        connector = aiohttp.TCPConnector()
-        client_session = aiohttp.ClientSession(connector=connector)
+        if not self.client_session:
+            self.lazy_init()
 
         for key, aggregation_element in aggr_store.items():
             data = {'Item': self._get_attributes_as_blob(aggregation_element), 'UpdateMode': 'CreateOrReplaceAttributes'}
-            response = await client_session.put(f'{self._webapi_url}/{self.table}/{key}',
+            response = await self.client_session.put(f'{self._webapi_url}/{self.table}/{key}',
                                                 headers=self._put_item_headers, data=json.dumps(data), ssl=False)
             if not response.status == 200:
                 body = await response.text()
                 raise V3ioError(f'Failed to save aggregation for key: {key}. Response status code was {response.status}: {body}')
 
-        await client_session.close()
-
     async def save_key(self, key, aggr_item):
-        connector = aiohttp.TCPConnector()
-        client_session = aiohttp.ClientSession(connector=connector)
+        if not self.client_session:
+            self.lazy_init()
 
         data = {'Item': self._get_attributes_as_blob(aggr_item), 'UpdateMode': 'CreateOrReplaceAttributes'}
-        response = await client_session.put(f'{self._webapi_url}/{self.table}/{key}',
+        response = await self.client_session.put(f'{self._webapi_url}/{self.table}/{key}',
                                             headers=self._put_item_headers, data=json.dumps(data), ssl=False)
         if not response.status == 200:
             body = await response.text()
             raise V3ioError(f'Failed to save aggregation for key: {key}. Response status code was {response.status}: {body}')
-
-        await client_session.close()
 
     def _get_attributes_as_blob(self, aggregation_element):
         data = {}
@@ -744,70 +738,53 @@ class V3ioTable(NeedsV3ioAccess):
 
         return data
 
-    async def load_store(self):
-        pass
-
     # Loads a specific key from the store, and returns it in the following format
     # {
     #   'feature_name_1': {'first_bucket_time': <time> 'values': []},
     #   'feature_name_2': {'first_bucket_time': <time> 'values': []}
     # }
     async def load_key(self, key):
-        connector = aiohttp.TCPConnector()
-        client_session = aiohttp.ClientSession(connector=connector)
+        if not self.client_session:
+            self.lazy_init()
 
         request_body = json.dumps({'AttributesToGet': '*'})
 
-        try:
-            response = await client_session.put(f'{self._webapi_url}/{self.table}/{key}',
-                                                headers=self._get_item_headers, data=request_body, ssl=False)
-            body = await response.text()
-            if response.status == 404:
-                return None
-            elif response.status == 200:
-                parsed_response = _v3io_parse_get_item_response(body)
-                for name, blob in parsed_response.items():
-                    parsed_response[name] = pickle.loads(blob)
+        response = await self.client_session.put(f'{self._webapi_url}/{self.table}/{key}',
+                                            headers=self._get_item_headers, data=request_body, ssl=False)
+        body = await response.text()
+        if response.status == 404:
+            return None
+        elif response.status == 200:
+            parsed_response = _v3io_parse_get_item_response(body)
+            for name, blob in parsed_response.items():
+                parsed_response[name] = pickle.loads(blob)
 
-                return parsed_response
-            else:
-                raise V3ioError(f'Failed to get item. Response status code was {response.status}: {body}')
-        except BaseException as ex:
-            raise ex
-        finally:
-            await client_session.close()
+            return parsed_response
+        else:
+            raise V3ioError(f'Failed to get item. Response status code was {response.status}: {body}')
 
-    # Deletes the entire table
-    async def delete(self):
-        connector = aiohttp.TCPConnector()
-        client_session = aiohttp.ClientSession(connector=connector)
-        has_more = True
-        next_marker = ''
-        try:
-            while has_more:
-                get_items_body = {'AttributesToGet': '__name', 'Marker': next_marker}
-                response = await client_session.put(f'{self._webapi_url}/{self.table}/',
-                                                    headers=self._get_items_headers, data=json.dumps(get_items_body), ssl=False)
-                body = await response.text()
-                if response.status == 200:
-                    res = _v3io_parse_get_items_response(body)
-                    for item in res['Items']:
-                        await self._delete_item(f'{self._webapi_url}/{self.table}/{item["__name"]}', client_session)
 
-                    has_more = 'NextMarker' in res
-                    if has_more:
-                        next_marker = res['NextMarker']
-                elif response.status != 404:
-                    raise V3ioError(f'Failed to delete table {self.table}. Response status code was {response.status}: {body}')
+class NoopTable:
+    async def save_schema(self, schema):
+        pass
 
-            await self._delete_item(f'{self._webapi_url}/{self.table}/', client_session)
-        except BaseException as ex:
-            raise ex
-        finally:
-            await client_session.close()
+    async def load_schema(self):
+        pass
 
-    async def _delete_item(self, path, session):
-        response = await session.delete(path, headers=self._get_put_file_headers, ssl=False)
-        if response.status > 500:
-            body = await response.text()
-            raise V3ioError(f'Failed to delete item at {path}. Response status code was {response.status}: {body}')
+    async def save_store(self, aggr_store):
+        pass
+
+    async def save_key(self, key, aggr_item):
+        pass
+
+    async def load_key(self, key):
+        pass
+
+
+def new_storage_table(typ, table, kw):
+    if typ == 'v3io':
+        return V3ioTable(table, kw.get('webapi', None), kw.get('access_key', None))
+    if typ == 'noop':
+        return NoopTable()
+    else:
+        raise TypeError(f'storage {typ} is not supported')

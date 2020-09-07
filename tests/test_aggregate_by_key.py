@@ -7,26 +7,6 @@ from storey.dtypes import SlidingWindows, FixedWindows, EmitAfterMaxEvent
 test_base_time = datetime.fromisoformat("2020-07-21T21:40:00+00:00")
 
 
-class MockTable:
-    async def save_schema(self, schema):
-        pass
-
-    async def load_schema(self):
-        pass
-
-    async def save_store(self, aggr_store):
-        pass
-
-    async def save_key(self, key, aggr_item):
-        pass
-
-    async def load_store(self):
-        pass
-
-    async def load_key(self, key):
-        pass
-
-
 def append_return(lst, x):
     lst.append(x)
     return lst
@@ -37,7 +17,7 @@ def test_sliding_window_simple_aggregation_flow():
         Source(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg", "min", "max"],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
-                       MockTable()),
+                       'noop', 'test'),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -89,7 +69,7 @@ def test_sliding_window_multiple_keys_aggregation_flow():
         Source(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg"],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
-                       MockTable()),
+                       'noop', 'test'),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -131,7 +111,7 @@ def test_sliding_window_aggregations_with_filters_flow():
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg"],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'),
                                         aggr_filter=lambda element: element['is_valid'] == 0)],
-                       MockTable()),
+                       'noop', 'test'),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -182,7 +162,7 @@ def test_sliding_window_aggregations_with_max_values_flow():
         AggregateByKey([FieldAggregator("num_hours_with_stuff_in_the_last_24h", "col1", ["count"],
                                         SlidingWindows(['24h'], '1h'),
                                         max_value=1)],
-                       MockTable()),
+                       'noop', 'test'),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -216,7 +196,7 @@ def test_sliding_window_simple_aggregation_flow_multiple_fields():
                                         SlidingWindows(['1h', '2h'], '15m')),
                         FieldAggregator("abc", "col3", ["sum"],
                                         SlidingWindows(['24h'], '10m'))],
-                       MockTable()),
+                       'noop', 'test'),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -269,7 +249,7 @@ def test_fixed_window_simple_aggregation_flow():
         Source(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["count"],
                                         FixedWindows(['1h', '2h', '3h', '24h']))],
-                       MockTable()),
+                       'noop', 'test'),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -309,7 +289,7 @@ def test_emit_max_event_sliding_window_multiple_keys_aggregation_flow():
         Source(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg"],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
-                       MockTable(), emit_policy=EmitAfterMaxEvent(3)),
+                       'noop', 'test', emit_policy=EmitAfterMaxEvent(3)),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
