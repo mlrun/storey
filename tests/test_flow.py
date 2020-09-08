@@ -1,7 +1,7 @@
 import asyncio
 from datetime import datetime
 
-from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV, Complete, AsyncSource
+from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV, Complete, AsyncSource, Choice
 
 
 class ATestException(Exception):
@@ -259,3 +259,25 @@ async def async_test_error_async_flow():
 def test_error_async_flow():
     loop = asyncio.new_event_loop()
     loop.run_until_complete(async_test_error_async_flow())
+
+
+def test_choice():
+    small_reduce = Reduce(0, lambda acc, x: acc + x)
+
+    big_reduce = build_flow([
+        Map(lambda x: x * 100),
+        Reduce(0, lambda acc, x: acc + x)
+    ])
+
+    controller = build_flow([
+        Source(),
+        Choice([(big_reduce, lambda x: x % 2 == 0)],
+               default=small_reduce,
+               termination_result_fn=lambda x, y: x + y)
+    ]).run()
+
+    for i in range(10):
+        controller.emit(i)
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == 2025

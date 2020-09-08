@@ -56,6 +56,32 @@ class Flow:
             await task
 
 
+class Choice(Flow):
+    def __init__(self, choice_array, default=None, **kwargs):
+        Flow.__init__(self, **kwargs)
+
+        self._choice_array = choice_array
+        for outlet, _ in choice_array:
+            self._outlets.append(outlet)
+
+        if default:
+            self._outlets.append(default)
+        self._default = default
+
+    async def _do(self, event):
+        if not self._outlets or event is _termination_obj:
+            return await super()._do_downstream(event)
+        chosen_outlet = None
+        for outlet, condition in self._choice_array:
+            if condition(event.element):
+                chosen_outlet = outlet
+                break
+        if chosen_outlet:
+            await chosen_outlet._do(event)
+        elif self._default:
+            await self._default._do(event)
+
+
 Event = collections.namedtuple('Event', 'element key time awaitable_result')
 
 
