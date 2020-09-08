@@ -40,7 +40,7 @@ class Window(Flow):
             asyncio.get_running_loop().create_task(self._emit_worker())
             self._emit_worker_running = True
 
-        element = event.element
+        element = event.body
         key = event.key
         event_time = event.time
         self._windowed_store.add(key, element, event_time)

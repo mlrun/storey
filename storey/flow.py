@@ -1,14 +1,14 @@
 import asyncio
 import base64
-import collections
+import copy
 import csv
 import json
 import os
 import queue
 import re
 import threading
-import time
-from datetime import datetime
+from datetime import datetime, timezone
+import uuid
 import random
 
 import aiofiles
@@ -73,7 +73,7 @@ class Choice(Flow):
             return await super()._do_downstream(event)
         chosen_outlet = None
         for outlet, condition in self._choice_array:
-            if condition(event.element):
+            if condition(event.body):
                 chosen_outlet = outlet
                 break
         if chosen_outlet:
@@ -82,7 +82,17 @@ class Choice(Flow):
             await self._default._do(event)
 
 
-Event = collections.namedtuple('Event', 'element key time awaitable_result')
+class Event:
+    def __init__(self, body, id=None, key=None, time=None, headers=None, method=None, path='/', content_type=None, awaitable_result=None):
+        self.body = body
+        self.id = id or uuid.uuid4().hex
+        self.key = key
+        self.time = time or datetime.now(timezone.utc)
+        self.headers = headers
+        self.method = method
+        self.path = path
+        self.content_type = content_type
+        self._awaitable_result = awaitable_result
 
 
 class AwaitableResult:
@@ -106,11 +116,11 @@ class FlowController:
 
     def emit(self, element, key=None, event_time=None, return_awaitable_result=False):
         if event_time is None:
-            event_time = time.time()
+            event_time = datetime.now(timezone.utc)
         awaitable_result = None
         if return_awaitable_result:
             awaitable_result = AwaitableResult()
-        self._emit_fn(Event(element, key, event_time, awaitable_result))
+        self._emit_fn(Event(element, key=key, time=event_time, awaitable_result=awaitable_result))
         return awaitable_result
 
     def terminate(self):
@@ -204,10 +214,10 @@ class AsyncFlowController:
     async def emit(self, element, key=None, event_time=None, await_result=False):
         awaitable = None
         if event_time is None:
-            event_time = time.time()
+            event_time = datetime.now(timezone.utc)
         if await_result:
             awaitable = AsyncAwaitableResult()
-        await self._emit_fn(Event(element, key, event_time, awaitable))
+        await self._emit_fn(Event(element, key=key, time=event_time, awaitable_result=awaitable))
         if await_result:
             result = await awaitable.await_result()
             if isinstance(result, BaseException):
@@ -238,8 +248,8 @@ class AsyncSource(Flow):
                     return termination_result
             except BaseException as ex:
                 self._ex = ex
-                if event.awaitable_result:
-                    awaitable = event.awaitable_result._set_error(ex)
+                if event._awaitable_result:
+                    awaitable = event._awaitable_result._set_error(ex)
                     if awaitable:
                         await awaitable
                 if not self._q.empty():
@@ -321,7 +331,7 @@ class ReadCSV(Flow):
                                 timestamp = datetime.fromisoformat(timestamp_str)
                         else:
                             timestamp = datetime.now()
-                        await self._do_downstream(Event(element, key, timestamp, None))
+                        await self._do_downstream(Event(element, key=key, time=timestamp))
             termination_result = await self._do_downstream(_termination_obj)
             self._termination_future.set_result(termination_result)
         except BaseException as ex:
@@ -370,14 +380,14 @@ class UnaryFunctionFlow(Flow):
         if event is _termination_obj:
             return await self._do_downstream(_termination_obj)
         else:
-            element = event.element
+            element = event.body
             fn_result = await self._call(element)
             await self._do_internal(event, fn_result)
 
 
 class Map(UnaryFunctionFlow):
     async def _do_internal(self, event, mapped_element):
-        mapped_event = Event(mapped_element, event.key, event.time, event.awaitable_result)
+        mapped_event = Event(mapped_element, key=event.key, time=event.time, awaitable_result=event._awaitable_result)
         await self._do_downstream(mapped_event)
 
 
@@ -390,7 +400,8 @@ class Filter(UnaryFunctionFlow):
 class FlatMap(UnaryFunctionFlow):
     async def _do_internal(self, event, mapped_elements):
         for mapped_element in mapped_elements:
-            mapped_event = Event(mapped_element, event.key, event.time, event.awaitable_result)
+            mapped_event = copy.copy(event)
+            mapped_event.body = mapped_element
             await self._do_downstream(mapped_event)
 
 
@@ -416,14 +427,15 @@ class FunctionWithStateFlow(Flow):
         if event is _termination_obj:
             return await self._do_downstream(_termination_obj)
         else:
-            element = event.element
+            element = event.body
             fn_result = await self._call(element)
             await self._do_internal(event, fn_result)
 
 
 class MapWithState(FunctionWithStateFlow):
     async def _do_internal(self, event, mapped_element):
-        mapped_event = Event(mapped_element, event.key, event.time, event.awaitable_result)
+        mapped_event = copy.copy(event)
+        mapped_event.body = mapped_element
         await self._do_downstream(mapped_event)
 
 
@@ -431,7 +443,7 @@ class Complete(Flow):
     async def _do(self, event):
         termination_result = await self._do_downstream(event)
         if event is not _termination_obj:
-            res = event.awaitable_result._set_result(event.element)
+            res = event._awaitable_result._set_result(event.body)
             if res:
                 await res
         return termination_result
@@ -454,9 +466,9 @@ class Reduce(Flow):
         if event is _termination_obj:
             return self._result
         else:
-            elem = event.element
+            elem = event.body
             if self._reify_metadata:
-                elem = {'key': event.key, 'time': event.time, 'data': event.element}
+                elem = {'key': event.key, 'time': event.time, 'data': event.body}
             res = self._fn(self._result, elem)
             if self._is_async:
                 res = await res
@@ -549,9 +561,11 @@ class JoinWithHttp(Flow):
                 request = job[1]
                 response = await request
                 response_body = await response.text()
-                joined_element = self._join_from_response(event.element, HttpResponse(response.status, response_body))
+                joined_element = self._join_from_response(event.body, HttpResponse(response.status, response_body))
                 if joined_element is not None:
-                    await self._do_downstream(Event(joined_element, event.key, event.time, event.awaitable_result))
+                    new_event = copy.copy(event)
+                    new_event.body = joined_element
+                    await self._do_downstream(new_event)
         except BaseException as ex:
             if not self._q.empty():
                 await self._q.get()
@@ -638,7 +652,7 @@ class JoinWithV3IOTable(JoinWithHttp, NeedsV3ioAccess):
 def _build_request_put_records(shard_id, events):
     record_list_for_json = []
     for event in events:
-        record = event.element
+        record = event.body
         if isinstance(record, bytes):
             record_as_bytes = record
         elif isinstance(record, str):
