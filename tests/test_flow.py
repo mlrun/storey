@@ -1,7 +1,7 @@
 import asyncio
 from datetime import datetime
 
-from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV, Complete, AsyncSource, Choice
+from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV, Complete, AsyncSource, Choice, Event
 
 
 class ATestException(Exception):
@@ -71,26 +71,36 @@ def test_csv_reader_as_dict_with_key_and_timestamp():
     controller = build_flow([
         ReadCSV('tests/test-with-timestamp.csv', with_header=True, build_dict=True, key_field='k',
                 timestamp_field='t', timestamp_format='%d/%m/%Y %H:%M:%S'),
-        Reduce([], append_and_return, reify_metadata=True),
+        Reduce([], append_and_return, full_event=True),
     ]).run()
 
     termination_result = controller.await_termination()
-    expected = [{'key': 'm1', 'time': datetime(2020, 2, 15, 2, 0), 'data': {'k': 'm1', 't': '15/02/2020 02:00:00', 'v': '8'}},
-                {'key': 'm2', 'time': datetime(2020, 2, 16, 2, 0), 'data': {'k': 'm2', 't': '16/02/2020 02:00:00', 'v': '14'}}]
-    assert termination_result == expected
+
+    assert len(termination_result) == 2
+    assert termination_result[0].key == 'm1'
+    assert termination_result[0].time == datetime(2020, 2, 15, 2, 0)
+    assert termination_result[0].body == {'k': 'm1', 't': '15/02/2020 02:00:00', 'v': '8'}
+    assert termination_result[1].key == 'm2'
+    assert termination_result[1].time == datetime(2020, 2, 16, 2, 0)
+    assert termination_result[1].body == {'k': 'm2', 't': '16/02/2020 02:00:00', 'v': '14'}
 
 
 def test_csv_reader_with_key_and_timestamp():
     controller = build_flow([
         ReadCSV('tests/test-with-timestamp.csv', with_header=True, key_field='k',
                 timestamp_field='t', timestamp_format='%d/%m/%Y %H:%M:%S'),
-        Reduce([], append_and_return, reify_metadata=True),
+        Reduce([], append_and_return, full_event=True),
     ]).run()
 
     termination_result = controller.await_termination()
-    expected = [{'key': 'm1', 'time': datetime(2020, 2, 15, 2, 0), 'data': ['m1', '15/02/2020 02:00:00', '8']},
-                {'key': 'm2', 'time': datetime(2020, 2, 16, 2, 0), 'data': ['m2', '16/02/2020 02:00:00', '14']}]
-    assert termination_result == expected
+
+    assert len(termination_result) == 2
+    assert termination_result[0].key == 'm1'
+    assert termination_result[0].time == datetime(2020, 2, 15, 2, 0)
+    assert termination_result[0].body == ['m1', '15/02/2020 02:00:00', '8']
+    assert termination_result[1].key == 'm2'
+    assert termination_result[1].time == datetime(2020, 2, 16, 2, 0)
+    assert termination_result[1].body == ['m2', '16/02/2020 02:00:00', '14']
 
 
 def test_csv_reader_as_dict_no_header():
@@ -281,3 +291,27 @@ def test_choice():
     controller.terminate()
     termination_result = controller.await_termination()
     assert termination_result == 2025
+
+
+def test_metadata():
+    def mapf(x):
+        x.key = x.key + 1
+        return x
+
+    def redf(acc, x):
+        if x.key not in acc:
+            acc[x.key] = []
+        acc[x.key].append(x.body)
+        return acc
+
+    controller = build_flow([
+        Source(),
+        Map(mapf, full_event=True),
+        Reduce({}, redf, full_event=True)
+    ]).run()
+
+    for i in range(10):
+        controller.emit(Event(i, key=i % 3))
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == {1: [0, 3, 6, 9], 2: [1, 4, 7], 3: [2, 5, 8]}
