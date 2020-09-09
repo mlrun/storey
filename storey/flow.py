@@ -461,15 +461,14 @@ class FunctionWithStateFlow(Flow):
         if event is _termination_obj:
             return await self._do_downstream(_termination_obj)
         else:
-            element = event.body
+            element = self._get_safe_event_or_body(event)
             fn_result = await self._call(element)
             await self._do_internal(event, fn_result)
 
 
 class MapWithState(FunctionWithStateFlow):
     async def _do_internal(self, event, mapped_element):
-        mapped_event = copy.copy(event)
-        mapped_event.body = mapped_element
+        mapped_event = self._user_fn_output_to_event(event, mapped_element)
         await self._do_downstream(mapped_event)
 
 
@@ -598,8 +597,7 @@ class JoinWithHttp(Flow):
                 response_body = await response.text()
                 joined_element = self._join_from_response(event.body, HttpResponse(response.status, response_body))
                 if joined_element is not None:
-                    new_event = copy.copy(event)
-                    new_event.body = joined_element
+                    new_event = self._user_fn_output_to_event(event, joined_element)
                     await self._do_downstream(new_event)
         except BaseException as ex:
             if not self._q.empty():
