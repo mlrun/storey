@@ -315,3 +315,26 @@ def test_metadata():
     controller.terminate()
     termination_result = controller.await_termination()
     assert termination_result == {1: [0, 3, 6, 9], 2: [1, 4, 7], 3: [2, 5, 8]}
+
+
+def test_metadata_immutability():
+    def mapf(x):
+        x.key = 'new key'
+        return x
+
+    controller = build_flow([
+        Source(),
+        Map(lambda x: 'new body'),
+        Map(mapf, full_event=True),
+        Complete(full_event=True)
+    ]).run()
+
+    event = Event('original body', key='original key')
+    result = controller.emit(event, return_awaitable_result=True).await_result()
+    controller.terminate()
+    controller.await_termination()
+
+    assert event.key == 'original key'
+    assert event.body == 'original body'
+    assert result.key == 'new key'
+    assert result.body == 'new body'

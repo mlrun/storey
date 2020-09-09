@@ -56,6 +56,21 @@ class Flow:
         for task in tasks:
             await task
 
+    def _get_safe_event_or_body(self, event):
+        if self._full_event:
+            new_event = copy.copy(event)
+            return new_event
+        else:
+            return event.body
+
+    def _user_fn_output_to_event(self, event, fn_result):
+        if self._full_event:
+            return fn_result
+        else:
+            mapped_event = copy.copy(event)
+            mapped_event.body = fn_result
+            return mapped_event
+
 
 class Choice(Flow):
     def __init__(self, choice_array, default=None, **kwargs):
@@ -73,8 +88,9 @@ class Choice(Flow):
         if not self._outlets or event is _termination_obj:
             return await super()._do_downstream(event)
         chosen_outlet = None
+        element = self._get_safe_event_or_body(event)
         for outlet, condition in self._choice_array:
-            if condition(event.body):
+            if condition(element):
                 chosen_outlet = outlet
                 break
         if chosen_outlet:
@@ -399,21 +415,14 @@ class UnaryFunctionFlow(Flow):
         if event is _termination_obj:
             return await self._do_downstream(_termination_obj)
         else:
-            if self._full_event:
-                element = event
-            else:
-                element = event.body
+            element = self._get_safe_event_or_body(event)
             fn_result = await self._call(element)
             await self._do_internal(event, fn_result)
 
 
 class Map(UnaryFunctionFlow):
     async def _do_internal(self, event, fn_result):
-        if self._full_event:
-            mapped_event = fn_result
-        else:
-            mapped_event = copy.copy(event)
-            mapped_event.body = fn_result
+        mapped_event = self._user_fn_output_to_event(event, fn_result)
         await self._do_downstream(mapped_event)
 
 
@@ -425,12 +434,8 @@ class Filter(UnaryFunctionFlow):
 
 class FlatMap(UnaryFunctionFlow):
     async def _do_internal(self, event, fn_result):
-        for mapped_element in fn_result:
-            if self._full_event:
-                mapped_event = mapped_element
-            else:
-                mapped_event = copy.copy(event)
-                mapped_event.body = mapped_element
+        for fn_result_element in fn_result:
+            mapped_event = self._user_fn_output_to_event(event, fn_result_element)
             await self._do_downstream(mapped_event)
 
 
@@ -472,7 +477,8 @@ class Complete(Flow):
     async def _do(self, event):
         termination_result = await self._do_downstream(event)
         if event is not _termination_obj:
-            res = event._awaitable_result._set_result(event.body)
+            result = self._get_safe_event_or_body(event)
+            res = event._awaitable_result._set_result(result)
             if res:
                 await res
         return termination_result
