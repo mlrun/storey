@@ -23,6 +23,6 @@ jobs:
         run: make test
       - name: integration
         env:
-          - V3IO_API: ${{ secrets.V3IO_API }}
-          - V3IO_ACCESS_KEY: ${{ secrets.V3IO_ACCESS_KEY }}
+          V3IO_API: ${{ secrets.V3IO_API }}
+          V3IO_ACCESS_KEY: ${{ secrets.V3IO_ACCESS_KEY }}
         run: make integration
