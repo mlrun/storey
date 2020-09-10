@@ -427,8 +427,8 @@ class Map(UnaryFunctionFlow):
 
 
 class Filter(UnaryFunctionFlow):
-    async def _do_internal(self, event, fn_result):
-        if fn_result:
+    async def _do_internal(self, event, keep):
+        if keep:
             await self._do_downstream(event)
 
 
