@@ -26,8 +26,9 @@ class V3ioError(Exception):
 
 
 class Flow:
-    def __init__(self, termination_result_fn=lambda x, y: None):
+    def __init__(self, full_event=False, termination_result_fn=lambda x, y: None):
         self._outlets = []
+        self._full_event = full_event
         self._termination_result_fn = termination_result_fn
 
     def to(self, outlet):
@@ -55,6 +56,21 @@ class Flow:
         for task in tasks:
             await task
 
+    def _get_safe_event_or_body(self, event):
+        if self._full_event:
+            new_event = copy.copy(event)
+            return new_event
+        else:
+            return event.body
+
+    def _user_fn_output_to_event(self, event, fn_result):
+        if self._full_event:
+            return fn_result
+        else:
+            mapped_event = copy.copy(event)
+            mapped_event.body = fn_result
+            return mapped_event
+
 
 class Choice(Flow):
     def __init__(self, choice_array, default=None, **kwargs):
@@ -72,8 +88,9 @@ class Choice(Flow):
         if not self._outlets or event is _termination_obj:
             return await super()._do_downstream(event)
         chosen_outlet = None
+        element = self._get_safe_event_or_body(event)
         for outlet, condition in self._choice_array:
-            if condition(event.body):
+            if condition(element):
                 chosen_outlet = outlet
                 break
         if chosen_outlet:
@@ -117,10 +134,19 @@ class FlowController:
     def emit(self, element, key=None, event_time=None, return_awaitable_result=False):
         if event_time is None:
             event_time = datetime.now(timezone.utc)
+        if hasattr(element, 'id'):
+            event = element
+            if key:
+                event.key = key
+            if event_time:
+                event.time = event_time
+        else:
+            event = Event(element, key=key, time=event_time)
         awaitable_result = None
         if return_awaitable_result:
             awaitable_result = AwaitableResult()
-        self._emit_fn(Event(element, key=key, time=event_time, awaitable_result=awaitable_result))
+        event._awaitable_result = awaitable_result
+        self._emit_fn(event)
         return awaitable_result
 
     def terminate(self):
@@ -212,12 +238,21 @@ class AsyncFlowController:
         self._loop_task = loop_task
 
     async def emit(self, element, key=None, event_time=None, await_result=False):
-        awaitable = None
         if event_time is None:
             event_time = datetime.now(timezone.utc)
+        if hasattr(element, 'id'):
+            event = element
+            if key:
+                event.key = key
+            if event_time:
+                event = event_time
+        else:
+            event = Event(element, key=key, time=event_time)
+        awaitable = None
         if await_result:
             awaitable = AsyncAwaitableResult()
-        await self._emit_fn(Event(element, key=key, time=event_time, awaitable_result=awaitable))
+        event._awaitable_result = awaitable
+        await self._emit_fn(event)
         if await_result:
             result = await awaitable.await_result()
             if isinstance(result, BaseException):
@@ -380,14 +415,14 @@ class UnaryFunctionFlow(Flow):
         if event is _termination_obj:
             return await self._do_downstream(_termination_obj)
         else:
-            element = event.body
+            element = self._get_safe_event_or_body(event)
             fn_result = await self._call(element)
             await self._do_internal(event, fn_result)
 
 
 class Map(UnaryFunctionFlow):
-    async def _do_internal(self, event, mapped_element):
-        mapped_event = Event(mapped_element, key=event.key, time=event.time, awaitable_result=event._awaitable_result)
+    async def _do_internal(self, event, fn_result):
+        mapped_event = self._user_fn_output_to_event(event, fn_result)
         await self._do_downstream(mapped_event)
 
 
@@ -398,10 +433,9 @@ class Filter(UnaryFunctionFlow):
 
 
 class FlatMap(UnaryFunctionFlow):
-    async def _do_internal(self, event, mapped_elements):
-        for mapped_element in mapped_elements:
-            mapped_event = copy.copy(event)
-            mapped_event.body = mapped_element
+    async def _do_internal(self, event, fn_result):
+        for fn_result_element in fn_result:
+            mapped_event = self._user_fn_output_to_event(event, fn_result_element)
             await self._do_downstream(mapped_event)
 
 
@@ -427,15 +461,14 @@ class FunctionWithStateFlow(Flow):
         if event is _termination_obj:
             return await self._do_downstream(_termination_obj)
         else:
-            element = event.body
+            element = self._get_safe_event_or_body(event)
             fn_result = await self._call(element)
             await self._do_internal(event, fn_result)
 
 
 class MapWithState(FunctionWithStateFlow):
     async def _do_internal(self, event, mapped_element):
-        mapped_event = copy.copy(event)
-        mapped_event.body = mapped_element
+        mapped_event = self._user_fn_output_to_event(event, mapped_element)
         await self._do_downstream(mapped_event)
 
 
@@ -443,21 +476,21 @@ class Complete(Flow):
     async def _do(self, event):
         termination_result = await self._do_downstream(event)
         if event is not _termination_obj:
-            res = event._awaitable_result._set_result(event.body)
+            result = self._get_safe_event_or_body(event)
+            res = event._awaitable_result._set_result(result)
             if res:
                 await res
         return termination_result
 
 
 class Reduce(Flow):
-    def __init__(self, inital_value, fn, reify_metadata=False):
-        super().__init__()
+    def __init__(self, initial_value, fn, **kwargs):
+        super().__init__(**kwargs)
         if not callable(fn):
             raise TypeError(f'Expected a callable, got {type(fn)}')
         self._is_async = asyncio.iscoroutinefunction(fn)
         self._fn = fn
-        self._result = inital_value
-        self._reify_metadata = reify_metadata
+        self._result = initial_value
 
     def to(self, outlet):
         raise ValueError("Reduce is a terminal step. It cannot be piped further.")
@@ -466,9 +499,10 @@ class Reduce(Flow):
         if event is _termination_obj:
             return self._result
         else:
-            elem = event.body
-            if self._reify_metadata:
-                elem = {'key': event.key, 'time': event.time, 'data': event.body}
+            if self._full_event:
+                elem = event
+            else:
+                elem = event.body
             res = self._fn(self._result, elem)
             if self._is_async:
                 res = await res
@@ -563,8 +597,7 @@ class JoinWithHttp(Flow):
                 response_body = await response.text()
                 joined_element = self._join_from_response(event.body, HttpResponse(response.status, response_body))
                 if joined_element is not None:
-                    new_event = copy.copy(event)
-                    new_event.body = joined_element
+                    new_event = self._user_fn_output_to_event(event, joined_element)
                     await self._do_downstream(new_event)
         except BaseException as ex:
             if not self._q.empty():
