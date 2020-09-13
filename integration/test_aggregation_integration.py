@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 
-from storey import build_flow, Source, Reduce
-from storey.aggregations import AggregateByKey, FieldAggregator, QueryAggregationByKey
+from storey import build_flow, Source, Reduce, Cache
+from storey.aggregations import AggregateByKey, FieldAggregator, QueryAggregationByKey, Persist
 from storey.dtypes import SlidingWindows
 from .integration_test_utils import setup_teardown_test
 
@@ -14,11 +14,14 @@ def append_return(lst, x):
 
 
 def test_query_aggregate_by_key(setup_teardown_test):
+    cache = Cache(setup_teardown_test, "v3io")
+
     controller = build_flow([
         Source(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg", "min", "max"],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
-                       "v3io", setup_teardown_test),
+                       cache),
+        Persist(cache),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -70,11 +73,12 @@ def test_query_aggregate_by_key(setup_teardown_test):
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
+    other_cache = Cache(setup_teardown_test, "v3io")
     controller = build_flow([
         Source(),
         QueryAggregationByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg", "min", "max"],
                                                SlidingWindows(['1h', '2h', '24h'], '10m'))],
-                              "v3io", setup_teardown_test),
+                              other_cache),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 

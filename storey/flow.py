@@ -481,6 +481,25 @@ def _convert_nginx_to_python_type(typ, value):
         raise V3ioError(f'Type {typ} in get item response is not supported')
 
 
+def _convert_python_type_to_nginx(value):
+    if isinstance(value, str):
+        return {'S': value}
+    elif isinstance(value, bool):
+        return {'BOOL': value}
+    elif isinstance(value, float) or isinstance(value, int):
+        return {'N': value}
+    elif isinstance(value, bytes):
+        return {'B': base64.b64encode(value).decode('ascii')}
+    elif isinstance(datetime):
+        timestamp = value.timestamp()
+
+        secs = int(timestamp)
+        nanosecs = int((timestamp - secs) * 1e+9)
+        return {'TS': f'{secs}:{nanosecs}'}
+    else:
+        raise V3ioError(f'Type {typ} in get item response is not supported')
+
+
 def _v3io_parse_get_items_response(response_body):
     response_object = json.loads(response_body)
     i = 0
@@ -536,6 +555,14 @@ def _build_request_put_records(shard_id, events):
         'Records': record_list_for_json
     }
     return json.dumps(payload_obj)
+
+
+def _v3io_build_putItem_request(data):
+    request = {}
+
+    for key, value in data.items():
+        request[key] = _convert_python_type_to_nginx(value)
+    return request
 
 
 class WriteToV3IOStream(Flow, NeedsV3ioAccess):
@@ -667,33 +694,32 @@ def build_flow(steps):
 
 
 class V3ioTable(NeedsV3ioAccess):
-    def __init__(self, table, webapi=None, access_key=None):
+    def __init__(self, webapi=None, access_key=None):
         NeedsV3ioAccess.__init__(self, webapi, access_key)
-        self.table = table
         self.client_session = None
 
-    def lazy_init(self):
+    def _lazy_init(self):
         connector = aiohttp.TCPConnector()
         self.client_session = aiohttp.ClientSession(connector=connector)
 
-    async def save_schema(self, schema):
+    async def _save_schema(self, table_path, schema):
         if not self.client_session:
-            self.lazy_init()
+            self._lazy_init()
 
-        response = await self.client_session.put(f'{self._webapi_url}/{self.table}/{schema_file_name}',
+        response = await self.client_session.put(f'{self._webapi_url}/{table_path}/{schema_file_name}',
                                                  headers=self._get_put_file_headers, data=json.dumps(schema), ssl=False)
         if not response.status == 200:
             body = await response.text()
             raise V3ioError(f'Failed to save schema file. Response status code was {response.status}: {body}')
 
-    async def load_schema(self):
+    async def _load_schema(self, table_path):
         if not self.client_session:
-            self.lazy_init()
+            self._lazy_init()
 
         connector = aiohttp.TCPConnector()
         self.client_session = aiohttp.ClientSession(connector=connector)
 
-        schema_path = f'{self._webapi_url}/{self.table}/{schema_file_name}'
+        schema_path = f'{self._webapi_url}/{table_path}/{schema_file_name}'
         response = await self.client_session.get(schema_path, headers=self._get_put_file_headers, ssl=False)
         body = await response.text()
         if response.status == 404:
@@ -705,24 +731,16 @@ class V3ioTable(NeedsV3ioAccess):
 
         return schema
 
-    async def save_store(self, aggr_store):
+    async def _save_key(self, table_path, key, aggr_item, additional_data=None):
         if not self.client_session:
-            self.lazy_init()
+            self._lazy_init()
 
-        for key, aggregation_element in aggr_store.items():
-            data = {'Item': self._get_attributes_as_blob(aggregation_element), 'UpdateMode': 'CreateOrReplaceAttributes'}
-            response = await self.client_session.put(f'{self._webapi_url}/{self.table}/{key}',
-                                                     headers=self._put_item_headers, data=json.dumps(data), ssl=False)
-            if not response.status == 200:
-                body = await response.text()
-                raise V3ioError(f'Failed to save aggregation for key: {key}. Response status code was {response.status}: {body}')
+        request_data = self._get_attributes_as_blob(aggr_item)
+        if additional_data:
+            request_data.update(_v3io_build_putItem_request(additional_data))
 
-    async def save_key(self, key, aggr_item):
-        if not self.client_session:
-            self.lazy_init()
-
-        data = {'Item': self._get_attributes_as_blob(aggr_item), 'UpdateMode': 'CreateOrReplaceAttributes'}
-        response = await self.client_session.put(f'{self._webapi_url}/{self.table}/{key}',
+        data = {'Item': request_data, 'UpdateMode': 'CreateOrReplaceAttributes'}
+        response = await self.client_session.put(f'{self._webapi_url}/{table_path}/{key}',
                                                  headers=self._put_item_headers, data=json.dumps(data), ssl=False)
         if not response.status == 200:
             body = await response.text()
@@ -743,13 +761,13 @@ class V3ioTable(NeedsV3ioAccess):
     #   'feature_name_1': {'first_bucket_time': <time> 'values': []},
     #   'feature_name_2': {'first_bucket_time': <time> 'values': []}
     # }
-    async def load_key(self, key):
+    async def _load_key(self, table_path, key):
         if not self.client_session:
-            self.lazy_init()
+            self._lazy_init()
 
         request_body = json.dumps({'AttributesToGet': '*'})
 
-        response = await self.client_session.put(f'{self._webapi_url}/{self.table}/{key}',
+        response = await self.client_session.put(f'{self._webapi_url}/{table_path}/{key}',
                                                  headers=self._get_item_headers, data=request_body, ssl=False)
         body = await response.text()
         if response.status == 404:
@@ -765,25 +783,57 @@ class V3ioTable(NeedsV3ioAccess):
 
 
 class NoopTable:
-    async def save_schema(self, schema):
+    async def _save_schema(self,table_path, schema):
         pass
 
-    async def load_schema(self):
+    async def _load_schema(self,table_path):
         pass
 
-    async def save_store(self, aggr_store):
+    async def _save_key(self,table_path, key, aggr_item, additional_data):
         pass
 
-    async def save_key(self, key, aggr_item):
-        pass
-
-    async def load_key(self, key):
+    async def _load_key(self,table_path, key):
         pass
 
 
-def new_storage_table(typ, table, kw):
+class Cache:
+    def __init__(self, table_path, storage=None, **kwargs):
+        self.table_path = table_path
+        if storage:
+            self.storage = new_storage_table(storage, **kwargs)
+        else:
+            self.storage = NoopTable()
+        self._cache = {}
+        self._aggregation_store = None
+
+    def __getitem__(self, key):
+        if key in self._cache:
+            return self._cache[key]
+        elif key == '':
+            #     Todo: get from the aggregation store?
+            return
+
+        raise KeyError(key)
+
+    # todo: delete
+    def __setitem__(self, key, value):
+        self._cache[key] = value
+
+    def set_aggregation_store(self, store):
+        store._table_path = self.table_path
+        store._storage = self.storage
+        self._aggregation_store = store
+
+    async def persist_key(self, key):
+        # 1. get aggregate_store data
+        # 2. get additional data
+        # 3. save all to storage
+        await self.storage._save_key(self.table_path, key, self._aggregation_store[key], self._cache.get(key, None))
+
+
+def new_storage_table(typ, **kwargs):
     if typ == 'v3io':
-        return V3ioTable(table, kw.get('webapi', None), kw.get('access_key', None))
+        return V3ioTable(**kwargs)
     if typ == 'noop':
         return NoopTable()
     else:
