@@ -1,4 +1,5 @@
 import asyncio
+import copy
 from datetime import datetime
 
 from .aggregation_utils import is_raw_aggregate, get_virtual_aggregation_func, get_dependant_aggregates, get_all_raw_aggregates, \
@@ -26,9 +27,13 @@ class AggregateByKey(Flow):
         self._emit_worker_running = False
         self._terminate_worker = False
 
-        self.augmentation_fn = augmentation_fn
+        self._augmentation_fn = augmentation_fn
         if not augmentation_fn:
-            self.augmentation_fn = lambda element, features: element.update(features)
+            def f(element, features):
+                features.update(element)
+                return features
+
+            self._augmentation_fn = f
 
         self.key_extractor = None
         if key:
@@ -50,7 +55,7 @@ class AggregateByKey(Flow):
             asyncio.get_running_loop().create_task(self._emit_worker())
             self._emit_worker_running = True
 
-        element = event.element
+        element = event.body
         key = event.key
         if self.key_extractor:
             key = self.key_extractor(element)
@@ -67,9 +72,12 @@ class AggregateByKey(Flow):
 
     # Emit a single event for the requested key
     async def _emit_event(self, key, event):
-        features = await self._aggregates_store.get_features(key, event.time)
-        self.augmentation_fn(event.element, features)
-        await self._do_downstream(Event(event.element, key, event.time, event.awaitable_result))
+        features = self._aggregates_store.get_features(key, event.time)
+        features = self._augmentation_fn(event.body, features)
+        new_event = copy.copy(event)
+        new_event.key = key
+        new_event.body = features
+        await self._do_downstream(new_event)
 
     # Emit multiple events for every key in the store with the current time
     async def _emit_all_events(self, timestamp):

@@ -1,14 +1,14 @@
 import asyncio
 import base64
-import collections
+import copy
 import csv
 import json
 import os
 import queue
 import re
 import threading
-import time
-from datetime import datetime
+from datetime import datetime, timezone
+import uuid
 import random
 import pickle
 
@@ -29,8 +29,9 @@ class V3ioError(Exception):
 
 
 class Flow:
-    def __init__(self, termination_result_fn=lambda x, y: None):
+    def __init__(self, full_event=False, termination_result_fn=lambda x, y: None):
         self._outlets = []
+        self._full_event = full_event
         self._termination_result_fn = termination_result_fn
 
     def to(self, outlet):
@@ -58,8 +59,60 @@ class Flow:
         for task in tasks:
             await task
 
+    def _get_safe_event_or_body(self, event):
+        if self._full_event:
+            new_event = copy.copy(event)
+            return new_event
+        else:
+            return event.body
 
-Event = collections.namedtuple('Event', 'element key time awaitable_result')
+    def _user_fn_output_to_event(self, event, fn_result):
+        if self._full_event:
+            return fn_result
+        else:
+            mapped_event = copy.copy(event)
+            mapped_event.body = fn_result
+            return mapped_event
+
+
+class Choice(Flow):
+    def __init__(self, choice_array, default=None, **kwargs):
+        Flow.__init__(self, **kwargs)
+
+        self._choice_array = choice_array
+        for outlet, _ in choice_array:
+            self._outlets.append(outlet)
+
+        if default:
+            self._outlets.append(default)
+        self._default = default
+
+    async def _do(self, event):
+        if not self._outlets or event is _termination_obj:
+            return await super()._do_downstream(event)
+        chosen_outlet = None
+        element = self._get_safe_event_or_body(event)
+        for outlet, condition in self._choice_array:
+            if condition(element):
+                chosen_outlet = outlet
+                break
+        if chosen_outlet:
+            await chosen_outlet._do(event)
+        elif self._default:
+            await self._default._do(event)
+
+
+class Event:
+    def __init__(self, body, id=None, key=None, time=None, headers=None, method=None, path='/', content_type=None, awaitable_result=None):
+        self.body = body
+        self.id = id or uuid.uuid4().hex
+        self.key = key
+        self.time = time or datetime.now(timezone.utc)
+        self.headers = headers
+        self.method = method
+        self.path = path
+        self.content_type = content_type
+        self._awaitable_result = awaitable_result
 
 
 class AwaitableResult:
@@ -72,6 +125,9 @@ class AwaitableResult:
     def _set_result(self, element):
         self._q.put(element)
 
+    def _set_error(self, element):
+        pass
+
 
 class FlowController:
     def __init__(self, emit_fn, await_termination_fn):
@@ -80,11 +136,20 @@ class FlowController:
 
     def emit(self, element, key=None, event_time=None, return_awaitable_result=False):
         if event_time is None:
-            event_time = time.time()
+            event_time = datetime.now(timezone.utc)
+        if hasattr(element, 'id'):
+            event = element
+            if key:
+                event.key = key
+            if event_time:
+                event.time = event_time
+        else:
+            event = Event(element, key=key, time=event_time)
         awaitable_result = None
         if return_awaitable_result:
             awaitable_result = AwaitableResult()
-        self._emit_fn(Event(element, key, event_time, awaitable_result))
+        event._awaitable_result = awaitable_result
+        self._emit_fn(event)
         return awaitable_result
 
     def terminate(self):
@@ -113,7 +178,7 @@ class Source(Flow):
 
     async def _run_loop(self):
         loop = asyncio.get_running_loop()
-        self._termination_future = asyncio.futures.Future()
+        self._termination_future = asyncio.get_running_loop().create_future()
 
         while True:
             event = await loop.run_in_executor(None, self._q.get)
@@ -156,28 +221,155 @@ class Source(Flow):
         return FlowController(self._emit, raise_error_or_return_termination_result)
 
 
+class AsyncAwaitableResult:
+    def __init__(self):
+        self._q = asyncio.Queue(1)
+
+    async def await_result(self):
+        return await self._q.get()
+
+    async def _set_result(self, element):
+        await self._q.put(element)
+
+    async def _set_error(self, ex):
+        await self._set_result(ex)
+
+
+class AsyncFlowController:
+    def __init__(self, emit_fn, loop_task):
+        self._emit_fn = emit_fn
+        self._loop_task = loop_task
+
+    async def emit(self, element, key=None, event_time=None, await_result=False):
+        if event_time is None:
+            event_time = datetime.now(timezone.utc)
+        if hasattr(element, 'id'):
+            event = element
+            if key:
+                event.key = key
+            if event_time:
+                event = event_time
+        else:
+            event = Event(element, key=key, time=event_time)
+        awaitable = None
+        if await_result:
+            awaitable = AsyncAwaitableResult()
+        event._awaitable_result = awaitable
+        await self._emit_fn(event)
+        if await_result:
+            result = await awaitable.await_result()
+            if isinstance(result, BaseException):
+                raise result
+            return result
+
+    async def terminate(self):
+        await self._emit_fn(_termination_obj)
+
+    async def await_termination(self):
+        return await self._loop_task
+
+
+class AsyncSource(Flow):
+    def __init__(self, buffer_size=1, **kwargs):
+        super().__init__(**kwargs)
+        if buffer_size <= 0:
+            raise ValueError('Buffer size must be positive')
+        self._q = asyncio.Queue(buffer_size, loop=asyncio.get_running_loop())
+        self._ex = None
+
+    async def _run_loop(self):
+        while True:
+            event = await self._q.get()
+            try:
+                termination_result = await self._do_downstream(event)
+                if event is _termination_obj:
+                    return termination_result
+            except BaseException as ex:
+                self._ex = ex
+                if event._awaitable_result:
+                    awaitable = event._awaitable_result._set_error(ex)
+                    if awaitable:
+                        await awaitable
+                if not self._q.empty():
+                    await self._q.get()
+                return None
+
+    def _raise_on_error(self):
+        if self._ex:
+            raise FlowError('Flow execution terminated due to an error') from self._ex
+
+    async def _emit(self, event):
+        self._raise_on_error()
+        await self._q.put(event)
+        self._raise_on_error()
+
+    async def run(self):
+        loop_task = asyncio.get_running_loop().create_task(self._run_loop())
+        return AsyncFlowController(self._emit, loop_task)
+
+
 class ReadCSV(Flow):
-    def __init__(self, paths, skip_header=False, **kwargs):
+    def __init__(self, paths, with_header=False, build_dict=False, key_field=None, timestamp_field=None, timestamp_format=None, **kwargs):
         super().__init__(**kwargs)
         if isinstance(paths, str):
             paths = [paths]
         self._paths = paths
-        self._skip_header = skip_header
+        self._with_header = with_header
+        self._build_dict = build_dict
+        self._key_field = key_field
+        self._timestamp_field = timestamp_field
+        self._timestamp_format = timestamp_format
 
         self._termination_q = queue.Queue(1)
         self._ex = None
 
+        if not with_header and isinstance(key_field, str):
+            raise ValueError('key_field can only be set to an integer when with_header is false')
+        if not with_header and isinstance(timestamp_field, str):
+            raise ValueError('timestamp_field can only be set to an integer when with_header is false')
+
     async def _run_loop(self):
-        self._termination_future = asyncio.futures.Future()
+        self._termination_future = asyncio.get_running_loop().create_future()
 
         try:
             for path in self._paths:
                 async with aiofiles.open(path, mode='r') as f:
-                    if self._skip_header:
-                        await f.readline()
+                    header = None
+                    field_name_to_index = None
+                    if self._with_header:
+                        line = await f.readline()
+                        header = next(csv.reader([line]))
+                        field_name_to_index = {}
+                        for i in range(len(header)):
+                            field_name_to_index[header[i]] = i
                     async for line in f:
                         parsed_line = next(csv.reader([line]))
-                        await self._do_downstream(Event(parsed_line, None, datetime.now(), None))
+                        element = parsed_line
+                        key = None
+                        if header:
+                            if len(parsed_line) != len(header):
+                                raise ValueError(f'CSV line with {len(parsed_line)} fields did not match header with {len(header)} fields')
+                            if self._build_dict:
+                                element = {}
+                                for i in range(len(parsed_line)):
+                                    element[header[i]] = parsed_line[i]
+                        if self._key_field:
+                            key_field = self._key_field
+                            if self._with_header and isinstance(key_field, str):
+                                key_field = field_name_to_index[key_field]
+                            key = parsed_line[key_field]
+                        if self._timestamp_field:
+                            timestamp_field = self._timestamp_field
+                            if self._with_header and isinstance(timestamp_field, str):
+                                timestamp_field = field_name_to_index[timestamp_field]
+                            timestamp_str = parsed_line[timestamp_field]
+                            if self._timestamp_format:
+                                timestamp = datetime.strptime(timestamp_str, self._timestamp_format)
+                            else:
+                                timestamp = datetime.fromisoformat(timestamp_str)
+                        else:
+                            timestamp = datetime.now()
+                        await self._do_downstream(Event(element, key=key, time=timestamp))
             termination_result = await self._do_downstream(_termination_obj)
             self._termination_future.set_result(termination_result)
         except BaseException as ex:
@@ -226,14 +418,14 @@ class UnaryFunctionFlow(Flow):
         if event is _termination_obj:
             return await self._do_downstream(_termination_obj)
         else:
-            element = event.element
+            element = self._get_safe_event_or_body(event)
             fn_result = await self._call(element)
             await self._do_internal(event, fn_result)
 
 
 class Map(UnaryFunctionFlow):
-    async def _do_internal(self, event, mapped_element):
-        mapped_event = Event(mapped_element, event.key, event.time, event.awaitable_result)
+    async def _do_internal(self, event, fn_result):
+        mapped_event = self._user_fn_output_to_event(event, fn_result)
         await self._do_downstream(mapped_event)
 
 
@@ -244,9 +436,9 @@ class Filter(UnaryFunctionFlow):
 
 
 class FlatMap(UnaryFunctionFlow):
-    async def _do_internal(self, event, mapped_elements):
-        for mapped_element in mapped_elements:
-            mapped_event = Event(mapped_element, event.key, event.time, event.awaitable_result)
+    async def _do_internal(self, event, fn_result):
+        for fn_result_element in fn_result:
+            mapped_event = self._user_fn_output_to_event(event, fn_result_element)
             await self._do_downstream(mapped_event)
 
 
@@ -272,32 +464,36 @@ class FunctionWithStateFlow(Flow):
         if event is _termination_obj:
             return await self._do_downstream(_termination_obj)
         else:
-            element = event.element
+            element = self._get_safe_event_or_body(event)
             fn_result = await self._call(element)
             await self._do_internal(event, fn_result)
 
 
 class MapWithState(FunctionWithStateFlow):
     async def _do_internal(self, event, mapped_element):
-        mapped_event = Event(mapped_element, event.key, event.time, event.awaitable_result)
+        mapped_event = self._user_fn_output_to_event(event, mapped_element)
         await self._do_downstream(mapped_event)
 
 
 class Complete(Flow):
     async def _do(self, event):
-        await self._do_downstream(event)
+        termination_result = await self._do_downstream(event)
         if event is not _termination_obj:
-            event.awaitable_result._set_result(event.element)
+            result = self._get_safe_event_or_body(event)
+            res = event._awaitable_result._set_result(result)
+            if res:
+                await res
+        return termination_result
 
 
 class Reduce(Flow):
-    def __init__(self, inital_value, fn):
-        super().__init__()
+    def __init__(self, initial_value, fn, **kwargs):
+        super().__init__(**kwargs)
         if not callable(fn):
             raise TypeError(f'Expected a callable, got {type(fn)}')
         self._is_async = asyncio.iscoroutinefunction(fn)
         self._fn = fn
-        self._result = inital_value
+        self._result = initial_value
 
     def to(self, outlet):
         raise ValueError("Reduce is a terminal step. It cannot be piped further.")
@@ -306,8 +502,11 @@ class Reduce(Flow):
         if event is _termination_obj:
             return self._result
         else:
-            element = event.element
-            res = self._fn(self._result, element)
+            if self._full_event:
+                elem = event
+            else:
+                elem = event.body
+            res = self._fn(self._result, elem)
             if self._is_async:
                 res = await res
             self._result = res
@@ -413,9 +612,10 @@ class JoinWithHttp(Flow):
                 request = job[1]
                 response = await request
                 response_body = await response.text()
-                joined_element = self._join_from_response(event.element, HttpResponse(response.status, response_body))
+                joined_element = self._join_from_response(event.body, HttpResponse(response.status, response_body))
                 if joined_element is not None:
-                    await self._do_downstream(Event(joined_element, event.key, event.time, event.awaitable_result))
+                    new_event = self._user_fn_output_to_event(event, joined_element)
+                    await self._do_downstream(new_event)
         except BaseException as ex:
             if not self._q.empty():
                 await self._q.get()
@@ -539,7 +739,7 @@ class JoinWithV3IOTable(JoinWithHttp, NeedsV3ioAccess):
 def _build_request_put_records(shard_id, events):
     record_list_for_json = []
     for event in events:
-        record = event.element
+        record = event.body
         if isinstance(record, bytes):
             record_as_bytes = record
         elif isinstance(record, str):
