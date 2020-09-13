@@ -1016,12 +1016,3 @@ class Cache:
         # 2. get additional data
         # 3. save all to storage
         await self.storage._save_key(self.table_path, key, self._aggregation_store[key], self._cache.get(key, None))
-
-
-def new_storage_table(typ, **kwargs):
-    if typ == 'v3io':
-        return V3ioTable(**kwargs)
-    if typ == 'noop':
-        return NoopDriver()
-    else:
-        raise TypeError(f'storage {typ} is not supported')

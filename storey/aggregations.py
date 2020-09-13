@@ -5,7 +5,7 @@ from datetime import datetime
 from .aggregation_utils import is_raw_aggregate, get_virtual_aggregation_func, get_dependant_aggregates, get_all_raw_aggregates, \
     get_all_raw_aggregates_with_hidden
 from .dtypes import EmitEveryEvent, FixedWindows, EmitAfterPeriod, EmitAfterWindow, EmitAfterMaxEvent
-from .flow import Flow, _termination_obj, Event, new_storage_table
+from .flow import Flow, _termination_obj, Event
 
 _default_emit_policy = EmitEveryEvent()
 
