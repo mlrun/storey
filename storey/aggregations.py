@@ -47,6 +47,7 @@ class AggregateByKey(Flow):
     async def _do(self, event):
         if event == _termination_obj:
             self._terminate_worker = True
+            await self._cache._close_connection()
             return await self._do_downstream(_termination_obj)
 
         # check whether a background loop is needed, if so create start one
@@ -114,6 +115,7 @@ class QueryAggregationByKey(AggregateByKey):
     async def _do(self, event):
         if event == _termination_obj:
             self._terminate_worker = True
+            await self._cache._close_connection()
             return await self._do_downstream(_termination_obj)
 
         # check whether a background loop is needed, if so create start one
@@ -143,6 +145,7 @@ class Persist(Flow):
 
     async def _do(self, event):
         if event is _termination_obj:
+            await self._cache._close_connection()
             return await self._do_downstream(_termination_obj)
         else:
             # todo: persist keys in parallel
