@@ -17,8 +17,8 @@ class AggregateByKey(Flow):
         Flow.__init__(self)
         self._aggregates_store = AggregateStore(aggregates)
 
-        self.cache = cache
-        self.cache.set_aggregation_store(self._aggregates_store)
+        self._cache = cache
+        self._cache.set_aggregation_store(self._aggregates_store)
 
         self._aggregates_metadata = aggregates
 
@@ -72,7 +72,7 @@ class AggregateByKey(Flow):
 
     # Emit a single event for the requested key
     async def _emit_event(self, key, event):
-        features = self._aggregates_store.get_features(key, event.time)
+        features = await self._aggregates_store.get_features(key, event.time)
         features = self._augmentation_fn(event.body, features)
         new_event = copy.copy(event)
         new_event.key = key
@@ -122,7 +122,7 @@ class QueryAggregationByKey(AggregateByKey):
             asyncio.get_running_loop().create_task(self._emit_worker())
             self._emit_worker_running = True
 
-        element = event.element
+        element = event.body
         key = event.key
         if self.key_extractor:
             key = self.key_extractor(element)
