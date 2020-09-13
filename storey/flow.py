@@ -981,6 +981,10 @@ class V3ioDriver(NeedsV3ioAccess):
         else:
             raise V3ioError(f'Failed to get item. Response status code was {response.status}: {body}')
 
+    async def _close_connection(self):
+        if not self.client_session.closed:
+            await self.client_session.close()
+
 
 class NoopDriver:
     async def _save_schema(self, table_path, schema):
@@ -993,6 +997,9 @@ class NoopDriver:
         pass
 
     async def _load_key(self, table_path, key):
+        pass
+
+    async def _close_connection(self):
         pass
 
 
@@ -1015,3 +1022,6 @@ class Cache:
         aggr_by_key = self._aggregation_store[key]
         additional_cache_data_by_key = self._cache.get(key, None)
         await self.storage._save_key(self.table_path, key, aggr_by_key, additional_cache_data_by_key)
+
+    async def _close_connection(self):
+        await self.storage._close_connection()
