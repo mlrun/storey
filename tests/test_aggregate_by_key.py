@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from storey import build_flow, Source, Reduce, Cache
+from storey import build_flow, Source, Reduce, Cache, NoopDriver
 from storey.aggregations import AggregateByKey, FieldAggregator
 from storey.dtypes import SlidingWindows, FixedWindows, EmitAfterMaxEvent
 
@@ -17,7 +17,7 @@ def test_sliding_window_simple_aggregation_flow():
         Source(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg", "min", "max"],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
-                       Cache("test", "noop")),
+                       Cache("test", NoopDriver())),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -69,7 +69,7 @@ def test_sliding_window_multiple_keys_aggregation_flow():
         Source(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg"],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
-                       Cache("test", "noop")),
+                       Cache("test", NoopDriver())),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -111,7 +111,7 @@ def test_sliding_window_aggregations_with_filters_flow():
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg"],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'),
                                         aggr_filter=lambda element: element['is_valid'] == 0)],
-                       Cache("test", "noop")),
+                       Cache("test", NoopDriver())),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -162,7 +162,7 @@ def test_sliding_window_aggregations_with_max_values_flow():
         AggregateByKey([FieldAggregator("num_hours_with_stuff_in_the_last_24h", "col1", ["count"],
                                         SlidingWindows(['24h'], '1h'),
                                         max_value=1)],
-                       Cache("test", "noop")),
+                       Cache("test", NoopDriver())),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -196,7 +196,7 @@ def test_sliding_window_simple_aggregation_flow_multiple_fields():
                                         SlidingWindows(['1h', '2h'], '15m')),
                         FieldAggregator("abc", "col3", ["sum"],
                                         SlidingWindows(['24h'], '10m'))],
-                       Cache("test", "noop")),
+                       Cache("test", NoopDriver())),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -249,7 +249,7 @@ def test_fixed_window_simple_aggregation_flow():
         Source(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["count"],
                                         FixedWindows(['1h', '2h', '3h', '24h']))],
-                       Cache("test", "noop")),
+                       Cache("test", NoopDriver())),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -289,7 +289,7 @@ def test_emit_max_event_sliding_window_multiple_keys_aggregation_flow():
         Source(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg"],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
-                       Cache("test", "noop"), emit_policy=EmitAfterMaxEvent(3)),
+                       Cache("test", NoopDriver()), emit_policy=EmitAfterMaxEvent(3)),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 

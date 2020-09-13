@@ -893,7 +893,7 @@ def build_flow(steps):
     return steps[0]
 
 
-class V3ioTable(NeedsV3ioAccess):
+class V3ioDriver(NeedsV3ioAccess):
     def __init__(self, webapi=None, access_key=None):
         NeedsV3ioAccess.__init__(self, webapi, access_key)
         self.client_session = None
@@ -982,7 +982,7 @@ class V3ioTable(NeedsV3ioAccess):
             raise V3ioError(f'Failed to get item. Response status code was {response.status}: {body}')
 
 
-class NoopTable:
+class NoopDriver:
     async def _save_schema(self,table_path, schema):
         pass
 
@@ -997,27 +997,14 @@ class NoopTable:
 
 
 class Cache:
-    def __init__(self, table_path, storage=None, **kwargs):
+    def __init__(self, table_path, storage):
         self.table_path = table_path
-        if storage:
-            self.storage = new_storage_table(storage, **kwargs)
-        else:
-            self.storage = NoopTable()
+        self.storage = storage
         self._cache = {}
         self._aggregation_store = None
 
     def __getitem__(self, key):
-        if key in self._cache:
-            return self._cache[key]
-        elif key == '':
-            #     Todo: get from the aggregation store?
-            return
-
-        raise KeyError(key)
-
-    # todo: delete
-    def __setitem__(self, key, value):
-        self._cache[key] = value
+        return self._cache[key]
 
     def set_aggregation_store(self, store):
         store._table_path = self.table_path
@@ -1035,6 +1022,6 @@ def new_storage_table(typ, **kwargs):
     if typ == 'v3io':
         return V3ioTable(**kwargs)
     if typ == 'noop':
-        return NoopTable()
+        return NoopDriver()
     else:
         raise TypeError(f'storage {typ} is not supported')
