@@ -697,7 +697,7 @@ def _convert_python_type_to_nginx(value):
         nanosecs = int((timestamp - secs) * 1e+9)
         return {'TS': f'{secs}:{nanosecs}'}
     else:
-        raise V3ioError(f'Type {typ} in get item response is not supported')
+        raise V3ioError(f'Type {type(value)} in get item response is not supported')
 
 
 def _v3io_parse_get_items_response(response_body):
@@ -757,7 +757,7 @@ def _build_request_put_records(shard_id, events):
     return json.dumps(payload_obj)
 
 
-def _v3io_build_putItem_request(data):
+def _v3io_build_put_item_request(data):
     request = {}
 
     for key, value in data.items():
@@ -937,7 +937,7 @@ class V3ioDriver(NeedsV3ioAccess):
 
         request_data = self._get_attributes_as_blob(aggr_item)
         if additional_data:
-            request_data.update(_v3io_build_putItem_request(additional_data))
+            request_data.update(_v3io_build_put_item_request(additional_data))
 
         data = {'Item': request_data, 'UpdateMode': 'CreateOrReplaceAttributes'}
         response = await self.client_session.put(f'{self._webapi_url}/{table_path}/{key}',
@@ -983,16 +983,16 @@ class V3ioDriver(NeedsV3ioAccess):
 
 
 class NoopDriver:
-    async def _save_schema(self,table_path, schema):
+    async def _save_schema(self, table_path, schema):
         pass
 
-    async def _load_schema(self,table_path):
+    async def _load_schema(self, table_path):
         pass
 
-    async def _save_key(self,table_path, key, aggr_item, additional_data):
+    async def _save_key(self, table_path, key, aggr_item, additional_data):
         pass
 
-    async def _load_key(self,table_path, key):
+    async def _load_key(self, table_path, key):
         pass
 
 
@@ -1012,7 +1012,6 @@ class Cache:
         self._aggregation_store = store
 
     async def persist_key(self, key):
-        # 1. get aggregate_store data
-        # 2. get additional data
-        # 3. save all to storage
-        await self.storage._save_key(self.table_path, key, self._aggregation_store[key], self._cache.get(key, None))
+        aggr_by_key = self._aggregation_store[key]
+        additional_cache_data_by_key = self._cache.get(key, None)
+        await self.storage._save_key(self.table_path, key, aggr_by_key, additional_cache_data_by_key)

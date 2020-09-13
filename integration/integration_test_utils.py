@@ -31,29 +31,32 @@ async def recursive_delete(path, v3io_access):
     connector = aiohttp.TCPConnector()
     client_session = aiohttp.ClientSession(connector=connector)
 
-    has_more = True
-    next_marker = ''
-    while has_more:
-        get_items_body = {'AttributesToGet': '__name', 'Marker': next_marker}
-        response = await client_session.put(f'{v3io_access._webapi_url}/{path}/',
-                                                 headers=v3io_access._get_items_headers, data=json.dumps(get_items_body), ssl=False)
-        body = await response.text()
-        if response.status == 200:
-            res = _v3io_parse_get_items_response(body)
-            for item in res['Items']:
-                await _delete_item(f'{v3io_access._webapi_url}/{path}/{item["__name"]}', v3io_access, client_session)
+    try:
+        has_more = True
+        next_marker = ''
+        while has_more:
+            get_items_body = {'AttributesToGet': '__name', 'Marker': next_marker}
+            response = await client_session.put(f'{v3io_access._webapi_url}/{path}/',
+                                                     headers=v3io_access._get_items_headers, data=json.dumps(get_items_body), ssl=False)
+            body = await response.text()
+            if response.status == 200:
+                res = _v3io_parse_get_items_response(body)
+                for item in res['Items']:
+                    await _delete_item(f'{v3io_access._webapi_url}/{path}/{item["__name"]}', v3io_access, client_session)
 
-            has_more = 'NextMarker' in res
-            if has_more:
-                next_marker = res['NextMarker']
-        elif response.status != 404:
-            raise V3ioError(f'Failed to delete table {path}. Response status code was {response.status}: {body}')
+                has_more = 'NextMarker' in res
+                if has_more:
+                    next_marker = res['NextMarker']
+            elif response.status != 404:
+                raise V3ioError(f'Failed to delete table {path}. Response status code was {response.status}: {body}')
 
-    await _delete_item(f'{v3io_access._webapi_url}/{path}/', v3io_access, client_session)
+        await _delete_item(f'{v3io_access._webapi_url}/{path}/', v3io_access, client_session)
+    finally:
+        await client_session.close()
 
 
 async def _delete_item(path, v3io_access, client_session):
     response = await client_session.delete(path, headers=v3io_access._get_put_file_headers, ssl=False)
-    if response.status > 300 and response.status != 404 and response.status != 409:
+    if response.status >= 300 and response.status != 404 and response.status != 409:
         body = await response.text()
         raise V3ioError(f'Failed to delete item at {path}. Response status code was {response.status}: {body}')

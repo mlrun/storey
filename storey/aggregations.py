@@ -145,6 +145,7 @@ class Persist(Flow):
         if event is _termination_obj:
             return await self._do_downstream(_termination_obj)
         else:
+            # todo: persist keys in parallel
             await self._cache.persist_key(event.key)
             await self._do_downstream(event)
 
@@ -197,18 +198,18 @@ class AggregatedStoreElement:
 
 class AggregateStore:
     def __init__(self, aggregates):
-        self.cache = {}
-        self.aggregates = aggregates
+        self._cache = {}
+        self._aggregates = aggregates
         self._storage = None
         self._table_path = None
-        self.schema = None
+        self._schema = None
         self.read_only = False
 
     def __iter__(self):
-        return iter(self.cache.items())
+        return iter(self._cache.items())
 
     async def aggregate(self, key, data, timestamp):
-        if not self.schema:
+        if not self._schema:
             await self.get_or_save_schema()
 
         if isinstance(timestamp, datetime):
@@ -218,7 +219,7 @@ class AggregateStore:
         key_to_aggregate.aggregate(data, timestamp)
 
     async def get_features(self, key, timestamp):
-        if not self.schema:
+        if not self._schema:
             await self.get_or_save_schema()
 
         if isinstance(timestamp, datetime):
@@ -228,34 +229,34 @@ class AggregateStore:
         return relevant_key.get_features(timestamp)
 
     async def _get_or_load_key(self, key, timestamp=None):
-        if self.read_only or key not in self.cache:
+        if self.read_only or key not in self._cache:
             # Try load from the store, and create a new one only if the key really is new
             initial_data = await self._storage._load_key(self._table_path, key)
-            self.cache[key] = AggregatedStoreElement(key, self.aggregates, timestamp, initial_data)
+            self._cache[key] = AggregatedStoreElement(key, self._aggregates, timestamp, initial_data)
 
-        return self.cache[key]
+        return self._cache[key]
 
     def get_keys(self):
-        return self.cache.keys()
+        return self._cache.keys()
 
     async def get_or_save_schema(self):
-        self.schema = await self._storage._load_schema(self._table_path)
-        should_update = not self.schema
-        if self.schema:
-            should_update = self._validate_schema_fit_aggregations(self.schema)
+        self._schema = await self._storage._load_schema(self._table_path)
+        should_update = not self._schema
+        if self._schema:
+            should_update = self._validate_schema_fit_aggregations(self._schema)
 
         if should_update:
-            self.schema = await self._save_schema()
+            self._schema = await self._save_schema()
 
     async def _save_schema(self):
         schema = self._aggregates_to_schema()
-        if self.schema:
-            schema = self.merge_schemas(self.schema, schema)
+        if self._schema:
+            schema = self._merge_schemas(self._schema, schema)
 
         await self._storage._save_schema(self._table_path, schema)
         return schema
 
-    def merge_schemas(self, old, new):
+    def _merge_schemas(self, old, new):
         for name, schema_aggr in new.items():
             if name not in old:
                 old[name] = schema_aggr
@@ -266,27 +267,27 @@ class AggregateStore:
 
         return old
 
-    # Validated if schema corresponds to the requested aggregates, and return whether the schema needs to be updated
+    # Validate if schema corresponds to the requested aggregates, and return whether the schema needs to be updated
     def _validate_schema_fit_aggregations(self, schema):
         should_update = False
-        for aggr in self.aggregates:
+        for aggr in self._aggregates:
             if aggr.name not in schema:
                 if self.read_only:
-                    raise ValueError(f'requested aggregate {aggr.name}, does not exist in existing feature store at {self._table_path}')
+                    raise ValueError(f'Requested aggregate {aggr.name}, does not exist in existing feature store at {self._table_path}')
                 else:
                     should_update = True
                     continue
             schema_aggr = schema[aggr.name]
             if not aggr.windows.period_millis == schema_aggr['period_millis']:
-                raise ValueError(f'requested period for aggregate {aggr.name} does not match existing period at {self._table_path}. '
-                                 f"requested: {aggr.windows.period_millis}, existing: {schema_aggr['period_millis']}")
+                raise ValueError(f'Requested period for aggregate {aggr.name} does not match existing period at {self._table_path}. '
+                                 f"Requested: {aggr.windows.period_millis}, existing: {schema_aggr['period_millis']}")
             requested_raw_aggregates = aggr.get_all_raw_aggregates()
             existing_raw_aggregates = get_all_raw_aggregates(schema_aggr['aggregates'])
             # validate if current feature store contains all aggregates needed for the requested calculations
             if self.read_only and not requested_raw_aggregates.issubset(existing_raw_aggregates):
                 raise ValueError(
-                    f'requested aggregates for feature {aggr.name} do not match with existing aggregates at {self._table_path}. '
-                    f"requested: {aggr.aggregations}, existing: {schema_aggr['aggregates']}")
+                    f'Requested aggregates for feature {aggr.name} do not match with existing aggregates at {self._table_path}. '
+                    f"Requested: {aggr.aggregations}, existing: {schema_aggr['aggregates']}")
             # Check if more raw aggregates are requested, in which case a schema update is required
             if not self.read_only and requested_raw_aggregates != existing_raw_aggregates:
                 should_update = True
@@ -294,16 +295,16 @@ class AggregateStore:
         return should_update
 
     async def _save_key(self, key):
-        await self._storage._save_key(self._table_path, key, self.cache[key])
+        await self._storage._save_key(self._table_path, key, self._cache[key])
 
     def _aggregates_to_schema(self):
         schema = {}
-        for aggr in self.aggregates:
+        for aggr in self._aggregates:
             schema[aggr.name] = {'period_millis': aggr.windows.period_millis, 'aggregates': aggr.aggregations}
         return schema
 
     def __getitem__(self, key):
-        return self.cache[key]
+        return self._cache[key]
 
 
 class AggregationBuckets:
