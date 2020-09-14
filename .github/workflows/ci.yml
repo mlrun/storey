@@ -11,6 +11,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v2
+        with:
+          ref: refs/pull/${{ github.event.number }}/merge
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v1
         with:
