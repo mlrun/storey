@@ -998,7 +998,7 @@ class NoopDriver:
     async def _save_key(self, table_path, key, aggr_item, additional_data):
         pass
 
-    async def _load_key(self, table_path, key):
+    async def _load_aggregates_by_key(self, table_path, key):
         pass
 
     async def close_connection(self):
