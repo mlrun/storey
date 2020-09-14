@@ -687,10 +687,10 @@ def _convert_python_type_to_nginx(value):
     elif isinstance(value, bool):
         return {'BOOL': value}
     elif isinstance(value, float) or isinstance(value, int):
-        return {'N': value}
+        return {'N': str(value)}
     elif isinstance(value, bytes):
         return {'B': base64.b64encode(value).decode('ascii')}
-    elif isinstance(datetime):
+    elif isinstance(value, datetime):
         timestamp = value.timestamp()
 
         secs = int(timestamp)
@@ -896,31 +896,31 @@ def build_flow(steps):
 class V3ioDriver(NeedsV3ioAccess):
     def __init__(self, webapi=None, access_key=None):
         NeedsV3ioAccess.__init__(self, webapi, access_key)
-        self.client_session = None
+        self._client_session = None
 
     def _lazy_init(self):
         connector = aiohttp.TCPConnector()
-        self.client_session = aiohttp.ClientSession(connector=connector)
+        self._client_session = aiohttp.ClientSession(connector=connector)
 
     async def _save_schema(self, table_path, schema):
-        if not self.client_session:
+        if not self._client_session:
             self._lazy_init()
 
-        response = await self.client_session.put(f'{self._webapi_url}/{table_path}/{schema_file_name}',
-                                                 headers=self._get_put_file_headers, data=json.dumps(schema), ssl=False)
+        response = await self._client_session.put(f'{self._webapi_url}/{table_path}/{schema_file_name}',
+                                                  headers=self._get_put_file_headers, data=json.dumps(schema), ssl=False)
         if not response.status == 200:
             body = await response.text()
             raise V3ioError(f'Failed to save schema file. Response status code was {response.status}: {body}')
 
     async def _load_schema(self, table_path):
-        if not self.client_session:
+        if not self._client_session:
             self._lazy_init()
 
         connector = aiohttp.TCPConnector()
-        self.client_session = aiohttp.ClientSession(connector=connector)
+        self._client_session = aiohttp.ClientSession(connector=connector)
 
         schema_path = f'{self._webapi_url}/{table_path}/{schema_file_name}'
-        response = await self.client_session.get(schema_path, headers=self._get_put_file_headers, ssl=False)
+        response = await self._client_session.get(schema_path, headers=self._get_put_file_headers, ssl=False)
         body = await response.text()
         if response.status == 404:
             schema = None
@@ -932,7 +932,7 @@ class V3ioDriver(NeedsV3ioAccess):
         return schema
 
     async def _save_key(self, table_path, key, aggr_item, additional_data=None):
-        if not self.client_session:
+        if not self._client_session:
             self._lazy_init()
 
         request_data = self._get_attributes_as_blob(aggr_item)
@@ -940,8 +940,8 @@ class V3ioDriver(NeedsV3ioAccess):
             request_data.update(_v3io_build_put_item_request(additional_data))
 
         data = {'Item': request_data, 'UpdateMode': 'CreateOrReplaceAttributes'}
-        response = await self.client_session.put(f'{self._webapi_url}/{table_path}/{key}',
-                                                 headers=self._put_item_headers, data=json.dumps(data), ssl=False)
+        response = await self._client_session.put(f'{self._webapi_url}/{table_path}/{key}',
+                                                  headers=self._put_item_headers, data=json.dumps(data), ssl=False)
         if not response.status == 200:
             body = await response.text()
             raise V3ioError(f'Failed to save aggregation for key: {key}. Response status code was {response.status}: {body}')
@@ -961,29 +961,31 @@ class V3ioDriver(NeedsV3ioAccess):
     #   'feature_name_1': {'first_bucket_time': <time> 'values': []},
     #   'feature_name_2': {'first_bucket_time': <time> 'values': []}
     # }
-    async def _load_key(self, table_path, key):
-        if not self.client_session:
+    async def _load_aggregates_by_key(self, table_path, key):
+        if not self._client_session:
             self._lazy_init()
 
         request_body = json.dumps({'AttributesToGet': '*'})
 
-        response = await self.client_session.put(f'{self._webapi_url}/{table_path}/{key}',
-                                                 headers=self._get_item_headers, data=request_body, ssl=False)
+        response = await self._client_session.put(f'{self._webapi_url}/{table_path}/{key}',
+                                                  headers=self._get_item_headers, data=request_body, ssl=False)
         body = await response.text()
         if response.status == 404:
             return None
         elif response.status == 200:
             parsed_response = _v3io_parse_get_item_response(body)
-            for name, blob in parsed_response.items():
-                parsed_response[name] = pickle.loads(blob)
+            res = {}
+            for name, value in parsed_response.items():
+                if isinstance(value, bytes):
+                    res[name] = pickle.loads(value)
 
-            return parsed_response
+            return res
         else:
             raise V3ioError(f'Failed to get item. Response status code was {response.status}: {body}')
 
-    async def _close_connection(self):
-        if not self.client_session.closed:
-            await self.client_session.close()
+    async def close_connection(self):
+        if not self._client_session.closed:
+            await self._client_session.close()
 
 
 class NoopDriver:
@@ -999,7 +1001,7 @@ class NoopDriver:
     async def _load_key(self, table_path, key):
         pass
 
-    async def _close_connection(self):
+    async def close_connection(self):
         pass
 
 
@@ -1023,5 +1025,5 @@ class Cache:
         additional_cache_data_by_key = self._cache.get(key, None)
         await self.storage._save_key(self.table_path, key, aggr_by_key, additional_cache_data_by_key)
 
-    async def _close_connection(self):
-        await self.storage._close_connection()
+    async def close_connection(self):
+        await self.storage.close_connection()

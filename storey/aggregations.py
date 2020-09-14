@@ -47,7 +47,7 @@ class AggregateByKey(Flow):
     async def _do(self, event):
         if event == _termination_obj:
             self._terminate_worker = True
-            await self._cache._close_connection()
+            await self._cache.close_connection()
             return await self._do_downstream(_termination_obj)
 
         try:
@@ -72,7 +72,7 @@ class AggregateByKey(Flow):
                     await self._emit_event(key, event)
                     self._events_in_batch[key] = 0
         except Exception as ex:
-            await self._cache._close_connection()
+            await self._cache.close_connection()
             raise ex
 
     # Emit a single event for the requested key
@@ -119,7 +119,7 @@ class QueryAggregationByKey(AggregateByKey):
     async def _do(self, event):
         if event == _termination_obj:
             self._terminate_worker = True
-            await self._cache._close_connection()
+            await self._cache.close_connection()
             return await self._do_downstream(_termination_obj)
 
         try:
@@ -142,7 +142,7 @@ class QueryAggregationByKey(AggregateByKey):
                     await self._emit_event(key, event)
                     self._events_in_batch[key] = 0
         except Exception as ex:
-            await self._cache._close_connection()
+            await self._cache.close_connection()
             raise ex
 
 
@@ -153,7 +153,7 @@ class Persist(Flow):
 
     async def _do(self, event):
         if event is _termination_obj:
-            await self._cache._close_connection()
+            await self._cache.close_connection()
             return await self._do_downstream(_termination_obj)
         else:
             # todo: persist keys in parallel
@@ -242,7 +242,7 @@ class AggregateStore:
     async def _get_or_load_key(self, key, timestamp=None):
         if self.read_only or key not in self._cache:
             # Try load from the store, and create a new one only if the key really is new
-            initial_data = await self._storage._load_key(self._table_path, key)
+            initial_data = await self._storage._load_aggregates_by_key(self._table_path, key)
             self._cache[key] = AggregatedStoreElement(key, self._aggregates, timestamp, initial_data)
 
         return self._cache[key]
