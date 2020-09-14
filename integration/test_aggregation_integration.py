@@ -292,7 +292,7 @@ def test_modify_schema(setup_teardown_test):
     expected_schema = {"number_of_stuff": {"period_millis": 600000, "aggregates": ["sum", "max", "min", "count"]},
                        "new_aggr": {"period_millis": 600000, "aggregates": ["min", "max"]}}
     _assert_schema_equal(schema, expected_schema)
-    v3io_driver.close_connection()
+    asyncio.run(v3io_driver.close_connection())
 
 
 def test_invalid_modify_schema(setup_teardown_test):
@@ -359,7 +359,7 @@ def test_invalid_modify_schema(setup_teardown_test):
     schema = asyncio.run(v3io_driver._load_schema(setup_teardown_test))
     expected_schema = {"number_of_stuff": {"period_millis": 600000, "aggregates": ['max', 'min', 'sum', 'count']}}
     _assert_schema_equal(schema, expected_schema)
-    v3io_driver.close_connection()
+    asyncio.run(v3io_driver.close_connection())
 
     other_cache = Cache(setup_teardown_test, V3ioDriver())
 
