@@ -2,7 +2,7 @@ import asyncio
 import copy
 from datetime import datetime
 
-from .aggregation_utils import is_raw_aggregate, get_virtual_aggregation_func, get_dependant_aggregates, get_all_raw_aggregates, \
+from .aggregation_utils import is_raw_aggregate, get_virtual_aggregation_func, get_implied_aggregates, get_all_raw_aggregates, \
     get_all_raw_aggregates_with_hidden
 from .dtypes import EmitEveryEvent, FixedWindows, EmitAfterPeriod, EmitAfterWindow, EmitAfterMaxEvent
 from .flow import Flow, _termination_obj, Event
@@ -50,26 +50,30 @@ class AggregateByKey(Flow):
             await self._cache._close_connection()
             return await self._do_downstream(_termination_obj)
 
-        # check whether a background loop is needed, if so create start one
-        if (not self._emit_worker_running) and \
-                (isinstance(self._emit_policy, EmitAfterPeriod) or isinstance(self._emit_policy, EmitAfterWindow)):
-            asyncio.get_running_loop().create_task(self._emit_worker())
-            self._emit_worker_running = True
+        try:
+            # check whether a background loop is needed, if so create start one
+            if (not self._emit_worker_running) and \
+                    (isinstance(self._emit_policy, EmitAfterPeriod) or isinstance(self._emit_policy, EmitAfterWindow)):
+                asyncio.get_running_loop().create_task(self._emit_worker())
+                self._emit_worker_running = True
 
-        element = event.body
-        key = event.key
-        if self.key_extractor:
-            key = self.key_extractor(element)
+            element = event.body
+            key = event.key
+            if self.key_extractor:
+                key = self.key_extractor(element)
 
-        await self._aggregates_store.aggregate(key, element, event.time)
+            await self._aggregates_store.aggregate(key, element, event.time)
 
-        if isinstance(self._emit_policy, EmitEveryEvent):
-            await self._emit_event(key, event)
-        elif isinstance(self._emit_policy, EmitAfterMaxEvent):
-            self._events_in_batch[key] = self._events_in_batch.get(key, 0) + 1
-            if self._events_in_batch[key] == self._emit_policy.max_events:
+            if isinstance(self._emit_policy, EmitEveryEvent):
                 await self._emit_event(key, event)
-                self._events_in_batch[key] = 0
+            elif isinstance(self._emit_policy, EmitAfterMaxEvent):
+                self._events_in_batch[key] = self._events_in_batch.get(key, 0) + 1
+                if self._events_in_batch[key] == self._emit_policy.max_events:
+                    await self._emit_event(key, event)
+                    self._events_in_batch[key] = 0
+        except Exception as ex:
+            await self._cache._close_connection()
+            raise ex
 
     # Emit a single event for the requested key
     async def _emit_event(self, key, event):
@@ -118,24 +122,28 @@ class QueryAggregationByKey(AggregateByKey):
             await self._cache._close_connection()
             return await self._do_downstream(_termination_obj)
 
-        # check whether a background loop is needed, if so create start one
-        if (not self._emit_worker_running) and \
-                (isinstance(self._emit_policy, EmitAfterPeriod) or isinstance(self._emit_policy, EmitAfterWindow)):
-            asyncio.get_running_loop().create_task(self._emit_worker())
-            self._emit_worker_running = True
+        try:
+            # check whether a background loop is needed, if so create start one
+            if (not self._emit_worker_running) and \
+                    (isinstance(self._emit_policy, EmitAfterPeriod) or isinstance(self._emit_policy, EmitAfterWindow)):
+                asyncio.get_running_loop().create_task(self._emit_worker())
+                self._emit_worker_running = True
 
-        element = event.body
-        key = event.key
-        if self.key_extractor:
-            key = self.key_extractor(element)
+            element = event.body
+            key = event.key
+            if self.key_extractor:
+                key = self.key_extractor(element)
 
-        if isinstance(self._emit_policy, EmitEveryEvent):
-            await self._emit_event(key, event)
-        elif isinstance(self._emit_policy, EmitAfterMaxEvent):
-            self._events_in_batch[key] = self._events_in_batch.get(key, 0) + 1
-            if self._events_in_batch[key] == self._emit_policy.max_events:
+            if isinstance(self._emit_policy, EmitEveryEvent):
                 await self._emit_event(key, event)
-                self._events_in_batch[key] = 0
+            elif isinstance(self._emit_policy, EmitAfterMaxEvent):
+                self._events_in_batch[key] = self._events_in_batch.get(key, 0) + 1
+                if self._events_in_batch[key] == self._emit_policy.max_events:
+                    await self._emit_event(key, event)
+                    self._events_in_batch[key] = 0
+        except Exception as ex:
+            await self._cache._close_connection()
+            raise ex
 
 
 class Persist(Flow):
@@ -174,7 +182,7 @@ class AggregatedStoreElement:
         for aggregation_metadata in aggregates:
             for aggr in aggregation_metadata.aggregations:
                 if not is_raw_aggregate(aggr):
-                    dependant_aggregate_names = get_dependant_aggregates(aggr)
+                    dependant_aggregate_names = get_implied_aggregates(aggr)
                     dependant_buckets = []
                     for dep in dependant_aggregate_names:
                         dependant_buckets.append(self.aggregation_buckets[f'{aggregation_metadata.name}_{dep}'])
@@ -244,7 +252,7 @@ class AggregateStore:
 
     async def get_or_save_schema(self):
         self._schema = await self._storage._load_schema(self._table_path)
-        should_update = not self._schema
+        should_update = True
         if self._schema:
             should_update = self._validate_schema_fit_aggregations(self._schema)
 
@@ -303,7 +311,7 @@ class AggregateStore:
     def _aggregates_to_schema(self):
         schema = {}
         for aggr in self._aggregates:
-            schema[aggr.name] = {'period_millis': aggr.windows.period_millis, 'aggregates': aggr.aggregations}
+            schema[aggr.name] = {'period_millis': aggr.windows.period_millis, 'aggregates': list(get_all_raw_aggregates(aggr.aggregations))}
         return schema
 
     def __getitem__(self, key):
