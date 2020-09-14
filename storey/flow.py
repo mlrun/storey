@@ -10,9 +10,12 @@ import threading
 from datetime import datetime, timezone
 import uuid
 import random
+import pickle
 
 import aiofiles
 import aiohttp
+
+from .utils import schema_file_name
 
 _termination_obj = object()
 
@@ -529,8 +532,18 @@ class NeedsV3ioAccess:
             'X-v3io-session-key': access_key
         }
 
+        self._get_items_headers = {
+            'X-v3io-function': 'GetItems',
+            'X-v3io-session-key': access_key
+        }
+
         self._put_item_headers = {
             'X-v3io-function': 'PutItem',
+            'X-v3io-session-key': access_key
+        }
+
+        self._update_item_headers = {
+            'X-v3io-function': 'UpdateItem',
             'X-v3io-session-key': access_key
         }
 
@@ -556,6 +569,10 @@ class NeedsV3ioAccess:
 
         self._get_records_headers = {
             'X-v3io-function': 'GetRecords',
+            'X-v3io-session-key': access_key
+        }
+
+        self._get_put_file_headers = {
             'X-v3io-session-key': access_key
         }
 
@@ -681,23 +698,60 @@ def _v3io_parse_get_item_response(response_body):
     for name, type_to_value in response_object.items():
         val = None
         for typ, value in type_to_value.items():
-            if typ == 'S' or typ == 'BOOL':
-                val = value
-            elif typ == 'N':
-                if _non_int_char_pattern.search(value):
-                    val = float(value)
-                else:
-                    val = int(value)
-            elif typ == 'B':
-                val = base64.b64decode(value)
-            elif typ == 'TS':
-                splits = value.split(':', 1)
-                secs = int(splits[0])
-                nanosecs = int(splits[1])
-                val = datetime.utcfromtimestamp(secs + nanosecs / 1000000000)
-            else:
-                raise V3ioError(f'Type {typ} in get item response is not supported')
+            val = _convert_nginx_to_python_type(typ, value)
         response_object[name] = val
+    return response_object
+
+
+def _convert_nginx_to_python_type(typ, value):
+    if typ == 'S' or typ == 'BOOL':
+        return value
+    elif typ == 'N':
+        if _non_int_char_pattern.search(value):
+            return float(value)
+        else:
+            return int(value)
+    elif typ == 'B':
+        return base64.b64decode(value)
+    elif typ == 'TS':
+        splits = value.split(':', 1)
+        secs = int(splits[0])
+        nanosecs = int(splits[1])
+        return datetime.utcfromtimestamp(secs + nanosecs / 1000000000)
+    else:
+        raise V3ioError(f'Type {typ} in get item response is not supported')
+
+
+def _convert_python_type_to_nginx(value):
+    if isinstance(value, str):
+        return {'S': value}
+    elif isinstance(value, bool):
+        return {'BOOL': value}
+    elif isinstance(value, float) or isinstance(value, int):
+        return {'N': str(value)}
+    elif isinstance(value, bytes):
+        return {'B': base64.b64encode(value).decode('ascii')}
+    elif isinstance(value, datetime):
+        timestamp = value.timestamp()
+
+        secs = int(timestamp)
+        nanosecs = int((timestamp - secs) * 1e+9)
+        return {'TS': f'{secs}:{nanosecs}'}
+    else:
+        raise V3ioError(f'Type {type(value)} in get item response is not supported')
+
+
+def _v3io_parse_get_items_response(response_body):
+    response_object = json.loads(response_body)
+    i = 0
+    for item in response_object['Items']:
+        parsed_item = {}
+        for name, type_to_value in item.items():
+            for typ, value in type_to_value.items():
+                val = _convert_nginx_to_python_type(typ, value)
+                parsed_item[name] = val
+        response_object['Items'][i] = parsed_item
+        i = i + 1
     return response_object
 
 
@@ -742,6 +796,14 @@ def _build_request_put_records(shard_id, events):
         'Records': record_list_for_json
     }
     return json.dumps(payload_obj)
+
+
+def _v3io_build_put_item_request(data):
+    request = {}
+
+    for key, value in data.items():
+        request[key] = _convert_python_type_to_nginx(value)
+    return request
 
 
 class WriteToV3IOStream(Flow, NeedsV3ioAccess):
@@ -870,3 +932,139 @@ def build_flow(steps):
             cur_step.to(next_step)
             cur_step = next_step
     return steps[0]
+
+
+class V3ioDriver(NeedsV3ioAccess):
+    def __init__(self, webapi=None, access_key=None):
+        NeedsV3ioAccess.__init__(self, webapi, access_key)
+        self._client_session = None
+
+    def _lazy_init(self):
+        connector = aiohttp.TCPConnector()
+        self._client_session = aiohttp.ClientSession(connector=connector)
+
+    async def _save_schema(self, table_path, schema):
+        if not self._client_session:
+            self._lazy_init()
+
+        response = await self._client_session.put(f'{self._webapi_url}/{table_path}/{schema_file_name}',
+                                                  headers=self._get_put_file_headers, data=json.dumps(schema), ssl=False)
+        if not response.status == 200:
+            body = await response.text()
+            raise V3ioError(f'Failed to save schema file. Response status code was {response.status}: {body}')
+
+    async def _load_schema(self, table_path):
+        if not self._client_session:
+            self._lazy_init()
+
+        connector = aiohttp.TCPConnector()
+        self._client_session = aiohttp.ClientSession(connector=connector)
+
+        schema_path = f'{self._webapi_url}/{table_path}/{schema_file_name}'
+        response = await self._client_session.get(schema_path, headers=self._get_put_file_headers, ssl=False)
+        body = await response.text()
+        if response.status == 404:
+            schema = None
+        elif response.status == 200:
+            schema = json.loads(body)
+        else:
+            raise V3ioError(f'Failed to get schema at {schema_path}. Response status code was {response.status}: {body}')
+
+        return schema
+
+    async def _save_key(self, table_path, key, aggr_item, additional_data=None):
+        if not self._client_session:
+            self._lazy_init()
+
+        request_data = self._get_attributes_as_blob(aggr_item)
+        if additional_data:
+            request_data.update(_v3io_build_put_item_request(additional_data))
+
+        data = {'Item': request_data, 'UpdateMode': 'CreateOrReplaceAttributes'}
+        response = await self._client_session.put(f'{self._webapi_url}/{table_path}/{key}',
+                                                  headers=self._put_item_headers, data=json.dumps(data), ssl=False)
+        if not response.status == 200:
+            body = await response.text()
+            raise V3ioError(f'Failed to save aggregation for key: {key}. Response status code was {response.status}: {body}')
+
+    def _get_attributes_as_blob(self, aggregation_element):
+        data = {}
+        for name, bucket in aggregation_element.aggregation_buckets.items():
+            # Only save raw aggregates, not virtual
+            if bucket.should_persist:
+                blob = pickle.dumps(bucket.to_dict())
+                data[name] = {'B': base64.b64encode(blob).decode('ascii')}
+
+        return data
+
+    # Loads a specific key from the store, and returns it in the following format
+    # {
+    #   'feature_name_1': {'first_bucket_time': <time> 'values': []},
+    #   'feature_name_2': {'first_bucket_time': <time> 'values': []}
+    # }
+    async def _load_aggregates_by_key(self, table_path, key):
+        if not self._client_session:
+            self._lazy_init()
+
+        request_body = json.dumps({'AttributesToGet': '*'})
+
+        response = await self._client_session.put(f'{self._webapi_url}/{table_path}/{key}',
+                                                  headers=self._get_item_headers, data=request_body, ssl=False)
+        body = await response.text()
+        if response.status == 404:
+            return None
+        elif response.status == 200:
+            parsed_response = _v3io_parse_get_item_response(body)
+            res = {}
+            for name, value in parsed_response.items():
+                if isinstance(value, bytes):
+                    res[name] = pickle.loads(value)
+
+            return res
+        else:
+            raise V3ioError(f'Failed to get item. Response status code was {response.status}: {body}')
+
+    async def close_connection(self):
+        if not self._client_session.closed:
+            await self._client_session.close()
+
+
+class NoopDriver:
+    async def _save_schema(self, table_path, schema):
+        pass
+
+    async def _load_schema(self, table_path):
+        pass
+
+    async def _save_key(self, table_path, key, aggr_item, additional_data):
+        pass
+
+    async def _load_aggregates_by_key(self, table_path, key):
+        pass
+
+    async def close_connection(self):
+        pass
+
+
+class Cache:
+    def __init__(self, table_path, storage):
+        self.table_path = table_path
+        self.storage = storage
+        self._cache = {}
+        self._aggregation_store = None
+
+    def __getitem__(self, key):
+        return self._cache[key]
+
+    def set_aggregation_store(self, store):
+        store._table_path = self.table_path
+        store._storage = self.storage
+        self._aggregation_store = store
+
+    async def persist_key(self, key):
+        aggr_by_key = self._aggregation_store[key]
+        additional_cache_data_by_key = self._cache.get(key, None)
+        await self.storage._save_key(self.table_path, key, aggr_by_key, additional_cache_data_by_key)
+
+    async def close_connection(self):
+        await self.storage.close_connection()

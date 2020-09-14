@@ -2,18 +2,24 @@ import asyncio
 import copy
 from datetime import datetime
 
-from .aggregation_utils import is_raw_aggregate, get_virtual_aggregation_func, get_dependant_aggregates
+from .aggregation_utils import is_raw_aggregate, get_virtual_aggregation_func, get_implied_aggregates, get_all_raw_aggregates, \
+    get_all_raw_aggregates_with_hidden
 from .dtypes import EmitEveryEvent, FixedWindows, EmitAfterPeriod, EmitAfterWindow, EmitAfterMaxEvent
 from .flow import Flow, _termination_obj, Event
 
 _default_emit_policy = EmitEveryEvent()
 
 
+# Aggregate data by key, aggregates the events based on the specified aggregations and emitting features based on the emit policy.
+# Also manages schema and feature persistence
 class AggregateByKey(Flow):
-    def __init__(self, aggregates, table, key=None, emit_policy=_default_emit_policy, augmentation_fn=None):
+    def __init__(self, aggregates, cache, key=None, emit_policy=_default_emit_policy, augmentation_fn=None):
         Flow.__init__(self)
         self._aggregates_store = AggregateStore(aggregates)
-        self._table = table
+
+        self._cache = cache
+        self._cache.set_aggregation_store(self._aggregates_store)
+
         self._aggregates_metadata = aggregates
 
         self._emit_policy = emit_policy
@@ -41,32 +47,37 @@ class AggregateByKey(Flow):
     async def _do(self, event):
         if event == _termination_obj:
             self._terminate_worker = True
+            await self._cache.close_connection()
             return await self._do_downstream(_termination_obj)
 
-        # check whether a background loop is needed, if so create start one
-        if (not self._emit_worker_running) and \
-                (isinstance(self._emit_policy, EmitAfterPeriod) or isinstance(self._emit_policy, EmitAfterWindow)):
-            asyncio.get_running_loop().create_task(self._emit_worker())
-            self._emit_worker_running = True
+        try:
+            # check whether a background loop is needed, if so create start one
+            if (not self._emit_worker_running) and \
+                    (isinstance(self._emit_policy, EmitAfterPeriod) or isinstance(self._emit_policy, EmitAfterWindow)):
+                asyncio.get_running_loop().create_task(self._emit_worker())
+                self._emit_worker_running = True
 
-        element = event.body
-        key = event.key
-        if self.key_extractor:
-            key = self.key_extractor(element)
+            element = event.body
+            key = event.key
+            if self.key_extractor:
+                key = self.key_extractor(element)
 
-        self._aggregates_store.aggregate(key, element, event.time)
+            await self._aggregates_store.aggregate(key, element, event.time)
 
-        if isinstance(self._emit_policy, EmitEveryEvent):
-            await self._emit_event(key, event)
-        elif isinstance(self._emit_policy, EmitAfterMaxEvent):
-            self._events_in_batch[key] = self._events_in_batch.get(key, 0) + 1
-            if self._events_in_batch[key] == self._emit_policy.max_events:
+            if isinstance(self._emit_policy, EmitEveryEvent):
                 await self._emit_event(key, event)
-                self._events_in_batch[key] = 0
+            elif isinstance(self._emit_policy, EmitAfterMaxEvent):
+                self._events_in_batch[key] = self._events_in_batch.get(key, 0) + 1
+                if self._events_in_batch[key] == self._emit_policy.max_events:
+                    await self._emit_event(key, event)
+                    self._events_in_batch[key] = 0
+        except Exception as ex:
+            await self._cache.close_connection()
+            raise ex
 
     # Emit a single event for the requested key
     async def _emit_event(self, key, event):
-        features = self._aggregates_store.get_features(key, event.time)
+        features = await self._aggregates_store.get_features(key, event.time)
         features = self._augmentation_fn(event.body, features)
         new_event = copy.copy(event)
         new_event.key = key
@@ -99,24 +110,79 @@ class AggregateByKey(Flow):
             next_emit_time = next_emit_time + seconds_to_sleep_between_emits
 
 
+# Serving side for AggregateByKey, for every (key, timestamp) pair provided QueryAggregateByKey will emit the relevant feature set
+class QueryAggregationByKey(AggregateByKey):
+    def __init__(self, aggregates, cache, key=None, emit_policy=_default_emit_policy, augmentation_fn=None):
+        AggregateByKey.__init__(self, aggregates, cache, key, emit_policy, augmentation_fn)
+        self._aggregates_store.read_only = True
+
+    async def _do(self, event):
+        if event == _termination_obj:
+            self._terminate_worker = True
+            await self._cache.close_connection()
+            return await self._do_downstream(_termination_obj)
+
+        try:
+            # check whether a background loop is needed, if so create start one
+            if (not self._emit_worker_running) and \
+                    (isinstance(self._emit_policy, EmitAfterPeriod) or isinstance(self._emit_policy, EmitAfterWindow)):
+                asyncio.get_running_loop().create_task(self._emit_worker())
+                self._emit_worker_running = True
+
+            element = event.body
+            key = event.key
+            if self.key_extractor:
+                key = self.key_extractor(element)
+
+            if isinstance(self._emit_policy, EmitEveryEvent):
+                await self._emit_event(key, event)
+            elif isinstance(self._emit_policy, EmitAfterMaxEvent):
+                self._events_in_batch[key] = self._events_in_batch.get(key, 0) + 1
+                if self._events_in_batch[key] == self._emit_policy.max_events:
+                    await self._emit_event(key, event)
+                    self._events_in_batch[key] = 0
+        except Exception as ex:
+            await self._cache.close_connection()
+            raise ex
+
+
+class Persist(Flow):
+    def __init__(self, cache):
+        super().__init__()
+        self._cache = cache
+
+    async def _do(self, event):
+        if event is _termination_obj:
+            await self._cache.close_connection()
+            return await self._do_downstream(_termination_obj)
+        else:
+            # todo: persist keys in parallel
+            await self._cache.persist_key(event.key)
+            await self._do_downstream(event)
+
+
 class AggregatedStoreElement:
-    def __init__(self, key, aggregates, base_time):
+    def __init__(self, key, aggregates, base_time, initial_data=None):
         self.aggregation_buckets = {}
         self.key = key
         self.aggregates = aggregates
 
         # Add all raw aggregates, including aggregates not explicitly requested.
         for aggregation_metadata in aggregates:
-            for aggr in aggregation_metadata.get_all_raw_aggregates():
-                self.aggregation_buckets[f'{aggregation_metadata.name}_{aggr}'] = \
+            for aggr, is_hidden in get_all_raw_aggregates_with_hidden(aggregation_metadata.aggregations).items():
+                column_name = f'{aggregation_metadata.name}_{aggr}'
+                initial_column_data = None
+                if initial_data and column_name in initial_data:
+                    initial_column_data = initial_data[column_name]
+                self.aggregation_buckets[column_name] = \
                     AggregationBuckets(aggregation_metadata.name, aggr, aggregation_metadata.windows, base_time,
-                                       aggregation_metadata.max_value)
+                                       aggregation_metadata.max_value, is_hidden, initial_column_data)
 
         # Add all virtual aggregates
         for aggregation_metadata in aggregates:
             for aggr in aggregation_metadata.aggregations:
                 if not is_raw_aggregate(aggr):
-                    dependant_aggregate_names = get_dependant_aggregates(aggr)
+                    dependant_aggregate_names = get_implied_aggregates(aggr)
                     dependant_buckets = []
                     for dep in dependant_aggregate_names:
                         dependant_buckets.append(self.aggregation_buckets[f'{aggregation_metadata.name}_{dep}'])
@@ -135,50 +201,141 @@ class AggregatedStoreElement:
     def get_features(self, timestamp):
         result = {}
         for aggregation_bucket in self.aggregation_buckets.values():
-            result.update(aggregation_bucket.get_features(timestamp))
+            if not aggregation_bucket.is_hidden:
+                result.update(aggregation_bucket.get_features(timestamp))
 
         return result
 
 
 class AggregateStore:
     def __init__(self, aggregates):
-        self.cache = {}
-        self.aggregates = aggregates
+        self._cache = {}
+        self._aggregates = aggregates
+        self._storage = None
+        self._table_path = None
+        self._schema = None
+        self.read_only = False
 
     def __iter__(self):
-        return iter(self.cache.items())
+        return iter(self._cache.items())
 
-    def aggregate(self, key, data, timestamp):
+    async def aggregate(self, key, data, timestamp):
+        if not self._schema:
+            await self.get_or_save_schema()
+
         if isinstance(timestamp, datetime):
             timestamp = timestamp.timestamp() * 1000
 
-        if key not in self.cache:
-            self.cache[key] = AggregatedStoreElement(key, self.aggregates, timestamp)
+        key_to_aggregate = await self._get_or_load_key(key, timestamp)
+        key_to_aggregate.aggregate(data, timestamp)
 
-        self.cache[key].aggregate(data, timestamp)
+    async def get_features(self, key, timestamp):
+        if not self._schema:
+            await self.get_or_save_schema()
 
-    def get_features(self, key, timestamp):
         if isinstance(timestamp, datetime):
             timestamp = timestamp.timestamp() * 1000
 
-        return self.cache[key].get_features(timestamp)
+        relevant_key = await self._get_or_load_key(key, timestamp)
+        return relevant_key.get_features(timestamp)
+
+    async def _get_or_load_key(self, key, timestamp=None):
+        if self.read_only or key not in self._cache:
+            # Try load from the store, and create a new one only if the key really is new
+            initial_data = await self._storage._load_aggregates_by_key(self._table_path, key)
+            self._cache[key] = AggregatedStoreElement(key, self._aggregates, timestamp, initial_data)
+
+        return self._cache[key]
 
     def get_keys(self):
-        return self.cache.keys()
+        return self._cache.keys()
+
+    async def get_or_save_schema(self):
+        self._schema = await self._storage._load_schema(self._table_path)
+        should_update = True
+        if self._schema:
+            should_update = self._validate_schema_fit_aggregations(self._schema)
+
+        if should_update:
+            self._schema = await self._save_schema()
+
+    async def _save_schema(self):
+        schema = self._aggregates_to_schema()
+        if self._schema:
+            schema = self._merge_schemas(self._schema, schema)
+
+        await self._storage._save_schema(self._table_path, schema)
+        return schema
+
+    def _merge_schemas(self, old, new):
+        for name, schema_aggr in new.items():
+            if name not in old:
+                old[name] = schema_aggr
+            else:
+                new_aggregates = get_all_raw_aggregates(schema_aggr['aggregates'])
+                old_aggregates = get_all_raw_aggregates(old[name]['aggregates'])
+                old[name] = {'period_millis': schema_aggr['period_millis'], 'aggregates': list(new_aggregates.union(old_aggregates))}
+
+        return old
+
+    # Validate if schema corresponds to the requested aggregates, and return whether the schema needs to be updated
+    def _validate_schema_fit_aggregations(self, schema):
+        should_update = False
+        for aggr in self._aggregates:
+            if aggr.name not in schema:
+                if self.read_only:
+                    raise ValueError(f'Requested aggregate {aggr.name}, does not exist in existing feature store at {self._table_path}')
+                else:
+                    should_update = True
+                    continue
+            schema_aggr = schema[aggr.name]
+            if not aggr.windows.period_millis == schema_aggr['period_millis']:
+                raise ValueError(f'Requested period for aggregate {aggr.name} does not match existing period at {self._table_path}. '
+                                 f"Requested: {aggr.windows.period_millis}, existing: {schema_aggr['period_millis']}")
+            requested_raw_aggregates = aggr.get_all_raw_aggregates()
+            existing_raw_aggregates = get_all_raw_aggregates(schema_aggr['aggregates'])
+            # validate if current feature store contains all aggregates needed for the requested calculations
+            if self.read_only and not requested_raw_aggregates.issubset(existing_raw_aggregates):
+                raise ValueError(
+                    f'Requested aggregates for feature {aggr.name} do not match with existing aggregates at {self._table_path}. '
+                    f"Requested: {aggr.aggregations}, existing: {schema_aggr['aggregates']}")
+            # Check if more raw aggregates are requested, in which case a schema update is required
+            if not self.read_only and requested_raw_aggregates != existing_raw_aggregates:
+                should_update = True
+
+        return should_update
+
+    async def _save_key(self, key):
+        await self._storage._save_key(self._table_path, key, self._cache[key])
+
+    def _aggregates_to_schema(self):
+        schema = {}
+        for aggr in self._aggregates:
+            schema[aggr.name] = {'period_millis': aggr.windows.period_millis, 'aggregates': list(get_all_raw_aggregates(aggr.aggregations))}
+        return schema
+
+    def __getitem__(self, key):
+        return self._cache[key]
 
 
 class AggregationBuckets:
-    def __init__(self, name, aggregation, window, base_time, max_value):
+    def __init__(self, name, aggregation, window, base_time, max_value, is_hidden=False, initial_data=None):
         self.name = name
         self.aggregation = aggregation
         self.window = window
         self.max_value = max_value
         self.buckets = []
-        self.first_bucket_start_time = self.window.get_window_start_time_by_time(base_time)
-        self.last_bucket_start_time = \
-            self.first_bucket_start_time + (window.total_number_of_buckets - 1) * window.period_millis
+        self.is_hidden = is_hidden
+        self.should_persist = True
 
-        self.initialize_column()
+        if initial_data:
+            self.initialize_from_data(initial_data)
+        else:
+            self.first_bucket_start_time = self.window.get_window_start_time_by_time(base_time)
+            self.last_bucket_start_time = \
+                self.first_bucket_start_time + (window.total_number_of_buckets - 1) * window.period_millis
+
+            self.initialize_column()
 
     def initialize_column(self):
         self.buckets = []
@@ -268,6 +425,22 @@ class AggregationBuckets:
 
         return result
 
+    def to_dict(self):
+        return {
+            'first_bucket_time': self.first_bucket_start_time,
+            'values': [bucket.get_value() for bucket in self.buckets],
+        }
+
+    def initialize_from_data(self, data):
+        self.first_bucket_start_time = data['first_bucket_time']
+        self.last_bucket_start_time = \
+            self.first_bucket_start_time + (self.window.total_number_of_buckets - 1) * self.window.period_millis
+
+        self.buckets = []
+
+        for i in range(self.window.total_number_of_buckets):
+            self.buckets.append(AggregationValue(self.aggregation, self.max_value, data['values'][i]))
+
 
 class VirtualAggregationBuckets:
     def __init__(self, name, aggregation, window, base_time, args):
@@ -276,6 +449,9 @@ class VirtualAggregationBuckets:
         self.aggregation = aggregation
         self.aggregation_func = get_virtual_aggregation_func(aggregation)
         self.window = window
+        self.is_hidden = False
+        self.should_persist = False
+
         self.first_bucket_start_time = self.window.get_window_start_time_by_time(base_time)
         self.last_bucket_start_time = \
             self.first_bucket_start_time + (window.total_number_of_buckets - 1) * window.period_millis
@@ -317,16 +493,7 @@ class FieldAggregator:
         self.max_value = max_value
 
     def get_all_raw_aggregates(self):
-        raw_aggregates = {}
-
-        for aggregate in self.aggregations:
-            if is_raw_aggregate(aggregate):
-                raw_aggregates[aggregate] = True
-            else:
-                for dependant_aggr in get_dependant_aggregates(aggregate):
-                    raw_aggregates[dependant_aggr] = True
-
-        return raw_aggregates.keys()
+        return get_all_raw_aggregates(self.aggregations)
 
     def should_aggregate(self, element):
         if not self.aggr_filter:
@@ -336,13 +503,21 @@ class FieldAggregator:
 
 
 class AggregationValue:
-    def __init__(self, aggregation, max_value=None):
+    def __init__(self, aggregation, max_value=None, set_data=None):
         self.aggregation = aggregation
 
         self._value = self.get_default_value()
         self._first_time = datetime.max
-        self._last_time = datetime.max
+        self._last_time = datetime.min
         self._max_value = max_value
+
+        # In case we initialize the object from v3io data
+        if set_data:
+            self._value = set_data[1]
+            if aggregation == 'first':
+                self._first_time = set_data[0]
+            else:
+                self._last_time = set_data[0]
 
     def aggregate(self, time, value):
         if self.aggregation == 'min':
