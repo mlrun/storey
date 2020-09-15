@@ -345,7 +345,7 @@ def test_metadata_immutability():
 def test_batch():
     controller = build_flow([
         Source(),
-        Batch(4, 5),
+        Batch(4, 100),
         Reduce([], lambda acc, x: append_and_return(acc, x)),
     ]).run()
 
@@ -366,7 +366,7 @@ def test_batch_full_event():
 
     controller = build_flow([
         Source(),
-        Batch(4, 5, full_event=True),
+        Batch(4, 100, full_event=True),
         Reduce([], lambda acc, x: append_body_and_return(acc, x)),
     ]).run()
 

@@ -653,7 +653,7 @@ class Batch(Flow):
     def __init__(self, max_events, timeout_secs=None, **kwargs):
         Flow.__init__(self, **kwargs)
         self._max_events = max_events
-        self._events_count = 0
+        self._event_count = 0
         self._batch = []
         self._timeout_task = None
 
@@ -667,27 +667,27 @@ class Batch(Flow):
 
     async def _do(self, event):
         if event is _termination_obj:
-            self._terminate_worker = True
             await self.emit_batch()
             return await self._do_downstream(_termination_obj)
         else:
             if len(self._batch) == 0 and self._timeout_secs:
                 self._timeout_task = asyncio.get_running_loop().create_task(self.sleep_and_emit())
 
-            self._events_count = self._events_count + 1
+            self._event_count = self._event_count + 1
             self._batch.append(event)
 
-            if self._events_count == self._max_events:
+            if self._event_count == self._max_events:
+                if self._timeout_task and not self._timeout_task.cancelled():
+                    self._timeout_task.cancel()
                 await self.emit_batch()
 
     async def emit_batch(self):
         if len(self._batch) > 0:
-            await self._do_downstream(Event([self._get_safe_event_or_body(event) for event in self._batch], time=self._batch[0].time))
+            batch_to_emit = self._batch
             self._batch = []
-            self._events_count = 0
+            self._event_count = 0
 
-            if self._timeout_task and not self._timeout_task.cancelled():
-                self._timeout_task.cancel()
+            await self._do_downstream(Event([self._get_safe_event_or_body(event) for event in batch_to_emit], time=batch_to_emit[0].time))
 
 
 _non_int_char_pattern = re.compile(r"[^-0-9]")
