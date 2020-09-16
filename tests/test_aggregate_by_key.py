@@ -1,7 +1,6 @@
 from datetime import datetime, timedelta
 
-from storey import build_flow, Source, Reduce, Cache, NoopDriver
-from storey.aggregations import AggregateByKey, FieldAggregator
+from storey import build_flow, Source, Reduce, Cache, NoopDriver, AggregateByKey, FieldAggregator
 from storey.dtypes import SlidingWindows, FixedWindows, EmitAfterMaxEvent
 
 test_base_time = datetime.fromisoformat("2020-07-21T21:40:00+00:00")
