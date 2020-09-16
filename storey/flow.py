@@ -667,6 +667,8 @@ class Batch(Flow):
 
     async def _do(self, event):
         if event is _termination_obj:
+            if self._timeout_task and not self._timeout_task.cancelled():
+                self._timeout_task.cancel()
             await self.emit_batch()
             return await self._do_downstream(_termination_obj)
         else:
