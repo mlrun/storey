@@ -18,7 +18,7 @@ class AggregateByKey(Flow):
         self._aggregates_store = AggregateStore(aggregates)
 
         self._cache = cache
-        self._cache.set_aggregation_store(self._aggregates_store)
+        self._cache._set_aggregation_store(self._aggregates_store)
 
         self._aggregates_metadata = aggregates
 
@@ -157,7 +157,7 @@ class Persist(Flow):
             return await self._do_downstream(_termination_obj)
         else:
             # todo: persist keys in parallel
-            await self._cache.persist_key(event.key)
+            await self._cache._persist_key(event.key)
             await self._do_downstream(event)
 
 
