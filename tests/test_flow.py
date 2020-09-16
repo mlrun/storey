@@ -2,7 +2,8 @@ import asyncio
 from datetime import datetime
 
 from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV, Complete, AsyncSource, Choice, Event, \
-    Cache, NoopDriver
+    Batch, Cache, NoopDriver
+import time
 
 
 class ATestException(Exception):
@@ -418,3 +419,54 @@ def test_metadata_immutability():
     assert event.body == 'original body'
     assert result.key == 'new key'
     assert result.body == 'new body'
+
+
+def test_batch():
+    controller = build_flow([
+        Source(),
+        Batch(4, 100),
+        Reduce([], lambda acc, x: append_and_return(acc, x)),
+    ]).run()
+
+    for i in range(10):
+        controller.emit(i)
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9]]
+
+
+def test_batch_full_event():
+    def append_body_and_return(lst, x):
+        ll = []
+        for item in x:
+            ll.append(item.body)
+        lst.append(ll)
+        return lst
+
+    controller = build_flow([
+        Source(),
+        Batch(4, 100, full_event=True),
+        Reduce([], lambda acc, x: append_body_and_return(acc, x)),
+    ]).run()
+
+    for i in range(10):
+        controller.emit(i)
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9]]
+
+
+def test_batch_with_timeout():
+    controller = build_flow([
+        Source(),
+        Batch(4, 2),
+        Reduce([], lambda acc, x: append_and_return(acc, x)),
+    ]).run()
+
+    for i in range(10):
+        if i == 3:
+            time.sleep(3)
+        controller.emit(i)
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == [[0, 1, 2], [3, 4, 5, 6], [7, 8, 9]]
