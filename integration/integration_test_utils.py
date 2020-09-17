@@ -1,3 +1,7 @@
+import base64
+import re
+from datetime import datetime
+
 import aiohttp
 import json
 import random
@@ -6,7 +10,9 @@ import string
 import pytest
 
 from storey import NeedsV3ioAccess
-from storey.flow import _convert_nginx_to_python_type, V3ioError
+from storey.flow import V3ioError
+
+_non_int_char_pattern = re.compile(r"[^-0-9]")
 
 
 def _generate_table_name(prefix='bigdata/aggr_test'):
@@ -74,3 +80,32 @@ async def _delete_item(path, v3io_access, client_session):
     if response.status >= 300 and response.status != 404 and response.status != 409:
         body = await response.text()
         raise V3ioError(f'Failed to delete item at {path}. Response status code was {response.status}: {body}')
+
+
+def _v3io_parse_get_item_response(response_body):
+    response_object = json.loads(response_body)["Item"]
+    for name, type_to_value in response_object.items():
+        val = None
+        for typ, value in type_to_value.items():
+            val = _convert_nginx_to_python_type(typ, value)
+        response_object[name] = val
+    return response_object
+
+
+def _convert_nginx_to_python_type(typ, value):
+    if typ == 'S' or typ == 'BOOL':
+        return value
+    elif typ == 'N':
+        if _non_int_char_pattern.search(value):
+            return float(value)
+        else:
+            return int(value)
+    elif typ == 'B':
+        return base64.b64decode(value)
+    elif typ == 'TS':
+        splits = value.split(':', 1)
+        secs = int(splits[0])
+        nanosecs = int(splits[1])
+        return datetime.utcfromtimestamp(secs + nanosecs / 1000000000)
+    else:
+        raise V3ioError(f'Type {typ} in get item response is not supported')

@@ -1,11 +1,9 @@
 import asyncio
-import base64
 import copy
 import csv
 import json
 import os
 import queue
-import re
 import threading
 from datetime import datetime, timezone
 import uuid
@@ -729,38 +727,6 @@ class Batch(Flow):
             self._event_count = 0
 
             await self._do_downstream(Event([self._get_safe_event_or_body(event) for event in batch_to_emit], time=batch_to_emit[0].time))
-
-
-_non_int_char_pattern = re.compile(r"[^-0-9]")
-
-
-def _v3io_parse_get_item_response(response_body):
-    response_object = json.loads(response_body)["Item"]
-    for name, type_to_value in response_object.items():
-        val = None
-        for typ, value in type_to_value.items():
-            val = _convert_nginx_to_python_type(typ, value)
-        response_object[name] = val
-    return response_object
-
-
-def _convert_nginx_to_python_type(typ, value):
-    if typ == 'S' or typ == 'BOOL':
-        return value
-    elif typ == 'N':
-        if _non_int_char_pattern.search(value):
-            return float(value)
-        else:
-            return int(value)
-    elif typ == 'B':
-        return base64.b64decode(value)
-    elif typ == 'TS':
-        splits = value.split(':', 1)
-        secs = int(splits[0])
-        nanosecs = int(splits[1])
-        return datetime.utcfromtimestamp(secs + nanosecs / 1000000000)
-    else:
-        raise V3ioError(f'Type {typ} in get item response is not supported')
 
 
 class JoinWithV3IOTable(_ConcurrentJobExecution):

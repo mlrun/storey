@@ -2,7 +2,7 @@ import base64
 import json
 from datetime import datetime
 
-from .flow import _v3io_parse_get_item_response
+from integration.integration_test_utils import _v3io_parse_get_item_response
 
 
 def test_v3io_parse_get_item_response():
