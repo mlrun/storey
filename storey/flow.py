@@ -1021,7 +1021,7 @@ class V3ioDriver(NeedsV3ioAccess):
             if bucket.should_persist:
                 blob = pickle.dumps(bucket.to_dict())
                 base64_blob = base64.b64encode(blob).decode('ascii')
-                expressions.append(f"{self._aggregation_attribute_prefix}{name}=blob('{base64_blob}');")
+                expressions.append(f"{self._aggregation_attribute_prefix}{name}=blob('{base64_blob}')")
 
         if additional_data:
             additional_expressions = [f'{name}={_convert_python_obj_to_expression_value(value)}' for (name, value) in
