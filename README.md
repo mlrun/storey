@@ -47,8 +47,7 @@ This step will aggregate the data into the cache object provided, for later pers
 The following example reads user data, creates features using Storey's aggregates, persist the data to V3IO and emits the event containing the features to a V3IO Steam for further processing.
 
 ```python
-from storey import build_flow, Source, Cache, V3ioDriver
-from storey.aggregations import AggregateByKey, FieldAggregator, Persist
+from storey import build_flow, Source, Cache, V3ioDriver, AggregateByKey, FieldAggregator, Persist
 from storey.dtypes import SlidingWindows
 
 v3io_web_api = '****'
