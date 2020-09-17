@@ -6,3 +6,7 @@ from .flow import (  # noqa: F401
     HttpRequest, HttpResponse, Event, Cache,
     build_flow
 )
+
+from .aggregations import (  # noqa: F401
+    AggregateByKey, QueryAggregationByKey, Persist, FieldAggregator
+)
