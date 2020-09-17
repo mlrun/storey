@@ -756,20 +756,6 @@ def _convert_python_type_to_nginx(value):
         raise V3ioError(f'Type {type(value)} in get item response is not supported')
 
 
-def _v3io_parse_get_items_response(response_body):
-    response_object = json.loads(response_body)
-    i = 0
-    for item in response_object['Items']:
-        parsed_item = {}
-        for name, type_to_value in item.items():
-            for typ, value in type_to_value.items():
-                val = _convert_nginx_to_python_type(typ, value)
-                parsed_item[name] = val
-        response_object['Items'][i] = parsed_item
-        i = i + 1
-    return response_object
-
-
 class JoinWithV3IOTable(JoinWithHttp, NeedsV3ioAccess):
 
     def __init__(self, key_extractor, join_function, table_path, attributes='*', webapi=None, access_key=None, **kwargs):

@@ -6,7 +6,7 @@ import string
 import pytest
 
 from storey import NeedsV3ioAccess
-from storey.flow import _v3io_parse_get_items_response, V3ioError
+from storey.flow import _convert_nginx_to_python_type, V3ioError
 
 
 def _generate_table_name(prefix='bigdata/aggr_test'):
@@ -26,6 +26,20 @@ def setup_teardown_test():
     asyncio.run(recursive_delete(table_name, NeedsV3ioAccess()))
 
 
+def _v3io_parse_get_items_response(response_body):
+    response_object = json.loads(response_body)
+    i = 0
+    for item in response_object['Items']:
+        parsed_item = {}
+        for name, type_to_value in item.items():
+            for typ, value in type_to_value.items():
+                val = _convert_nginx_to_python_type(typ, value)
+                parsed_item[name] = val
+        response_object['Items'][i] = parsed_item
+        i = i + 1
+    return response_object
+
+
 # Deletes the entire table
 async def recursive_delete(path, v3io_access):
     connector = aiohttp.TCPConnector()
@@ -37,7 +51,7 @@ async def recursive_delete(path, v3io_access):
         while has_more:
             get_items_body = {'AttributesToGet': '__name', 'Marker': next_marker}
             response = await client_session.put(f'{v3io_access._webapi_url}/{path}/',
-                                                     headers=v3io_access._get_items_headers, data=json.dumps(get_items_body), ssl=False)
+                                                headers=v3io_access._get_items_headers, data=json.dumps(get_items_body), ssl=False)
             body = await response.text()
             if response.status == 200:
                 res = _v3io_parse_get_items_response(body)
