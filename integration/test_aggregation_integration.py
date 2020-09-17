@@ -193,7 +193,7 @@ def _assert_schema_equal(actual, expected):
 async def load_schema(path):
     driver = V3ioDriver()
     res = await driver._load_schema(path)
-    await driver.close_connection()
+    await driver.close()
     return res
 
 

@@ -47,7 +47,7 @@ class AggregateByKey(Flow):
     async def _do(self, event):
         if event == _termination_obj:
             self._terminate_worker = True
-            await self._cache.close_connection()
+            await self._cache.close()
             return await self._do_downstream(_termination_obj)
 
         try:
@@ -72,7 +72,7 @@ class AggregateByKey(Flow):
                     await self._emit_event(key, event)
                     self._events_in_batch[key] = 0
         except Exception as ex:
-            await self._cache.close_connection()
+            await self._cache.close()
             raise ex
 
     # Emit a single event for the requested key
@@ -119,7 +119,7 @@ class QueryAggregationByKey(AggregateByKey):
     async def _do(self, event):
         if event == _termination_obj:
             self._terminate_worker = True
-            await self._cache.close_connection()
+            await self._cache.close()
             return await self._do_downstream(_termination_obj)
 
         try:
@@ -142,7 +142,7 @@ class QueryAggregationByKey(AggregateByKey):
                     await self._emit_event(key, event)
                     self._events_in_batch[key] = 0
         except Exception as ex:
-            await self._cache.close_connection()
+            await self._cache.close()
             raise ex
 
 
@@ -153,7 +153,7 @@ class Persist(Flow):
 
     async def _do(self, event):
         if event is _termination_obj:
-            await self._cache.close_connection()
+            await self._cache.close()
             return await self._do_downstream(_termination_obj)
         else:
             # todo: persist keys in parallel
