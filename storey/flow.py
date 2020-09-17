@@ -1052,24 +1052,22 @@ class V3ioDriver(NeedsV3ioAccess):
             raise V3ioError(f'Failed to get item. Response status code was {response.status_code}: {response.body}')
 
     async def _load_by_key(self, table_path, key):
-        if not self._client_session:
+        if not self._v3io_client:
             self._lazy_init()
 
-        request_body = json.dumps({'AttributesToGet': '*'})
+        container, table_path = self._split_path(table_path)
 
-        response = await self._client_session.put(f'{self._webapi_url}/{table_path}/{key}',
-                                                  headers=self._get_item_headers, data=request_body, ssl=False)
-        body = await response.text()
-        if response.status == 404:
+        response = await self._v3io_client.kv.get(container, table_path, key, raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
+        if response.status_code == 404:
             return None
-        elif response.status == 200:
-            parsed_response = _v3io_parse_get_item_response(body)
-            for name in parsed_response:
+        elif response.status_code == 200:
+            parsed_response = response.output.item
+            for name in parsed_response.items():
                 if name.startswith(self._aggregation_attribute_prefix):
                     del parsed_response[name]
             return parsed_response
         else:
-            raise V3ioError(f'Failed to get item. Response status code was {response.status}: {body}')
+            raise V3ioError(f'Failed to get item. Response status code was {response.status}: {response.body}')
 
     async def close_connection(self):
         if self._v3io_client and not self._closed:
