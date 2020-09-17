@@ -749,7 +749,7 @@ def _convert_python_type_to_nginx(value):
         nanosecs = int((timestamp - secs) * 1e+9)
         return {'TS': f'{secs}:{nanosecs}'}
     else:
-        raise V3ioError(f'Type {type(value)} in get item response is not supported')
+        raise V3ioError(f'Type {type(value)} is not supported')
 
 
 def _convert_python_obj_to_expression_value(value):
@@ -766,7 +766,7 @@ def _convert_python_obj_to_expression_value(value):
         nanosecs = int((timestamp - secs) * 1e+9)
         return f'{secs}:{nanosecs}'
     else:
-        raise V3ioError(f'Type {type(value)} in get item response is not supported')
+        raise V3ioError(f'Type {type(value)} in UpdateItem request is not supported')
 
 
 def _v3io_parse_get_items_response(response_body):
@@ -1005,7 +1005,7 @@ class V3ioDriver(NeedsV3ioAccess):
         if not self._client_session:
             self._lazy_init()
 
-        request_data = self._generate_update_expression(aggr_item, additional_data)
+        request_data = self._build_update_expression(aggr_item, additional_data)
 
         data = {'UpdateExpression': request_data}
         response = await self._client_session.put(f'{self._webapi_url}/{table_path}/{key}',
@@ -1014,14 +1014,15 @@ class V3ioDriver(NeedsV3ioAccess):
             body = await response.text()
             raise V3ioError(f'Failed to save aggregation for key: {key}. Response status code was {response.status}: {body}')
 
-    def _generate_update_expression(self, aggregation_element, additional_data):
+    def _build_update_expression(self, aggregation_element, additional_data):
         expression = ''
 
         for name, bucket in aggregation_element.aggregation_buckets.items():
             # Only save raw aggregates, not virtual
             if bucket.should_persist:
                 blob = pickle.dumps(bucket.to_dict())
-                expression = expression + f"{self._aggregation_attribute_prefix}{name}=blob('{base64.b64encode(blob).decode('ascii')}');"
+                base64_blob = base64.b64encode(blob).decode('ascii')
+                expression = expression + f"{self._aggregation_attribute_prefix}{name}=blob('{base64_blob}');"
 
         if additional_data:
             additional_expr = [f'{name}={_convert_python_obj_to_expression_value(value)}' for (name, value) in additional_data.items()]
