@@ -17,6 +17,8 @@ import aiohttp
 
 from .utils import schema_file_name
 
+import v3io.aio.dataplane
+
 _termination_obj = object()
 
 
@@ -527,6 +529,8 @@ class NeedsV3ioAccess:
         if not access_key:
             raise ValueError('Missing access_key parameter or V3IO_ACCESS_KEY environment variable')
 
+        self._access_key = access_key
+
         self._get_item_headers = {
             'X-v3io-function': 'GetItem',
             'X-v3io-session-key': access_key
@@ -896,55 +900,69 @@ def build_flow(steps):
 class V3ioDriver(NeedsV3ioAccess):
     def __init__(self, webapi=None, access_key=None):
         NeedsV3ioAccess.__init__(self, webapi, access_key)
-        self._client_session = None
+        self._v3io_client = None
+        self._closed = False
 
     def _lazy_init(self):
-        connector = aiohttp.TCPConnector()
-        self._client_session = aiohttp.ClientSession(connector=connector)
+        self._v3io_client = v3io.aio.dataplane.Client(endpoint=self._webapi_url, access_key=self._access_key)
+
+    def _split_path(self, path):
+        while path.startswith('/'):
+            path = path[1:]
+
+        parts = path.split('/', 1)
+        if len(parts) == 1:
+            return parts[0], '/'
+        else:
+            return parts[0], f'/{parts[1]}'
 
     async def _save_schema(self, table_path, schema):
-        if not self._client_session:
+        if not self._v3io_client:
             self._lazy_init()
 
-        response = await self._client_session.put(f'{self._webapi_url}/{table_path}/{schema_file_name}',
-                                                  headers=self._get_put_file_headers, data=json.dumps(schema), ssl=False)
-        if not response.status == 200:
-            body = await response.text()
-            raise V3ioError(f'Failed to save schema file. Response status code was {response.status}: {body}')
+        container, table_path = self._split_path(table_path)
+
+        response = await self._v3io_client.object.put(container=container,
+                                                      path=f'{table_path}/{schema_file_name}',
+                                                      body=json.dumps(schema),
+                                                      raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
+
+        if not response.status_code == 200:
+            raise V3ioError(f'Failed to save schema file. Response status code was {response.status}: {response.body}')
 
     async def _load_schema(self, table_path):
-        if not self._client_session:
+        if not self._v3io_client:
             self._lazy_init()
 
-        connector = aiohttp.TCPConnector()
-        self._client_session = aiohttp.ClientSession(connector=connector)
+        container, table_path = self._split_path(table_path)
 
-        schema_path = f'{self._webapi_url}/{table_path}/{schema_file_name}'
-        response = await self._client_session.get(schema_path, headers=self._get_put_file_headers, ssl=False)
-        body = await response.text()
-        if response.status == 404:
+        schema_path = f'{table_path}/{schema_file_name}'
+        response = await self._v3io_client.object.get(container, schema_path,
+                                                      raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
+        if response.status_code == 404:
             schema = None
-        elif response.status == 200:
-            schema = json.loads(body)
+        elif response.status_code == 200:
+            schema = json.loads(response.body)
         else:
-            raise V3ioError(f'Failed to get schema at {schema_path}. Response status code was {response.status}: {body}')
+            raise V3ioError(f'Failed to get schema at {schema_path}. Response status code was {response.status}: {response.body}')
 
         return schema
 
     async def _save_key(self, table_path, key, aggr_item, additional_data=None):
-        if not self._client_session:
+        if not self._v3io_client:
             self._lazy_init()
 
         request_data = self._get_attributes_as_blob(aggr_item)
         if additional_data:
-            request_data.update(_v3io_build_put_item_request(additional_data))
+            request_data.update(additional_data)
 
-        data = {'Item': request_data, 'UpdateMode': 'CreateOrReplaceAttributes'}
-        response = await self._client_session.put(f'{self._webapi_url}/{table_path}/{key}',
-                                                  headers=self._put_item_headers, data=json.dumps(data), ssl=False)
-        if not response.status == 200:
-            body = await response.text()
-            raise V3ioError(f'Failed to save aggregation for key: {key}. Response status code was {response.status}: {body}')
+        container, table_path = self._split_path(table_path)
+
+        response = await self._v3io_client.kv.put(container, table_path, key, request_data,
+                                                  raise_for_status=v3io.aio.dataplane.RaiseForStatus.never,
+                                                  update_mode='CreateOrReplaceAttributes')
+        if not response.status_code == 200:
+            raise V3ioError(f'Failed to save aggregation for key: {key}. Response status code was {response.status}: {response.body}')
 
     def _get_attributes_as_blob(self, aggregation_element):
         data = {}
@@ -952,7 +970,7 @@ class V3ioDriver(NeedsV3ioAccess):
             # Only save raw aggregates, not virtual
             if bucket.should_persist:
                 blob = pickle.dumps(bucket.to_dict())
-                data[name] = {'B': base64.b64encode(blob).decode('ascii')}
+                data[name] = blob
 
         return data
 
@@ -962,30 +980,28 @@ class V3ioDriver(NeedsV3ioAccess):
     #   'feature_name_2': {'first_bucket_time': <time> 'values': []}
     # }
     async def _load_aggregates_by_key(self, table_path, key):
-        if not self._client_session:
+        if not self._v3io_client:
             self._lazy_init()
 
-        request_body = json.dumps({'AttributesToGet': '*'})
+        container, table_path = self._split_path(table_path)
 
-        response = await self._client_session.put(f'{self._webapi_url}/{table_path}/{key}',
-                                                  headers=self._get_item_headers, data=request_body, ssl=False)
-        body = await response.text()
-        if response.status == 404:
+        response = await self._v3io_client.kv.get(container, table_path, key, raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
+        if response.status_code == 404:
             return None
-        elif response.status == 200:
-            parsed_response = _v3io_parse_get_item_response(body)
+        elif response.status_code == 200:
             res = {}
-            for name, value in parsed_response.items():
+            for name, value in response.output.item.items():
                 if isinstance(value, bytes):
                     res[name] = pickle.loads(value)
 
             return res
         else:
-            raise V3ioError(f'Failed to get item. Response status code was {response.status}: {body}')
+            raise V3ioError(f'Failed to get item. Response status code was {response.status_code}: {response.body}')
 
     async def close_connection(self):
-        if not self._client_session.closed:
-            await self._client_session.close()
+        if self._v3io_client and not self._closed:
+            self._closed = True
+            await self._v3io_client.close()
 
 
 class NoopDriver:

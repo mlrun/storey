@@ -196,6 +196,13 @@ def _assert_schema_equal(actual, expected):
         assert set(item['aggregates']) == set(current_expected['aggregates'])
 
 
+async def load_schema(path):
+    driver = V3ioDriver()
+    res = await driver._load_schema(path)
+    await driver.close_connection()
+    return res
+
+
 def test_modify_schema(setup_teardown_test):
     cache = Cache(setup_teardown_test, V3ioDriver())
 
@@ -256,8 +263,7 @@ def test_modify_schema(setup_teardown_test):
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
-    v3io_driver = V3ioDriver()
-    schema = asyncio.run(v3io_driver._load_schema(setup_teardown_test))
+    schema = asyncio.run(load_schema(setup_teardown_test))
     expected_schema = {"number_of_stuff": {"period_millis": 600000, "aggregates": ['max', 'min', 'sum', 'count']}}
     _assert_schema_equal(schema, expected_schema)
 
@@ -288,11 +294,10 @@ def test_modify_schema(setup_teardown_test):
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
-    schema = asyncio.run(v3io_driver._load_schema(setup_teardown_test))
+    schema = asyncio.run(load_schema(setup_teardown_test))
     expected_schema = {"number_of_stuff": {"period_millis": 600000, "aggregates": ["sum", "max", "min", "count"]},
                        "new_aggr": {"period_millis": 600000, "aggregates": ["min", "max"]}}
     _assert_schema_equal(schema, expected_schema)
-    asyncio.run(v3io_driver.close_connection())
 
 
 def test_invalid_modify_schema(setup_teardown_test):
@@ -355,11 +360,9 @@ def test_invalid_modify_schema(setup_teardown_test):
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
-    v3io_driver = V3ioDriver()
-    schema = asyncio.run(v3io_driver._load_schema(setup_teardown_test))
+    schema = asyncio.run(load_schema(setup_teardown_test))
     expected_schema = {"number_of_stuff": {"period_millis": 600000, "aggregates": ['max', 'min', 'sum', 'count']}}
     _assert_schema_equal(schema, expected_schema)
-    asyncio.run(v3io_driver.close_connection())
 
     other_cache = Cache(setup_teardown_test, V3ioDriver())
 
