@@ -71,7 +71,7 @@ def test_join_with_v3io_table():
         Source(),
         Map(lambda x: x + 1),
         Filter(lambda x: x < 8),
-        JoinWithV3IOTable(lambda x: x.body, lambda x, y: y['secret'], table_path),
+        JoinWithV3IOTable(V3ioDriver(), lambda x: x.body, lambda x, y: y['secret'], table_path),
         Reduce(0, lambda x, y: x + y)
     ]).run()
     for i in range(10):
@@ -104,7 +104,7 @@ def test_write_to_v3io_stream():
     controller = build_flow([
         Source(),
         Map(lambda x: str(x)),
-        WriteToV3IOStream(stream_path, V3ioDriver(), sharding_func=lambda event: int(event.body))
+        WriteToV3IOStream(V3ioDriver(), stream_path, sharding_func=lambda event: int(event.body))
     ]).run()
     for i in range(10):
         controller.emit(i)
@@ -123,7 +123,7 @@ def test_write_to_v3io_stream_unbalanced():
     controller = build_flow([
         Source(),
         Map(lambda x: str(x)),
-        WriteToV3IOStream(stream_path, V3ioDriver(), sharding_func=lambda event: 0)
+        WriteToV3IOStream(V3ioDriver(), stream_path, sharding_func=lambda event: 0)
     ]).run()
     for i in range(10):
         controller.emit(i)
