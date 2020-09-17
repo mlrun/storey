@@ -1015,19 +1015,19 @@ class V3ioDriver(NeedsV3ioAccess):
             raise V3ioError(f'Failed to save aggregation for key: {key}. Response status code was {response.status}: {body}')
 
     def _build_update_expression(self, aggregation_element, additional_data):
-        expression = ''
-
+        expressions = []
         for name, bucket in aggregation_element.aggregation_buckets.items():
             # Only save raw aggregates, not virtual
             if bucket.should_persist:
                 blob = pickle.dumps(bucket.to_dict())
                 base64_blob = base64.b64encode(blob).decode('ascii')
-                expression = expression + f"{self._aggregation_attribute_prefix}{name}=blob('{base64_blob}');"
+                expressions.append(f"{self._aggregation_attribute_prefix}{name}=blob('{base64_blob}');")
 
         if additional_data:
-            additional_expr = [f'{name}={_convert_python_obj_to_expression_value(value)}' for (name, value) in additional_data.items()]
-            expression = expression + ';'.join(additional_expr)
-        return expression
+            additional_expressions = [f'{name}={_convert_python_obj_to_expression_value(value)}' for (name, value) in
+                                      additional_data.items()]
+            expressions.extend(additional_expressions)
+        return ';'.join(expressions)
 
     # Loads a specific key from the store, and returns it in the following format
     # {
