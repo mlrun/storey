@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from storey import build_flow, Source, Reduce, Cache, V3ioDriver, FlowError
+from storey import build_flow, Source, Reduce, Cache, V3ioDriver, FlowError, MapWithState, Map, NoopDriver
 from storey.aggregations import AggregateByKey, FieldAggregator, QueryAggregationByKey, Persist
 from storey.dtypes import SlidingWindows
 from .integration_test_utils import setup_teardown_test
@@ -105,10 +105,21 @@ def test_write_cache(setup_teardown_test):
 
     cache._cache['tal'] = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': datetime.now()}
 
+    def enrich(event, state):
+        if 'first_activity' not in state:
+            state['first_activity'] = event.time
+
+        event.body['time_since_activity'] = (event.time - state['first_activity']).seconds
+        state['last_event'] = event.time
+        event.body['total_activities'] = state['total_activities'] = state.get('total_activities', 0) + 1
+        event.body['color'] = state['color']
+        return event, state
+
     controller = build_flow([
         Source(),
-        AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg", "min", "max"],
-                                        SlidingWindows(['1h', '2h', '24h'], '10m'))],
+        MapWithState(cache, enrich, group_by_key=True, full_event=True),
+        AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg"],
+                                        SlidingWindows(['2h'], '10m'))],
                        cache),
         Persist(cache),
         Reduce([], lambda acc, x: append_return(acc, x)),
@@ -122,51 +133,37 @@ def test_write_cache(setup_teardown_test):
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [
-        {'col1': 0, 'number_of_stuff_sum_1h': 0, 'number_of_stuff_sum_2h': 0, 'number_of_stuff_sum_24h': 0, 'number_of_stuff_min_1h': 0,
-         'number_of_stuff_min_2h': 0, 'number_of_stuff_min_24h': 0, 'number_of_stuff_max_1h': 0, 'number_of_stuff_max_2h': 0,
-         'number_of_stuff_max_24h': 0, 'number_of_stuff_avg_1h': 0.0, 'number_of_stuff_avg_2h': 0.0, 'number_of_stuff_avg_24h': 0.0},
-        {'col1': 1, 'number_of_stuff_sum_1h': 1, 'number_of_stuff_sum_2h': 1, 'number_of_stuff_sum_24h': 1, 'number_of_stuff_min_1h': 0,
-         'number_of_stuff_min_2h': 0, 'number_of_stuff_min_24h': 0, 'number_of_stuff_max_1h': 1, 'number_of_stuff_max_2h': 1,
-         'number_of_stuff_max_24h': 1, 'number_of_stuff_avg_1h': 0.5, 'number_of_stuff_avg_2h': 0.5, 'number_of_stuff_avg_24h': 0.5},
-        {'col1': 2, 'number_of_stuff_sum_1h': 3, 'number_of_stuff_sum_2h': 3, 'number_of_stuff_sum_24h': 3, 'number_of_stuff_min_1h': 0,
-         'number_of_stuff_min_2h': 0, 'number_of_stuff_min_24h': 0, 'number_of_stuff_max_1h': 2, 'number_of_stuff_max_2h': 2,
-         'number_of_stuff_max_24h': 2, 'number_of_stuff_avg_1h': 1.0, 'number_of_stuff_avg_2h': 1.0, 'number_of_stuff_avg_24h': 1.0},
-        {'col1': 3, 'number_of_stuff_sum_1h': 6, 'number_of_stuff_sum_2h': 6, 'number_of_stuff_sum_24h': 6, 'number_of_stuff_min_1h': 1,
-         'number_of_stuff_min_2h': 0, 'number_of_stuff_min_24h': 0, 'number_of_stuff_max_1h': 3, 'number_of_stuff_max_2h': 3,
-         'number_of_stuff_max_24h': 3, 'number_of_stuff_avg_1h': 2.0, 'number_of_stuff_avg_2h': 1.5, 'number_of_stuff_avg_24h': 1.5},
-        {'col1': 4, 'number_of_stuff_sum_1h': 9, 'number_of_stuff_sum_2h': 10, 'number_of_stuff_sum_24h': 10, 'number_of_stuff_min_1h': 2,
-         'number_of_stuff_min_2h': 0, 'number_of_stuff_min_24h': 0, 'number_of_stuff_max_1h': 4, 'number_of_stuff_max_2h': 4,
-         'number_of_stuff_max_24h': 4, 'number_of_stuff_avg_1h': 3.0, 'number_of_stuff_avg_2h': 2.0, 'number_of_stuff_avg_24h': 2.0},
-        {'col1': 5, 'number_of_stuff_sum_1h': 12, 'number_of_stuff_sum_2h': 15, 'number_of_stuff_sum_24h': 15,
-         'number_of_stuff_min_1h': 3, 'number_of_stuff_min_2h': 1, 'number_of_stuff_min_24h': 0, 'number_of_stuff_max_1h': 5,
-         'number_of_stuff_max_2h': 5, 'number_of_stuff_max_24h': 5, 'number_of_stuff_avg_1h': 4.0, 'number_of_stuff_avg_2h': 3.0,
-         'number_of_stuff_avg_24h': 2.5},
-        {'col1': 6, 'number_of_stuff_sum_1h': 15, 'number_of_stuff_sum_2h': 20, 'number_of_stuff_sum_24h': 21,
-         'number_of_stuff_min_1h': 4, 'number_of_stuff_min_2h': 2, 'number_of_stuff_min_24h': 0, 'number_of_stuff_max_1h': 6,
-         'number_of_stuff_max_2h': 6, 'number_of_stuff_max_24h': 6, 'number_of_stuff_avg_1h': 5.0, 'number_of_stuff_avg_2h': 4.0,
-         'number_of_stuff_avg_24h': 3.0},
-        {'col1': 7, 'number_of_stuff_sum_1h': 18, 'number_of_stuff_sum_2h': 25, 'number_of_stuff_sum_24h': 28,
-         'number_of_stuff_min_1h': 5, 'number_of_stuff_min_2h': 3, 'number_of_stuff_min_24h': 0, 'number_of_stuff_max_1h': 7,
-         'number_of_stuff_max_2h': 7, 'number_of_stuff_max_24h': 7, 'number_of_stuff_avg_1h': 6.0, 'number_of_stuff_avg_2h': 5.0,
-         'number_of_stuff_avg_24h': 3.5},
-        {'col1': 8, 'number_of_stuff_sum_1h': 21, 'number_of_stuff_sum_2h': 30, 'number_of_stuff_sum_24h': 36,
-         'number_of_stuff_min_1h': 6, 'number_of_stuff_min_2h': 4, 'number_of_stuff_min_24h': 0, 'number_of_stuff_max_1h': 8,
-         'number_of_stuff_max_2h': 8, 'number_of_stuff_max_24h': 8, 'number_of_stuff_avg_1h': 7.0, 'number_of_stuff_avg_2h': 6.0,
-         'number_of_stuff_avg_24h': 4.0},
-        {'col1': 9, 'number_of_stuff_sum_1h': 24, 'number_of_stuff_sum_2h': 35, 'number_of_stuff_sum_24h': 45,
-         'number_of_stuff_min_1h': 7, 'number_of_stuff_min_2h': 5, 'number_of_stuff_min_24h': 0, 'number_of_stuff_max_1h': 9,
-         'number_of_stuff_max_2h': 9, 'number_of_stuff_max_24h': 9, 'number_of_stuff_avg_1h': 8.0, 'number_of_stuff_avg_2h': 7.0,
-         'number_of_stuff_avg_24h': 4.5}
-    ]
+        {'number_of_stuff_sum_2h': 0, 'number_of_stuff_avg_2h': 0.0, 'col1': 0, 'time_since_activity': 0, 'total_activities': 1,
+         'color': 'blue'},
+        {'number_of_stuff_sum_2h': 1, 'number_of_stuff_avg_2h': 0.5, 'col1': 1, 'time_since_activity': 1500, 'total_activities': 2,
+         'color': 'blue'},
+        {'number_of_stuff_sum_2h': 3, 'number_of_stuff_avg_2h': 1.0, 'col1': 2, 'time_since_activity': 3000, 'total_activities': 3,
+         'color': 'blue'},
+        {'number_of_stuff_sum_2h': 6, 'number_of_stuff_avg_2h': 1.5, 'col1': 3, 'time_since_activity': 4500, 'total_activities': 4,
+         'color': 'blue'},
+        {'number_of_stuff_sum_2h': 10, 'number_of_stuff_avg_2h': 2.0, 'col1': 4, 'time_since_activity': 6000, 'total_activities': 5,
+         'color': 'blue'},
+        {'number_of_stuff_sum_2h': 15, 'number_of_stuff_avg_2h': 3.0, 'col1': 5, 'time_since_activity': 7500, 'total_activities': 6,
+         'color': 'blue'},
+        {'number_of_stuff_sum_2h': 20, 'number_of_stuff_avg_2h': 4.0, 'col1': 6, 'time_since_activity': 9000, 'total_activities': 7,
+         'color': 'blue'},
+        {'number_of_stuff_sum_2h': 25, 'number_of_stuff_avg_2h': 5.0, 'col1': 7, 'time_since_activity': 10500, 'total_activities': 8,
+         'color': 'blue'},
+        {'number_of_stuff_sum_2h': 30, 'number_of_stuff_avg_2h': 6.0, 'col1': 8, 'time_since_activity': 12000, 'total_activities': 9,
+         'color': 'blue'},
+        {'number_of_stuff_sum_2h': 35, 'number_of_stuff_avg_2h': 7.0, 'col1': 9, 'time_since_activity': 13500, 'total_activities': 10,
+         'color': 'blue'}]
 
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
     other_cache = Cache(setup_teardown_test, V3ioDriver())
+
     controller = build_flow([
         Source(),
-        QueryAggregationByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg", "min", "max"],
-                                               SlidingWindows(['1h', '2h', '24h'], '10m'))],
+        MapWithState(cache, enrich, group_by_key=True, full_event=True),
+        QueryAggregationByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg"],
+                                               SlidingWindows(['2h'], '10m'))],
                               other_cache),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
@@ -178,11 +175,8 @@ def test_write_cache(setup_teardown_test):
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [
-        {'col1': 10, 'number_of_stuff_sum_1h': 17, 'number_of_stuff_sum_2h': 30, 'number_of_stuff_sum_24h': 45,
-         'number_of_stuff_min_1h': 8, 'number_of_stuff_min_2h': 6, 'number_of_stuff_min_24h': 0, 'number_of_stuff_max_1h': 9,
-         'number_of_stuff_max_2h': 9, 'number_of_stuff_max_24h': 9, 'number_of_stuff_avg_1h': 8.5, 'number_of_stuff_avg_2h': 7.5,
-         'number_of_stuff_avg_24h': 4.5}
-    ]
+        {'number_of_stuff_sum_2h': 30, 'number_of_stuff_avg_2h': 7.5, 'col1': 10, 'time_since_activity': 15000, 'total_activities': 11,
+         'color': 'blue'}]
 
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'

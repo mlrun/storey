@@ -445,16 +445,25 @@ class FlatMap(UnaryFunctionFlow):
 
 
 class FunctionWithStateFlow(Flow):
-    def __init__(self, initial_state, fn, **kwargs):
+    def __init__(self, initial_state, fn, group_by_key=False, **kwargs):
         super().__init__(**kwargs)
         if not callable(fn):
             raise TypeError(f'Expected a callable, got {type(fn)}')
         self._is_async = asyncio.iscoroutinefunction(fn)
         self._state = initial_state
         self._fn = fn
+        self._group_by_key = group_by_key
 
-    async def _call(self, element):
-        res, self._state = self._fn(element, self._state)
+    async def _call(self, event):
+        element = self._get_safe_event_or_body(event)
+        if self._group_by_key:
+            if isinstance(self._state, Cache):
+                key_data = await self._state.get_or_load_key(event.key)
+            else:
+                key_data = self._state[event.key]
+            res, self._state[event.key] = self._fn(element, key_data)
+        else:
+            res, self._state = self._fn(element, self._state)
         if self._is_async:
             res = await res
         return res
@@ -466,8 +475,8 @@ class FunctionWithStateFlow(Flow):
         if event is _termination_obj:
             return await self._do_downstream(_termination_obj)
         else:
-            element = self._get_safe_event_or_body(event)
-            fn_result = await self._call(element)
+
+            fn_result = await self._call(event)
             await self._do_internal(event, fn_result)
 
 
@@ -651,6 +660,49 @@ class JoinWithHttp(Flow):
             await self._q.put((event, asyncio.get_running_loop().create_task(request)))
             if self._worker_awaitable.done():
                 await self._worker_awaitable
+
+
+class Batch(Flow):
+    def __init__(self, max_events, timeout_secs=None, **kwargs):
+        Flow.__init__(self, **kwargs)
+        self._max_events = max_events
+        self._event_count = 0
+        self._batch = []
+        self._timeout_task = None
+
+        self._timeout_secs = timeout_secs
+        if self._timeout_secs <= 0:
+            raise ValueError('Batch timeout cannot be 0 or negative')
+
+    async def sleep_and_emit(self):
+        await asyncio.sleep(self._timeout_secs)
+        await self.emit_batch()
+
+    async def _do(self, event):
+        if event is _termination_obj:
+            if self._timeout_task and not self._timeout_task.cancelled():
+                self._timeout_task.cancel()
+            await self.emit_batch()
+            return await self._do_downstream(_termination_obj)
+        else:
+            if len(self._batch) == 0 and self._timeout_secs:
+                self._timeout_task = asyncio.get_running_loop().create_task(self.sleep_and_emit())
+
+            self._event_count = self._event_count + 1
+            self._batch.append(event)
+
+            if self._event_count == self._max_events:
+                if self._timeout_task and not self._timeout_task.cancelled():
+                    self._timeout_task.cancel()
+                await self.emit_batch()
+
+    async def emit_batch(self):
+        if len(self._batch) > 0:
+            batch_to_emit = self._batch
+            self._batch = []
+            self._event_count = 0
+
+            await self._do_downstream(Event([self._get_safe_event_or_body(event) for event in batch_to_emit], time=batch_to_emit[0].time))
 
 
 _non_int_char_pattern = re.compile(r"[^-0-9]")
@@ -902,6 +954,7 @@ class V3ioDriver(NeedsV3ioAccess):
         NeedsV3ioAccess.__init__(self, webapi, access_key)
         self._v3io_client = None
         self._closed = False
+        self._aggregation_attribute_prefix = 'aggr_'
 
     def _lazy_init(self):
         self._v3io_client = v3io.aio.dataplane.Client(endpoint=self._webapi_url, access_key=self._access_key)
@@ -970,7 +1023,7 @@ class V3ioDriver(NeedsV3ioAccess):
             # Only save raw aggregates, not virtual
             if bucket.should_persist:
                 blob = pickle.dumps(bucket.to_dict())
-                data[name] = blob
+                data[f'{self._aggregation_attribute_prefix}{name}'] = blob
 
         return data
 
@@ -991,12 +1044,32 @@ class V3ioDriver(NeedsV3ioAccess):
         elif response.status_code == 200:
             res = {}
             for name, value in response.output.item.items():
-                if isinstance(value, bytes):
-                    res[name] = pickle.loads(value)
+                if name.startswith(self._aggregation_attribute_prefix):
+                    res[name[len(self._aggregation_attribute_prefix):]] = pickle.loads(value)
 
             return res
         else:
             raise V3ioError(f'Failed to get item. Response status code was {response.status_code}: {response.body}')
+
+    async def _load_by_key(self, table_path, key):
+        if not self._client_session:
+            self._lazy_init()
+
+        request_body = json.dumps({'AttributesToGet': '*'})
+
+        response = await self._client_session.put(f'{self._webapi_url}/{table_path}/{key}',
+                                                  headers=self._get_item_headers, data=request_body, ssl=False)
+        body = await response.text()
+        if response.status == 404:
+            return None
+        elif response.status == 200:
+            parsed_response = _v3io_parse_get_item_response(body)
+            for name in parsed_response:
+                if name.startswith(self._aggregation_attribute_prefix):
+                    del parsed_response[name]
+            return parsed_response
+        else:
+            raise V3ioError(f'Failed to get item. Response status code was {response.status}: {body}')
 
     async def close_connection(self):
         if self._v3io_client and not self._closed:
@@ -1017,29 +1090,44 @@ class NoopDriver:
     async def _load_aggregates_by_key(self, table_path, key):
         pass
 
+    async def _load_by_key(self, table_path, key):
+        pass
+
     async def close_connection(self):
         pass
 
 
 class Cache:
     def __init__(self, table_path, storage):
-        self.table_path = table_path
-        self.storage = storage
+        self._table_path = table_path
+        self._storage = storage
         self._cache = {}
         self._aggregation_store = None
 
     def __getitem__(self, key):
         return self._cache[key]
 
-    def set_aggregation_store(self, store):
-        store._table_path = self.table_path
-        store._storage = self.storage
+    async def get_or_load_key(self, key):
+        if key not in self._cache:
+            res = await self._storage._load_by_key(self._table_path, key)
+            if res:
+                self._cache[key] = res
+            else:
+                self._cache[key] = {}
+        return self._cache[key]
+
+    def __setitem__(self, key, value):
+        self._cache[key] = value
+
+    def _set_aggregation_store(self, store):
+        store._table_path = self._table_path
+        store._storage = self._storage
         self._aggregation_store = store
 
-    async def persist_key(self, key):
+    async def _persist_key(self, key):
         aggr_by_key = self._aggregation_store[key]
         additional_cache_data_by_key = self._cache.get(key, None)
-        await self.storage._save_key(self.table_path, key, aggr_by_key, additional_cache_data_by_key)
+        await self._storage._save_key(self._table_path, key, aggr_by_key, additional_cache_data_by_key)
 
     async def close_connection(self):
-        await self.storage.close_connection()
+        await self._storage.close_connection()

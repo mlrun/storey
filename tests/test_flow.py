@@ -1,7 +1,9 @@
 import asyncio
 from datetime import datetime
 
-from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV, Complete, AsyncSource, Choice, Event
+from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV, Complete, AsyncSource, Choice, Event, \
+    Batch, Cache, NoopDriver
+import time
 
 
 class ATestException(Exception):
@@ -206,6 +208,85 @@ def test_map_with_state_flow():
     assert termination_result == 1036
 
 
+def test_map_with_cache_state_flow():
+    cache = Cache("table", NoopDriver())
+    cache._cache['tal'] = {'color': 'blue'}
+    cache._cache['dina'] = {'color': 'red'}
+
+    def enrich(event, state):
+        event['color'] = state['color']
+        state['counter'] = state.get('counter', 0) + 1
+        return event, state
+
+    controller = build_flow([
+        Source(),
+        MapWithState(cache, lambda x, state: enrich(x, state), group_by_key=True),
+        Reduce([], append_and_return),
+    ]).run()
+
+    for i in range(10):
+        key = 'tal'
+        if i % 3 == 0:
+            key = 'dina'
+        controller.emit(Event(body={'col1': i}, key=key))
+    controller.terminate()
+
+    termination_result = controller.await_termination()
+    expected = [{'col1': 0, 'color': 'red'},
+                {'col1': 1, 'color': 'blue'},
+                {'col1': 2, 'color': 'blue'},
+                {'col1': 3, 'color': 'red'},
+                {'col1': 4, 'color': 'blue'},
+                {'col1': 5, 'color': 'blue'},
+                {'col1': 6, 'color': 'red'},
+                {'col1': 7, 'color': 'blue'},
+                {'col1': 8, 'color': 'blue'},
+                {'col1': 9, 'color': 'red'}]
+    expected_cache = {'tal': {'color': 'blue', 'counter': 6}, 'dina': {'color': 'red', 'counter': 4}}
+
+    assert termination_result == expected
+    assert cache._cache == expected_cache
+
+
+def test_map_with_empty_cache_state_flow():
+    cache = Cache("table", NoopDriver())
+
+    def enrich(event, state):
+        if 'first_value' not in state:
+            state['first_value'] = event['col1']
+        event['diff_from_first'] = event['col1'] - state['first_value']
+        state['counter'] = state.get('counter', 0) + 1
+        return event, state
+
+    controller = build_flow([
+        Source(),
+        MapWithState(cache, lambda x, state: enrich(x, state), group_by_key=True),
+        Reduce([], append_and_return),
+    ]).run()
+
+    for i in range(10):
+        key = 'tal'
+        if i % 3 == 0:
+            key = 'dina'
+        controller.emit(Event(body={'col1': i}, key=key))
+    controller.terminate()
+
+    termination_result = controller.await_termination()
+    expected = [{'col1': 0, 'diff_from_first': 0},
+                {'col1': 1, 'diff_from_first': 0},
+                {'col1': 2, 'diff_from_first': 1},
+                {'col1': 3, 'diff_from_first': 3},
+                {'col1': 4, 'diff_from_first': 3},
+                {'col1': 5, 'diff_from_first': 4},
+                {'col1': 6, 'diff_from_first': 6},
+                {'col1': 7, 'diff_from_first': 6},
+                {'col1': 8, 'diff_from_first': 7},
+                {'col1': 9, 'diff_from_first': 9}]
+    expected_cache = {'dina': {'first_value': 0, 'counter': 4}, 'tal': {'first_value': 1, 'counter': 6}}
+    assert termination_result == expected
+    assert cache._cache == expected_cache
+
+
 def test_awaitable_result():
     controller = build_flow([
         Source(),
@@ -338,3 +419,54 @@ def test_metadata_immutability():
     assert event.body == 'original body'
     assert result.key == 'new key'
     assert result.body == 'new body'
+
+
+def test_batch():
+    controller = build_flow([
+        Source(),
+        Batch(4, 100),
+        Reduce([], lambda acc, x: append_and_return(acc, x)),
+    ]).run()
+
+    for i in range(10):
+        controller.emit(i)
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9]]
+
+
+def test_batch_full_event():
+    def append_body_and_return(lst, x):
+        ll = []
+        for item in x:
+            ll.append(item.body)
+        lst.append(ll)
+        return lst
+
+    controller = build_flow([
+        Source(),
+        Batch(4, 100, full_event=True),
+        Reduce([], lambda acc, x: append_body_and_return(acc, x)),
+    ]).run()
+
+    for i in range(10):
+        controller.emit(i)
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9]]
+
+
+def test_batch_with_timeout():
+    controller = build_flow([
+        Source(),
+        Batch(4, 2),
+        Reduce([], lambda acc, x: append_and_return(acc, x)),
+    ]).run()
+
+    for i in range(10):
+        if i == 3:
+            time.sleep(3)
+        controller.emit(i)
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == [[0, 1, 2], [3, 4, 5, 6], [7, 8, 9]]
