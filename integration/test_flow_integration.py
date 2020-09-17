@@ -1,6 +1,7 @@
 import base64
 
-from storey import Filter, JoinWithV3IOTable, JoinWithHttp, Map, Reduce, Source, NeedsV3ioAccess, HttpRequest, build_flow, WriteToV3IOStream
+from storey import Filter, JoinWithV3IOTable, JoinWithHttp, Map, Reduce, Source, NeedsV3ioAccess, HttpRequest, build_flow, \
+    WriteToV3IOStream, V3ioDriver
 
 import aiohttp
 import asyncio
@@ -103,7 +104,7 @@ def test_write_to_v3io_stream():
     controller = build_flow([
         Source(),
         Map(lambda x: str(x)),
-        WriteToV3IOStream(stream_path, sharding_func=lambda event: int(event.body))
+        WriteToV3IOStream(stream_path, V3ioDriver(), sharding_func=lambda event: int(event.body))
     ]).run()
     for i in range(10):
         controller.emit(i)
@@ -122,7 +123,7 @@ def test_write_to_v3io_stream_unbalanced():
     controller = build_flow([
         Source(),
         Map(lambda x: str(x)),
-        WriteToV3IOStream(stream_path, sharding_func=lambda event: 0)
+        WriteToV3IOStream(stream_path, V3ioDriver(), sharding_func=lambda event: 0)
     ]).run()
     for i in range(10):
         controller.emit(i)
