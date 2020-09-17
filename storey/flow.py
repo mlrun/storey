@@ -737,25 +737,6 @@ def _convert_nginx_to_python_type(typ, value):
         raise V3ioError(f'Type {typ} in get item response is not supported')
 
 
-def _convert_python_type_to_nginx(value):
-    if isinstance(value, str):
-        return {'S': value}
-    elif isinstance(value, bool):
-        return {'BOOL': value}
-    elif isinstance(value, float) or isinstance(value, int):
-        return {'N': str(value)}
-    elif isinstance(value, bytes):
-        return {'B': base64.b64encode(value).decode('ascii')}
-    elif isinstance(value, datetime):
-        timestamp = value.timestamp()
-
-        secs = int(timestamp)
-        nanosecs = int((timestamp - secs) * 1e+9)
-        return {'TS': f'{secs}:{nanosecs}'}
-    else:
-        raise V3ioError(f'Type {type(value)} in get item response is not supported')
-
-
 class JoinWithV3IOTable(JoinWithHttp, NeedsV3ioAccess):
 
     def __init__(self, key_extractor, join_function, table_path, attributes='*', webapi=None, access_key=None, **kwargs):
@@ -782,29 +763,11 @@ def _build_request_put_records(shard_id, events):
     record_list_for_json = []
     for event in events:
         record = event.body
-        if isinstance(record, bytes):
-            record_as_bytes = record
-        elif isinstance(record, str):
-            record_as_bytes = record.encode("utf-8")
-        elif isinstance(record, dict):
-            record_as_bytes = json.dumps(record).encode("utf-8")
-        else:
-            raise Exception(f'Unsupported record type {type(record)}')
-        record_as_b64_string = str(base64.b64encode(record_as_bytes), "utf-8")
-        record_list_for_json.append({'ShardId': shard_id, 'Data': record_as_b64_string})
+        if isinstance(record, dict):
+            record = json.dumps(record).encode("utf-8")
+        record_list_for_json.append({'shard_id': shard_id, 'data': record})
 
-    payload_obj = {
-        'Records': record_list_for_json
-    }
-    return json.dumps(payload_obj)
-
-
-def _v3io_build_put_item_request(data):
-    request = {}
-
-    for key, value in data.items():
-        request[key] = _convert_python_type_to_nginx(value)
-    return request
+    return record_list_for_json
 
 
 class WriteToV3IOStream(Flow, NeedsV3ioAccess):
@@ -816,31 +779,28 @@ class WriteToV3IOStream(Flow, NeedsV3ioAccess):
         if sharding_func is not None and not callable(sharding_func):
             raise TypeError(f'Expected a callable, got {type(sharding_func)}')
 
-        self.stream_path = stream_path
+        self._container, self.stream_path = _split_path(stream_path)
+
         self._sharding_func = sharding_func
 
         self._batch_size = batch_size
 
-        self._client_session = None
+        self._v3io_client = None
 
     @staticmethod
     async def _handle_response(request):
         if request:
             response = await request
-            response_body = await response.text()
-            if response.status == 200:
-                response_obj = json.loads(response_body)
-                if response_obj['FailedRecordCount'] == 0:
+            if response.status_code == 200:
+                if response.output.failed_record_count == 0:
                     return
-            raise V3ioError(f'Failed to put records to V3IO. Got {response.status} response: {response_body}')
+            raise V3ioError(f'Failed to put records to V3IO. Got {response.status_code} response: {response.body}')
 
     def _send_batch(self, buffers, in_flight_reqs, shard_id):
         buffer = buffers[shard_id]
         buffers[shard_id] = []
         request_body = _build_request_put_records(shard_id, buffer)
-        request = self._client_session.request('POST', f'{self._webapi_url}/{self.stream_path}/',
-                                               headers=self._put_records_headers,
-                                               data=request_body, ssl=False)
+        request = self._v3io_client.stream.put_records(self._container, self.stream_path, request_body)
         in_flight_reqs[shard_id] = asyncio.get_running_loop().create_task(request)
 
     async def _worker(self):
@@ -882,19 +842,16 @@ class WriteToV3IOStream(Flow, NeedsV3ioAccess):
                 await self._q.get()
             raise ex
         finally:
-            await self._client_session.close()
+            await self._v3io_client.close()
 
     async def _lazy_init(self):
-        connector = aiohttp.TCPConnector()
-        self._client_session = aiohttp.ClientSession(connector=connector)
-        req = self._client_session.request("PUT", f'{self._webapi_url}/{self.stream_path}/', headers=self._describe_stream_headers,
-                                           data='{}', ssl=False)
-        response = await req
-        response_body = await response.text()
-        if response.status != 200:
-            raise V3ioError(f'Failed to get number of shards. Got {response.status} response: {response_body}')
+        self._v3io_client = v3io.aio.dataplane.Client(endpoint=self._webapi_url, access_key=self._access_key)
 
-        self._shard_count = int(json.loads(response_body)['ShardCount'])
+        response = await self._v3io_client.stream.describe(self._container, self.stream_path)
+        if response.status_code != 200:
+            raise V3ioError(f'Failed to get number of shards. Got {response.status_code} response: {response.body}')
+
+        self._shard_count = response.output.shard_count
         if self._sharding_func is None:
             def f(_):
                 return random.randint(0, self._shard_count - 1)
@@ -905,7 +862,7 @@ class WriteToV3IOStream(Flow, NeedsV3ioAccess):
         self._worker_awaitable = asyncio.get_running_loop().create_task(self._worker())
 
     async def _do(self, event):
-        if not self._client_session:
+        if not self._v3io_client:
             await self._lazy_init()
 
         if self._worker_awaitable.done():
@@ -935,6 +892,17 @@ def build_flow(steps):
     return steps[0]
 
 
+def _split_path(path):
+    while path.startswith('/'):
+        path = path[1:]
+
+    parts = path.split('/', 1)
+    if len(parts) == 1:
+        return parts[0], '/'
+    else:
+        return parts[0], f'/{parts[1]}'
+
+
 class V3ioDriver(NeedsV3ioAccess):
     def __init__(self, webapi=None, access_key=None):
         NeedsV3ioAccess.__init__(self, webapi, access_key)
@@ -945,21 +913,11 @@ class V3ioDriver(NeedsV3ioAccess):
     def _lazy_init(self):
         self._v3io_client = v3io.aio.dataplane.Client(endpoint=self._webapi_url, access_key=self._access_key)
 
-    def _split_path(self, path):
-        while path.startswith('/'):
-            path = path[1:]
-
-        parts = path.split('/', 1)
-        if len(parts) == 1:
-            return parts[0], '/'
-        else:
-            return parts[0], f'/{parts[1]}'
-
     async def _save_schema(self, table_path, schema):
         if not self._v3io_client:
             self._lazy_init()
 
-        container, table_path = self._split_path(table_path)
+        container, table_path = _split_path(table_path)
 
         response = await self._v3io_client.object.put(container=container,
                                                       path=f'{table_path}/{schema_file_name}',
@@ -967,13 +925,13 @@ class V3ioDriver(NeedsV3ioAccess):
                                                       raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
 
         if not response.status_code == 200:
-            raise V3ioError(f'Failed to save schema file. Response status code was {response.status}: {response.body}')
+            raise V3ioError(f'Failed to save schema file. Response status code was {response.status_code}: {response.body}')
 
     async def _load_schema(self, table_path):
         if not self._v3io_client:
             self._lazy_init()
 
-        container, table_path = self._split_path(table_path)
+        container, table_path = _split_path(table_path)
 
         schema_path = f'{table_path}/{schema_file_name}'
         response = await self._v3io_client.object.get(container, schema_path,
@@ -983,7 +941,7 @@ class V3ioDriver(NeedsV3ioAccess):
         elif response.status_code == 200:
             schema = json.loads(response.body)
         else:
-            raise V3ioError(f'Failed to get schema at {schema_path}. Response status code was {response.status}: {response.body}')
+            raise V3ioError(f'Failed to get schema at {schema_path}. Response status code was {response.status_code}: {response.body}')
 
         return schema
 
@@ -995,13 +953,13 @@ class V3ioDriver(NeedsV3ioAccess):
         if additional_data:
             request_data.update(additional_data)
 
-        container, table_path = self._split_path(table_path)
+        container, table_path = _split_path(table_path)
 
         response = await self._v3io_client.kv.put(container, table_path, key, request_data,
                                                   raise_for_status=v3io.aio.dataplane.RaiseForStatus.never,
                                                   update_mode='CreateOrReplaceAttributes')
         if not response.status_code == 200:
-            raise V3ioError(f'Failed to save aggregation for key: {key}. Response status code was {response.status}: {response.body}')
+            raise V3ioError(f'Failed to save aggregation for key: {key}. Response status code was {response.status_code}: {response.body}')
 
     def _get_attributes_as_blob(self, aggregation_element):
         data = {}
@@ -1022,7 +980,7 @@ class V3ioDriver(NeedsV3ioAccess):
         if not self._v3io_client:
             self._lazy_init()
 
-        container, table_path = self._split_path(table_path)
+        container, table_path = _split_path(table_path)
 
         response = await self._v3io_client.kv.get(container, table_path, key, raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
         if response.status_code == 404:
@@ -1041,7 +999,7 @@ class V3ioDriver(NeedsV3ioAccess):
         if not self._v3io_client:
             self._lazy_init()
 
-        container, table_path = self._split_path(table_path)
+        container, table_path = _split_path(table_path)
 
         response = await self._v3io_client.kv.get(container, table_path, key, raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
         if response.status_code == 404:
@@ -1053,7 +1011,7 @@ class V3ioDriver(NeedsV3ioAccess):
                     del parsed_response[name]
             return parsed_response
         else:
-            raise V3ioError(f'Failed to get item. Response status code was {response.status}: {response.body}')
+            raise V3ioError(f'Failed to get item. Response status code was {response.status_code}: {response.body}')
 
     async def close_connection(self):
         if self._v3io_client and not self._closed:
