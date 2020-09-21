@@ -539,55 +539,6 @@ class NeedsV3ioAccess:
 
         self._access_key = access_key
 
-        self._get_item_headers = {
-            'X-v3io-function': 'GetItem',
-            'X-v3io-session-key': access_key
-        }
-
-        self._get_items_headers = {
-            'X-v3io-function': 'GetItems',
-            'X-v3io-session-key': access_key
-        }
-
-        self._put_item_headers = {
-            'X-v3io-function': 'PutItem',
-            'X-v3io-session-key': access_key
-        }
-
-        self._update_item_headers = {
-            'X-v3io-function': 'UpdateItem',
-            'X-v3io-session-key': access_key
-        }
-
-        self._put_records_headers = {
-            'X-v3io-function': 'PutRecords',
-            'X-v3io-session-key': access_key
-        }
-
-        self._create_stream_headers = {
-            'X-v3io-function': 'CreateStream',
-            'X-v3io-session-key': access_key
-        }
-
-        self._describe_stream_headers = {
-            'X-v3io-function': 'DescribeStream',
-            'X-v3io-session-key': access_key
-        }
-
-        self._seek_headers = {
-            'X-v3io-function': 'Seek',
-            'X-v3io-session-key': access_key
-        }
-
-        self._get_records_headers = {
-            'X-v3io-function': 'GetRecords',
-            'X-v3io-session-key': access_key
-        }
-
-        self._get_put_file_headers = {
-            'X-v3io-session-key': access_key
-        }
-
 
 class HttpRequest:
     def __init__(self, method, url, body, headers=None):

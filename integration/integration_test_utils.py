@@ -1,4 +1,5 @@
 import base64
+import os
 import re
 from datetime import datetime
 
@@ -9,10 +10,74 @@ import asyncio
 import string
 import pytest
 
-from storey import NeedsV3ioAccess
 from storey.flow import V3ioError
 
 _non_int_char_pattern = re.compile(r"[^-0-9]")
+
+
+class V3ioHeaders:
+    def __init__(self, webapi=None, access_key=None):
+        webapi = webapi or os.getenv('V3IO_API')
+        if not webapi:
+            raise ValueError('Missing webapi parameter or V3IO_API environment variable')
+
+        if not webapi.startswith('http://') and not webapi.startswith('https://'):
+            webapi = f'http://{webapi}'
+
+        self._webapi_url = webapi
+
+        access_key = access_key or os.getenv('V3IO_ACCESS_KEY')
+        if not access_key:
+            raise ValueError('Missing access_key parameter or V3IO_ACCESS_KEY environment variable')
+
+        self._get_item_headers = {
+            'X-v3io-function': 'GetItem',
+            'X-v3io-session-key': access_key
+        }
+
+        self._get_items_headers = {
+            'X-v3io-function': 'GetItems',
+            'X-v3io-session-key': access_key
+        }
+
+        self._put_item_headers = {
+            'X-v3io-function': 'PutItem',
+            'X-v3io-session-key': access_key
+        }
+
+        self._update_item_headers = {
+            'X-v3io-function': 'UpdateItem',
+            'X-v3io-session-key': access_key
+        }
+
+        self._put_records_headers = {
+            'X-v3io-function': 'PutRecords',
+            'X-v3io-session-key': access_key
+        }
+
+        self._create_stream_headers = {
+            'X-v3io-function': 'CreateStream',
+            'X-v3io-session-key': access_key
+        }
+
+        self._describe_stream_headers = {
+            'X-v3io-function': 'DescribeStream',
+            'X-v3io-session-key': access_key
+        }
+
+        self._seek_headers = {
+            'X-v3io-function': 'Seek',
+            'X-v3io-session-key': access_key
+        }
+
+        self._get_records_headers = {
+            'X-v3io-function': 'GetRecords',
+            'X-v3io-session-key': access_key
+        }
+
+        self._get_put_file_headers = {
+            'X-v3io-session-key': access_key
+        }
 
 
 def _generate_table_name(prefix='bigdata/aggr_test'):
@@ -29,7 +94,7 @@ def setup_teardown_test():
     yield table_name
 
     # Teardown
-    asyncio.run(recursive_delete(table_name, NeedsV3ioAccess()))
+    asyncio.run(recursive_delete(table_name, V3ioHeaders()))
 
 
 def _v3io_parse_get_items_response(response_body):
