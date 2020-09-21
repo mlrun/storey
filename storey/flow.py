@@ -1024,9 +1024,8 @@ class V3ioDriver(NeedsV3ioAccess):
                 expressions.append(f"{self._aggregation_attribute_prefix}{name}=blob('{base64_blob}')")
 
         if additional_data:
-            additional_expressions = [f'{name}={_convert_python_obj_to_expression_value(value)}' for (name, value) in
-                                      additional_data.items()]
-            expressions.extend(additional_expressions)
+            for name, value in additional_data.items():
+                expressions.append(f'{name}={_convert_python_obj_to_expression_value(value)}')
         return ';'.join(expressions)
 
     # Loads a specific key from the store, and returns it in the following format
