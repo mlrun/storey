@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import copy
 import csv
 import json
@@ -941,27 +942,44 @@ class V3ioDriver(NeedsV3ioAccess):
     async def _save_key(self, table_path, key, aggr_item, additional_data=None):
         self._lazy_init()
 
-        request_data = self._get_attributes_as_blob(aggr_item)
-        if additional_data:
-            request_data.update(additional_data)
+        update_expression = self._build_update_expression(aggr_item, additional_data)
 
         container, table_path = _split_path(table_path)
 
-        response = await self._v3io_client.kv.put(container, table_path, key, request_data,
-                                                  raise_for_status=v3io.aio.dataplane.RaiseForStatus.never,
-                                                  update_mode='CreateOrReplaceAttributes')
+        response = await self._v3io_client.kv.update(container, table_path, key, expression=update_expression,
+                                                     raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
         if not response.status_code == 200:
             raise V3ioError(f'Failed to save aggregation for key: {key}. Response status code was {response.status_code}: {response.body}')
 
-    def _get_attributes_as_blob(self, aggregation_element):
-        data = {}
+    @staticmethod
+    def _convert_python_obj_to_expression_value(value):
+        if isinstance(value, str):
+            return f"'{value}'"
+        if isinstance(value, bool) or isinstance(value, float) or isinstance(value, int):
+            return str(value)
+        elif isinstance(value, bytes):
+            return f"blob('{base64.b64encode(value).decode('ascii')}')"
+        elif isinstance(value, datetime):
+            timestamp = value.timestamp()
+
+            secs = int(timestamp)
+            nanosecs = int((timestamp - secs) * 1e+9)
+            return f'{secs}:{nanosecs}'
+        else:
+            raise V3ioError(f'Type {type(value)} in UpdateItem request is not supported')
+
+    def _build_update_expression(self, aggregation_element, additional_data):
+        expressions = []
         for name, bucket in aggregation_element.aggregation_buckets.items():
             # Only save raw aggregates, not virtual
             if bucket.should_persist:
                 blob = pickle.dumps(bucket.to_dict())
-                data[f'{self._aggregation_attribute_prefix}{name}'] = blob
-
-        return data
+                base64_blob = base64.b64encode(blob).decode('ascii')
+                expressions.append(f"{self._aggregation_attribute_prefix}{name}=blob('{base64_blob}')")
+        if additional_data:
+            for name, value in additional_data.items():
+                expressions.append(f'{name}={self._convert_python_obj_to_expression_value(value)}')
+        return ';'.join(expressions)
 
     # Loads a specific key from the store, and returns it in the following format
     # {
