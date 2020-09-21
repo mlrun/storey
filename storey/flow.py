@@ -913,10 +913,8 @@ class V3ioDriver(NeedsV3ioAccess):
         if not self._v3io_client:
             self._v3io_client = v3io.aio.dataplane.Client(endpoint=self._webapi_url, access_key=self._access_key)
 
-    async def _save_schema(self, table_path, schema):
+    async def _save_schema(self, container, table_path, schema):
         self._lazy_init()
-
-        container, table_path = _split_path(table_path)
 
         response = await self._v3io_client.object.put(container=container,
                                                       path=f'{table_path}/{schema_file_name}',
@@ -926,10 +924,8 @@ class V3ioDriver(NeedsV3ioAccess):
         if not response.status_code == 200:
             raise V3ioError(f'Failed to save schema file. Response status code was {response.status_code}: {response.body}')
 
-    async def _load_schema(self, table_path):
+    async def _load_schema(self, container, table_path):
         self._lazy_init()
-
-        container, table_path = _split_path(table_path)
 
         schema_path = f'{table_path}/{schema_file_name}'
         response = await self._v3io_client.object.get(container, schema_path,
@@ -943,12 +939,10 @@ class V3ioDriver(NeedsV3ioAccess):
 
         return schema
 
-    async def _save_key(self, table_path, key, aggr_item, additional_data=None):
+    async def _save_key(self, container, table_path, key, aggr_item, additional_data=None):
         self._lazy_init()
 
         update_expression = self._build_update_expression(aggr_item, additional_data)
-
-        container, table_path = _split_path(table_path)
 
         response = await self._v3io_client.kv.update(container, table_path, key, expression=update_expression,
                                                      raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
@@ -990,10 +984,8 @@ class V3ioDriver(NeedsV3ioAccess):
     #   'feature_name_1': {'first_bucket_time': <time> 'values': []},
     #   'feature_name_2': {'first_bucket_time': <time> 'values': []}
     # }
-    async def _load_aggregates_by_key(self, table_path, key):
+    async def _load_aggregates_by_key(self, container, table_path, key):
         self._lazy_init()
-
-        container, table_path = _split_path(table_path)
 
         response = await self._v3io_client.kv.get(container, table_path, key, raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
         if response.status_code == 404:
@@ -1008,10 +1000,8 @@ class V3ioDriver(NeedsV3ioAccess):
         else:
             raise V3ioError(f'Failed to get item. Response status code was {response.status_code}: {response.body}')
 
-    async def _load_by_key(self, table_path, key):
+    async def _load_by_key(self, container, table_path, key):
         self._lazy_init()
-
-        container, table_path = _split_path(table_path)
 
         response = await self._v3io_client.kv.get(container, table_path, key, raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
         if response.status_code == 404:
@@ -1038,10 +1028,10 @@ class V3ioDriver(NeedsV3ioAccess):
 
         return await self._v3io_client.stream.put_records(container, stream_path, payload)
 
-    async def _get_item(self, container, stream_path, key, attributes):
+    async def _get_item(self, container, table_path, key, attributes):
         self._lazy_init()
 
-        return await self._v3io_client.kv.get(container, stream_path, key, attribute_names=attributes,
+        return await self._v3io_client.kv.get(container, table_path, key, attribute_names=attributes,
                                               raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
 
     async def close(self):
@@ -1051,19 +1041,19 @@ class V3ioDriver(NeedsV3ioAccess):
 
 
 class NoopDriver:
-    async def _save_schema(self, table_path, schema):
+    async def _save_schema(self, container, table_path, schema):
         pass
 
-    async def _load_schema(self, table_path):
+    async def _load_schema(self, container, table_path):
         pass
 
-    async def _save_key(self, table_path, key, aggr_item, additional_data):
+    async def _save_key(self, container, table_path, key, aggr_item, additional_data):
         pass
 
-    async def _load_aggregates_by_key(self, table_path, key):
+    async def _load_aggregates_by_key(self, container, table_path, key):
         pass
 
-    async def _load_by_key(self, table_path, key):
+    async def _load_by_key(self, container, table_path, key):
         pass
 
     async def close(self):
@@ -1072,6 +1062,7 @@ class NoopDriver:
 
 class Cache:
     def __init__(self, table_path, storage):
+        self._container, self._table_path = _split_path(table_path)
         self._table_path = table_path
         self._storage = storage
         self._cache = {}
@@ -1082,7 +1073,7 @@ class Cache:
 
     async def get_or_load_key(self, key):
         if key not in self._cache:
-            res = await self._storage._load_by_key(self._table_path, key)
+            res = await self._storage._load_by_key(self._container, self._table_path, key)
             if res:
                 self._cache[key] = res
             else:
@@ -1093,6 +1084,7 @@ class Cache:
         self._cache[key] = value
 
     def _set_aggregation_store(self, store):
+        store._container = self._container
         store._table_path = self._table_path
         store._storage = self._storage
         self._aggregation_store = store
@@ -1100,7 +1092,7 @@ class Cache:
     async def _persist_key(self, key):
         aggr_by_key = self._aggregation_store[key]
         additional_cache_data_by_key = self._cache.get(key, None)
-        await self._storage._save_key(self._table_path, key, aggr_by_key, additional_cache_data_by_key)
+        await self._storage._save_key(self._container, self._table_path, key, aggr_by_key, additional_cache_data_by_key)
 
     async def close(self):
         await self._storage.close()
