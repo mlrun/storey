@@ -759,6 +759,9 @@ class JoinWithV3IOTable(_ConcurrentJobExecution):
         else:
             raise V3ioError(f'Failed to get item. Response status code was {response.status_code}: {response.body}')
 
+    async def _cleanup(self):
+        await self._storage.close()
+
 
 class WriteToV3IOStream(Flow, NeedsV3ioAccess):
 
@@ -837,11 +840,12 @@ class WriteToV3IOStream(Flow, NeedsV3ioAccess):
                         in_flight_reqs[shard_id] = None
                         await self._handle_response(req)
                     self._send_batch(buffers, in_flight_reqs, shard_id)
-
         except BaseException as ex:
             if not self._q.empty():
                 await self._q.get()
             raise ex
+        finally:
+            await self._storage.close()
 
     async def _lazy_init(self):
         if not self._shard_count:
@@ -1040,7 +1044,7 @@ class V3ioDriver(NeedsV3ioAccess):
         return await self._v3io_client.kv.get(container, stream_path, key, attribute_names=attributes,
                                               raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
 
-    async def close_connection(self):
+    async def close(self):
         if self._v3io_client and not self._closed:
             self._closed = True
             await self._v3io_client.close()
@@ -1062,7 +1066,7 @@ class NoopDriver:
     async def _load_by_key(self, table_path, key):
         pass
 
-    async def close_connection(self):
+    async def close(self):
         pass
 
 
@@ -1098,5 +1102,5 @@ class Cache:
         additional_cache_data_by_key = self._cache.get(key, None)
         await self._storage._save_key(self._table_path, key, aggr_by_key, additional_cache_data_by_key)
 
-    async def close_connection(self):
-        await self._storage.close_connection()
+    async def close(self):
+        await self._storage.close()
