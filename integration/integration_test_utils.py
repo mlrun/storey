@@ -132,7 +132,9 @@ async def recursive_delete(path, v3io_access):
                 has_more = 'NextMarker' in res
                 if has_more:
                     next_marker = res['NextMarker']
-            elif response.status != 404:
+            elif response.status == 404:
+                break
+            else:
                 raise V3ioError(f'Failed to delete table {path}. Response status code was {response.status}: {body}')
 
         await _delete_item(f'{v3io_access._webapi_url}/{path}/', v3io_access, client_session)

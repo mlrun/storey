@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from storey import build_flow, Source, Reduce, Cache, V3ioDriver, FlowError, MapWithState, AggregateByKey, FieldAggregator, \
     QueryAggregationByKey, Persist
 from storey.dtypes import SlidingWindows
+from storey.flow import _split_path
 from .integration_test_utils import setup_teardown_test
 import asyncio
 
@@ -192,7 +193,8 @@ def _assert_schema_equal(actual, expected):
 
 async def load_schema(path):
     driver = V3ioDriver()
-    res = await driver._load_schema(path)
+    container, table_path = _split_path(path)
+    res = await driver._load_schema(container, table_path)
     await driver.close()
     return res
 

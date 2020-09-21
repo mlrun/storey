@@ -1014,7 +1014,6 @@ class NoopDriver:
 class Cache:
     def __init__(self, table_path, storage):
         self._container, self._table_path = _split_path(table_path)
-        self._table_path = table_path
         self._storage = storage
         self._cache = {}
         self._aggregation_store = None
