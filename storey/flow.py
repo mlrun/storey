@@ -749,7 +749,24 @@ def _convert_python_type_to_nginx(value):
         nanosecs = int((timestamp - secs) * 1e+9)
         return {'TS': f'{secs}:{nanosecs}'}
     else:
-        raise V3ioError(f'Type {type(value)} in get item response is not supported')
+        raise V3ioError(f'Type {type(value)} is not supported')
+
+
+def _convert_python_obj_to_expression_value(value):
+    if isinstance(value, str):
+        return f"'{value}'"
+    if isinstance(value, bool) or isinstance(value, float) or isinstance(value, int):
+        return str(value)
+    elif isinstance(value, bytes):
+        return f"blob('{base64.b64encode(value).decode('ascii')}')"
+    elif isinstance(value, datetime):
+        timestamp = value.timestamp()
+
+        secs = int(timestamp)
+        nanosecs = int((timestamp - secs) * 1e+9)
+        return f'{secs}:{nanosecs}'
+    else:
+        raise V3ioError(f'Type {type(value)} in UpdateItem request is not supported')
 
 
 def _v3io_parse_get_items_response(response_body):
@@ -988,26 +1005,28 @@ class V3ioDriver(NeedsV3ioAccess):
         if not self._client_session:
             self._lazy_init()
 
-        request_data = self._get_attributes_as_blob(aggr_item)
-        if additional_data:
-            request_data.update(_v3io_build_put_item_request(additional_data))
+        request_data = self._build_update_expression(aggr_item, additional_data)
 
-        data = {'Item': request_data, 'UpdateMode': 'CreateOrReplaceAttributes'}
+        data = {'UpdateExpression': request_data}
         response = await self._client_session.put(f'{self._webapi_url}/{table_path}/{key}',
-                                                  headers=self._put_item_headers, data=json.dumps(data), ssl=False)
+                                                  headers=self._update_item_headers, data=json.dumps(data), ssl=False)
         if not response.status == 200:
             body = await response.text()
             raise V3ioError(f'Failed to save aggregation for key: {key}. Response status code was {response.status}: {body}')
 
-    def _get_attributes_as_blob(self, aggregation_element):
-        data = {}
+    def _build_update_expression(self, aggregation_element, additional_data):
+        expressions = []
         for name, bucket in aggregation_element.aggregation_buckets.items():
             # Only save raw aggregates, not virtual
             if bucket.should_persist:
                 blob = pickle.dumps(bucket.to_dict())
-                data[f'{self._aggregation_attribute_prefix}{name}'] = {'B': base64.b64encode(blob).decode('ascii')}
+                base64_blob = base64.b64encode(blob).decode('ascii')
+                expressions.append(f"{self._aggregation_attribute_prefix}{name}=blob('{base64_blob}')")
 
-        return data
+        if additional_data:
+            for name, value in additional_data.items():
+                expressions.append(f'{name}={_convert_python_obj_to_expression_value(value)}')
+        return ';'.join(expressions)
 
     # Loads a specific key from the store, and returns it in the following format
     # {
