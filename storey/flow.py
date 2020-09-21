@@ -5,7 +5,6 @@ import csv
 import json
 import os
 import queue
-import re
 import threading
 from datetime import datetime, timezone
 import uuid
@@ -16,6 +15,8 @@ import aiofiles
 import aiohttp
 
 from .utils import schema_file_name
+
+import v3io.aio.dataplane
 
 _termination_obj = object()
 
@@ -536,54 +537,7 @@ class NeedsV3ioAccess:
         if not access_key:
             raise ValueError('Missing access_key parameter or V3IO_ACCESS_KEY environment variable')
 
-        self._get_item_headers = {
-            'X-v3io-function': 'GetItem',
-            'X-v3io-session-key': access_key
-        }
-
-        self._get_items_headers = {
-            'X-v3io-function': 'GetItems',
-            'X-v3io-session-key': access_key
-        }
-
-        self._put_item_headers = {
-            'X-v3io-function': 'PutItem',
-            'X-v3io-session-key': access_key
-        }
-
-        self._update_item_headers = {
-            'X-v3io-function': 'UpdateItem',
-            'X-v3io-session-key': access_key
-        }
-
-        self._put_records_headers = {
-            'X-v3io-function': 'PutRecords',
-            'X-v3io-session-key': access_key
-        }
-
-        self._create_stream_headers = {
-            'X-v3io-function': 'CreateStream',
-            'X-v3io-session-key': access_key
-        }
-
-        self._describe_stream_headers = {
-            'X-v3io-function': 'DescribeStream',
-            'X-v3io-session-key': access_key
-        }
-
-        self._seek_headers = {
-            'X-v3io-function': 'Seek',
-            'X-v3io-session-key': access_key
-        }
-
-        self._get_records_headers = {
-            'X-v3io-function': 'GetRecords',
-            'X-v3io-session-key': access_key
-        }
-
-        self._get_put_file_headers = {
-            'X-v3io-session-key': access_key
-        }
+        self._access_key = access_key
 
 
 class HttpRequest:
@@ -602,14 +556,11 @@ class HttpResponse:
         self.body = body
 
 
-class JoinWithHttp(Flow):
-    def __init__(self, request_builder, join_from_response, max_in_flight=8, **kwargs):
+class _ConcurrentJobExecution(Flow):
+    def __init__(self, max_in_flight=8, **kwargs):
         Flow.__init__(self, **kwargs)
-        self._request_builder = request_builder
-        self._join_from_response = join_from_response
         self._max_in_flight = max_in_flight
-
-        self._client_session = None
+        self._q = None
 
     async def _worker(self):
         try:
@@ -618,29 +569,32 @@ class JoinWithHttp(Flow):
                 if job is _termination_obj:
                     break
                 event = job[0]
-                request = job[1]
-                response = await request
-                response_body = await response.text()
-                joined_element = self._join_from_response(event.body, HttpResponse(response.status, response_body))
-                if joined_element is not None:
-                    new_event = self._user_fn_output_to_event(event, joined_element)
-                    await self._do_downstream(new_event)
+                completed = await job[1]
+                await self._handle_completed(event, completed)
         except BaseException as ex:
             if not self._q.empty():
                 await self._q.get()
             raise ex
         finally:
-            await self._client_session.close()
+            await self._cleanup()
 
-    def _lazy_init(self):
-        connector = aiohttp.TCPConnector()
-        self._client_session = aiohttp.ClientSession(connector=connector)
-        self._q = asyncio.queues.Queue(self._max_in_flight)
-        self._worker_awaitable = asyncio.get_running_loop().create_task(self._worker())
+    async def _process_event(self, event):
+        raise NotImplementedError()
+
+    async def _handle_completed(self, event, response):
+        raise NotImplementedError()
+
+    async def _cleanup(self):
+        pass
+
+    async def _lazy_init(self):
+        pass
 
     async def _do(self, event):
-        if not self._client_session:
-            self._lazy_init()
+        if not self._q:
+            await self._lazy_init()
+            self._q = asyncio.queues.Queue(self._max_in_flight)
+            self._worker_awaitable = asyncio.get_running_loop().create_task(self._worker())
 
         if self._worker_awaitable.done():
             await self._worker_awaitable
@@ -651,11 +605,37 @@ class JoinWithHttp(Flow):
             await self._worker_awaitable
             return await self._do_downstream(_termination_obj)
         else:
-            req = self._request_builder(event)
-            request = self._client_session.request(req.method, req.url, headers=req.headers, data=req.body, ssl=False)
-            await self._q.put((event, asyncio.get_running_loop().create_task(request)))
+            task = self._process_event(event)
+            await self._q.put((event, asyncio.get_running_loop().create_task(task)))
             if self._worker_awaitable.done():
                 await self._worker_awaitable
+
+
+class JoinWithHttp(_ConcurrentJobExecution):
+    def __init__(self, request_builder, join_from_response, **kwargs):
+        super().__init__(**kwargs)
+        self._request_builder = request_builder
+        self._join_from_response = join_from_response
+
+        self._client_session = None
+
+    async def _lazy_init(self):
+        connector = aiohttp.TCPConnector()
+        self._client_session = aiohttp.ClientSession(connector=connector)
+
+    async def _cleanup(self):
+        await self._client_session.close()
+
+    async def _process_event(self, event):
+        req = self._request_builder(event)
+        return await self._client_session.request(req.method, req.url, headers=req.headers, data=req.body, ssl=False)
+
+    async def _handle_completed(self, event, response):
+        response_body = await response.text()
+        joined_element = self._join_from_response(event.body, HttpResponse(response.status, response_body))
+        if joined_element is not None:
+            new_event = self._user_fn_output_to_event(event, joined_element)
+            await self._do_downstream(new_event)
 
 
 class Batch(Flow):
@@ -701,173 +681,81 @@ class Batch(Flow):
             await self._do_downstream(Event([self._get_safe_event_or_body(event) for event in batch_to_emit], time=batch_to_emit[0].time))
 
 
-_non_int_char_pattern = re.compile(r"[^-0-9]")
+class JoinWithV3IOTable(_ConcurrentJobExecution):
 
+    def __init__(self, storage, key_extractor, join_function, table_path, attributes='*', webapi=None, access_key=None, **kwargs):
+        super().__init__(**kwargs)
 
-def _v3io_parse_get_item_response(response_body):
-    response_object = json.loads(response_body)["Item"]
-    for name, type_to_value in response_object.items():
-        val = None
-        for typ, value in type_to_value.items():
-            val = _convert_nginx_to_python_type(typ, value)
-        response_object[name] = val
-    return response_object
+        self._storage = storage
 
+        self._key_extractor = key_extractor
+        self._join_function = join_function
 
-def _convert_nginx_to_python_type(typ, value):
-    if typ == 'S' or typ == 'BOOL':
-        return value
-    elif typ == 'N':
-        if _non_int_char_pattern.search(value):
-            return float(value)
+        self._container, self._table_path = _split_path(table_path)
+        self._attributes = attributes
+
+    async def _process_event(self, event):
+        key = str(self._key_extractor(event))
+        return await self._storage._get_item(self._container, self._table_path, key, self._attributes)
+
+    async def _handle_completed(self, event, response):
+        if response.status_code == 200:
+            response_object = response.output.item
+            joined = self._join_function(self._get_safe_event_or_body(event), response_object)
+            if joined is not None:
+                new_event = self._user_fn_output_to_event(event, joined)
+                await self._do_downstream(new_event)
+        elif response.status_code == 404:
+            return None
         else:
-            return int(value)
-    elif typ == 'B':
-        return base64.b64decode(value)
-    elif typ == 'TS':
-        splits = value.split(':', 1)
-        secs = int(splits[0])
-        nanosecs = int(splits[1])
-        return datetime.utcfromtimestamp(secs + nanosecs / 1000000000)
-    else:
-        raise V3ioError(f'Type {typ} in get item response is not supported')
+            raise V3ioError(f'Failed to get item. Response status code was {response.status_code}: {response.body}')
 
-
-def _convert_python_type_to_nginx(value):
-    if isinstance(value, str):
-        return {'S': value}
-    elif isinstance(value, bool):
-        return {'BOOL': value}
-    elif isinstance(value, float) or isinstance(value, int):
-        return {'N': str(value)}
-    elif isinstance(value, bytes):
-        return {'B': base64.b64encode(value).decode('ascii')}
-    elif isinstance(value, datetime):
-        timestamp = value.timestamp()
-
-        secs = int(timestamp)
-        nanosecs = int((timestamp - secs) * 1e+9)
-        return {'TS': f'{secs}:{nanosecs}'}
-    else:
-        raise V3ioError(f'Type {type(value)} is not supported')
-
-
-def _convert_python_obj_to_expression_value(value):
-    if isinstance(value, str):
-        return f"'{value}'"
-    if isinstance(value, bool) or isinstance(value, float) or isinstance(value, int):
-        return str(value)
-    elif isinstance(value, bytes):
-        return f"blob('{base64.b64encode(value).decode('ascii')}')"
-    elif isinstance(value, datetime):
-        timestamp = value.timestamp()
-
-        secs = int(timestamp)
-        nanosecs = int((timestamp - secs) * 1e+9)
-        return f'{secs}:{nanosecs}'
-    else:
-        raise V3ioError(f'Type {type(value)} in UpdateItem request is not supported')
-
-
-def _v3io_parse_get_items_response(response_body):
-    response_object = json.loads(response_body)
-    i = 0
-    for item in response_object['Items']:
-        parsed_item = {}
-        for name, type_to_value in item.items():
-            for typ, value in type_to_value.items():
-                val = _convert_nginx_to_python_type(typ, value)
-                parsed_item[name] = val
-        response_object['Items'][i] = parsed_item
-        i = i + 1
-    return response_object
-
-
-class JoinWithV3IOTable(JoinWithHttp, NeedsV3ioAccess):
-
-    def __init__(self, key_extractor, join_function, table_path, attributes='*', webapi=None, access_key=None, **kwargs):
-        NeedsV3ioAccess.__init__(self, webapi, access_key)
-        request_body = json.dumps({'AttributesToGet': attributes})
-
-        def request_builder(event):
-            key = key_extractor(event)
-            return HttpRequest('PUT', f'{self._webapi_url}/{table_path}/{key}', request_body, self._get_item_headers)
-
-        def join_from_response(element, response):
-            if response.status == 200:
-                response_object = _v3io_parse_get_item_response(response.body)
-                return join_function(element, response_object)
-            elif response.status == 404:
-                return None
-            else:
-                raise V3ioError(f'Failed to get item. Response status code was {response.status}: {response.body}')
-
-        JoinWithHttp.__init__(self, request_builder, join_from_response, **kwargs)
-
-
-def _build_request_put_records(shard_id, events):
-    record_list_for_json = []
-    for event in events:
-        record = event.body
-        if isinstance(record, bytes):
-            record_as_bytes = record
-        elif isinstance(record, str):
-            record_as_bytes = record.encode("utf-8")
-        elif isinstance(record, dict):
-            record_as_bytes = json.dumps(record).encode("utf-8")
-        else:
-            raise Exception(f'Unsupported record type {type(record)}')
-        record_as_b64_string = str(base64.b64encode(record_as_bytes), "utf-8")
-        record_list_for_json.append({'ShardId': shard_id, 'Data': record_as_b64_string})
-
-    payload_obj = {
-        'Records': record_list_for_json
-    }
-    return json.dumps(payload_obj)
-
-
-def _v3io_build_put_item_request(data):
-    request = {}
-
-    for key, value in data.items():
-        request[key] = _convert_python_type_to_nginx(value)
-    return request
+    async def _cleanup(self):
+        await self._storage.close()
 
 
 class WriteToV3IOStream(Flow, NeedsV3ioAccess):
 
-    def __init__(self, stream_path, sharding_func=None, batch_size=8, webapi=None, access_key=None, **kwargs):
+    def __init__(self, storage, stream_path, sharding_func=None, batch_size=8, webapi=None, access_key=None, **kwargs):
         Flow.__init__(self, **kwargs)
         NeedsV3ioAccess.__init__(self, webapi, access_key)
+
+        self._storage = storage
 
         if sharding_func is not None and not callable(sharding_func):
             raise TypeError(f'Expected a callable, got {type(sharding_func)}')
 
-        self.stream_path = stream_path
+        self._container, self._stream_path = _split_path(stream_path)
+
         self._sharding_func = sharding_func
 
         self._batch_size = batch_size
 
-        self._client_session = None
+        self._shard_count = None
 
     @staticmethod
     async def _handle_response(request):
         if request:
             response = await request
-            response_body = await response.text()
-            if response.status == 200:
-                response_obj = json.loads(response_body)
-                if response_obj['FailedRecordCount'] == 0:
-                    return
-            raise V3ioError(f'Failed to put records to V3IO. Got {response.status} response: {response_body}')
+            if response.output.failed_record_count == 0:
+                return
+            raise V3ioError(f'Failed to put records to V3IO. Got {response.status_code} response: {response.body}')
+
+    def _build_request_put_records(self, shard_id, events):
+        record_list_for_json = []
+        for event in events:
+            record = event.body
+            if isinstance(record, dict):
+                record = json.dumps(record).encode("utf-8")
+            record_list_for_json.append({'shard_id': shard_id, 'data': record})
+
+        return record_list_for_json
 
     def _send_batch(self, buffers, in_flight_reqs, shard_id):
         buffer = buffers[shard_id]
         buffers[shard_id] = []
-        request_body = _build_request_put_records(shard_id, buffer)
-        request = self._client_session.request('POST', f'{self._webapi_url}/{self.stream_path}/',
-                                               headers=self._put_records_headers,
-                                               data=request_body, ssl=False)
+        request_body = self._build_request_put_records(shard_id, buffer)
+        request = self._storage._put_records(self._container, self._stream_path, request_body)
         in_flight_reqs[shard_id] = asyncio.get_running_loop().create_task(request)
 
     async def _worker(self):
@@ -903,37 +791,29 @@ class WriteToV3IOStream(Flow, NeedsV3ioAccess):
                         in_flight_reqs[shard_id] = None
                         await self._handle_response(req)
                     self._send_batch(buffers, in_flight_reqs, shard_id)
-
         except BaseException as ex:
             if not self._q.empty():
                 await self._q.get()
             raise ex
         finally:
-            await self._client_session.close()
+            await self._storage.close()
 
     async def _lazy_init(self):
-        connector = aiohttp.TCPConnector()
-        self._client_session = aiohttp.ClientSession(connector=connector)
-        req = self._client_session.request("PUT", f'{self._webapi_url}/{self.stream_path}/', headers=self._describe_stream_headers,
-                                           data='{}', ssl=False)
-        response = await req
-        response_body = await response.text()
-        if response.status != 200:
-            raise V3ioError(f'Failed to get number of shards. Got {response.status} response: {response_body}')
+        if not self._shard_count:
+            response = await self._storage._describe(self._container, self._stream_path)
 
-        self._shard_count = int(json.loads(response_body)['ShardCount'])
-        if self._sharding_func is None:
-            def f(_):
-                return random.randint(0, self._shard_count - 1)
+            self._shard_count = response.shard_count
+            if self._sharding_func is None:
+                def f(_):
+                    return random.randint(0, self._shard_count - 1)
 
-            self._sharding_func = f
+                self._sharding_func = f
 
-        self._q = asyncio.queues.Queue(self._batch_size * self._shard_count)
-        self._worker_awaitable = asyncio.get_running_loop().create_task(self._worker())
+            self._q = asyncio.queues.Queue(self._batch_size * self._shard_count)
+            self._worker_awaitable = asyncio.get_running_loop().create_task(self._worker())
 
     async def _do(self, event):
-        if not self._client_session:
-            await self._lazy_init()
+        await self._lazy_init()
 
         if self._worker_awaitable.done():
             await self._worker_awaitable
@@ -962,57 +842,80 @@ def build_flow(steps):
     return steps[0]
 
 
+def _split_path(path):
+    while path.startswith('/'):
+        path = path[1:]
+
+    parts = path.split('/', 1)
+    if len(parts) == 1:
+        return parts[0], '/'
+    else:
+        return parts[0], f'/{parts[1]}'
+
+
 class V3ioDriver(NeedsV3ioAccess):
     def __init__(self, webapi=None, access_key=None):
         NeedsV3ioAccess.__init__(self, webapi, access_key)
-        self._client_session = None
+        self._v3io_client = None
+        self._closed = False
         self._aggregation_attribute_prefix = 'aggr_'
 
     def _lazy_init(self):
-        connector = aiohttp.TCPConnector()
-        self._client_session = aiohttp.ClientSession(connector=connector)
+        if not self._v3io_client:
+            self._v3io_client = v3io.aio.dataplane.Client(endpoint=self._webapi_url, access_key=self._access_key)
 
-    async def _save_schema(self, table_path, schema):
-        if not self._client_session:
-            self._lazy_init()
+    async def _save_schema(self, container, table_path, schema):
+        self._lazy_init()
 
-        response = await self._client_session.put(f'{self._webapi_url}/{table_path}/{schema_file_name}',
-                                                  headers=self._get_put_file_headers, data=json.dumps(schema), ssl=False)
-        if not response.status == 200:
-            body = await response.text()
-            raise V3ioError(f'Failed to save schema file. Response status code was {response.status}: {body}')
+        response = await self._v3io_client.object.put(container=container,
+                                                      path=f'{table_path}/{schema_file_name}',
+                                                      body=json.dumps(schema),
+                                                      raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
 
-    async def _load_schema(self, table_path):
-        if not self._client_session:
-            self._lazy_init()
+        if not response.status_code == 200:
+            raise V3ioError(f'Failed to save schema file. Response status code was {response.status_code}: {response.body}')
 
-        connector = aiohttp.TCPConnector()
-        self._client_session = aiohttp.ClientSession(connector=connector)
+    async def _load_schema(self, container, table_path):
+        self._lazy_init()
 
-        schema_path = f'{self._webapi_url}/{table_path}/{schema_file_name}'
-        response = await self._client_session.get(schema_path, headers=self._get_put_file_headers, ssl=False)
-        body = await response.text()
-        if response.status == 404:
+        schema_path = f'{table_path}/{schema_file_name}'
+        response = await self._v3io_client.object.get(container, schema_path,
+                                                      raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
+        if response.status_code == 404:
             schema = None
-        elif response.status == 200:
-            schema = json.loads(body)
+        elif response.status_code == 200:
+            schema = json.loads(response.body)
         else:
-            raise V3ioError(f'Failed to get schema at {schema_path}. Response status code was {response.status}: {body}')
+            raise V3ioError(f'Failed to get schema at {schema_path}. Response status code was {response.status_code}: {response.body}')
 
         return schema
 
-    async def _save_key(self, table_path, key, aggr_item, additional_data=None):
-        if not self._client_session:
-            self._lazy_init()
+    async def _save_key(self, container, table_path, key, aggr_item, additional_data=None):
+        self._lazy_init()
 
-        request_data = self._build_update_expression(aggr_item, additional_data)
+        update_expression = self._build_update_expression(aggr_item, additional_data)
 
-        data = {'UpdateExpression': request_data}
-        response = await self._client_session.put(f'{self._webapi_url}/{table_path}/{key}',
-                                                  headers=self._update_item_headers, data=json.dumps(data), ssl=False)
-        if not response.status == 200:
-            body = await response.text()
-            raise V3ioError(f'Failed to save aggregation for key: {key}. Response status code was {response.status}: {body}')
+        response = await self._v3io_client.kv.update(container, table_path, key, expression=update_expression,
+                                                     raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
+        if not response.status_code == 200:
+            raise V3ioError(f'Failed to save aggregation for key: {key}. Response status code was {response.status_code}: {response.body}')
+
+    @staticmethod
+    def _convert_python_obj_to_expression_value(value):
+        if isinstance(value, str):
+            return f"'{value}'"
+        if isinstance(value, bool) or isinstance(value, float) or isinstance(value, int):
+            return str(value)
+        elif isinstance(value, bytes):
+            return f"blob('{base64.b64encode(value).decode('ascii')}')"
+        elif isinstance(value, datetime):
+            timestamp = value.timestamp()
+
+            secs = int(timestamp)
+            nanosecs = int((timestamp - secs) * 1e+9)
+            return f'{secs}:{nanosecs}'
+        else:
+            raise V3ioError(f'Type {type(value)} in UpdateItem request is not supported')
 
     def _build_update_expression(self, aggregation_element, additional_data):
         expressions = []
@@ -1022,10 +925,9 @@ class V3ioDriver(NeedsV3ioAccess):
                 blob = pickle.dumps(bucket.to_dict())
                 base64_blob = base64.b64encode(blob).decode('ascii')
                 expressions.append(f"{self._aggregation_attribute_prefix}{name}=blob('{base64_blob}')")
-
         if additional_data:
             for name, value in additional_data.items():
-                expressions.append(f'{name}={_convert_python_obj_to_expression_value(value)}')
+                expressions.append(f'{name}={self._convert_python_obj_to_expression_value(value)}')
         return ';'.join(expressions)
 
     # Loads a specific key from the store, and returns it in the following format
@@ -1033,76 +935,85 @@ class V3ioDriver(NeedsV3ioAccess):
     #   'feature_name_1': {'first_bucket_time': <time> 'values': []},
     #   'feature_name_2': {'first_bucket_time': <time> 'values': []}
     # }
-    async def _load_aggregates_by_key(self, table_path, key):
-        if not self._client_session:
-            self._lazy_init()
+    async def _load_aggregates_by_key(self, container, table_path, key):
+        self._lazy_init()
 
-        request_body = json.dumps({'AttributesToGet': '*'})
-
-        response = await self._client_session.put(f'{self._webapi_url}/{table_path}/{key}',
-                                                  headers=self._get_item_headers, data=request_body, ssl=False)
-        body = await response.text()
-        if response.status == 404:
+        response = await self._v3io_client.kv.get(container, table_path, key, raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
+        if response.status_code == 404:
             return None
-        elif response.status == 200:
-            parsed_response = _v3io_parse_get_item_response(body)
+        elif response.status_code == 200:
             res = {}
-            for name, value in parsed_response.items():
+            for name, value in response.output.item.items():
                 if name.startswith(self._aggregation_attribute_prefix):
                     res[name[len(self._aggregation_attribute_prefix):]] = pickle.loads(value)
 
             return res
         else:
-            raise V3ioError(f'Failed to get item. Response status code was {response.status}: {body}')
+            raise V3ioError(f'Failed to get item. Response status code was {response.status_code}: {response.body}')
 
-    async def _load_by_key(self, table_path, key):
-        if not self._client_session:
-            self._lazy_init()
+    async def _load_by_key(self, container, table_path, key):
+        self._lazy_init()
 
-        request_body = json.dumps({'AttributesToGet': '*'})
-
-        response = await self._client_session.put(f'{self._webapi_url}/{table_path}/{key}',
-                                                  headers=self._get_item_headers, data=request_body, ssl=False)
-        body = await response.text()
-        if response.status == 404:
+        response = await self._v3io_client.kv.get(container, table_path, key, raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
+        if response.status_code == 404:
             return None
-        elif response.status == 200:
-            parsed_response = _v3io_parse_get_item_response(body)
-            for name in parsed_response:
+        elif response.status_code == 200:
+            parsed_response = response.output.item
+            for name in parsed_response.items():
                 if name.startswith(self._aggregation_attribute_prefix):
                     del parsed_response[name]
             return parsed_response
         else:
-            raise V3ioError(f'Failed to get item. Response status code was {response.status}: {body}')
+            raise V3ioError(f'Failed to get item. Response status code was {response.status_code}: {response.body}')
 
-    async def close_connection(self):
-        if not self._client_session.closed:
-            await self._client_session.close()
+    async def _describe(self, container, stream_path):
+        self._lazy_init()
+
+        response = await self._v3io_client.stream.describe(container, stream_path)
+        if response.status_code != 200:
+            raise V3ioError(f'Failed to get number of shards. Got {response.status_code} response: {response.body}')
+        return response.output
+
+    async def _put_records(self, container, stream_path, payload):
+        self._lazy_init()
+
+        return await self._v3io_client.stream.put_records(container, stream_path, payload)
+
+    async def _get_item(self, container, table_path, key, attributes):
+        self._lazy_init()
+
+        return await self._v3io_client.kv.get(container, table_path, key, attribute_names=attributes,
+                                              raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
+
+    async def close(self):
+        if self._v3io_client and not self._closed:
+            self._closed = True
+            await self._v3io_client.close()
 
 
 class NoopDriver:
-    async def _save_schema(self, table_path, schema):
+    async def _save_schema(self, container, table_path, schema):
         pass
 
-    async def _load_schema(self, table_path):
+    async def _load_schema(self, container, table_path):
         pass
 
-    async def _save_key(self, table_path, key, aggr_item, additional_data):
+    async def _save_key(self, container, table_path, key, aggr_item, additional_data):
         pass
 
-    async def _load_aggregates_by_key(self, table_path, key):
+    async def _load_aggregates_by_key(self, container, table_path, key):
         pass
 
-    async def _load_by_key(self, table_path, key):
+    async def _load_by_key(self, container, table_path, key):
         pass
 
-    async def close_connection(self):
+    async def close(self):
         pass
 
 
 class Cache:
     def __init__(self, table_path, storage):
-        self._table_path = table_path
+        self._container, self._table_path = _split_path(table_path)
         self._storage = storage
         self._cache = {}
         self._aggregation_store = None
@@ -1112,7 +1023,7 @@ class Cache:
 
     async def get_or_load_key(self, key):
         if key not in self._cache:
-            res = await self._storage._load_by_key(self._table_path, key)
+            res = await self._storage._load_by_key(self._container, self._table_path, key)
             if res:
                 self._cache[key] = res
             else:
@@ -1123,6 +1034,7 @@ class Cache:
         self._cache[key] = value
 
     def _set_aggregation_store(self, store):
+        store._container = self._container
         store._table_path = self._table_path
         store._storage = self._storage
         self._aggregation_store = store
@@ -1130,7 +1042,7 @@ class Cache:
     async def _persist_key(self, key):
         aggr_by_key = self._aggregation_store[key]
         additional_cache_data_by_key = self._cache.get(key, None)
-        await self._storage._save_key(self._table_path, key, aggr_by_key, additional_cache_data_by_key)
+        await self._storage._save_key(self._container, self._table_path, key, aggr_by_key, additional_cache_data_by_key)
 
-    async def close_connection(self):
-        await self._storage.close_connection()
+    async def close(self):
+        await self._storage.close()
