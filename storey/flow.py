@@ -714,11 +714,10 @@ class JoinWithV3IOTable(_ConcurrentJobExecution):
         await self._storage.close()
 
 
-class WriteToV3IOStream(Flow, NeedsV3ioAccess):
+class WriteToV3IOStream(Flow):
 
-    def __init__(self, storage, stream_path, sharding_func=None, batch_size=8, webapi=None, access_key=None, **kwargs):
+    def __init__(self, storage, stream_path, sharding_func=None, batch_size=8, **kwargs):
         Flow.__init__(self, **kwargs)
-        NeedsV3ioAccess.__init__(self, webapi, access_key)
 
         self._storage = storage
 
