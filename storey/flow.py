@@ -2,6 +2,7 @@ import asyncio
 import base64
 import copy
 import csv
+import io
 import json
 import os
 import queue
@@ -396,6 +397,35 @@ class ReadCSV(Flow):
             return self._termination_future.result()
 
         return FlowAwaiter(raise_error_or_return_termination_result)
+
+
+class WriteCSV(Flow):
+    def __init__(self, path, event_to_line, header=None, **kwargs):
+        super().__init__(**kwargs)
+        self._path = path
+        self._header = header
+        self._event_to_line = event_to_line
+        self._open_file = None
+
+    async def _do(self, event):
+        if event is _termination_obj:
+            if self._open_file:
+                await self._open_file.close()
+            return await self._do_downstream(_termination_obj)
+        if not self._open_file:
+            self._open_file = await aiofiles.open(self._path, mode='w')
+            linebuf = io.StringIO()
+            csv_writer = csv.writer(linebuf)
+            if self._header:
+                csv_writer.writerow(self._header)
+            line = linebuf.getvalue()
+            await self._open_file.write(line)
+        line_arr = self._event_to_line(self._get_safe_event_or_body(event))
+        linebuf = io.StringIO()
+        csv_writer = csv.writer(linebuf)
+        csv_writer.writerow(line_arr)
+        line = linebuf.getvalue()
+        await self._open_file.write(line)
 
 
 class UnaryFunctionFlow(Flow):

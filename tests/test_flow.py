@@ -1,9 +1,14 @@
 import asyncio
+import csv
+import io
 from datetime import datetime
 
 from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV, Complete, AsyncSource, Choice, Event, \
-    Batch, Cache, NoopDriver
+    Batch, Cache, NoopDriver, WriteCSV
 import time
+import aiofiles
+
+from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV, Complete, AsyncSource, Choice
 
 
 class ATestException(Exception):
@@ -470,3 +475,27 @@ def test_batch_with_timeout():
     controller.terminate()
     termination_result = controller.await_termination()
     assert termination_result == [[0, 1, 2], [3, 4, 5, 6], [7, 8, 9]]
+
+
+async def async_test_write_csv():
+    file_name = 'test_write_csv.csv'
+    controller = await build_flow([
+        AsyncSource(),
+        WriteCSV(file_name, lambda x: [x, 10 * x], header=['n', 'n*10'])
+    ]).run()
+
+    for i in range(10):
+        await controller.emit(i)
+
+    await controller.terminate()
+    await controller.await_termination()
+
+    with open(file_name) as file:
+        result = file.read()
+
+    expected = "n,n*10\n0,0\n1,10\n2,20\n3,30\n4,40\n5,50\n6,60\n7,70\n8,80\n9,90\n"
+    assert result == expected
+
+
+def test_write_csv():
+    asyncio.run(async_test_write_csv())
