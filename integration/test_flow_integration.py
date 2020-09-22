@@ -1,14 +1,17 @@
 import base64
 
-from storey import Filter, JoinWithV3IOTable, JoinWithHttp, Map, Reduce, Source, NeedsV3ioAccess, HttpRequest, build_flow, WriteToV3IOStream
+from storey import Filter, JoinWithV3IOTable, JoinWithHttp, Map, Reduce, Source, HttpRequest, build_flow, \
+    WriteToV3IOStream, V3ioDriver
 
 import aiohttp
 import asyncio
 import json
 import time
 
+from .integration_test_utils import V3ioHeaders
 
-class SetupKvTable(NeedsV3ioAccess):
+
+class SetupKvTable(V3ioHeaders):
     async def setup(self, table_path):
         connector = aiohttp.TCPConnector()
         client_session = aiohttp.ClientSession(connector=connector)
@@ -19,7 +22,7 @@ class SetupKvTable(NeedsV3ioAccess):
             assert response.status == 200, f'Bad response {await response.text()} to request {request_body}'
 
 
-class SetupStream(NeedsV3ioAccess):
+class SetupStream(V3ioHeaders):
     async def setup(self, stream_path):
         connector = aiohttp.TCPConnector()
         client_session = aiohttp.ClientSession(connector=connector)
@@ -29,7 +32,7 @@ class SetupStream(NeedsV3ioAccess):
         assert response.status == 204, f'Bad response {await response.text()} to request {request_body}'
 
 
-class GetShardData(NeedsV3ioAccess):
+class GetShardData(V3ioHeaders):
     async def get_shard_data(self, path):
         connector = aiohttp.TCPConnector()
         client_session = aiohttp.ClientSession(connector=connector)
@@ -70,7 +73,7 @@ def test_join_with_v3io_table():
         Source(),
         Map(lambda x: x + 1),
         Filter(lambda x: x < 8),
-        JoinWithV3IOTable(lambda x: x.body, lambda x, y: y['secret'], table_path),
+        JoinWithV3IOTable(V3ioDriver(), lambda x: x.body, lambda x, y: y['secret'], table_path),
         Reduce(0, lambda x, y: x + y)
     ]).run()
     for i in range(10):
@@ -103,7 +106,7 @@ def test_write_to_v3io_stream():
     controller = build_flow([
         Source(),
         Map(lambda x: str(x)),
-        WriteToV3IOStream(stream_path, sharding_func=lambda event: int(event.body))
+        WriteToV3IOStream(V3ioDriver(), stream_path, sharding_func=lambda event: int(event.body))
     ]).run()
     for i in range(10):
         controller.emit(i)
@@ -122,7 +125,7 @@ def test_write_to_v3io_stream_unbalanced():
     controller = build_flow([
         Source(),
         Map(lambda x: str(x)),
-        WriteToV3IOStream(stream_path, sharding_func=lambda event: 0)
+        WriteToV3IOStream(V3ioDriver(), stream_path, sharding_func=lambda event: 0)
     ]).run()
     for i in range(10):
         controller.emit(i)

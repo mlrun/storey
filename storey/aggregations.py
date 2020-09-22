@@ -47,7 +47,7 @@ class AggregateByKey(Flow):
     async def _do(self, event):
         if event == _termination_obj:
             self._terminate_worker = True
-            await self._cache.close_connection()
+            await self._cache.close()
             return await self._do_downstream(_termination_obj)
 
         try:
@@ -72,7 +72,7 @@ class AggregateByKey(Flow):
                     await self._emit_event(key, event)
                     self._events_in_batch[key] = 0
         except Exception as ex:
-            await self._cache.close_connection()
+            await self._cache.close()
             raise ex
 
     # Emit a single event for the requested key
@@ -119,7 +119,7 @@ class QueryAggregationByKey(AggregateByKey):
     async def _do(self, event):
         if event == _termination_obj:
             self._terminate_worker = True
-            await self._cache.close_connection()
+            await self._cache.close()
             return await self._do_downstream(_termination_obj)
 
         try:
@@ -142,7 +142,7 @@ class QueryAggregationByKey(AggregateByKey):
                     await self._emit_event(key, event)
                     self._events_in_batch[key] = 0
         except Exception as ex:
-            await self._cache.close_connection()
+            await self._cache.close()
             raise ex
 
 
@@ -153,7 +153,7 @@ class Persist(Flow):
 
     async def _do(self, event):
         if event is _termination_obj:
-            await self._cache.close_connection()
+            await self._cache.close()
             return await self._do_downstream(_termination_obj)
         else:
             # todo: persist keys in parallel
@@ -212,6 +212,7 @@ class AggregateStore:
         self._cache = {}
         self._aggregates = aggregates
         self._storage = None
+        self._container = None
         self._table_path = None
         self._schema = None
         self.read_only = False
@@ -242,7 +243,7 @@ class AggregateStore:
     async def _get_or_load_key(self, key, timestamp=None):
         if self.read_only or key not in self._cache:
             # Try load from the store, and create a new one only if the key really is new
-            initial_data = await self._storage._load_aggregates_by_key(self._table_path, key)
+            initial_data = await self._storage._load_aggregates_by_key(self._container, self._table_path, key)
             self._cache[key] = AggregatedStoreElement(key, self._aggregates, timestamp, initial_data)
 
         return self._cache[key]
@@ -251,7 +252,7 @@ class AggregateStore:
         return self._cache.keys()
 
     async def get_or_save_schema(self):
-        self._schema = await self._storage._load_schema(self._table_path)
+        self._schema = await self._storage._load_schema(self._container, self._table_path)
         should_update = True
         if self._schema:
             should_update = self._validate_schema_fit_aggregations(self._schema)
@@ -264,7 +265,7 @@ class AggregateStore:
         if self._schema:
             schema = self._merge_schemas(self._schema, schema)
 
-        await self._storage._save_schema(self._table_path, schema)
+        await self._storage._save_schema(self._container, self._table_path, schema)
         return schema
 
     def _merge_schemas(self, old, new):
@@ -306,7 +307,7 @@ class AggregateStore:
         return should_update
 
     async def _save_key(self, key):
-        await self._storage._save_key(self._table_path, key, self._cache[key])
+        await self._storage._save_key(self._container, self._table_path, key, self._cache[key])
 
     def _aggregates_to_schema(self):
         schema = {}
