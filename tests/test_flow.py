@@ -1,6 +1,7 @@
 import asyncio
 import csv
 import io
+import os
 from datetime import datetime
 
 from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV, Complete, AsyncSource, Choice, Event, \
@@ -479,23 +480,62 @@ def test_batch_with_timeout():
 
 async def async_test_write_csv():
     file_name = 'test_write_csv.csv'
-    controller = await build_flow([
-        AsyncSource(),
-        WriteCSV(file_name, lambda x: [x, 10 * x], header=['n', 'n*10'])
-    ]).run()
+    try:
+        controller = await build_flow([
+            AsyncSource(),
+            WriteCSV(file_name, lambda x: [x, 10 * x], header=['n', 'n*10'])
+        ]).run()
 
-    for i in range(10):
-        await controller.emit(i)
+        for i in range(10):
+            await controller.emit(i)
 
-    await controller.terminate()
-    await controller.await_termination()
+        await controller.terminate()
+        await controller.await_termination()
 
-    with open(file_name) as file:
-        result = file.read()
+        with open(file_name) as file:
+            result = file.read()
 
-    expected = "n,n*10\n0,0\n1,10\n2,20\n3,30\n4,40\n5,50\n6,60\n7,70\n8,80\n9,90\n"
-    assert result == expected
+        expected = "n,n*10\n0,0\n1,10\n2,20\n3,30\n4,40\n5,50\n6,60\n7,70\n8,80\n9,90\n"
+        assert result == expected
+    except BaseException as ex:
+        try:
+            os.remove(file_name)
+        except:
+            pass
+        raise ex
 
 
 def test_write_csv():
     asyncio.run(async_test_write_csv())
+
+
+async def async_test_write_csv_error():
+    file_name = 'test_write_csv_error.csv'
+
+    try:
+        write_csv = WriteCSV(file_name, RaiseEx(5).raise_ex, header=['n', 'n*10'])
+        controller = await build_flow([
+            AsyncSource(),
+            Map(lambda x: [x]),
+            write_csv
+        ]).run()
+
+        try:
+            for i in range(10):
+                await controller.emit(i)
+            await controller.terminate()
+            await controller.await_termination()
+            assert False
+        except FlowError as ex:
+            assert isinstance(ex.__cause__, ATestException)
+        assert write_csv._open_file.closed
+    except BaseException as ex:
+        try:
+            os.remove(file_name)
+        except:
+            pass
+        raise ex
+
+
+def test_write_csv_error():
+    asyncio.run(async_test_write_csv_error())

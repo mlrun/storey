@@ -412,20 +412,25 @@ class WriteCSV(Flow):
             if self._open_file:
                 await self._open_file.close()
             return await self._do_downstream(_termination_obj)
-        if not self._open_file:
-            self._open_file = await aiofiles.open(self._path, mode='w')
+        try:
+            if not self._open_file:
+                self._open_file = await aiofiles.open(self._path, mode='w')
+                linebuf = io.StringIO()
+                csv_writer = csv.writer(linebuf)
+                if self._header:
+                    csv_writer.writerow(self._header)
+                line = linebuf.getvalue()
+                await self._open_file.write(line)
+            line_arr = self._event_to_line(self._get_safe_event_or_body(event))
             linebuf = io.StringIO()
             csv_writer = csv.writer(linebuf)
-            if self._header:
-                csv_writer.writerow(self._header)
+            csv_writer.writerow(line_arr)
             line = linebuf.getvalue()
             await self._open_file.write(line)
-        line_arr = self._event_to_line(self._get_safe_event_or_body(event))
-        linebuf = io.StringIO()
-        csv_writer = csv.writer(linebuf)
-        csv_writer.writerow(line_arr)
-        line = linebuf.getvalue()
-        await self._open_file.write(line)
+        except BaseException as ex:
+            if self._open_file:
+                await self._open_file.close()
+            raise ex
 
 
 class UnaryFunctionFlow(Flow):
