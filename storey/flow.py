@@ -864,6 +864,23 @@ class WriteToV3IOStream(Flow):
 
 
 def build_flow(steps):
+    """Builds a flow from a list of steps, by chaining the steps according to their order in the list.
+    Nested lists are used to represent branches in the flow.
+
+    Examples:
+        build_flow([step1, step2, step3])
+        is equivalent to
+        step1.to(step2).to(step3)
+
+        build_flow([step1, [step2a, step2b], step3])
+        is equivalent to
+        step1.to(step2a)
+        step1.to(step3)
+        step2a.to(step2b)
+
+    :param: steps a potentially nested list of steps
+    :returns: the first step
+    """
     if len(steps) == 0:
         raise ValueError('Cannot build an empty flow')
     cur_step = steps[0]
