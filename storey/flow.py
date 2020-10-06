@@ -78,6 +78,18 @@ class Flow:
 
 
 class Choice(Flow):
+    """
+    Redirects each input element into at most one of multiple downstreams.
+
+    :param choice_array: a list of (downstream, condition) tuples, where downstream is a step and condition is a function. The first
+    condition in the list to evaluate as true for an input element causes that element to be redirected to that downstream step.
+    :type choice_array: tuple of (Flow, Function (Event=boolean))
+
+    :param default: a default step for events that did not match any condition in choice_array. If not set, elements that don't match any
+    condition will be discarded.
+    :type default: Flow
+    """
+
     def __init__(self, choice_array, default=None, **kwargs):
         Flow.__init__(self, **kwargs)
 
@@ -105,6 +117,27 @@ class Choice(Flow):
 
 
 class Event:
+    """
+    The basic unit of data in storey. All steps receive and emit events.
+
+    :param body the event payload, or data
+    :param id: Event identifier.
+    :type id: string
+    :param key: Event key.
+    :type key: string
+    :param time: Event time. Defaults to the time the event was created, UTC.
+    :type time: datetime
+    :param headers: Request headers (HTTP only)
+    :type headers: dict
+    :param method: Request method (HTTP only)
+    :type method: string
+    :param path: Request path (HTTP only)
+    :type path: string
+    :param content_type: Request content type (HTTP only)
+    :param awaitable_result: Generally not passed directly.
+    :type awaitable_result: AwaitableResult
+    """
+
     def __init__(self, body, id=None, key=None, time=None, headers=None, method=None, path='/', content_type=None, awaitable_result=None):
         self.body = body
         self.id = id or uuid.uuid4().hex
@@ -170,6 +203,14 @@ class FlowAwaiter:
 
 
 class Source(Flow):
+    """
+    Synchronous entry point into a flow. Produces a FlowController when run, for use from inside a synchronous context. See AsyncSource
+    for use from inside an async context.
+
+    :param buffer_size: size of the incoming event buffer. Defaults to 1.
+    :type buffer_size: int
+    """
+
     def __init__(self, buffer_size=1, **kwargs):
         super().__init__(**kwargs)
         if buffer_size <= 0:
@@ -272,6 +313,14 @@ class AsyncFlowController:
 
 
 class AsyncSource(Flow):
+    """
+    Asynchronous entry point into a flow. Produces an AsyncFlowController when run, for use from inside an async def. See Source for use
+    from inside a synchronous context.
+
+    :param buffer_size: size of the incoming event buffer. Defaults to 1.
+    :type buffer_size: int
+    """
+
     def __init__(self, buffer_size=1, **kwargs):
         super().__init__(**kwargs)
         if buffer_size <= 0:
@@ -311,6 +360,25 @@ class AsyncSource(Flow):
 
 
 class ReadCSV(Flow):
+    """
+    Reads CSV files as input source for a flow.
+
+    :param paths: paths to CSV files
+    :type paths: list of string
+    :param with_header: whether CSV files have a header or not. Defaults to False.
+    :type with_header: boolean
+    :param build_dict: whether to format each record produced from the input file as a dictionary (as opposed to a list). Default to False.
+    :type build_dict: boolean
+    :param key_field: the CSV field to be use as the key for events. May be an int (field index) or string (field name) if with_header
+    is True. Defaults to None (no key).
+    :type key_field: int or string
+    :param timestamp_field: the CSV field to be parsed as the timestamp for events. May be an int (field index) or string (field name) if
+    with_header is True. Defaults to None (no timestamp field).
+    :type timestamp_field: int or string
+    :param timestamp_format: timestamp format as defined in datetime.strptime(). Default to ISO-8601 as defined in datetime.fromisoformat().
+    :type timestamp_format: string
+    """
+
     def __init__(self, paths, with_header=False, build_dict=False, key_field=None, timestamp_field=None, timestamp_format=None, **kwargs):
         super().__init__(**kwargs)
         if isinstance(paths, str):
@@ -400,6 +468,17 @@ class ReadCSV(Flow):
 
 
 class WriteCSV(Flow):
+    """
+    Writes events to a CSV file.
+
+    :param path: path where CSV file will be written.
+    :type path: string
+    :param event_to_line: function to transform an event to a CSV line (represented as a list).
+    :type event_to_line: Function (Event=>list of string)
+    :param header: a header for the output file.
+    :type header: list of string
+    """
+
     def __init__(self, path, event_to_line, header=None, **kwargs):
         super().__init__(**kwargs)
         self._path = path
@@ -460,18 +539,36 @@ class UnaryFunctionFlow(Flow):
 
 
 class Map(UnaryFunctionFlow):
+    """
+    Maps, or transforms, incoming events using a user-provided function.
+    :param fn: Function to apply to each event
+    :type fn: Function (Event=>Event)
+    """
+
     async def _do_internal(self, event, fn_result):
         mapped_event = self._user_fn_output_to_event(event, fn_result)
         await self._do_downstream(mapped_event)
 
 
 class Filter(UnaryFunctionFlow):
+    """
+        Filters events based on a user-provided function.
+        :param fn: Function to decide whether to keep each event.
+        :type fn: Function (Event=>boolean)
+    """
+
     async def _do_internal(self, event, keep):
         if keep:
             await self._do_downstream(event)
 
 
 class FlatMap(UnaryFunctionFlow):
+    """
+        Maps, or transforms, each incoming event into any number of events.
+        :param fn: Function to transform each event to a list of events.
+        :type fn: Function (Event=>list of Event)
+    """
+
     async def _do_internal(self, event, fn_result):
         for fn_result_element in fn_result:
             mapped_event = self._user_fn_output_to_event(event, fn_result_element)
@@ -521,6 +618,10 @@ class MapWithState(FunctionWithStateFlow):
 
 
 class Complete(Flow):
+    """
+        Completes the AwaitableResult associated with incoming events.
+    """
+
     async def _do(self, event):
         termination_result = await self._do_downstream(event)
         if event is not _termination_obj:
@@ -532,6 +633,14 @@ class Complete(Flow):
 
 
 class Reduce(Flow):
+    """
+        Reduces incoming events into a single value which is returned upon the successful termination of the flow.
+        :param initial_value: Starting value. When the first event is received, fn will be appled to the initial_value and that event.
+        :type initial_value: object
+        :param fn: Function to apply to the current value and each event.
+        :type fn: Function ((object, Event) => object)
+    """
+
     def __init__(self, initial_value, fn, **kwargs):
         super().__init__(**kwargs)
         if not callable(fn):
@@ -878,8 +987,9 @@ def build_flow(steps):
         step1.to(step3)
         step2a.to(step2b)
 
-    :param: steps a potentially nested list of steps
+    :param steps a potentially nested list of steps
     :returns: the first step
+    :rtype: Flow
     """
     if len(steps) == 0:
         raise ValueError('Cannot build an empty flow')
