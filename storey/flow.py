@@ -78,6 +78,20 @@ class Flow:
 
 
 class Choice(Flow):
+    """Redirects each input element into at most one of multiple downstreams.
+
+    :param choice_array: a list of (downstream, condition) tuples, where downstream is a step and condition is a function. The first
+    condition in the list to evaluate as true for an input element causes that element to be redirected to that downstream step.
+    :type choice_array: tuple of (Flow, Function (Event=>boolean))
+
+    :param default: a default step for events that did not match any condition in choice_array. If not set, elements that don't match any
+    condition will be discarded.
+    :type default: Flow
+    :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
+    Defaults to False.
+    :type full_event: boolean
+    """
+
     def __init__(self, choice_array, default=None, **kwargs):
         Flow.__init__(self, **kwargs)
 
@@ -105,7 +119,28 @@ class Choice(Flow):
 
 
 class Event:
-    def __init__(self, body, id=None, key=None, time=None, headers=None, method=None, path='/', content_type=None, awaitable_result=None):
+    """The basic unit of data in storey. All steps receive and emit events.
+
+    :param body: the event payload, or data
+    :type body: object
+    :param key: Event key. Used by steps that aggregate events by key, such as AggregateByKey.
+    :type key: string
+    :param time: Event time. Defaults to the time the event was created, UTC.
+    :type time: datetime
+    :param id: Event identifier. Usually a unique identifier. Defaults to random (version 4) UUID.
+    :type id: string
+    :param headers: Request headers (HTTP only)
+    :type headers: dict
+    :param method: Request method (HTTP only)
+    :type method: string
+    :param path: Request path (HTTP only)
+    :type path: string
+    :param content_type: Request content type (HTTP only)
+    :param awaitable_result: Generally not passed directly.
+    :type awaitable_result: AwaitableResult
+    """
+
+    def __init__(self, body, key=None, time=None, id=None, headers=None, method=None, path='/', content_type=None, awaitable_result=None):
         self.body = body
         self.id = id or uuid.uuid4().hex
         self.key = key
@@ -132,11 +167,28 @@ class AwaitableResult:
 
 
 class FlowController:
+    """Used to emit events into the associated flow, terminate the flow, and await the flow's termination.
+    To be used from a synchronous context.
+    """
+
     def __init__(self, emit_fn, await_termination_fn):
         self._emit_fn = emit_fn
         self._await_termination_fn = await_termination_fn
 
     def emit(self, element, key=None, event_time=None, return_awaitable_result=False):
+        """Emits an event into the associated flow.
+
+        :param element: The event data, or payload. To set metadata as well, pass an Event object.
+        :type element: object
+        :param key: The event key (optional)
+        :type key: string
+        :param event_time: The event time (default to current time, UTC).
+        :type event_time: datetime
+        :param return_awaitable_result: Whether an AwaitableResult object should be returned. Defaults to False.
+        :type return_awaitable_result: boolean
+
+        :returns: AsyncAwaitableResult if return_awaitable_result is True. None otherwise.
+        """
         if event_time is None:
             event_time = datetime.now(timezone.utc)
         if hasattr(element, 'id'):
@@ -155,9 +207,11 @@ class FlowController:
         return awaitable_result
 
     def terminate(self):
+        """Terminates the associated flow."""
         self._emit_fn(_termination_obj)
 
     def await_termination(self):
+        """Awaits the termination of the flow. To be called after terminate. Returns the termination result of the flow (if any)."""
         return self._await_termination_fn()
 
 
@@ -170,6 +224,14 @@ class FlowAwaiter:
 
 
 class Source(Flow):
+    """
+    Synchronous entry point into a flow. Produces a FlowController when run, for use from inside a synchronous context. See AsyncSource
+    for use from inside an async context.
+
+    :param buffer_size: size of the incoming event buffer. Defaults to 1.
+    :type buffer_size: int
+    """
+
     def __init__(self, buffer_size=1, **kwargs):
         super().__init__(**kwargs)
         if buffer_size <= 0:
@@ -238,11 +300,29 @@ class AsyncAwaitableResult:
 
 
 class AsyncFlowController:
+    """
+    Used to emit events into the associated flow, terminate the flow, and await the flow's termination. To be used from inside an async def.
+    """
+
     def __init__(self, emit_fn, loop_task):
         self._emit_fn = emit_fn
         self._loop_task = loop_task
 
     async def emit(self, element, key=None, event_time=None, await_result=False):
+        """Emits an event into the associated flow.
+
+        :param element: The event data, or payload. To set metadata as well, pass an Event object.
+        :type element: object
+        :param key: The event key (optional)
+        :type key: string
+        :param event_time: The event time (default to current time, UTC).
+        :type event_time: datetime
+        :param await_result: Whether to await a result from the flow (as signaled by the Complete step). Defaults to False.
+        :type await_result: boolean
+
+        :returns: The result received from the flow if await_result is True. None otherwise.
+        :rtype: object
+        """
         if event_time is None:
             event_time = datetime.now(timezone.utc)
         if hasattr(element, 'id'):
@@ -265,13 +345,23 @@ class AsyncFlowController:
             return result
 
     async def terminate(self):
+        """Terminates the associated flow."""
         await self._emit_fn(_termination_obj)
 
     async def await_termination(self):
+        """Awaits the termination of the flow. To be called after terminate. Returns the termination result of the flow (if any)."""
         return await self._loop_task
 
 
 class AsyncSource(Flow):
+    """
+    Asynchronous entry point into a flow. Produces an AsyncFlowController when run, for use from inside an async def.
+    See Source for use from inside a synchronous context.
+
+    :param buffer_size: size of the incoming event buffer. Defaults to 1.
+    :type buffer_size: int
+    """
+
     def __init__(self, buffer_size=1, **kwargs):
         super().__init__(**kwargs)
         if buffer_size <= 0:
@@ -311,6 +401,25 @@ class AsyncSource(Flow):
 
 
 class ReadCSV(Flow):
+    """
+    Reads CSV files as input source for a flow.
+
+    :param paths: paths to CSV files
+    :type paths: list of string
+    :param with_header: whether CSV files have a header or not. Defaults to False.
+    :type with_header: boolean
+    :param build_dict: whether to format each record produced from the input file as a dictionary (as opposed to a list). Default to False.
+    :type build_dict: boolean
+    :param key_field: the CSV field to be use as the key for events. May be an int (field index) or string (field name) if with_header
+    is True. Defaults to None (no key).
+    :type key_field: int or string
+    :param timestamp_field: the CSV field to be parsed as the timestamp for events. May be an int (field index) or string (field name) if
+    with_header is True. Defaults to None (no timestamp field).
+    :type timestamp_field: int or string
+    :param timestamp_format: timestamp format as defined in datetime.strptime(). Default to ISO-8601 as defined in datetime.fromisoformat().
+    :type timestamp_format: string
+    """
+
     def __init__(self, paths, with_header=False, build_dict=False, key_field=None, timestamp_field=None, timestamp_format=None, **kwargs):
         super().__init__(**kwargs)
         if isinstance(paths, str):
@@ -400,6 +509,20 @@ class ReadCSV(Flow):
 
 
 class WriteCSV(Flow):
+    """
+    Writes events to a CSV file.
+
+    :param path: path where CSV file will be written.
+    :type path: string
+    :param event_to_line: function to transform an event to a CSV line (represented as a list).
+    :type event_to_line: Function (Event=>list of string)
+    :param header: a header for the output file.
+    :type header: list of string
+    :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
+    Defaults to False.
+    :type full_event: boolean
+    """
+
     def __init__(self, path, event_to_line, header=None, **kwargs):
         super().__init__(**kwargs)
         self._path = path
@@ -460,18 +583,45 @@ class UnaryFunctionFlow(Flow):
 
 
 class Map(UnaryFunctionFlow):
+    """
+    Maps, or transforms, incoming events using a user-provided function.
+    :param fn: Function to apply to each event
+    :type fn: Function (Event=>Event)
+    :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
+    Defaults to False.
+    :type full_event: boolean
+    """
+
     async def _do_internal(self, event, fn_result):
         mapped_event = self._user_fn_output_to_event(event, fn_result)
         await self._do_downstream(mapped_event)
 
 
 class Filter(UnaryFunctionFlow):
+    """
+        Filters events based on a user-provided function.
+        :param fn: Function to decide whether to keep each event.
+        :type fn: Function (Event=>boolean)
+        :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
+        Defaults to False.
+        :type full_event: boolean
+    """
+
     async def _do_internal(self, event, keep):
         if keep:
             await self._do_downstream(event)
 
 
 class FlatMap(UnaryFunctionFlow):
+    """
+        Maps, or transforms, each incoming event into any number of events.
+        :param fn: Function to transform each event to a list of events.
+        :type fn: Function (Event=>list of Event)
+        :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
+        Defaults to False.
+        :type full_event: boolean
+    """
+
     async def _do_internal(self, event, fn_result):
         for fn_result_element in fn_result:
             mapped_event = self._user_fn_output_to_event(event, fn_result_element)
@@ -521,6 +671,12 @@ class MapWithState(FunctionWithStateFlow):
 
 
 class Complete(Flow):
+    """
+        Completes the AwaitableResult associated with incoming events.
+        :param full_event: Whether to complete with an Event object (when True) or only the payload (when False). Default to False.
+        :type full_event: boolean
+    """
+
     async def _do(self, event):
         termination_result = await self._do_downstream(event)
         if event is not _termination_obj:
@@ -532,6 +688,17 @@ class Complete(Flow):
 
 
 class Reduce(Flow):
+    """
+        Reduces incoming events into a single value which is returned upon the successful termination of the flow.
+        :param initial_value: Starting value. When the first event is received, fn will be appled to the initial_value and that event.
+        :type initial_value: object
+        :param fn: Function to apply to the current value and each event.
+        :type fn: Function ((object, Event) => object)
+        :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
+        Defaults to False.
+        :type full_event: boolean
+    """
+
     def __init__(self, initial_value, fn, **kwargs):
         super().__init__(**kwargs)
         if not callable(fn):
@@ -647,6 +814,17 @@ class _ConcurrentJobExecution(Flow):
 
 
 class JoinWithHttp(_ConcurrentJobExecution):
+    """Joins each event with data from any HTTP source. Used for event augmentation.
+
+    :param request_builder: Creates an HTTP request from the event. This request is then sent to its destination.
+    :type request_builder: Function (Event=>HttpRequest)
+    :param join_from_response: Joins the original event with the HTTP response into a new event.
+    :type join_from_response: Function ((Event, HttpResponse)=>Event)
+    :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
+    Defaults to False.
+    :type full_event: boolean
+    """
+
     def __init__(self, request_builder, join_from_response, **kwargs):
         super().__init__(**kwargs)
         self._request_builder = request_builder
@@ -674,6 +852,16 @@ class JoinWithHttp(_ConcurrentJobExecution):
 
 
 class Batch(Flow):
+    """
+    Batches events into lists of up to max_events events. Each emitted list contained max_events events, unless timeout_secs seconds
+    have passed since the first event in the batch was received, at which the batch is emitted with potentially fewer than max_events
+    event.
+    :param max_events: Maximum number of events per emitted batch.
+    :type max_events: int
+    :param timeout_secs: Maximum number of seconds to wait before a batch is emitted.
+    :type timeout_secs: int
+    """
+
     def __init__(self, max_events, timeout_secs=None, **kwargs):
         Flow.__init__(self, **kwargs)
         self._max_events = max_events
@@ -717,8 +905,24 @@ class Batch(Flow):
 
 
 class JoinWithV3IOTable(_ConcurrentJobExecution):
+    """Joins each event with a V3IO table. Used for event augmentation.
 
-    def __init__(self, storage, key_extractor, join_function, table_path, attributes='*', webapi=None, access_key=None, **kwargs):
+    :param storage: V3IO driver.
+    :type storage: V3ioDriver
+    :param key_extractor: Function for extracting the key for table access from an event.
+    :type key_extractor: Function (Event=>string)
+    :param join_function: Joins the original event with relevant data received from V3IO.
+    :type join_function: Function ((Event, dict)=>Event)
+    :param table_path: Path to the table in V3IO.
+    :type table_path: string
+    :param attributes: A comma-separated list of attributes to be requested from V3IO. Defaults to '*' (all user attributes).
+    :type attributes: string
+    :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
+    Defaults to False.
+    :type full_event: boolean
+    """
+
+    def __init__(self, storage, key_extractor, join_function, table_path, attributes='*', **kwargs):
         super().__init__(**kwargs)
 
         self._storage = storage
@@ -750,6 +954,17 @@ class JoinWithV3IOTable(_ConcurrentJobExecution):
 
 
 class WriteToV3IOStream(Flow):
+    """Writes all incoming events into a V3IO stream.
+
+    :param storage: V3IO driver.
+    :type storage: V3ioDriver
+    :param stream_path: Path to the V3IO stream.
+    :type stream_path: string
+    :param sharding_func: Function for determining the shard ID to which to write each event.
+    :type sharding_func: Function (Event=>int)
+    :param batch_size: Batch size for each write request.
+    :type batch_size: int
+    """
 
     def __init__(self, storage, stream_path, sharding_func=None, batch_size=8, **kwargs):
         Flow.__init__(self, **kwargs)
@@ -864,6 +1079,24 @@ class WriteToV3IOStream(Flow):
 
 
 def build_flow(steps):
+    """Builds a flow from a list of steps, by chaining the steps according to their order in the list.
+    Nested lists are used to represent branches in the flow.
+
+    Examples:
+        build_flow([step1, step2, step3])
+        is equivalent to
+        step1.to(step2).to(step3)
+
+        build_flow([step1, [step2a, step2b], step3])
+        is equivalent to
+        step1.to(step2a)
+        step1.to(step3)
+        step2a.to(step2b)
+
+    :param steps: a potentially nested list of steps
+    :returns: the first step
+    :rtype: Flow
+    """
     if len(steps) == 0:
         raise ValueError('Cannot build an empty flow')
     cur_step = steps[0]
@@ -888,6 +1121,14 @@ def _split_path(path):
 
 
 class V3ioDriver(NeedsV3ioAccess):
+    """
+    Database connection to V3IO.
+    :param webapi: URL to the web API (https or http). If not set, the V3IO_API environment variable will be used.
+    :type webapi: string
+    :param access_key: V3IO access key. If not set, the V3IO_ACCESS_KEY environment variable will be used.
+    :type access_key: string
+    """
+
     def __init__(self, webapi=None, access_key=None):
         NeedsV3ioAccess.__init__(self, webapi, access_key)
         self._v3io_client = None
