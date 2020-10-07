@@ -82,7 +82,7 @@ class Choice(Flow):
 
     :param choice_array: a list of (downstream, condition) tuples, where downstream is a step and condition is a function. The first
     condition in the list to evaluate as true for an input element causes that element to be redirected to that downstream step.
-    :type choice_array: tuple of (Flow, Function (Event=boolean))
+    :type choice_array: tuple of (Flow, Function (Event=>boolean))
 
     :param default: a default step for events that did not match any condition in choice_array. If not set, elements that don't match any
     condition will be discarded.
@@ -118,7 +118,8 @@ class Choice(Flow):
 class Event:
     """The basic unit of data in storey. All steps receive and emit events.
 
-    :param body the event payload, or data
+    :param body: the event payload, or data
+    :type id: object
     :param id: Event identifier.
     :type id: string
     :param key: Event key.
@@ -1066,7 +1067,7 @@ def build_flow(steps):
         step1.to(step3)
         step2a.to(step2b)
 
-    :param steps a potentially nested list of steps
+    :param steps: a potentially nested list of steps
     :returns: the first step
     :rtype: Flow
     """
