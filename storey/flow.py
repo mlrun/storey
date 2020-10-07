@@ -87,6 +87,9 @@ class Choice(Flow):
     :param default: a default step for events that did not match any condition in choice_array. If not set, elements that don't match any
     condition will be discarded.
     :type default: Flow
+    :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
+    Defaults to False.
+    :type full_event: boolean
     """
 
     def __init__(self, choice_array, default=None, **kwargs):
@@ -175,7 +178,7 @@ class FlowController:
     def emit(self, element, key=None, event_time=None, return_awaitable_result=False):
         """Emits an event into the associated flow.
 
-        :param element: The event data, or payload.
+        :param element: The event data, or payload. To set metadata as well, pass an Event object.
         :type element: object
         :param key: The event key (optional)
         :type key: string
@@ -308,7 +311,7 @@ class AsyncFlowController:
     async def emit(self, element, key=None, event_time=None, await_result=False):
         """Emits an event into the associated flow.
 
-        :param element: The event data, or payload.
+        :param element: The event data, or payload. To set metadata as well, pass an Event object.
         :type element: object
         :param key: The event key (optional)
         :type key: string
@@ -352,8 +355,8 @@ class AsyncFlowController:
 
 class AsyncSource(Flow):
     """
-    Asynchronous entry point into a flow. Produces an AsyncFlowController when run, for use from inside an async def. See Source for use
-    from inside a synchronous context.
+    Asynchronous entry point into a flow. Produces an AsyncFlowController when run, for use from inside an async def.
+    See Source for use from inside a synchronous context.
 
     :param buffer_size: size of the incoming event buffer. Defaults to 1.
     :type buffer_size: int
@@ -515,6 +518,9 @@ class WriteCSV(Flow):
     :type event_to_line: Function (Event=>list of string)
     :param header: a header for the output file.
     :type header: list of string
+    :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
+    Defaults to False.
+    :type full_event: boolean
     """
 
     def __init__(self, path, event_to_line, header=None, **kwargs):
@@ -581,6 +587,9 @@ class Map(UnaryFunctionFlow):
     Maps, or transforms, incoming events using a user-provided function.
     :param fn: Function to apply to each event
     :type fn: Function (Event=>Event)
+    :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
+    Defaults to False.
+    :type full_event: boolean
     """
 
     async def _do_internal(self, event, fn_result):
@@ -593,6 +602,9 @@ class Filter(UnaryFunctionFlow):
         Filters events based on a user-provided function.
         :param fn: Function to decide whether to keep each event.
         :type fn: Function (Event=>boolean)
+        :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
+        Defaults to False.
+        :type full_event: boolean
     """
 
     async def _do_internal(self, event, keep):
@@ -605,6 +617,9 @@ class FlatMap(UnaryFunctionFlow):
         Maps, or transforms, each incoming event into any number of events.
         :param fn: Function to transform each event to a list of events.
         :type fn: Function (Event=>list of Event)
+        :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
+        Defaults to False.
+        :type full_event: boolean
     """
 
     async def _do_internal(self, event, fn_result):
@@ -658,6 +673,8 @@ class MapWithState(FunctionWithStateFlow):
 class Complete(Flow):
     """
         Completes the AwaitableResult associated with incoming events.
+        :param full_event: Whether to complete with an Event object (when True) or only the payload (when False). Default to False.
+        :type full_event: boolean
     """
 
     async def _do(self, event):
@@ -677,6 +694,9 @@ class Reduce(Flow):
         :type initial_value: object
         :param fn: Function to apply to the current value and each event.
         :type fn: Function ((object, Event) => object)
+        :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
+        Defaults to False.
+        :type full_event: boolean
     """
 
     def __init__(self, initial_value, fn, **kwargs):
@@ -800,6 +820,9 @@ class JoinWithHttp(_ConcurrentJobExecution):
     :type request_builder: Function (Event=>HttpRequest)
     :param join_from_response: Joins the original event with the HTTP response into a new event.
     :type join_from_response: Function ((Event, HttpResponse)=>Event)
+    :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
+    Defaults to False.
+    :type full_event: boolean
     """
 
     def __init__(self, request_builder, join_from_response, **kwargs):
@@ -894,6 +917,9 @@ class JoinWithV3IOTable(_ConcurrentJobExecution):
     :type table_path: string
     :param attributes: A comma-separated list of attributes to be requested from V3IO. Defaults to '*' (all user attributes).
     :type attributes: string
+    :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
+    Defaults to False.
+    :type full_event: boolean
     """
 
     def __init__(self, storage, key_extractor, join_function, table_path, attributes='*', **kwargs):
