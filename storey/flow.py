@@ -119,13 +119,13 @@ class Event:
     """The basic unit of data in storey. All steps receive and emit events.
 
     :param body: the event payload, or data
-    :type id: object
-    :param id: Event identifier.
-    :type id: string
-    :param key: Event key.
+    :type body: object
+    :param key: Event key. Used by steps that aggregate events by key, such as AggregateByKey.
     :type key: string
     :param time: Event time. Defaults to the time the event was created, UTC.
     :type time: datetime
+    :param id: Event identifier. Usually a unique identifier. Defaults to random (version 4) UUID.
+    :type id: string
     :param headers: Request headers (HTTP only)
     :type headers: dict
     :param method: Request method (HTTP only)
@@ -137,7 +137,7 @@ class Event:
     :type awaitable_result: AwaitableResult
     """
 
-    def __init__(self, body, id=None, key=None, time=None, headers=None, method=None, path='/', content_type=None, awaitable_result=None):
+    def __init__(self, body, key=None, time=None, id=None, headers=None, method=None, path='/', content_type=None, awaitable_result=None):
         self.body = body
         self.id = id or uuid.uuid4().hex
         self.key = key
@@ -317,7 +317,7 @@ class AsyncFlowController:
         :param await_result: Whether to await a result from the flow (as signaled by the Complete step). Defaults to False.
         :type await_result: boolean
 
-        :returns: The result received from the from if await_result is True. None otherwise.
+        :returns: The result received from the flow if await_result is True. None otherwise.
         :rtype: object
         """
         if event_time is None:
