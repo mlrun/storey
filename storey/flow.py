@@ -78,8 +78,7 @@ class Flow:
 
 
 class Choice(Flow):
-    """
-    Redirects each input element into at most one of multiple downstreams.
+    """Redirects each input element into at most one of multiple downstreams.
 
     :param choice_array: a list of (downstream, condition) tuples, where downstream is a step and condition is a function. The first
     condition in the list to evaluate as true for an input element causes that element to be redirected to that downstream step.
@@ -117,8 +116,7 @@ class Choice(Flow):
 
 
 class Event:
-    """
-    The basic unit of data in storey. All steps receive and emit events.
+    """The basic unit of data in storey. All steps receive and emit events.
 
     :param body the event payload, or data
     :param id: Event identifier.
@@ -165,11 +163,28 @@ class AwaitableResult:
 
 
 class FlowController:
+    """Used to emit events into the associated flow, terminate the flow, and await the flow's termination.
+    To be used from a synchronous context.
+    """
+
     def __init__(self, emit_fn, await_termination_fn):
         self._emit_fn = emit_fn
         self._await_termination_fn = await_termination_fn
 
     def emit(self, element, key=None, event_time=None, return_awaitable_result=False):
+        """Emits an event into the associated flow.
+
+        :param element: The event data, or payload.
+        :type element: object
+        :param key: The event key (optional)
+        :type key: string
+        :param event_time: The event time (default to current time, UTC).
+        :type event_time: datetime
+        :param return_awaitable_result: Whether an AwaitableResult object should be returned. Defaults to False.
+        :type return_awaitable_result: boolean
+
+        :returns: AsyncAwaitableResult if return_awaitable_result is True. None otherwise.
+        """
         if event_time is None:
             event_time = datetime.now(timezone.utc)
         if hasattr(element, 'id'):
@@ -188,9 +203,11 @@ class FlowController:
         return awaitable_result
 
     def terminate(self):
+        """Terminates the associated flow."""
         self._emit_fn(_termination_obj)
 
     def await_termination(self):
+        """Awaits the termination of the flow. To be called after terminate. Returns the termination result of the flow (if any)."""
         return self._await_termination_fn()
 
 
@@ -279,11 +296,29 @@ class AsyncAwaitableResult:
 
 
 class AsyncFlowController:
+    """
+    Used to emit events into the associated flow, terminate the flow, and await the flow's termination. To be used from inside an async def.
+    """
+
     def __init__(self, emit_fn, loop_task):
         self._emit_fn = emit_fn
         self._loop_task = loop_task
 
     async def emit(self, element, key=None, event_time=None, await_result=False):
+        """Emits an event into the associated flow.
+
+        :param element: The event data, or payload.
+        :type element: object
+        :param key: The event key (optional)
+        :type key: string
+        :param event_time: The event time (default to current time, UTC).
+        :type event_time: datetime
+        :param await_result: Whether to await a result from the flow (as signaled by the Complete step). Defaults to False.
+        :type await_result: boolean
+
+        :returns: The result received from the from if await_result is True. None otherwise.
+        :rtype: object
+        """
         if event_time is None:
             event_time = datetime.now(timezone.utc)
         if hasattr(element, 'id'):
@@ -306,9 +341,11 @@ class AsyncFlowController:
             return result
 
     async def terminate(self):
+        """Terminates the associated flow."""
         await self._emit_fn(_termination_obj)
 
     async def await_termination(self):
+        """Awaits the termination of the flow. To be called after terminate. Returns the termination result of the flow (if any)."""
         return await self._loop_task
 
 
@@ -756,6 +793,14 @@ class _ConcurrentJobExecution(Flow):
 
 
 class JoinWithHttp(_ConcurrentJobExecution):
+    """Joins each event with data from any HTTP source. Used for event augmentation.
+
+    :param request_builder: Creates an HTTP request from the event. This request is then sent to its destination.
+    :type request_builder: Function (Event=>HttpRequest)
+    :param join_from_response: Joins the original event with the HTTP response into a new event.
+    :type join_from_response: Function ((Event, HttpResponse)=>Event)
+    """
+
     def __init__(self, request_builder, join_from_response, **kwargs):
         super().__init__(**kwargs)
         self._request_builder = request_builder
@@ -783,6 +828,16 @@ class JoinWithHttp(_ConcurrentJobExecution):
 
 
 class Batch(Flow):
+    """
+    Batches events into lists of up to max_events events. Each emitted list contained max_events events, unless timeout_secs seconds
+    have passed since the first event in the batch was received, at which the batch is emitted with potentially fewer than max_events
+    event.
+    :param max_events: Maximum number of events per emitted batch.
+    :type max_events: int
+    :param timeout_secs: Maximum number of seconds to wait before a batch is emitted.
+    :type timeout_secs: int
+    """
+
     def __init__(self, max_events, timeout_secs=None, **kwargs):
         Flow.__init__(self, **kwargs)
         self._max_events = max_events
@@ -826,8 +881,21 @@ class Batch(Flow):
 
 
 class JoinWithV3IOTable(_ConcurrentJobExecution):
+    """Joins each event with a V3IO table. Used for event augmentation.
 
-    def __init__(self, storage, key_extractor, join_function, table_path, attributes='*', webapi=None, access_key=None, **kwargs):
+    :param storage: V3IO driver.
+    :type storage: V3ioDriver
+    :param key_extractor: Function for extracting the key for table access from an event.
+    :type key_extractor: Function (Event=>string)
+    :param join_function: Joins the original event with relevant data received from V3IO.
+    :type join_function: Function ((Event, dict)=>Event)
+    :param table_path: Path to the table in V3IO.
+    :type table_path: string
+    :param attributes: A comma-separated list of attributes to be requested from V3IO. Defaults to '*' (all user attributes).
+    :type attributes: string
+    """
+
+    def __init__(self, storage, key_extractor, join_function, table_path, attributes='*', **kwargs):
         super().__init__(**kwargs)
 
         self._storage = storage
@@ -859,6 +927,17 @@ class JoinWithV3IOTable(_ConcurrentJobExecution):
 
 
 class WriteToV3IOStream(Flow):
+    """Writes all incoming events into a V3IO stream.
+
+    :param storage: V3IO driver.
+    :type storage: V3ioDriver
+    :param stream_path: Path to the V3IO stream.
+    :type stream_path: string
+    :param sharding_func: Function for determining the shard ID to which to write each event.
+    :type sharding_func: Function (Event=>int)
+    :param batch_size: Batch size for each write request.
+    :type batch_size: int
+    """
 
     def __init__(self, storage, stream_path, sharding_func=None, batch_size=8, **kwargs):
         Flow.__init__(self, **kwargs)
