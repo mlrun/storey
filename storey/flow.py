@@ -1121,6 +1121,14 @@ def _split_path(path):
 
 
 class V3ioDriver(NeedsV3ioAccess):
+    """
+    Database connection to V3IO.
+    :param webapi: URL to the web API (https or http). If not set, the V3IO_API environment variable will be used.
+    :type webapi: string
+    :param access_key: V3IO access key. If not set, the V3IO_ACCESS_KEY environment variable will be used.
+    :type access_key: string
+    """
+
     def __init__(self, webapi=None, access_key=None):
         NeedsV3ioAccess.__init__(self, webapi, access_key)
         self._v3io_client = None
