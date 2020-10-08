@@ -31,10 +31,14 @@ class V3ioError(Exception):
 
 
 class Flow:
-    def __init__(self, full_event=False, termination_result_fn=lambda x, y: None):
+    def __init__(self, name=None, full_event=False, termination_result_fn=lambda x, y: None):
         self._outlets = []
         self._full_event = full_event
         self._termination_result_fn = termination_result_fn
+        if name:
+            self._name = name
+        else:
+            self._name = type(self).__name__
 
     def to(self, outlet):
         self._outlets.append(outlet)
@@ -87,6 +91,8 @@ class Choice(Flow):
     :param default: a default step for events that did not match any condition in choice_array. If not set, elements that don't match any
     condition will be discarded.
     :type default: Flow
+    :param name: Name of this step, as it should appear in logs. Defaults to class name (Choice).
+    :type name: string
     :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
     Defaults to False.
     :type full_event: boolean
@@ -230,6 +236,8 @@ class Source(Flow):
 
     :param buffer_size: size of the incoming event buffer. Defaults to 1.
     :type buffer_size: int
+    :param name: Name of this step, as it should appear in logs. Defaults to class name (Source).
+    :type name: string
     """
 
     def __init__(self, buffer_size=1, **kwargs):
@@ -360,6 +368,8 @@ class AsyncSource(Flow):
 
     :param buffer_size: size of the incoming event buffer. Defaults to 1.
     :type buffer_size: int
+    :param name: Name of this step, as it should appear in logs. Defaults to class name (AsyncSource).
+    :type name: string
     """
 
     def __init__(self, buffer_size=1, **kwargs):
@@ -518,6 +528,8 @@ class WriteCSV(Flow):
     :type event_to_line: Function (Event=>list of string)
     :param header: a header for the output file.
     :type header: list of string
+    :param name: Name of this step, as it should appear in logs. Defaults to class name (WriteCSV).
+    :type name: string
     :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
     Defaults to False.
     :type full_event: boolean
@@ -587,6 +599,8 @@ class Map(UnaryFunctionFlow):
     Maps, or transforms, incoming events using a user-provided function.
     :param fn: Function to apply to each event
     :type fn: Function (Event=>Event)
+    :param name: Name of this step, as it should appear in logs. Defaults to class name (Map).
+    :type name: string
     :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
     Defaults to False.
     :type full_event: boolean
@@ -602,6 +616,8 @@ class Filter(UnaryFunctionFlow):
         Filters events based on a user-provided function.
         :param fn: Function to decide whether to keep each event.
         :type fn: Function (Event=>boolean)
+        :param name: Name of this step, as it should appear in logs. Defaults to class name (Filter).
+        :type name: string
         :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
         Defaults to False.
         :type full_event: boolean
@@ -617,6 +633,8 @@ class FlatMap(UnaryFunctionFlow):
         Maps, or transforms, each incoming event into any number of events.
         :param fn: Function to transform each event to a list of events.
         :type fn: Function (Event=>list of Event)
+        :param name: Name of this step, as it should appear in logs. Defaults to class name (FlatMap).
+        :type name: string
         :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
         Defaults to False.
         :type full_event: boolean
@@ -673,6 +691,8 @@ class MapWithState(FunctionWithStateFlow):
 class Complete(Flow):
     """
         Completes the AwaitableResult associated with incoming events.
+        :param name: Name of this step, as it should appear in logs. Defaults to class name (Complete).
+        :type name: string
         :param full_event: Whether to complete with an Event object (when True) or only the payload (when False). Default to False.
         :type full_event: boolean
     """
@@ -694,6 +714,8 @@ class Reduce(Flow):
         :type initial_value: object
         :param fn: Function to apply to the current value and each event.
         :type fn: Function ((object, Event) => object)
+        :param name: Name of this step, as it should appear in logs. Defaults to class name (Reduce).
+        :type name: string
         :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
         Defaults to False.
         :type full_event: boolean
@@ -820,6 +842,8 @@ class JoinWithHttp(_ConcurrentJobExecution):
     :type request_builder: Function (Event=>HttpRequest)
     :param join_from_response: Joins the original event with the HTTP response into a new event.
     :type join_from_response: Function ((Event, HttpResponse)=>Event)
+    :param name: Name of this step, as it should appear in logs. Defaults to class name (JoinWithHttp).
+    :type name: string
     :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
     Defaults to False.
     :type full_event: boolean
@@ -917,6 +941,8 @@ class JoinWithV3IOTable(_ConcurrentJobExecution):
     :type table_path: string
     :param attributes: A comma-separated list of attributes to be requested from V3IO. Defaults to '*' (all user attributes).
     :type attributes: string
+    :param name: Name of this step, as it should appear in logs. Defaults to class name (JoinWithV3IOTable).
+    :type name: string
     :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
     Defaults to False.
     :type full_event: boolean
