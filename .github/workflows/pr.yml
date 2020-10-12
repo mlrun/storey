@@ -5,18 +5,15 @@ on: pull_request_target
 jobs:
   test:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: [ 3.7, 3.8 ]
 
     steps:
       - uses: actions/checkout@v2
         with:
           ref: refs/pull/${{ github.event.number }}/merge
-      - name: Set up Python ${{ matrix.python-version }}
+      - name: Set up Python
         uses: actions/setup-python@v1
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: 3.7
       - name: Install pipenv
         uses: dschep/install-pipenv-action@v1
       - name: Install dependencies
