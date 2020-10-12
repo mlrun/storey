@@ -12,6 +12,11 @@ test:
 	find tests -name '*.pyc' -exec rm {} \;
 	pipenv run python -m pytest --ignore=integration -rf -v .
 
+.PHONY: bench
+bench:
+	find bench -name '*.pyc' -exec rm {} \;
+	pipenv run python -m pytest --benchmark-json bench-results.json -rf -v bench/*.py
+
 .PHONY: integration
 integration:
 	find integration -name '*.pyc' -exec rm {} \;
