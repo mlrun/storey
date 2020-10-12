@@ -28,3 +28,10 @@ jobs:
           V3IO_API: ${{ secrets.V3IO_API }}
           V3IO_ACCESS_KEY: ${{ secrets.V3IO_ACCESS_KEY }}
         run: make integration
+      - name: benchmark
+        run: make bench
+      - name: Store benchmark result
+        uses: rhysd/github-action-benchmark@v1
+        with:
+          tool: 'pytest'
+          output-file-path: bench-results.json
