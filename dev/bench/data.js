@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1602494002932,
+  "lastUpdate": 1602494586258,
   "repoUrl": "https://github.com/mlrun/storey",
   "entries": {
     "Benchmark": [
@@ -100,6 +100,56 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.013676771703550422",
             "extra": "mean: 355.8512930000006 msec\nrounds: 5"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "galt@iguazio.com",
+            "name": "Gal Topper"
+          },
+          "committer": {
+            "email": "galt@iguazio.com",
+            "name": "Gal Topper"
+          },
+          "distinct": true,
+          "id": "08e7b0639c37606e551489e8e05d770d2e911ef1",
+          "message": "Run CI in Python 3.7 only.",
+          "timestamp": "2020-10-12T12:20:53+03:00",
+          "tree_id": "3751293f96f801c4c6f0a1466db9a7075bb243ca",
+          "url": "https://github.com/mlrun/storey/commit/08e7b0639c37606e551489e8e05d770d2e911ef1"
+        },
+        "date": 1602494585605,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "bench/bench_flow.py::test_simple_flow_zero_events",
+            "value": 1004.0083850853084,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0004997491887440552",
+            "extra": "mean: 996.0076179194779 usec\nrounds: 547"
+          },
+          {
+            "name": "bench/bench_flow.py::test_simple_flow_one_event",
+            "value": 661.8736760825487,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0004603121167433054",
+            "extra": "mean: 1.5108623233344607 msec\nrounds: 767"
+          },
+          {
+            "name": "bench/bench_flow.py::test_complete_flow_one_event",
+            "value": 671.2288099238599,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0005847679344312232",
+            "extra": "mean: 1.489804944626012 msec\nrounds: 596"
+          },
+          {
+            "name": "bench/bench_flow.py::test_simple_flow_1000_events",
+            "value": 2.8465999893470495,
+            "unit": "iter/sec",
+            "range": "stddev: 0.011243926343227196",
+            "extra": "mean: 351.29628459999367 msec\nrounds: 5"
           }
         ]
       }
