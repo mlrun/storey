@@ -10,7 +10,6 @@ import threading
 from datetime import datetime, timezone
 import uuid
 import random
-import pickle
 
 import aiofiles
 import aiohttp
@@ -1207,9 +1206,8 @@ class V3ioDriver(NeedsV3ioAccess):
                                                      raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
         if response.status_code == 200:
             aggr_item.storage_specific_cache[self._mtime_header_name] = response.headers[self._mtime_header_name]
-        # In case Mtime condition evaluated to False, we first fetch the latest key's state and retry update
+        # In case Mtime condition evaluated to False, we run the conditioned expression, then fetch and cache the latest key's state
         elif self._is_false_condition_error(response):
-            await self._fetch_state_by_key(aggr_item, container, table_path, key)
             update_expression, condition_expression, pending_updates = self._build_feature_store_update_expression(aggr_item,
                                                                                                                    additional_data,
                                                                                                                    partitioned_by_key,
@@ -1218,7 +1216,7 @@ class V3ioDriver(NeedsV3ioAccess):
                                                          condition=condition_expression,
                                                          raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
             if response.status_code == 200:
-                aggr_item.storage_specific_cache[self._mtime_header_name] = response.headers[self._mtime_header_name]
+                await self._fetch_state_by_key(aggr_item, container, table_path, key)
             else:
                 raise V3ioError(
                     f'Failed to save aggregation for {table_path}/{key}. Response status code was {response.status_code}: {response.body}')
@@ -1268,16 +1266,13 @@ class V3ioDriver(NeedsV3ioAccess):
         condition_expression = ""
 
         # Generating aggregation related expressions
-        if pending:
-            expressions, pending_updates = self.build_simplified_feature_store_request_from_pending(aggregation_element, pending)
-            condition_expression = aggregation_element.storage_specific_cache.get(self._mtime_header_name, "")
+        if pending or not partitioned_by_key:
+            expressions, pending_updates = self._build_conditioned_feature_store_request(aggregation_element, pending)
         # In case we get an indication the data is (probably) not updated from multiple workers (for example: pre sharded by key) run a
         # simpler expression.
-        elif partitioned_by_key:
-            expressions, pending_updates = self.build_simplified_feature_store_request(aggregation_element)
-            condition_expression = aggregation_element.storage_specific_cache.get(self._mtime_header_name, "")
         else:
-            expressions, pending_updates = self.build_conditioned_feature_store_request(aggregation_element)
+            expressions, pending_updates = self._build_simplified_feature_store_request(aggregation_element)
+            condition_expression = aggregation_element.storage_specific_cache.get(self._mtime_header_name, "")
 
         # Generating additional cache expressions
         if additional_data:
@@ -1287,7 +1282,7 @@ class V3ioDriver(NeedsV3ioAccess):
 
         return update_expression, condition_expression, pending_updates
 
-    def build_conditioned_feature_store_request(self, aggregation_element):
+    def _build_conditioned_feature_store_request(self, aggregation_element, pending=None):
         expressions = []
 
         times_update_expressions = {}
@@ -1295,8 +1290,13 @@ class V3ioDriver(NeedsV3ioAccess):
         for name, bucket in aggregation_element.aggregation_buckets.items():
             # Only save raw aggregates, not virtual
             if bucket.should_persist:
-                pending_updates[name] = bucket.get_and_flush_pending()
-                for bucket_start_time, aggregation_value in pending_updates[name].items():
+
+                if pending:
+                    items_to_update = pending[name]
+                else:
+                    pending_updates[name] = bucket.get_and_flush_pending()
+                    items_to_update = pending_updates[name]
+                for bucket_start_time, aggregation_value in items_to_update.items():
                     # the relevant attribute out of the 2 feature attributes
                     feature_attr = 'a' if int(bucket_start_time / bucket.window.max_window_millis) % 2 == 0 else 'b'
                     array_attribute_name = f"{self._aggregation_attribute_prefix}{name}_{feature_attr}"
@@ -1316,14 +1316,14 @@ class V3ioDriver(NeedsV3ioAccess):
 
                     # Separating time attribute updates, so that they will be executed in the end and only once per feature name.
                     if array_time_attribute_name not in times_update_expressions:
-                        times_update_expressions[
-                            array_time_attribute_name] = f"{array_time_attribute_name}=if_else(({get_array_time_expr} < {expected_time_expr}), {expected_time_expr}, {array_time_attribute_name})"
+                        times_update_expressions[array_time_attribute_name] = \
+                            f"{array_time_attribute_name}=if_else(({get_array_time_expr} < {expected_time_expr}), {expected_time_expr}, {array_time_attribute_name})"
 
         expressions.extend(times_update_expressions.values())
 
         return expressions, pending_updates
 
-    def build_simplified_feature_store_request(self, aggregation_element):
+    def _build_simplified_feature_store_request(self, aggregation_element):
         expressions = []
 
         times_update_expressions = {}
@@ -1362,48 +1362,6 @@ class V3ioDriver(NeedsV3ioAccess):
                             times_update_expressions[array_time_attribute_name] = \
                                 f"{array_time_attribute_name}={expected_time_expr}"
                         new_cached_times[name] = (array_time_attribute_name, expected_time)
-
-        expressions.extend(times_update_expressions.values())
-
-        for name, new_value in new_cached_times.items():
-            attribute_name = new_value[0]
-            new_time = new_value[1]
-            aggregation_element.aggregation_buckets[name].storage_specific_cache[attribute_name] = new_time
-        return expressions, pending_updates
-
-    def build_simplified_feature_store_request_from_pending(self, aggregation_element, pending_updates):
-        expressions = []
-
-        times_update_expressions = {}
-        new_cached_times = {}
-        for name, current_pending in pending_updates.items():
-            bucket = aggregation_element.aggregation_buckets[name]
-            for bucket_start_time, aggregation_value in current_pending.items():
-                # the relevant attribute out of the 2 feature attributes
-                feature_attr = 'a' if int(bucket_start_time / bucket.window.max_window_millis) % 2 == 0 else 'b'
-                array_attribute_name = f"{self._aggregation_attribute_prefix}{name}_{feature_attr}"
-                array_time_attribute_name = f"{self._aggregation_time_attribute_prefix}{bucket.name}_{feature_attr}"
-
-                cached_time = bucket.storage_specific_cache.get(array_time_attribute_name, 0)
-
-                expected_time = int(bucket_start_time / bucket.window.max_window_millis) * bucket.window.max_window_millis
-                expected_time_expr = self._convert_python_obj_to_expression_value(datetime.fromtimestamp(expected_time / 1000))
-                index_to_update = int((bucket_start_time - expected_time) / bucket.window.period_millis)
-
-                if cached_time < expected_time:
-                    expressions.append(
-                        f"{array_attribute_name}=init_array({bucket.window.total_number_of_buckets},'double',{aggregation_value.get_default_value()})")
-
-                if cached_time <= expected_time:
-                    arr_at_index = f"{array_attribute_name}[{index_to_update}]"
-                    expressions.append(f"{arr_at_index}={self._get_update_expression_by_aggregation(arr_at_index, aggregation_value)}")
-
-                # Separating time attribute updates, so that they will be executed in the end and only once per feature name.
-                if cached_time < expected_time:
-                    if array_time_attribute_name not in times_update_expressions:
-                        times_update_expressions[array_time_attribute_name] = \
-                            f"{array_time_attribute_name}={expected_time_expr}"
-                    new_cached_times[name] = (array_time_attribute_name, expected_time)
 
         expressions.extend(times_update_expressions.values())
 
