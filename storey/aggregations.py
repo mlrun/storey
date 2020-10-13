@@ -166,6 +166,7 @@ class AggregatedStoreElement:
         self.aggregation_buckets = {}
         self.key = key
         self.aggregates = aggregates
+        self.storage_specific_cache = {}
 
         # Add all raw aggregates, including aggregates not explicitly requested.
         for aggregation_metadata in aggregates:
@@ -216,6 +217,7 @@ class AggregateStore:
         self._table_path = None
         self._schema = None
         self.read_only = False
+        self.pending_updates = {}
 
     def __iter__(self):
         return iter(self._cache.items())
@@ -328,8 +330,11 @@ class AggregationBuckets:
         self.buckets = []
         self.is_hidden = is_hidden
         self.should_persist = True
+        self.pending_aggr = {}
+        self.storage_specific_cache = {}
 
         if initial_data:
+            self.last_bucket_start_time = None
             self.initialize_from_data(initial_data)
         else:
             self.first_bucket_start_time = self.window.get_window_start_time_by_time(base_time)
@@ -342,7 +347,7 @@ class AggregationBuckets:
         self.buckets = []
 
         for _ in range(self.window.total_number_of_buckets):
-            self.buckets.append(AggregationValue(self.aggregation, self.max_value))
+            self.buckets.append(self.new_aggregation_value())
 
     def get_or_advance_bucket_index_by_timestamp(self, timestamp):
         if timestamp < self.last_bucket_start_time + self.window.period_millis:
@@ -372,7 +377,7 @@ class AggregationBuckets:
             else:
                 self.buckets = self.buckets[buckets_to_advance:]
                 for _ in range(buckets_to_advance):
-                    self.buckets.extend([AggregationValue(self.aggregation, self.max_value)])
+                    self.buckets.extend([self.new_aggregation_value()])
 
             self.first_bucket_start_time = \
                 self.first_bucket_start_time + buckets_to_advance * self.window.period_millis
@@ -382,6 +387,18 @@ class AggregationBuckets:
     def aggregate(self, timestamp, value):
         index = self.get_or_advance_bucket_index_by_timestamp(timestamp)
         self.buckets[index].aggregate(timestamp, value)
+
+        self.add_to_pending(timestamp, value)
+
+    def add_to_pending(self, timestamp, value):
+        bucket_start_time = int(timestamp / self.window.period_millis) * self.window.period_millis
+        if bucket_start_time not in self.pending_aggr:
+            self.pending_aggr[bucket_start_time] = self.new_aggregation_value()
+
+        self.pending_aggr[bucket_start_time].aggregate(timestamp, value)
+
+    def new_aggregation_value(self):
+        return AggregationValue(self.aggregation, self.max_value)
 
     def get_aggregation_for_aggregation(self):
         if self.aggregation == 'count':
@@ -426,21 +443,51 @@ class AggregationBuckets:
 
         return result
 
-    def to_dict(self):
-        return {
-            'first_bucket_time': self.first_bucket_start_time,
-            'values': [bucket.get_value() for bucket in self.buckets],
-        }
-
     def initialize_from_data(self, data):
-        self.first_bucket_start_time = data['first_bucket_time']
-        self.last_bucket_start_time = \
-            self.first_bucket_start_time + (self.window.total_number_of_buckets - 1) * self.window.period_millis
+        self.buckets = [None] * self.window.total_number_of_buckets
 
-        self.buckets = []
+        default_aggr_value = _get_aggregation_default_value(self.aggregation)
+        if len(data.keys()) == 2:
+            timestamp1 = list(data.keys())[0]
+            timestamp2 = list(data.keys())[1]
+            first_time, last_time = min(timestamp1, timestamp2), max(timestamp1, timestamp2)
 
-        for i in range(self.window.total_number_of_buckets):
-            self.buckets.append(AggregationValue(self.aggregation, self.max_value, data['values'][i]))
+            bucket_index = self.window.total_number_of_buckets - 1
+
+            # Starting with the latest bucket
+            for i in range(len(data[last_time]) - 1, 0, -1):
+                curr_value = data[last_time][i]
+                if curr_value != default_aggr_value or self.last_bucket_start_time:
+                    self.buckets[bucket_index] = AggregationValue(self.aggregation, self.max_value, curr_value)
+                    bucket_index = bucket_index - 1
+
+                    if not self.last_bucket_start_time:
+                        self.last_bucket_start_time = last_time + i * self.window.period_millis
+                        self.first_bucket_start_time = self.last_bucket_start_time - (
+                                    self.window.total_number_of_buckets - 1) * self.window.period_millis
+
+            for i in range(len(data[first_time]) - 1, 0, -1):
+                curr_value = data[first_time][i]
+                a = AggregationValue(self.aggregation, self.max_value, curr_value)
+                self.buckets[bucket_index] = AggregationValue(self.aggregation, self.max_value, curr_value)
+                bucket_index = bucket_index - 1
+
+                if bucket_index == -1:
+                    break
+        else:
+            first_time = list(data.keys())[0]
+            self.first_bucket_start_time = first_time
+            self.last_bucket_start_time = \
+                self.first_bucket_start_time + (self.window.total_number_of_buckets - 1) * self.window.period_millis
+
+            i = 0
+            for val in data[first_time]:
+                self.buckets[i] = AggregationValue(self.aggregation, self.max_value, val)
+
+    def get_and_flush_pending(self):
+        pending = self.pending_aggr
+        self.pending_aggr = {}
+        return pending
 
 
 class VirtualAggregationBuckets:
@@ -513,12 +560,8 @@ class AggregationValue:
         self._max_value = max_value
 
         # In case we initialize the object from v3io data
-        if set_data:
-            self._value = set_data[1]
-            if aggregation == 'first':
-                self._first_time = set_data[0]
-            else:
-                self._last_time = set_data[0]
+        if set_data is not None:
+            self._value = set_data
 
     def aggregate(self, time, value):
         if self.aggregation == 'min':
@@ -543,17 +586,21 @@ class AggregationValue:
             self._value = value
 
     def get_default_value(self):
-        if self.aggregation == 'max':
-            return float('-inf')
-        elif self.aggregation == 'min':
-            return float('inf')
-        elif self.aggregation == 'first' or self.aggregation == 'last':
-            return None
-        else:
-            return 0
+        return _get_aggregation_default_value(self.aggregation)
 
     def get_value(self):
         value_time = self._last_time
         if self.aggregation == 'first':
             value_time = self._first_time
         return value_time, self._value
+
+
+def _get_aggregation_default_value(aggregation):
+    if aggregation == 'max':
+        return float('-inf')
+    elif aggregation == 'min':
+        return float('inf')
+    elif aggregation == 'first' or aggregation == 'last':
+        return None
+    else:
+        return 0
