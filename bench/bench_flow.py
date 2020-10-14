@@ -9,54 +9,7 @@ from storey.dtypes import SlidingWindows
 test_base_time = datetime.fromisoformat("2020-07-21T21:40:00+00:00")
 
 
-def test_simple_flow_zero_events(benchmark):
-    def inner():
-        controller = build_flow([
-            Source(),
-            Map(lambda x: x + 1),
-            Reduce(0, lambda acc, x: acc + x),
-        ]).run()
-
-        controller.terminate()
-        termination_result = controller.await_termination()
-        assert termination_result == 0
-
-    benchmark(inner)
-
-
-def test_simple_flow_one_event(benchmark):
-    def inner():
-        controller = build_flow([
-            Source(),
-            Map(lambda x: x + 1),
-            Reduce(0, lambda acc, x: acc + x),
-        ]).run()
-
-        controller.emit(0)
-        controller.terminate()
-        termination_result = controller.await_termination()
-        assert termination_result == 1
-
-    benchmark(inner)
-
-
-def test_complete_flow_one_event(benchmark):
-    def inner():
-        controller = build_flow([
-            Source(),
-            Map(lambda x: x + 1),
-            Complete()
-        ]).run()
-
-        result = controller.emit(0, return_awaitable_result=True).await_result()
-        assert result == 1
-        controller.terminate()
-        controller.await_termination()
-
-    benchmark(inner)
-
-
-@pytest.mark.parametrize('n', [1000, 10000])
+@pytest.mark.parametrize('n', [0, 1, 1000, 5000])
 def test_simple_flow_n_events(benchmark, n):
     def inner():
         controller = build_flow([
@@ -73,7 +26,7 @@ def test_simple_flow_n_events(benchmark, n):
     benchmark(inner)
 
 
-@pytest.mark.parametrize('n', [1000, 10000])
+@pytest.mark.parametrize('n', [0, 1, 1000, 5000])
 def test_simple_async_flow_n_events(benchmark, n):
     async def async_inner():
         controller = await build_flow([
@@ -93,7 +46,25 @@ def test_simple_async_flow_n_events(benchmark, n):
     benchmark(inner)
 
 
-@pytest.mark.parametrize('n', [1000, 10000])
+@pytest.mark.parametrize('n', [0, 1, 1000, 5000])
+def test_complete_flow_n_events(benchmark, n):
+    def inner():
+        controller = build_flow([
+            Source(),
+            Map(lambda x: x + 1),
+            Complete()
+        ]).run()
+
+        for i in range(n):
+            result = controller.emit(i, return_awaitable_result=True).await_result()
+            assert result == i + 1
+        controller.terminate()
+        controller.await_termination()
+
+    benchmark(inner)
+
+
+@pytest.mark.parametrize('n', [0, 1, 1000, 5000])
 def test_aggregate_by_key_n_events(benchmark, n):
     def inner():
         controller = build_flow([
@@ -113,7 +84,7 @@ def test_aggregate_by_key_n_events(benchmark, n):
     benchmark(inner)
 
 
-@pytest.mark.parametrize('n', [1000, 10000])
+@pytest.mark.parametrize('n', [0, 1, 1000, 5000])
 def test_batch_n_events(benchmark, n):
     def inner():
         controller = build_flow([
