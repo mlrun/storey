@@ -1198,7 +1198,7 @@ class V3ioDriver(NeedsV3ioAccess):
 
     async def _save_key(self, container, table_path, key, aggr_item, partitioned_by_key, additional_data=None):
         self._lazy_init()
-
+        should_raise_error = False
         update_expression, condition_expression, pending_updates = self._build_feature_store_update_expression(aggr_item, additional_data,
                                                                                                                partitioned_by_key)
         response = await self._v3io_client.kv.update(container, table_path, key, expression=update_expression,
@@ -1210,7 +1210,7 @@ class V3ioDriver(NeedsV3ioAccess):
         elif self._is_false_condition_error(response):
             update_expression, condition_expression, pending_updates = self._build_feature_store_update_expression(aggr_item,
                                                                                                                    additional_data,
-                                                                                                                   partitioned_by_key,
+                                                                                                                   False,
                                                                                                                    pending_updates)
             response = await self._v3io_client.kv.update(container, table_path, key, expression=update_expression,
                                                          condition=condition_expression,
@@ -1218,9 +1218,11 @@ class V3ioDriver(NeedsV3ioAccess):
             if response.status_code == 200:
                 await self._fetch_state_by_key(aggr_item, container, table_path, key)
             else:
-                raise V3ioError(
-                    f'Failed to save aggregation for {table_path}/{key}. Response status code was {response.status_code}: {response.body}')
+                should_raise_error = True
         else:
+            should_raise_error = True
+
+        if should_raise_error:
             raise V3ioError(
                 f'Failed to save aggregation for {table_path}/{key}. Response status code was {response.status_code}: {response.body}')
 
@@ -1256,23 +1258,23 @@ class V3ioDriver(NeedsV3ioAccess):
 
     def _is_false_condition_error(self, response):
         if response.status_code == 400:
-            body = str(response.body)
+            body = response.body.decode("utf-8")
             if self._false_condition_inner_error_code in body and self._false_condition_outer_error_code in body and body.count(
                     self._error_code_string) == 2:
                 return True
         return False
 
     def _build_feature_store_update_expression(self, aggregation_element, additional_data, partitioned_by_key, pending=None):
-        condition_expression = ""
+        condition_expression = None
 
         # Generating aggregation related expressions
-        if pending or not partitioned_by_key:
-            expressions, pending_updates = self._build_conditioned_feature_store_request(aggregation_element, pending)
         # In case we get an indication the data is (probably) not updated from multiple workers (for example: pre sharded by key) run a
         # simpler expression.
-        else:
+        if partitioned_by_key:
             expressions, pending_updates = self._build_simplified_feature_store_request(aggregation_element)
             condition_expression = aggregation_element.storage_specific_cache.get(self._mtime_header_name, "")
+        else:
+            expressions, pending_updates = self._build_conditioned_feature_store_request(aggregation_element, pending)
 
         # Generating additional cache expressions
         if additional_data:
@@ -1308,7 +1310,7 @@ class V3ioDriver(NeedsV3ioAccess):
 
                     get_array_time_expr = f"if_not_exists({array_time_attribute_name},0:0)"
                     # TODO: Once Engine Expression bug is fixed remove occurrences of `tmp_arr` and `workaround_expression`
-                    workaround_expression = f';{array_attribute_name}=tmp_arr_{array_attribute_name};delete(tmp_arr_{array_attribute_name})'
+                    workaround_expression = f'{array_attribute_name}=tmp_arr_{array_attribute_name};delete(tmp_arr_{array_attribute_name})'
                     init_expression = f"tmp_arr_{array_attribute_name}=if_else(({get_array_time_expr}<{expected_time_expr})," \
                         f"init_array({bucket.window.total_number_of_buckets},'double',{aggregation_value.get_default_value()})," \
                         f"{array_attribute_name});{workaround_expression}"
@@ -1356,19 +1358,17 @@ class V3ioDriver(NeedsV3ioAccess):
                     if cached_time < expected_time:
                         expressions.append(f"{array_attribute_name}=init_array({bucket.window.total_number_of_buckets},'double',"
                                            f"{aggregation_value.get_default_value()})")
+                        if array_time_attribute_name not in times_update_expressions:
+                            times_update_expressions[array_time_attribute_name] = \
+                                f"{array_time_attribute_name}={expected_time_expr}"
+                        new_cached_times[name] = (array_time_attribute_name, expected_time)
 
                     # Updating the specific cells
                     if cached_time <= expected_time:
                         arr_at_index = f"{array_attribute_name}[{index_to_update}]"
                         expressions.append(f"{arr_at_index}={self._get_update_expression_by_aggregation(arr_at_index, aggregation_value)}")
 
-                    # Separating time attribute updates, so that they will be executed in the end and only once per feature name.
-                    if cached_time < expected_time:
-                        if array_time_attribute_name not in times_update_expressions:
-                            times_update_expressions[array_time_attribute_name] = \
-                                f"{array_time_attribute_name}={expected_time_expr}"
-                        new_cached_times[name] = (array_time_attribute_name, expected_time)
-
+        # Separating time attribute updates, so that they will be executed in the end and only once per feature name.
         expressions.extend(times_update_expressions.values())
 
         for name, new_value in new_cached_times.items():
@@ -1386,7 +1386,7 @@ class V3ioDriver(NeedsV3ioAccess):
         elif aggregation.aggregation == 'last':
             return f'{aggregation.get_value()[1]}'
         elif aggregation.aggregation == 'first':
-            return f'if_else(({old} == {aggregation.default_value()}), {aggregation.get_value()[1]}, {old})'
+            return f'if_else(({old} == {aggregation.get_default_value()}), {aggregation.get_value()[1]}, {old})'
         else:
             return f'{old}+{aggregation.get_value()[1]}'
 
