@@ -1252,8 +1252,8 @@ class V3ioDriver(NeedsV3ioAccess):
     def _get_time_attributes_from_aggregations(self, aggregation_element):
         attributes = {}
         for bucket in aggregation_element.aggregation_buckets.values():
-            attributes[f'{bucket.name}_a'] = f"{self._aggregation_time_attribute_prefix}{bucket.name}_a"
-            attributes[f'{bucket.name}_b'] = f"{self._aggregation_time_attribute_prefix}{bucket.name}_b"
+            attributes[f'{bucket.name}_a'] = f'{self._aggregation_time_attribute_prefix}{bucket.name}_a'
+            attributes[f'{bucket.name}_b'] = f'{self._aggregation_time_attribute_prefix}{bucket.name}_b'
         return list(attributes.values())
 
     def _is_false_condition_error(self, response):
@@ -1301,31 +1301,31 @@ class V3ioDriver(NeedsV3ioAccess):
                 for bucket_start_time, aggregation_value in items_to_update.items():
                     # the relevant attribute out of the 2 feature attributes
                     feature_attr = 'a' if int(bucket_start_time / bucket.window.max_window_millis) % 2 == 0 else 'b'
-                    array_attribute_name = f"{self._aggregation_attribute_prefix}{name}_{feature_attr}"
-                    array_time_attribute_name = f"{self._aggregation_time_attribute_prefix}{bucket.name}_{feature_attr}"
+                    array_attribute_name = f'{self._aggregation_attribute_prefix}{name}_{feature_attr}'
+                    array_time_attribute_name = f'{self._aggregation_time_attribute_prefix}{bucket.name}_{feature_attr}'
 
                     expected_time = int(bucket_start_time / bucket.window.max_window_millis) * bucket.window.max_window_millis
                     expected_time_expr = self._convert_python_obj_to_expression_value(datetime.fromtimestamp(expected_time / 1000))
                     index_to_update = int((bucket_start_time - expected_time) / bucket.window.period_millis)
 
-                    get_array_time_expr = f"if_not_exists({array_time_attribute_name},0:0)"
+                    get_array_time_expr = f'if_not_exists({array_time_attribute_name},0:0)'
                     # TODO: Once Engine Expression bug is fixed remove occurrences of `tmp_arr` and `workaround_expression`
                     workaround_expression = f'{array_attribute_name}=tmp_arr_{array_attribute_name};delete(tmp_arr_{array_attribute_name})'
-                    init_expression = f"tmp_arr_{array_attribute_name}=if_else(({get_array_time_expr}<{expected_time_expr})," \
+                    init_expression = f'tmp_arr_{array_attribute_name}=if_else(({get_array_time_expr}<{expected_time_expr}),' \
                         f"init_array({bucket.window.total_number_of_buckets},'double',{aggregation_value.get_default_value()})," \
-                        f"{array_attribute_name});{workaround_expression}"
+                        f'{array_attribute_name});{workaround_expression}'
 
-                    arr_at_index = f"{array_attribute_name}[{index_to_update}]"
-                    update_array_expression = f"{arr_at_index}=if_else(({get_array_time_expr}>{expected_time_expr}),{arr_at_index}," \
-                        f"{self._get_update_expression_by_aggregation(arr_at_index, aggregation_value)})"
+                    arr_at_index = f'{array_attribute_name}[{index_to_update}]'
+                    update_array_expression = f'{arr_at_index}=if_else(({get_array_time_expr}>{expected_time_expr}),{arr_at_index},' \
+                        f'{self._get_update_expression_by_aggregation(arr_at_index, aggregation_value)})'
 
                     expressions.append(init_expression)
                     expressions.append(update_array_expression)
 
                     # Separating time attribute updates, so that they will be executed in the end and only once per feature name.
                     if array_time_attribute_name not in times_update_expressions:
-                        times_update_expressions[array_time_attribute_name] = f"{array_time_attribute_name}=" \
-                            f"if_else(({get_array_time_expr}<{expected_time_expr}),{expected_time_expr},{array_time_attribute_name})"
+                        times_update_expressions[array_time_attribute_name] = f'{array_time_attribute_name}=' \
+                            f'if_else(({get_array_time_expr}<{expected_time_expr}),{expected_time_expr},{array_time_attribute_name})'
 
         expressions.extend(times_update_expressions.values())
 
@@ -1345,8 +1345,8 @@ class V3ioDriver(NeedsV3ioAccess):
                 for bucket_start_time, aggregation_value in pending_updates[name].items():
                     # the relevant attribute out of the 2 feature attributes
                     feature_attr = 'a' if int(bucket_start_time / bucket.window.max_window_millis) % 2 == 0 else 'b'
-                    array_attribute_name = f"{self._aggregation_attribute_prefix}{name}_{feature_attr}"
-                    array_time_attribute_name = f"{self._aggregation_time_attribute_prefix}{bucket.name}_{feature_attr}"
+                    array_attribute_name = f'{self._aggregation_attribute_prefix}{name}_{feature_attr}'
+                    array_time_attribute_name = f'{self._aggregation_time_attribute_prefix}{bucket.name}_{feature_attr}'
 
                     cached_time = bucket.storage_specific_cache.get(array_time_attribute_name, 0)
 
@@ -1357,16 +1357,16 @@ class V3ioDriver(NeedsV3ioAccess):
                     # Possibly initiating the array
                     if cached_time < expected_time:
                         expressions.append(f"{array_attribute_name}=init_array({bucket.window.total_number_of_buckets},'double',"
-                                           f"{aggregation_value.get_default_value()})")
+                                           f'{aggregation_value.get_default_value()})')
                         if array_time_attribute_name not in times_update_expressions:
                             times_update_expressions[array_time_attribute_name] = \
-                                f"{array_time_attribute_name}={expected_time_expr}"
+                                f'{array_time_attribute_name}={expected_time_expr}'
                         new_cached_times[name] = (array_time_attribute_name, expected_time)
 
                     # Updating the specific cells
                     if cached_time <= expected_time:
-                        arr_at_index = f"{array_attribute_name}[{index_to_update}]"
-                        expressions.append(f"{arr_at_index}={self._get_update_expression_by_aggregation(arr_at_index, aggregation_value)}")
+                        arr_at_index = f'{array_attribute_name}[{index_to_update}]'
+                        expressions.append(f'{arr_at_index}={self._get_update_expression_by_aggregation(arr_at_index, aggregation_value)}')
 
         # Separating time attribute updates, so that they will be executed in the end and only once per feature name.
         expressions.extend(times_update_expressions.values())
