@@ -1309,10 +1309,14 @@ class V3ioDriver(NeedsV3ioAccess):
                     get_array_time_expr = f"if_not_exists({array_time_attribute_name},0:0)"
                     # TODO: Once Engine Expression bug is fixed remove occurrences of `tmp_arr` and `workaround_expression`
                     workaround_expression = f';{array_attribute_name}=tmp_arr_{array_attribute_name};delete(tmp_arr_{array_attribute_name})'
-                    init_expression = f"tmp_arr_{array_attribute_name}=if_else(({get_array_time_expr}<{expected_time_expr}),init_array({bucket.window.total_number_of_buckets},'double',{aggregation_value.get_default_value()}),{array_attribute_name});{workaround_expression}"
+                    init_expression = \
+                        f"tmp_arr_{array_attribute_name}=if_else(({get_array_time_expr}<{expected_time_expr})," \
+                            f"init_array({bucket.window.total_number_of_buckets},'double',{aggregation_value.get_default_value()})," \
+                            f"{array_attribute_name});{workaround_expression}"
 
                     arr_at_index = f"{array_attribute_name}[{index_to_update}]"
-                    update_array_expression = f"{arr_at_index}=if_else(({get_array_time_expr}>{expected_time_expr}),{arr_at_index},{self._get_update_expression_by_aggregation(arr_at_index, aggregation_value)})"
+                    update_array_expression = f"{arr_at_index}=if_else(({get_array_time_expr}>{expected_time_expr}),{arr_at_index}," \
+                        f"{self._get_update_expression_by_aggregation(arr_at_index, aggregation_value)})"
 
                     expressions.append(init_expression)
                     expressions.append(update_array_expression)
@@ -1320,7 +1324,8 @@ class V3ioDriver(NeedsV3ioAccess):
                     # Separating time attribute updates, so that they will be executed in the end and only once per feature name.
                     if array_time_attribute_name not in times_update_expressions:
                         times_update_expressions[array_time_attribute_name] = \
-                            f"{array_time_attribute_name}=if_else(({get_array_time_expr}<{expected_time_expr}),{expected_time_expr},{array_time_attribute_name})"
+                            f"{array_time_attribute_name}=if_else(({get_array_time_expr}<{expected_time_expr}),{expected_time_expr}," \
+                                f"{array_time_attribute_name})"
 
         expressions.extend(times_update_expressions.values())
 
@@ -1351,8 +1356,8 @@ class V3ioDriver(NeedsV3ioAccess):
 
                     # Possibly initiating the array
                     if cached_time < expected_time:
-                        expressions.append(
-                            f"{array_attribute_name}=init_array({bucket.window.total_number_of_buckets},'double',{aggregation_value.get_default_value()})")
+                        expressions.append(f"{array_attribute_name}=init_array({bucket.window.total_number_of_buckets},'double',"
+                                           f"{aggregation_value.get_default_value()})")
 
                     # Updating the specific cells
                     if cached_time <= expected_time:
