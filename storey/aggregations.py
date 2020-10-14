@@ -468,7 +468,6 @@ class AggregationBuckets:
 
             for i in range(len(data[first_time]) - 1, 0, -1):
                 curr_value = data[first_time][i]
-                a = AggregationValue(self.aggregation, self.max_value, curr_value)
                 self.buckets[bucket_index] = AggregationValue(self.aggregation, self.max_value, curr_value)
                 bucket_index = bucket_index - 1
 
