@@ -1232,14 +1232,14 @@ class V3ioDriver(NeedsV3ioAccess):
             aggr_item.storage_specific_cache[self._mtime_header_name] = get_item_response.headers[self._mtime_header_name]
 
             # First reset all relevant cache items
-            for bucket_name, bucket in aggr_item.aggregation_buckets.items():
+            for bucket in aggr_item.aggregation_buckets.values():
                 if bucket.should_persist:
                     for attribute_to_reset in attributes_to_get:
                         if attribute_to_reset.startswith(f'{self._aggregation_time_attribute_prefix}{bucket.name}_'):
                             bucket.storage_specific_cache.pop(attribute_to_reset, None)
 
             for name, value in get_item_response.output.item.items():
-                for bucket_name, bucket in aggr_item.aggregation_buckets.items():
+                for bucket in aggr_item.aggregation_buckets.values():
                     if bucket.should_persist:
                         if name.startswith(f'{self._aggregation_time_attribute_prefix}{bucket.name}_'):
                             bucket.storage_specific_cache[name] = int(value.timestamp() * 1000)
@@ -1249,7 +1249,7 @@ class V3ioDriver(NeedsV3ioAccess):
 
     def _get_time_attributes_from_aggregations(self, aggregation_element):
         attributes = {}
-        for name, bucket in aggregation_element.aggregation_buckets.items():
+        for bucket in aggregation_element.aggregation_buckets.values():
             attributes[f'{bucket.name}_a'] = f"{self._aggregation_time_attribute_prefix}{bucket.name}_a"
             attributes[f'{bucket.name}_b'] = f"{self._aggregation_time_attribute_prefix}{bucket.name}_b"
         return list(attributes.values())
@@ -1309,10 +1309,9 @@ class V3ioDriver(NeedsV3ioAccess):
                     get_array_time_expr = f"if_not_exists({array_time_attribute_name},0:0)"
                     # TODO: Once Engine Expression bug is fixed remove occurrences of `tmp_arr` and `workaround_expression`
                     workaround_expression = f';{array_attribute_name}=tmp_arr_{array_attribute_name};delete(tmp_arr_{array_attribute_name})'
-                    init_expression = \
-                        f"tmp_arr_{array_attribute_name}=if_else(({get_array_time_expr}<{expected_time_expr})," \
-                            f"init_array({bucket.window.total_number_of_buckets},'double',{aggregation_value.get_default_value()})," \
-                            f"{array_attribute_name});{workaround_expression}"
+                    init_expression = f"tmp_arr_{array_attribute_name}=if_else(({get_array_time_expr}<{expected_time_expr})," \
+                        f"init_array({bucket.window.total_number_of_buckets},'double',{aggregation_value.get_default_value()})," \
+                        f"{array_attribute_name});{workaround_expression}"
 
                     arr_at_index = f"{array_attribute_name}[{index_to_update}]"
                     update_array_expression = f"{arr_at_index}=if_else(({get_array_time_expr}>{expected_time_expr}),{arr_at_index}," \
@@ -1323,9 +1322,8 @@ class V3ioDriver(NeedsV3ioAccess):
 
                     # Separating time attribute updates, so that they will be executed in the end and only once per feature name.
                     if array_time_attribute_name not in times_update_expressions:
-                        times_update_expressions[array_time_attribute_name] = \
-                            f"{array_time_attribute_name}=if_else(({get_array_time_expr}<{expected_time_expr}),{expected_time_expr}," \
-                                f"{array_time_attribute_name})"
+                        times_update_expressions[array_time_attribute_name] = f"{array_time_attribute_name}=" \
+                            f"if_else(({get_array_time_expr}<{expected_time_expr}),{expected_time_expr},{array_time_attribute_name})"
 
         expressions.extend(times_update_expressions.values())
 
