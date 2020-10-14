@@ -1,6 +1,8 @@
 import asyncio
 from datetime import datetime, timedelta
 
+import pytest
+
 from storey import Source, Map, Reduce, build_flow, Complete, NoopDriver, FieldAggregator, AggregateByKey, Cache, Batch, AsyncSource
 from storey.dtypes import SlidingWindows
 
@@ -54,7 +56,8 @@ def test_complete_flow_one_event(benchmark):
     benchmark(inner)
 
 
-def test_simple_flow_1000_events(benchmark):
+@pytest.mark.parametrize('n', [1000, 10000])
+def test_simple_flow_n_events(benchmark, n):
     def inner():
         controller = build_flow([
             Source(),
@@ -62,16 +65,16 @@ def test_simple_flow_1000_events(benchmark):
             Reduce(0, lambda acc, x: acc + x),
         ]).run()
 
-        for i in range(1000):
+        for i in range(n):
             controller.emit(i)
         controller.terminate()
         termination_result = controller.await_termination()
-        assert termination_result == 500500
 
     benchmark(inner)
 
 
-def test_simple_async_flow_1000_events(benchmark):
+@pytest.mark.parametrize('n', [1000, 10000])
+def test_simple_async_flow_n_events(benchmark, n):
     async def async_inner():
         controller = await build_flow([
             AsyncSource(),
@@ -79,11 +82,10 @@ def test_simple_async_flow_1000_events(benchmark):
             Reduce(0, lambda acc, x: acc + x),
         ]).run()
 
-        for i in range(1000):
+        for i in range(n):
             await controller.emit(i)
         await controller.terminate()
         termination_result = await controller.await_termination()
-        assert termination_result == 500500
 
     def inner():
         asyncio.run(async_inner())
@@ -91,7 +93,8 @@ def test_simple_async_flow_1000_events(benchmark):
     benchmark(inner)
 
 
-def test_aggregate_by_key_1000_events(benchmark):
+@pytest.mark.parametrize('n', [1000, 10000])
+def test_aggregate_by_key_n_events(benchmark, n):
     def inner():
         controller = build_flow([
             Source(),
@@ -100,7 +103,7 @@ def test_aggregate_by_key_1000_events(benchmark):
                            Cache("test", NoopDriver())),
         ]).run()
 
-        for i in range(1000):
+        for i in range(n):
             data = {'col1': i}
             controller.emit(data, 'tal', test_base_time + timedelta(minutes=25 * i))
 
@@ -110,14 +113,15 @@ def test_aggregate_by_key_1000_events(benchmark):
     benchmark(inner)
 
 
-def test_batch_1000_events(benchmark):
+@pytest.mark.parametrize('n', [1000, 10000])
+def test_batch_n_events(benchmark, n):
     def inner():
         controller = build_flow([
             Source(),
             Batch(4, 100),
         ]).run()
 
-        for i in range(1000):
+        for i in range(n):
             controller.emit(i)
 
         controller.terminate()
