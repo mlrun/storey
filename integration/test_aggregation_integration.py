@@ -6,6 +6,7 @@ from storey.dtypes import SlidingWindows
 from storey.flow import _split_path
 from .integration_test_utils import setup_teardown_test
 import asyncio
+import pytest
 
 test_base_time = datetime.fromisoformat("2020-07-21T21:40:00+00:00")
 
@@ -15,8 +16,9 @@ def append_return(lst, x):
     return lst
 
 
-def test_query_aggregate_by_key(setup_teardown_test):
-    cache = Cache(setup_teardown_test, V3ioDriver())
+@pytest.mark.parametrize('partitioned_by_key', [True, False])
+def test_query_aggregate_by_key(setup_teardown_test, partitioned_by_key):
+    cache = Cache(setup_teardown_test, V3ioDriver(), partitioned_by_key=partitioned_by_key)
 
     controller = build_flow([
         Source(),
