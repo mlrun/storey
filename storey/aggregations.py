@@ -10,9 +10,23 @@ from .flow import Flow, _termination_obj, Event
 _default_emit_policy = EmitEveryEvent()
 
 
-# Aggregate data by key, aggregates the events based on the specified aggregations and emitting features based on the emit policy.
-# Also manages schema and feature persistence
 class AggregateByKey(Flow):
+    """
+    Aggregates the data into the cache object provided for later persistence, and outputs an event enriched with the requested aggregation
+    features.
+
+    :param aggregates: List of aggregates to apply for evey event.
+    :type aggregates: []FieldAggregator
+    :param cache: A cache object to aggregated the data into.
+    :type cache: Cache
+    :param key: Key field to aggregate by. Defaults to the key in the Event's metadata. (Optional)
+    :type key: string or Function (Event=>object)
+    :param emit_policy: Policy indicating when the data will be emitted. Defaults to EmitEveryEvent. (Optional)
+    :type emit_policy: {EmitEveryEvent, EmitAfterMaxEvent, EmitAfterPeriod, EmitAfterWindow}
+    :param augmentation_fn: Function that augments the features into the event's body. Defaults to updating a dict. (Optional)
+    :type augmentation_fn: Function ((Event, dict) => Event)
+    """
+
     def __init__(self, aggregates, cache, key=None, emit_policy=_default_emit_policy, augmentation_fn=None):
         Flow.__init__(self)
         self._aggregates_store = AggregateStore(aggregates)
@@ -110,8 +124,22 @@ class AggregateByKey(Flow):
             next_emit_time = next_emit_time + seconds_to_sleep_between_emits
 
 
-# Serving side for AggregateByKey, for every (key, timestamp) pair provided QueryAggregateByKey will emit the relevant feature set
 class QueryAggregationByKey(AggregateByKey):
+    """
+    Similar to to `AggregateByKey`, but this step is for serving only and does not aggregate the event.
+
+    :param aggregates: List of aggregates to apply for evey event.
+    :type aggregates: []FieldAggregator
+    :param cache: A cache object to aggregated the data into.
+    :type cache: Cache
+    :param key: Key field to aggregate by. Defaults to the key in the Event's metadata. (Optional)
+    :type key: string or Function (Event=>object)
+    :param emit_policy: Policy indicating when the data will be emitted. Defaults to EmitEveryEvent. (Optional)
+    :type emit_policy: {EmitEveryEvent, EmitAfterMaxEvent, EmitAfterPeriod, EmitAfterWindow}
+    :param augmentation_fn: Function that augments the features into the event's body. Defaults to updating a dict. (Optional)
+    :type augmentation_fn: Function ((Event, dict) => Event)
+    """
+
     def __init__(self, aggregates, cache, key=None, emit_policy=_default_emit_policy, augmentation_fn=None):
         AggregateByKey.__init__(self, aggregates, cache, key, emit_policy, augmentation_fn)
         self._aggregates_store.read_only = True
@@ -147,6 +175,13 @@ class QueryAggregationByKey(AggregateByKey):
 
 
 class Persist(Flow):
+    """
+    Persists the data in `cache` to its associated storage by key.
+
+    :param cache: A cache object.
+    :type cache: Cache
+    """
+
     def __init__(self, cache):
         super().__init__()
         self._cache = cache
@@ -463,7 +498,7 @@ class AggregationBuckets:
                     if not self.last_bucket_start_time:
                         self.last_bucket_start_time = last_time + i * self.window.period_millis
                         self.first_bucket_start_time = self.last_bucket_start_time - (
-                                    self.window.total_number_of_buckets - 1) * self.window.period_millis
+                                self.window.total_number_of_buckets - 1) * self.window.period_millis
 
             for i in range(len(data[first_time]) - 1, 0, -1):
                 curr_value = data[first_time][i]
@@ -521,6 +556,22 @@ class VirtualAggregationBuckets:
 
 
 class FieldAggregator:
+    """
+    Field Aggregator represents an set of aggregation features.
+
+    :param name: Name for the feature.
+    :type name: string
+    :param field: Field in the event body to aggregate.
+    :type field: string or Function (Event=>object)
+    :param aggr: list of aggregates to apply. Valid values are:
+    :type aggr: []string
+    :param windows: Time windows to aggregate the data by.
+    :type windows: {FixedWindows, SlidingWindows}
+    :param aggr_filter: Optional filter specifying which events to aggregate. (Optional)
+    :type aggr_filter: Function (Event => boolean)
+    :param max_value: Maximum value for the aggregation (Optional)
+    :type max_value: float
+    """
     def __init__(self, name, field, aggr, windows, aggr_filter=None, max_value=None):
         if aggr_filter is not None and not callable(aggr_filter):
             raise TypeError(f'aggr_filter expected to be callable, got {type(aggr_filter)}')
