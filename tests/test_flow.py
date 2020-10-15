@@ -2,9 +2,10 @@ import asyncio
 import os
 import time
 from datetime import datetime
+import pandas as pd
 
 from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV, Complete, AsyncSource, Choice, Event, \
-    Batch, Cache, NoopDriver, WriteCSV
+    Batch, Cache, NoopDriver, WriteCSV, DataframeSource
 
 
 class ATestException(Exception):
@@ -116,6 +117,49 @@ def test_csv_reader_as_dict_no_header():
 
     termination_result = controller.await_termination()
     assert termination_result == 21
+
+
+def test_dataframe_source():
+    df = pd.DataFrame([['hello', 1, 1.5], ['world', 2, 2.5]], columns=['string', 'int', 'float'])
+    controller = build_flow([
+        DataframeSource(df),
+        Reduce([], append_and_return),
+    ]).run()
+
+    termination_result = controller.await_termination()
+    expected = [{'string': 'hello', 'int': 1, 'float': 1.5}, {'string': 'world', 'int': 2, 'float': 2.5}]
+    assert termination_result == expected
+
+
+def test_dataframe_source_with_metadata():
+    t1 = datetime(2020, 2, 15)
+    t2 = datetime(2020, 2, 16)
+    df = pd.DataFrame([['key1', t1, 'id1', 1.1], ['key2', t2, 'id2', 2.2]],
+                      columns=['my_key', 'my_time', 'my_id', 'my_value'])
+    controller = build_flow([
+        DataframeSource(df, key_field='my_key', time_field='my_time', id_field='my_id'),
+        Reduce([], append_and_return, full_event=True),
+    ]).run()
+
+    termination_result = controller.await_termination()
+    expected = [Event({'my_value': 1.1}, key='key1', time=t1, id='id1'), Event({'my_value': 2.2}, key='key2', time=t2, id='id2')]
+    assert termination_result == expected
+
+
+async def async_dataframe_source():
+    df = pd.DataFrame([['hello', 1, 1.5], ['world', 2, 2.5]], columns=['string', 'int', 'float'])
+    controller = await build_flow([
+        DataframeSource(df),
+        Reduce([], append_and_return),
+    ]).run_async()
+
+    termination_result = await controller.await_termination()
+    expected = [{'string': 'hello', 'int': 1, 'float': 1.5}, {'string': 'world', 'int': 2, 'float': 2.5}]
+    assert termination_result == expected
+
+
+def test_async_dataframe_source():
+    asyncio.run(async_test_async_source())
 
 
 def test_error_flow():
