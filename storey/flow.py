@@ -1309,7 +1309,7 @@ class V3ioDriver(NeedsV3ioAccess):
                     index_to_update = int((bucket_start_time - expected_time) / bucket.window.period_millis)
 
                     get_array_time_expr = f'if_not_exists({array_time_attribute_name},0:0)'
-                    # TODO: Once Engine Expression bug is fixed remove occurrences of `tmp_arr` and `workaround_expression`
+                    # TODO: Once IG-16915 fixed remove occurrences of `tmp_arr` and `workaround_expression`
                     workaround_expression = f'{array_attribute_name}=tmp_arr_{array_attribute_name};delete(tmp_arr_{array_attribute_name})'
                     init_expression = f'tmp_arr_{array_attribute_name}=if_else(({get_array_time_expr}<{expected_time_expr}),' \
                         f"init_array({bucket.window.total_number_of_buckets},'double',{aggregation_value.get_default_value()})," \
@@ -1379,16 +1379,17 @@ class V3ioDriver(NeedsV3ioAccess):
 
     @staticmethod
     def _get_update_expression_by_aggregation(old, aggregation):
+        value = aggregation.get_value()[1]
         if aggregation.aggregation == 'max':
-            return f'max({old}, {aggregation.get_value()[1]})'
+            return f'max({old}, {value})'
         elif aggregation.aggregation == 'min':
-            return f'min({old}, {aggregation.get_value()[1]})'
+            return f'min({old}, {value})'
         elif aggregation.aggregation == 'last':
-            return f'{aggregation.get_value()[1]}'
+            return f'{value}'
         elif aggregation.aggregation == 'first':
-            return f'if_else(({old} == {aggregation.get_default_value()}), {aggregation.get_value()[1]}, {old})'
+            return f'if_else(({old} == {aggregation.get_default_value()}), {value}, {old})'
         else:
-            return f'{old}+{aggregation.get_value()[1]}'
+            return f'{old}+{value}'
 
     @staticmethod
     def _convert_python_obj_to_expression_value(value):

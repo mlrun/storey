@@ -448,8 +448,7 @@ class AggregationBuckets:
 
         default_aggr_value = _get_aggregation_default_value(self.aggregation)
         if len(data.keys()) == 2:
-            timestamp1 = list(data.keys())[0]
-            timestamp2 = list(data.keys())[1]
+            timestamp1, timestamp2 = data.keys()
             first_time, last_time = min(timestamp1, timestamp2), max(timestamp1, timestamp2)
 
             bucket_index = self.window.total_number_of_buckets - 1
