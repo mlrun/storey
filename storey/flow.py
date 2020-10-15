@@ -163,13 +163,9 @@ class Event:
         if not isinstance(other, Event):
             return False
 
-        return self.body == other.body and \
-               self.time == other.time and \
-               self.id == other.id and \
-               self.headers == other.headers and \
-               self.method == other.method and \
-               self.path == other.path and \
-               self.content_type == other.content_type
+        result = self.body == other.body and self.time == other.time and self.id == other.id and self.headers == other.headers
+        result = result and self.method == other.method and self.path == other.path and self.content_type == other.content_type
+        return result
 
 
 class AwaitableResult:
@@ -553,14 +549,27 @@ async def _aiter(iterable):
 
 
 class DataframeSource(FileSource):
-    def __init__(self, dfs, key_field=None, time_field=None, id_field=None, **kwargs):
+    """
+        Use pandas dataframe as input source for a flow.
+
+        :param dfs: A pandas dataframe, or dataframes, to be used as input source for the flow.
+        :type paths: pandas.DataFrame, or list of pandas.DataFrame
+        :param key_column: column to be used as key for events.
+        :type key_column: string
+        :param time_column: column to be used as time for events.
+        :type time_column: datetime
+        :param id_column: column to be used as ID for events.
+        :type id_column: string
+    """
+
+    def __init__(self, dfs, key_column=None, time_column=None, id_column=None, **kwargs):
         super().__init__(**kwargs)
         if not isinstance(dfs, list):
             dfs = [dfs]
         self._dfs = dfs
-        self._key_field = key_field
-        self._time_field = time_field
-        self._id_field = id_field
+        self._key_field = key_column
+        self._time_field = time_column
+        self._id_field = id_column
 
     async def _run_loop(self):
         async for df in _aiter(self._dfs):
@@ -1375,12 +1384,12 @@ class V3ioDriver(NeedsV3ioAccess):
                     # TODO: Once IG-16915 fixed remove occurrences of `tmp_arr` and `workaround_expression`
                     workaround_expression = f'{array_attribute_name}=tmp_arr_{array_attribute_name};delete(tmp_arr_{array_attribute_name})'
                     init_expression = f'tmp_arr_{array_attribute_name}=if_else(({get_array_time_expr}<{expected_time_expr}),' \
-                        f"init_array({bucket.window.total_number_of_buckets},'double',{aggregation_value.get_default_value()})," \
-                        f'{array_attribute_name});{workaround_expression}'
+                                      f"init_array({bucket.window.total_number_of_buckets},'double'," \
+                                      f'{aggregation_value.get_default_value()}),{array_attribute_name});{workaround_expression}'
 
                     arr_at_index = f'{array_attribute_name}[{index_to_update}]'
                     update_array_expression = f'{arr_at_index}=if_else(({get_array_time_expr}>{expected_time_expr}),{arr_at_index},' \
-                        f'{self._get_update_expression_by_aggregation(arr_at_index, aggregation_value)})'
+                                              f'{self._get_update_expression_by_aggregation(arr_at_index, aggregation_value)})'
 
                     expressions.append(init_expression)
                     expressions.append(update_array_expression)
@@ -1388,7 +1397,8 @@ class V3ioDriver(NeedsV3ioAccess):
                     # Separating time attribute updates, so that they will be executed in the end and only once per feature name.
                     if array_time_attribute_name not in times_update_expressions:
                         times_update_expressions[array_time_attribute_name] = f'{array_time_attribute_name}=' \
-                            f'if_else(({get_array_time_expr}<{expected_time_expr}),{expected_time_expr},{array_time_attribute_name})'
+                                                                              f'if_else(({get_array_time_expr}<{expected_time_expr}),' \
+                                                                              f'{expected_time_expr},{array_time_attribute_name})'
 
         expressions.extend(times_update_expressions.values())
 

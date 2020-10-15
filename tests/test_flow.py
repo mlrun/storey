@@ -137,7 +137,7 @@ def test_dataframe_source_with_metadata():
     df = pd.DataFrame([['key1', t1, 'id1', 1.1], ['key2', t2, 'id2', 2.2]],
                       columns=['my_key', 'my_time', 'my_id', 'my_value'])
     controller = build_flow([
-        DataframeSource(df, key_field='my_key', time_field='my_time', id_field='my_id'),
+        DataframeSource(df, key_column='my_key', time_column='my_time', id_column='my_id'),
         Reduce([], append_and_return, full_event=True),
     ]).run()
 
