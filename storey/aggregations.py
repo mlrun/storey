@@ -21,7 +21,7 @@ class AggregateByKey(Flow):
     :param cache: A cache object to aggregate the data into.
     :type cache: Cache
     :param key: Key field to aggregate by, accepts either a string representing the key field or a key extracting function.
-     Defaults to the key in the Event's metadata. (Optional)
+     Defaults to the key in the event's metadata. (Optional)
     :type key: string or Function (Event=>object)
     :param emit_policy: Policy indicating when the data will be emitted. Defaults to EmitEveryEvent. (Optional)
     :type emit_policy: {EmitEveryEvent, EmitAfterMaxEvent, EmitAfterPeriod, EmitAfterWindow}
@@ -135,7 +135,7 @@ class QueryAggregationByKey(AggregateByKey):
     :param cache: A cache object to aggregate the data into.
     :type cache: Cache
     :param key: Key field to aggregate by, accepts either a string representing the key field or a key extracting function.
-     Defaults to the key in the Event's metadata. (Optional)
+     Defaults to the key in the event's metadata. (Optional)
     :type key: string or Function (Event=>object)
     :param emit_policy: Policy indicating when the data will be emitted. Defaults to EmitEveryEvent. (Optional)
     :type emit_policy: {EmitEveryEvent, EmitAfterMaxEvent, EmitAfterPeriod, EmitAfterWindow}
