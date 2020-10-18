@@ -14,12 +14,14 @@ class AggregateByKey(Flow):
     """
     Aggregates the data into the cache object provided for later persistence, and outputs an event enriched with the requested aggregation
     features.
+    Persistence is done via the `Persist` step and based on the Cache object persistence settings.
 
-    :param aggregates: List of aggregates to apply for evey event.
-    :type aggregates: []FieldAggregator
-    :param cache: A cache object to aggregated the data into.
+    :param aggregates: List of aggregates to apply for each event.
+    :type aggregates: list of FieldAggregator
+    :param cache: A cache object to aggregate the data into.
     :type cache: Cache
-    :param key: Key field to aggregate by. Defaults to the key in the Event's metadata. (Optional)
+    :param key: Key field to aggregate by, accepts either a string representing the key field or a key extracting function.
+     Defaults to the key in the Event's metadata. (Optional)
     :type key: string or Function (Event=>object)
     :param emit_policy: Policy indicating when the data will be emitted. Defaults to EmitEveryEvent. (Optional)
     :type emit_policy: {EmitEveryEvent, EmitAfterMaxEvent, EmitAfterPeriod, EmitAfterWindow}
@@ -128,11 +130,12 @@ class QueryAggregationByKey(AggregateByKey):
     """
     Similar to to `AggregateByKey`, but this step is for serving only and does not aggregate the event.
 
-    :param aggregates: List of aggregates to apply for evey event.
-    :type aggregates: []FieldAggregator
-    :param cache: A cache object to aggregated the data into.
+    :param aggregates: List of aggregates to apply for each event.
+    :type aggregates: list of FieldAggregator
+    :param cache: A cache object to aggregate the data into.
     :type cache: Cache
-    :param key: Key field to aggregate by. Defaults to the key in the Event's metadata. (Optional)
+    :param key: Key field to aggregate by, accepts either a string representing the key field or a key extracting function.
+     Defaults to the key in the Event's metadata. (Optional)
     :type key: string or Function (Event=>object)
     :param emit_policy: Policy indicating when the data will be emitted. Defaults to EmitEveryEvent. (Optional)
     :type emit_policy: {EmitEveryEvent, EmitAfterMaxEvent, EmitAfterPeriod, EmitAfterWindow}
@@ -563,15 +566,16 @@ class FieldAggregator:
     :type name: string
     :param field: Field in the event body to aggregate.
     :type field: string or Function (Event=>object)
-    :param aggr: list of aggregates to apply. Valid values are:
-    :type aggr: []string
+    :param aggr: List of aggregates to apply. Valid values are: [count, sum, avg, max, min, last, first, sttdev, stdvar]
+    :type aggr: list of string
     :param windows: Time windows to aggregate the data by.
     :type windows: {FixedWindows, SlidingWindows}
-    :param aggr_filter: Optional filter specifying which events to aggregate. (Optional)
-    :type aggr_filter: Function (Event => boolean)
+    :param aggr_filter: Filter specifying which events to aggregate. (Optional)
+    :type aggr_filter: Function (Event=>boolean)
     :param max_value: Maximum value for the aggregation (Optional)
     :type max_value: float
     """
+
     def __init__(self, name, field, aggr, windows, aggr_filter=None, max_value=None):
         if aggr_filter is not None and not callable(aggr_filter):
             raise TypeError(f'aggr_filter expected to be callable, got {type(aggr_filter)}')

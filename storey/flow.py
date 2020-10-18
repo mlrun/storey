@@ -1499,11 +1499,11 @@ class Cache:
     """
         Cache object.
 
-        :param table_path: Path of the in the storage.
+        :param table_path: Path to the table in the storage.
         :type table_path: string
         :param storage: Storage driver
         :type storage: {V3ioDriver, NoopDriver}
-        :param partitioned_by_key: Indication whether that data is partitioned by the key or not, based on this indication storage drivers
+        :param partitioned_by_key: Whether that data is partitioned by the key or not, based on this indication storage drivers
          can optimize writes. Defaults to True.
         :type partitioned_by_key: boolean
         """

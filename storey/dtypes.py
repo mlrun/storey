@@ -65,12 +65,12 @@ def sort_windows_and_convert_to_millis(windows):
 
 class FixedWindows(WindowsBase):
     """
-        List of time windows representing fixed time intervals.
-        For example: 1h will represent 1h windows starting every round hour.
+    List of time windows representing fixed time intervals.
+    For example: 1h will represent 1h windows starting every round hour.
 
-        :param windows: list of time windows in the format [0-9]+[smhd]
-        :type windows: [] string
-        """
+    :param windows: List of time windows in the format [0-9]+[smhd]
+    :type windows: list of string
+    """
 
     def __init__(self, windows):
         windows_tuples = sort_windows_and_convert_to_millis(windows)
@@ -91,14 +91,14 @@ class FixedWindows(WindowsBase):
 
 class SlidingWindows(WindowsBase):
     """
-        List of time windows representing sliding time intervals.
-        For example: 1h will represent 1h windows starting from the current time.
+    List of time windows representing sliding time intervals.
+    For example: 1h will represent 1h windows starting from the current time.
 
-        :param windows: list of time windows in the format [0-9]+[smhd]
-        :type windows: [] string
-        :param period: Period in the format [0-9]+[smhd]
-        :type period: string
-        """
+    :param windows: List of time windows in the format [0-9]+[smhd]
+    :type windows: list of string
+    :param period: Period in the format [0-9]+[smhd]
+    :type period: string
+    """
 
     def __init__(self, windows, period=None):
         windows_tuples = sort_windows_and_convert_to_millis(windows)
