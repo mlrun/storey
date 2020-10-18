@@ -131,6 +131,19 @@ def test_dataframe_source():
     assert termination_result == expected
 
 
+def test_indexed_dataframe_source():
+    df = pd.DataFrame([['hello', 1, 1.5], ['world', 2, 2.5]], columns=['string', 'int', 'float'])
+    df.set_index(['string', 'int'], inplace=True)
+    controller = build_flow([
+        DataframeSource(df),
+        Reduce([], append_and_return),
+    ]).run()
+
+    termination_result = controller.await_termination()
+    expected = [{'string': 'hello', 'int': 1, 'float': 1.5}, {'string': 'world', 'int': 2, 'float': 2.5}]
+    assert termination_result == expected
+
+
 def test_dataframe_source_with_metadata():
     t1 = datetime(2020, 2, 15)
     t2 = datetime(2020, 2, 16)

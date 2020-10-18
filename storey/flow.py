@@ -573,8 +573,13 @@ class DataframeSource(IterableSource):
 
     async def _run_loop(self):
         async for df in _aiter(self._dfs):
-            async for _, row in _aiter(df.iterrows()):
-                body = row.to_dict()
+            async for indexes, series in _aiter(df.iterrows()):
+                body = series.to_dict()
+                i = 0
+                for index_name in df.index.names:
+                    if index_name:
+                        body[index_name] = indexes[i]
+                    i += 1
                 key = None
                 if self._key_field:
                     key = body[self._key_field]
