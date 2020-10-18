@@ -401,7 +401,7 @@ class AggregationBuckets:
         return AggregationValue(self.aggregation, self.max_value)
 
     def get_aggregation_for_aggregation(self):
-        if self.aggregation == 'count':
+        if self.aggregation == 'count' or self.aggregation == "sqr":
             return 'sum'
         return self.aggregation
 
@@ -463,7 +463,7 @@ class AggregationBuckets:
                     if not self.last_bucket_start_time:
                         self.last_bucket_start_time = last_time + i * self.window.period_millis
                         self.first_bucket_start_time = self.last_bucket_start_time - (
-                                    self.window.total_number_of_buckets - 1) * self.window.period_millis
+                                self.window.total_number_of_buckets - 1) * self.window.period_millis
 
             for i in range(len(data[first_time]) - 1, 0, -1):
                 curr_value = data[first_time][i]
@@ -570,6 +570,8 @@ class AggregationValue:
             self._set_value(self._value + value)
         elif self.aggregation == 'count':
             self._set_value(self._value + 1)
+        elif self.aggregation == 'sqr':
+            self._set_value(self._value + value * value)
         elif self.aggregation == 'last' and time > self._last_time:
             self._set_value(value)
             self._last_time = time
