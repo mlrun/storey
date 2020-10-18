@@ -439,7 +439,7 @@ class AggregationBuckets:
         return AggregationValue(self.aggregation, self.max_value)
 
     def get_aggregation_for_aggregation(self):
-        if self.aggregation == 'count':
+        if self.aggregation == 'count' or self.aggregation == "sqr":
             return 'sum'
         return self.aggregation
 
@@ -566,7 +566,7 @@ class FieldAggregator:
     :type name: string
     :param field: Field in the event body to aggregate.
     :type field: string or Function (Event=>object)
-    :param aggr: List of aggregates to apply. Valid values are: [count, sum, avg, max, min, last, first, sttdev, stdvar]
+    :param aggr: List of aggregates to apply. Valid values are: [count, sum, sqr, avg, max, min, last, first, sttdev, stdvar]
     :type aggr: list of string
     :param windows: Time windows to aggregate the data by.
     :type windows: {FixedWindows, SlidingWindows}
@@ -625,6 +625,8 @@ class AggregationValue:
             self._set_value(self._value + value)
         elif self.aggregation == 'count':
             self._set_value(self._value + 1)
+        elif self.aggregation == 'sqr':
+            self._set_value(self._value + value * value)
         elif self.aggregation == 'last' and time > self._last_time:
             self._set_value(value)
             self._last_time = time
