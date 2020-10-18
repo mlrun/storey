@@ -47,6 +47,9 @@ class Flow:
         for outlet in self._outlets:
             outlet.run()
 
+    async def run_async(self):
+        raise NotImplementedError
+
     async def _do(self, event):
         raise NotImplementedError
 
@@ -147,14 +150,22 @@ class Event:
 
     def __init__(self, body, key=None, time=None, id=None, headers=None, method=None, path='/', content_type=None, awaitable_result=None):
         self.body = body
-        self.id = id or uuid.uuid4().hex
         self.key = key
         self.time = time or datetime.now(timezone.utc)
+        self.id = id or uuid.uuid4().hex
         self.headers = headers
         self.method = method
         self.path = path
         self.content_type = content_type
         self._awaitable_result = awaitable_result
+
+    def __eq__(self, other):
+        if not isinstance(other, Event):
+            return False
+
+        result = self.body == other.body and self.time == other.time and self.id == other.id and self.headers == other.headers
+        result = result and self.method == other.method and self.path == other.path and self.content_type == other.content_type
+        return result
 
 
 class AwaitableResult:
@@ -409,7 +420,52 @@ class AsyncSource(Flow):
         return AsyncFlowController(self._emit, loop_task)
 
 
-class ReadCSV(Flow):
+class IterableSource(Flow):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self._termination_q = queue.Queue(1)
+        self._ex = None
+
+    async def _run_loop(self):
+        raise NotImplementedError()
+
+    async def _async_loop_thread_main(self):
+        try:
+            self._termination_future = asyncio.get_running_loop().create_future()
+            termination_result = await self._run_loop()
+            self._termination_future.set_result(termination_result)
+        except BaseException as ex:
+            self._ex = ex
+            self._termination_future.set_result(None)
+
+    def _loop_thread_main(self):
+        asyncio.run(self._async_loop_thread_main())
+        self._termination_q.put(self._ex)
+
+    def _raise_on_error(self, ex):
+        if ex:
+            raise FlowError('Flow execution terminated due to an error') from self._ex
+
+    def run(self):
+        super().run()
+
+        thread = threading.Thread(target=self._loop_thread_main)
+        thread.start()
+
+        def raise_error_or_return_termination_result():
+            self._raise_on_error(self._termination_q.get())
+            return self._termination_future.result()
+
+        return FlowAwaiter(raise_error_or_return_termination_result)
+
+    async def run_async(self):
+        super().run()
+        return await self._run_loop()
+
+
+class ReadCSV(IterableSource):
     """
     Reads CSV files as input source for a flow.
 
@@ -440,81 +496,105 @@ class ReadCSV(Flow):
         self._timestamp_field = timestamp_field
         self._timestamp_format = timestamp_format
 
-        self._termination_q = queue.Queue(1)
-        self._ex = None
-
         if not with_header and isinstance(key_field, str):
             raise ValueError('key_field can only be set to an integer when with_header is false')
         if not with_header and isinstance(timestamp_field, str):
             raise ValueError('timestamp_field can only be set to an integer when with_header is false')
 
     async def _run_loop(self):
-        self._termination_future = asyncio.get_running_loop().create_future()
-
-        try:
-            for path in self._paths:
-                async with aiofiles.open(path, mode='r') as f:
-                    header = None
-                    field_name_to_index = None
-                    if self._with_header:
-                        line = await f.readline()
-                        header = next(csv.reader([line]))
-                        field_name_to_index = {}
-                        for i in range(len(header)):
-                            field_name_to_index[header[i]] = i
-                    async for line in f:
-                        parsed_line = next(csv.reader([line]))
-                        element = parsed_line
-                        key = None
-                        if header:
-                            if len(parsed_line) != len(header):
-                                raise ValueError(f'CSV line with {len(parsed_line)} fields did not match header with {len(header)} fields')
-                            if self._build_dict:
-                                element = {}
-                                for i in range(len(parsed_line)):
-                                    element[header[i]] = parsed_line[i]
-                        if self._key_field:
-                            key_field = self._key_field
-                            if self._with_header and isinstance(key_field, str):
-                                key_field = field_name_to_index[key_field]
-                            key = parsed_line[key_field]
-                        if self._timestamp_field:
-                            timestamp_field = self._timestamp_field
-                            if self._with_header and isinstance(timestamp_field, str):
-                                timestamp_field = field_name_to_index[timestamp_field]
-                            timestamp_str = parsed_line[timestamp_field]
-                            if self._timestamp_format:
-                                timestamp = datetime.strptime(timestamp_str, self._timestamp_format)
-                            else:
-                                timestamp = datetime.fromisoformat(timestamp_str)
+        for path in self._paths:
+            async with aiofiles.open(path, mode='r') as f:
+                header = None
+                field_name_to_index = None
+                if self._with_header:
+                    line = await f.readline()
+                    header = next(csv.reader([line]))
+                    field_name_to_index = {}
+                    for i in range(len(header)):
+                        field_name_to_index[header[i]] = i
+                async for line in f:
+                    parsed_line = next(csv.reader([line]))
+                    element = parsed_line
+                    key = None
+                    if header:
+                        if len(parsed_line) != len(header):
+                            raise ValueError(f'CSV line with {len(parsed_line)} fields did not match header with {len(header)} fields')
+                        if self._build_dict:
+                            element = {}
+                            for i in range(len(parsed_line)):
+                                element[header[i]] = parsed_line[i]
+                    if self._key_field:
+                        key_field = self._key_field
+                        if self._with_header and isinstance(key_field, str):
+                            key_field = field_name_to_index[key_field]
+                        key = parsed_line[key_field]
+                    if self._timestamp_field:
+                        timestamp_field = self._timestamp_field
+                        if self._with_header and isinstance(timestamp_field, str):
+                            timestamp_field = field_name_to_index[timestamp_field]
+                        timestamp_str = parsed_line[timestamp_field]
+                        if self._timestamp_format:
+                            timestamp = datetime.strptime(timestamp_str, self._timestamp_format)
                         else:
-                            timestamp = datetime.now()
-                        await self._do_downstream(Event(element, key=key, time=timestamp))
-            termination_result = await self._do_downstream(_termination_obj)
-            self._termination_future.set_result(termination_result)
-        except BaseException as ex:
-            self._ex = ex
-            self._termination_future.set_result(None)
+                            timestamp = datetime.fromisoformat(timestamp_str)
+                    else:
+                        timestamp = datetime.now()
+                    await self._do_downstream(Event(element, key=key, time=timestamp))
+        return await self._do_downstream(_termination_obj)
 
-    def _loop_thread_main(self):
-        asyncio.run(self._run_loop())
-        self._termination_q.put(self._ex)
 
-    def _raise_on_error(self, ex):
-        if ex:
-            raise FlowError('Flow execution terminated due to an error') from self._ex
+async def _aiter(iterable):
+    for x in iterable:
+        yield x
 
-    def run(self):
-        super().run()
 
-        thread = threading.Thread(target=self._loop_thread_main)
-        thread.start()
+class DataframeSource(IterableSource):
+    """
+        Use pandas dataframe as input source for a flow.
 
-        def raise_error_or_return_termination_result():
-            self._raise_on_error(self._termination_q.get())
-            return self._termination_future.result()
+        :param dfs: A pandas dataframe, or dataframes, to be used as input source for the flow.
+        :type paths: pandas.DataFrame, or list of pandas.DataFrame
+        :param key_column: column to be used as key for events.
+        :type key_column: string
+        :param time_column: column to be used as time for events.
+        :type time_column: datetime
+        :param id_column: column to be used as ID for events.
+        :type id_column: string
+    """
 
-        return FlowAwaiter(raise_error_or_return_termination_result)
+    def __init__(self, dfs, key_column=None, time_column=None, id_column=None, **kwargs):
+        super().__init__(**kwargs)
+        if not isinstance(dfs, list):
+            dfs = [dfs]
+        self._dfs = dfs
+        self._key_field = key_column
+        self._time_field = time_column
+        self._id_field = id_column
+
+    async def _run_loop(self):
+        async for df in _aiter(self._dfs):
+            async for indexes, series in _aiter(df.iterrows()):
+                body = series.to_dict()
+                i = 0
+                for index_name in df.index.names:
+                    if index_name:
+                        body[index_name] = indexes[i]
+                    i += 1
+                key = None
+                if self._key_field:
+                    key = body[self._key_field]
+                    del body[self._key_field]
+                time = None
+                if self._time_field:
+                    time = body[self._time_field]
+                    del body[self._time_field]
+                id = None
+                if self._id_field:
+                    id = body[self._id_field]
+                    del body[self._id_field]
+                event = Event(body, key=key, time=time, id=id)
+                await self._do_downstream(event)
+        return await self._do_downstream(_termination_obj)
 
 
 class WriteCSV(Flow):
@@ -1312,12 +1392,12 @@ class V3ioDriver(NeedsV3ioAccess):
                     # TODO: Once IG-16915 fixed remove occurrences of `tmp_arr` and `workaround_expression`
                     workaround_expression = f'{array_attribute_name}=tmp_arr_{array_attribute_name};delete(tmp_arr_{array_attribute_name})'
                     init_expression = f'tmp_arr_{array_attribute_name}=if_else(({get_array_time_expr}<{expected_time_expr}),' \
-                        f"init_array({bucket.window.total_number_of_buckets},'double',{aggregation_value.get_default_value()})," \
-                        f'{array_attribute_name});{workaround_expression}'
+                                      f"init_array({bucket.window.total_number_of_buckets},'double'," \
+                                      f'{aggregation_value.get_default_value()}),{array_attribute_name});{workaround_expression}'
 
                     arr_at_index = f'{array_attribute_name}[{index_to_update}]'
                     update_array_expression = f'{arr_at_index}=if_else(({get_array_time_expr}>{expected_time_expr}),{arr_at_index},' \
-                        f'{self._get_update_expression_by_aggregation(arr_at_index, aggregation_value)})'
+                                              f'{self._get_update_expression_by_aggregation(arr_at_index, aggregation_value)})'
 
                     expressions.append(init_expression)
                     expressions.append(update_array_expression)
@@ -1325,7 +1405,8 @@ class V3ioDriver(NeedsV3ioAccess):
                     # Separating time attribute updates, so that they will be executed in the end and only once per feature name.
                     if array_time_attribute_name not in times_update_expressions:
                         times_update_expressions[array_time_attribute_name] = f'{array_time_attribute_name}=' \
-                            f'if_else(({get_array_time_expr}<{expected_time_expr}),{expected_time_expr},{array_time_attribute_name})'
+                                                                              f'if_else(({get_array_time_expr}<{expected_time_expr}),' \
+                                                                              f'{expected_time_expr},{array_time_attribute_name})'
 
         expressions.extend(times_update_expressions.values())
 
