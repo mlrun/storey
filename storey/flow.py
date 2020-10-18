@@ -47,7 +47,7 @@ class Flow:
         for outlet in self._outlets:
             outlet.run()
 
-    def run_async(self):
+    async def run_async(self):
         raise NotImplementedError
 
     async def _do(self, event):
@@ -420,7 +420,7 @@ class AsyncSource(Flow):
         return AsyncFlowController(self._emit, loop_task)
 
 
-class FileSource(Flow):
+class IterableSource(Flow):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -465,7 +465,7 @@ class FileSource(Flow):
         return await self._run_loop()
 
 
-class ReadCSV(FileSource):
+class ReadCSV(IterableSource):
     """
     Reads CSV files as input source for a flow.
 
@@ -548,7 +548,7 @@ async def _aiter(iterable):
         yield x
 
 
-class DataframeSource(FileSource):
+class DataframeSource(IterableSource):
     """
         Use pandas dataframe as input source for a flow.
 
@@ -577,13 +577,16 @@ class DataframeSource(FileSource):
                 body = row.to_dict()
                 key = None
                 if self._key_field:
-                    key = body.pop(self._key_field, None)
+                    key = body[self._key_field]
+                    del body[self._key_field]
                 time = None
                 if self._time_field:
-                    time = body.pop(self._time_field, None)
+                    time = body[self._time_field]
+                    del body[self._time_field]
                 id = None
                 if self._id_field:
-                    id = body.pop(self._id_field, None)
+                    id = body[self._id_field]
+                    del body[self._id_field]
                 event = Event(body, key=key, time=time, id=id)
                 await self._do_downstream(event)
         return await self._do_downstream(_termination_obj)
