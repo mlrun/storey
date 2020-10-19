@@ -519,6 +519,7 @@ class AggregationBuckets:
             i = 0
             for val in data[first_time]:
                 self.buckets[i] = AggregationValue(self.aggregation, self.max_value, val)
+                i = i+1
 
     def get_and_flush_pending(self):
         pending = self.pending_aggr
