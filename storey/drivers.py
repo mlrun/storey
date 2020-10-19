@@ -1,7 +1,7 @@
 import base64
-import datetime
 import json
 import os
+from datetime import datetime
 
 import v3io
 import v3io.aio.dataplane
