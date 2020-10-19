@@ -1,7 +1,59 @@
-from datetime import datetime
+import uuid
+from datetime import datetime, timezone
 from enum import Enum
 
 from .utils import parse_duration, bucketPerWindow, get_one_unit_of_duration
+
+_termination_obj = object()
+
+
+class Event:
+    """The basic unit of data in storey. All steps receive and emit events.
+
+    :param body: the event payload, or data
+    :type body: object
+    :param key: Event key. Used by steps that aggregate events by key, such as AggregateByKey.
+    :type key: string
+    :param time: Event time. Defaults to the time the event was created, UTC.
+    :type time: datetime
+    :param id: Event identifier. Usually a unique identifier. Defaults to random (version 4) UUID.
+    :type id: string
+    :param headers: Request headers (HTTP only)
+    :type headers: dict
+    :param method: Request method (HTTP only)
+    :type method: string
+    :param path: Request path (HTTP only)
+    :type path: string
+    :param content_type: Request content type (HTTP only)
+    :param awaitable_result: Generally not passed directly.
+    :type awaitable_result: AwaitableResult
+    """
+
+    def __init__(self, body, key=None, time=None, id=None, headers=None, method=None, path='/', content_type=None, awaitable_result=None):
+        self.body = body
+        self.key = key
+        self.time = time or datetime.now(timezone.utc)
+        self.id = id or uuid.uuid4().hex
+        self.headers = headers
+        self.method = method
+        self.path = path
+        self.content_type = content_type
+        self._awaitable_result = awaitable_result
+
+    def __eq__(self, other):
+        if not isinstance(other, Event):
+            return False
+
+        return self.body == other.body and self.time == other.time and self.id == other.id and self.headers == other.headers and \
+               self.method == other.method and self.path == other.path and self.content_type == other.content_type  # noqa: E127
+
+
+class V3ioError(Exception):
+    pass
+
+
+class FlowError(Exception):
+    pass
 
 
 class WindowBase:

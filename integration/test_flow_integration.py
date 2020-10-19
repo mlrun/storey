@@ -1,13 +1,12 @@
-import base64
-
-from storey import Filter, JoinWithV3IOTable, JoinWithHttp, Map, Reduce, Source, HttpRequest, build_flow, \
-    WriteToV3IOStream, V3ioDriver
-
-import aiohttp
 import asyncio
+import base64
 import json
 import time
 
+import aiohttp
+
+from storey import Filter, JoinWithV3IOTable, JoinWithHttp, Map, Reduce, Source, HttpRequest, build_flow, \
+    WriteToV3IOStream, V3ioDriver
 from .integration_test_utils import V3ioHeaders
 
 
