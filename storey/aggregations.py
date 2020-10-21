@@ -211,10 +211,8 @@ class AggregatedStoreElement:
             for aggr, is_hidden in get_all_raw_aggregates_with_hidden(aggregation_metadata.aggregations).items():
                 column_name = f'{aggregation_metadata.name}_{aggr}'
                 initial_column_data = None
-                if initial_data:
-                    column_data = initial_data.pop(column_name, None)
-                    if column_data:
-                        initial_column_data = column_data
+                if initial_data and column_name in initial_data:
+                    initial_column_data = initial_data[column_name]
                 self.aggregation_buckets[column_name] = \
                     AggregationBuckets(aggregation_metadata.name, aggr, aggregation_metadata.windows, base_time,
                                        aggregation_metadata.max_value, is_hidden, initial_column_data)
