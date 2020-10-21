@@ -252,7 +252,7 @@ class V3ioDriver(NeedsV3ioAccess):
                     array_attribute_name = f'{self._aggregation_attribute_prefix}{name}_{feature_attr}'
                     array_time_attribute_name = f'{self._aggregation_time_attribute_prefix}{bucket.name}_{feature_attr}'
 
-                    cached_time = bucket.storage_specific_cache.get(array_time_attribute_name, 0)
+                    cached_time = aggregation_element.storage_specific_cache.get(array_time_attribute_name, 0)
 
                     expected_time = int(bucket_start_time / bucket.window.max_window_millis) * bucket.window.max_window_millis
                     expected_time_expr = self._convert_python_obj_to_expression_value(datetime.fromtimestamp(expected_time / 1000))
@@ -335,6 +335,8 @@ class V3ioDriver(NeedsV3ioAccess):
                     if feature_and_aggr_name not in res:
                         res[feature_and_aggr_name] = {}
                     res[feature_and_aggr_name][time_in_millis] = value
+                elif name.startswith(self._aggregation_time_attribute_prefix):
+                    res[name] = value.timestamp() * 1000
             return res
         else:
             raise V3ioError(f'Failed to get item. Response status code was {response.status_code}: {response.body}')
