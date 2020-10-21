@@ -219,8 +219,6 @@ class AggregatedStoreElement:
                     AggregationBuckets(aggregation_metadata.name, aggr, aggregation_metadata.windows, base_time,
                                        aggregation_metadata.max_value, is_hidden, initial_column_data)
 
-        # Treat any other "initial data" as storage specific data.
-        self.storage_specific_cache = initial_data
         # Add all virtual aggregates
         for aggregation_metadata in aggregates:
             for aggr in aggregation_metadata.aggregations:
@@ -487,17 +485,24 @@ class AggregationBuckets:
 
     def initialize_from_data(self, data):
         self.buckets = [None] * self.window.total_number_of_buckets
+        aggregation_bucket_initial_data = {}
+
+        for key, value in data.items():
+            if isinstance(key, int):
+                aggregation_bucket_initial_data[key] = value
+            else:
+                self.storage_specific_cache[key] = value
 
         default_aggr_value = _get_aggregation_default_value(self.aggregation)
-        if len(data.keys()) == 2:
-            timestamp1, timestamp2 = data.keys()
+        if len(aggregation_bucket_initial_data.keys()) == 2:
+            timestamp1, timestamp2 = aggregation_bucket_initial_data.keys()
             first_time, last_time = min(timestamp1, timestamp2), max(timestamp1, timestamp2)
 
             bucket_index = self.window.total_number_of_buckets - 1
 
             # Starting with the latest bucket
-            for i in range(len(data[last_time]) - 1, 0, -1):
-                curr_value = data[last_time][i]
+            for i in range(len(aggregation_bucket_initial_data[last_time]) - 1, 0, -1):
+                curr_value = aggregation_bucket_initial_data[last_time][i]
                 if curr_value != default_aggr_value or self.last_bucket_start_time:
                     self.buckets[bucket_index] = AggregationValue(self.aggregation, self.max_value, curr_value)
                     bucket_index = bucket_index - 1
@@ -507,21 +512,21 @@ class AggregationBuckets:
                         self.first_bucket_start_time = self.last_bucket_start_time - (
                                 self.window.total_number_of_buckets - 1) * self.window.period_millis
 
-            for i in range(len(data[first_time]) - 1, 0, -1):
-                curr_value = data[first_time][i]
+            for i in range(len(aggregation_bucket_initial_data[first_time]) - 1, 0, -1):
+                curr_value = aggregation_bucket_initial_data[first_time][i]
                 self.buckets[bucket_index] = AggregationValue(self.aggregation, self.max_value, curr_value)
                 bucket_index = bucket_index - 1
 
                 if bucket_index == -1:
                     break
         else:
-            first_time = list(data.keys())[0]
+            first_time = list(aggregation_bucket_initial_data.keys())[0]
             self.first_bucket_start_time = first_time
             self.last_bucket_start_time = \
                 self.first_bucket_start_time + (self.window.total_number_of_buckets - 1) * self.window.period_millis
 
             i = 0
-            for val in data[first_time]:
+            for val in aggregation_bucket_initial_data[first_time]:
                 self.buckets[i] = AggregationValue(self.aggregation, self.max_value, val)
                 i = i + 1
 
