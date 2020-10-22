@@ -7,6 +7,7 @@ import pandas as pd
 
 from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV, Complete, AsyncSource, Choice, Event, \
     Batch, Cache, NoopDriver, WriteCSV, DataframeSource
+from storey.dataframe import ToDataFrame
 
 
 class ATestException(Exception):
@@ -592,3 +593,55 @@ async def async_test_write_csv_error():
 
 def test_write_csv_error():
     asyncio.run(async_test_write_csv_error())
+
+
+def test_to_dataframe():
+    controller = build_flow([
+        Source(),
+        ToDataFrame()
+    ]).run()
+
+    expected = []
+    for i in range(10):
+        controller.emit({'my_int': i, 'my_string': f'this is {i}'})
+        expected.append({'my_int': i, 'my_string': f'this is {i}'})
+    expected = pd.DataFrame(expected)
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result.equals(expected), f"{termination_result}\n!=\n{expected}"
+
+
+def test_to_dataframe_with_index():
+    index = 'my_int'
+    controller = build_flow([
+        Source(),
+        ToDataFrame(index=index)
+    ]).run()
+
+    expected = []
+    for i in range(10):
+        controller.emit({'my_int': i, 'my_string': f'this is {i}'})
+        expected.append({'my_int': i, 'my_string': f'this is {i}'})
+    expected = pd.DataFrame(expected)
+    expected.set_index(index, inplace=True)
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result.equals(expected), f"{termination_result}\n!=\n{expected}"
+
+
+def test_to_dataframe_indexed_by_key():
+    index = 'my_key'
+    controller = build_flow([
+        Source(),
+        ToDataFrame(index=index, insert_key_column_as='my_key')
+    ]).run()
+
+    expected = []
+    for i in range(10):
+        controller.emit({'my_int': i, 'my_string': f'this is {i}'}, key=f'key{i}')
+        expected.append({'my_int': i, 'my_string': f'this is {i}', 'my_key': f'key{i}'})
+    expected = pd.DataFrame(expected)
+    expected.set_index(index, inplace=True)
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result.equals(expected), f"{termination_result}\n!=\n{expected}"
