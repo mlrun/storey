@@ -335,6 +335,7 @@ class V3ioDriver(NeedsV3ioAccess):
                     if feature_and_aggr_name not in res:
                         res[feature_and_aggr_name] = {}
                     res[feature_and_aggr_name][time_in_millis] = value
+                    res[feature_and_aggr_name][associated_time_attr] = time_in_millis
             return res
         else:
             raise V3ioError(f'Failed to get item. Response status code was {response.status_code}: {response.body}')
