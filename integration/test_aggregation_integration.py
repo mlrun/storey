@@ -111,7 +111,7 @@ def test_query_aggregate_by_key(setup_teardown_test, partitioned_by_key):
 
 
 @pytest.mark.parametrize('partitioned_by_key', [True, False])
-def test_multiple_aggregate_by_key_one_window(setup_teardown_test, partitioned_by_key):
+def test_aggregate_by_key_one_underlying_window(setup_teardown_test, partitioned_by_key):
     expected = {1: [{'number_of_stuff_count_1h': 1, 'other_stuff_sum_1h': 0.0, 'col1': 0},
                     {'number_of_stuff_count_1h': 2, 'other_stuff_sum_1h': 1.0, 'col1': 1},
                     {'number_of_stuff_count_1h': 3, 'other_stuff_sum_1h': 3.0, 'col1': 2}],
@@ -124,6 +124,7 @@ def test_multiple_aggregate_by_key_one_window(setup_teardown_test, partitioned_b
 
     items_in_ingest_batch = 3
     current_index = 0
+
     for current_expected in expected.values():
 
         cache = Cache(setup_teardown_test, V3ioDriver(), partitioned_by_key=partitioned_by_key)
@@ -140,7 +141,7 @@ def test_multiple_aggregate_by_key_one_window(setup_teardown_test, partitioned_b
 
         for i in range(items_in_ingest_batch):
             data = {'col1': current_index}
-            controller.emit(data, 'tal', test_base_time + timedelta(minutes=3 * current_index))
+            controller.emit(data, 'tal', test_base_time + timedelta(minutes=1 * current_index))
             current_index = current_index + 1
 
         controller.terminate()
@@ -151,7 +152,7 @@ def test_multiple_aggregate_by_key_one_window(setup_teardown_test, partitioned_b
 
 
 @pytest.mark.parametrize('partitioned_by_key', [True, False])
-def test_multiple_aggregate_by_key_multiple(setup_teardown_test, partitioned_by_key):
+def test_aggregate_by_key_two_underlying_windows(setup_teardown_test, partitioned_by_key):
     expected = {1: [{'number_of_stuff_count_24h': 1, 'other_stuff_sum_24h': 0.0, 'col1': 0},
                     {'number_of_stuff_count_24h': 2, 'other_stuff_sum_24h': 1.0, 'col1': 1},
                     {'number_of_stuff_count_24h': 3, 'other_stuff_sum_24h': 3.0, 'col1': 2}],
