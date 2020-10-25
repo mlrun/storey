@@ -293,11 +293,12 @@ class AggregateStore:
 
     async def get_or_save_schema(self):
         self._schema = await self._storage._load_schema(self._container, self._table_path)
+
         should_update = True
         if self._schema:
             should_update = self._validate_schema_fit_aggregations(self._schema)
 
-        if should_update:
+        if should_update and not self.read_only:
             self._schema = await self._save_schema()
 
     async def _save_schema(self):
