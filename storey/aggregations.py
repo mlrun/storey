@@ -78,7 +78,12 @@ class AggregateByKey(Flow):
             if self.key_extractor:
                 key = self.key_extractor(element)
 
-            await self._aggregates_store.aggregate(key, element, event.time)
+            event_timestamp = event.time
+            if isinstance(event_timestamp, datetime):
+                event_timestamp = event_timestamp.timestamp() * 1000
+
+            await self._cache.lazy_load_key_with_aggregates(key, event_timestamp)
+            await self._aggregates_store.aggregate(key, element, event_timestamp)
 
             if isinstance(self._emit_policy, EmitEveryEvent):
                 await self._emit_event(key, event)
@@ -93,7 +98,12 @@ class AggregateByKey(Flow):
 
     # Emit a single event for the requested key
     async def _emit_event(self, key, event):
-        features = await self._aggregates_store.get_features(key, event.time)
+        event_timestamp = event.time
+        if isinstance(event_timestamp, datetime):
+            event_timestamp = event_timestamp.timestamp() * 1000
+
+        await self._cache.lazy_load_key_with_aggregates(key, event_timestamp)
+        features = await self._aggregates_store.get_features(key, event_timestamp)
         features = self._augmentation_fn(event.body, features)
         new_event = copy.copy(event)
         new_event.key = key
@@ -264,32 +274,22 @@ class AggregateStore:
         if not self._schema:
             await self.get_or_save_schema()
 
-        if isinstance(timestamp, datetime):
-            timestamp = timestamp.timestamp() * 1000
-
-        key_to_aggregate = await self._get_or_load_key(key, timestamp)
-        key_to_aggregate.aggregate(data, timestamp)
+        self._cache[key].aggregate(data, timestamp)
 
     async def get_features(self, key, timestamp):
         if not self._schema:
             await self.get_or_save_schema()
 
-        if isinstance(timestamp, datetime):
-            timestamp = timestamp.timestamp() * 1000
+        return self._cache[key].get_features(timestamp)
 
-        relevant_key = await self._get_or_load_key(key, timestamp)
-        return relevant_key.get_features(timestamp)
-
-    async def _get_or_load_key(self, key, timestamp=None):
-        if self.read_only or key not in self._cache:
-            # Try load from the store, and create a new one only if the key really is new
-            initial_data = await self._storage._load_aggregates_by_key(self._container, self._table_path, key)
-            self._cache[key] = AggregatedStoreElement(key, self._aggregates, timestamp, initial_data)
-
-        return self._cache[key]
+    def __contains__(self, key):
+        return key in self._cache
 
     def get_keys(self):
         return self._cache.keys()
+
+    def add_key(self, key, base_timestamp, initial_data):
+        self._cache[key] = AggregatedStoreElement(key, self._aggregates, base_timestamp, initial_data)
 
     async def get_or_save_schema(self):
         self._schema = await self._storage._load_schema(self._container, self._table_path)

@@ -561,6 +561,28 @@ class Cache:
     def __getitem__(self, key):
         return self._cache[key]
 
+    def __setitem__(self, key, value):
+        self._cache[key] = value
+
+    def update_key(self, key, data):
+        if key not in self._cache:
+            self._cache[key] = data
+        else:
+            for name, value in data.items():
+                self._cache[key][name] = value
+
+    async def lazy_load_key_with_aggregates(self, key, timestamp=None):
+        if self._aggregation_store.read_only or key not in self._aggregation_store:
+            # Try load from the store, and create a new one only if the key really is new
+            aggregate_initial_data, additional_data = await self._storage._load_aggregates_by_key(self._container, self._table_path, key)
+
+            # Create new aggregation element
+            self._aggregation_store.add_key(key, timestamp, aggregate_initial_data)
+
+            if additional_data:
+                # Add additional data to simple cache
+                self.update_key(key, additional_data)
+
     async def get_or_load_key(self, key):
         if key not in self._cache:
             res = await self._storage._load_by_key(self._container, self._table_path, key)
@@ -569,9 +591,6 @@ class Cache:
             else:
                 self._cache[key] = {}
         return self._cache[key]
-
-    def __setitem__(self, key, value):
-        self._cache[key] = value
 
     def _set_aggregation_store(self, store):
         store._container = self._container
