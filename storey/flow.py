@@ -477,7 +477,7 @@ class JoinWithV3IOTable(_ConcurrentJobExecution):
         self._attributes = attributes
 
     async def _process_event(self, event):
-        key = str(self._key_extractor(event))
+        key = str(self._key_extractor(self._get_safe_event_or_body(event)))
         return await self._storage._get_item(self._container, self._table_path, key, self._attributes)
 
     async def _handle_completed(self, event, response):
