@@ -4,6 +4,23 @@ from .flow import _termination_obj, Flow
 
 
 class ToDataFrame(Flow):
+    """Builds a pandas DataFrame from events and returns that DataFrame on flow termination.
+
+    :param index: Name of the column to be used as index. Optional. If not set, DataFrame will be range indexed.
+    :type index: string
+    :param columns: List of column names to be passed as-is to the DataFrame constructor. Optional.
+    :type columns: list of string
+    :param insert_key_column_as: Name of the column to be inserted for event keys. Optional.
+    If not set, event keys will not be inserted into the DataFrame.
+    :type insert_key_column_as: string
+    :param insert_time_column_as: Name of the column to be inserted for event times. Optional.
+    If not set, event times will not be inserted into the DataFrame.
+    :type insert_time_column_as: string
+    :param insert_id_column_as: Name of the column to be inserted for event IDs. Optional.
+    If not set, event IDs will not be inserted into the DataFrame.
+    :type insert_id_column_as: string
+    """
+
     def __init__(self, index=None, columns=None, insert_key_column_as=None, insert_time_column_as=None,
                  insert_id_column_as=None, **kwargs):
         super().__init__(**kwargs)

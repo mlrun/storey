@@ -629,11 +629,29 @@ def test_to_dataframe_with_index():
     assert termination_result.equals(expected), f"{termination_result}\n!=\n{expected}"
 
 
+def test_to_dataframe_with_index_from_lists():
+    index = 'my_int'
+    controller = build_flow([
+        Source(),
+        ToDataFrame(index=index, columns=['my_int', 'my_string'])
+    ]).run()
+
+    expected = []
+    for i in range(10):
+        controller.emit([i, f'this is {i}'])
+        expected.append({'my_int': i, 'my_string': f'this is {i}'})
+    expected = pd.DataFrame(expected)
+    expected.set_index(index, inplace=True)
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result.equals(expected), f"{termination_result}\n!=\n{expected}"
+
+
 def test_to_dataframe_indexed_by_key():
     index = 'my_key'
     controller = build_flow([
         Source(),
-        ToDataFrame(index=index, insert_key_column_as='my_key')
+        ToDataFrame(index=index, insert_key_column_as=index)
     ]).run()
 
     expected = []
