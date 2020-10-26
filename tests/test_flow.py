@@ -551,12 +551,11 @@ async def async_test_write_csv():
 
         expected = "n,n*10\n0,0\n1,10\n2,20\n3,30\n4,40\n5,50\n6,60\n7,70\n8,80\n9,90\n"
         assert result == expected
-    except BaseException as ex:
+    finally:
         try:
             os.remove(file_name)
         except:
             pass
-        raise ex
 
 
 def test_write_csv():
@@ -583,12 +582,11 @@ async def async_test_write_csv_error():
         except FlowError as ex:
             assert isinstance(ex.__cause__, ATestException)
         assert write_csv._open_file.closed
-    except BaseException as ex:
+    finally:
         try:
             os.remove(file_name)
         except:
             pass
-        raise ex
 
 
 def test_write_csv_error():
