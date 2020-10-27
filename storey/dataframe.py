@@ -1,9 +1,11 @@
+import copy
+
 import pandas as pd
 
 from .flow import _termination_obj, Flow
 
 
-class ToDataFrame(Flow):
+class ReduceToDataFrame(Flow):
     """Builds a pandas DataFrame from events and returns that DataFrame on flow termination.
 
     :param index: Name of the column to be used as index. Optional. If not set, DataFrame will be range indexed.
@@ -61,3 +63,34 @@ class ToDataFrame(Flow):
                     self._id_column.append(event.id)
             else:
                 raise ValueError(f'ToDataFrame step only supports input of type dictionary or list, not {type(body)}')
+
+
+class ToDataFrame(Flow):
+    def __init__(self, index=None, columns=None, insert_key_column_as=None, insert_time_column_as=None,
+                 insert_id_column_as=None, **kwargs):
+        super().__init__(**kwargs)
+        self._index = index
+        self._columns = columns
+        self._insert_key_column_as = insert_key_column_as
+        self._key_column = []
+        self._insert_time_column_as = insert_time_column_as
+        self._time_column = []
+        self._insert_id_column_as = insert_id_column_as
+        self._id_column = []
+
+    async def _do(self, event):
+        if event is _termination_obj:
+            return await self._do_downstream(_termination_obj)
+        else:
+            df = pd.DataFrame(event.body, columns=self._columns)
+            if self._insert_key_column_as:
+                self._key_column.append(event.key)
+            if self._insert_time_column_as:
+                self._time_column.append(event.time)
+            if self._insert_id_column_as:
+                self._id_column.append(event.id)
+            if self._index:
+                df.set_index(self._index, inplace=True)
+            new_event = copy.copy(event)
+            new_event.body = df
+            return await self._do_downstream(new_event)

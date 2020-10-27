@@ -7,7 +7,7 @@ import pandas as pd
 
 from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV, Complete, AsyncSource, Choice, Event, \
     Batch, Cache, NoopDriver, WriteCSV, DataframeSource
-from storey.dataframe import ToDataFrame
+from storey.dataframe import ReduceToDataFrame, ToDataFrame
 
 
 class ATestException(Exception):
@@ -593,10 +593,10 @@ def test_write_csv_error():
     asyncio.run(async_test_write_csv_error())
 
 
-def test_to_dataframe():
+def test_reduce_to_dataframe():
     controller = build_flow([
         Source(),
-        ToDataFrame()
+        ReduceToDataFrame()
     ]).run()
 
     expected = []
@@ -609,11 +609,11 @@ def test_to_dataframe():
     assert termination_result.equals(expected), f"{termination_result}\n!=\n{expected}"
 
 
-def test_to_dataframe_with_index():
+def test_reduce_to_dataframe_with_index():
     index = 'my_int'
     controller = build_flow([
         Source(),
-        ToDataFrame(index=index)
+        ReduceToDataFrame(index=index)
     ]).run()
 
     expected = []
@@ -627,11 +627,11 @@ def test_to_dataframe_with_index():
     assert termination_result.equals(expected), f"{termination_result}\n!=\n{expected}"
 
 
-def test_to_dataframe_with_index_from_lists():
+def test_reduce_to_dataframe_with_index_from_lists():
     index = 'my_int'
     controller = build_flow([
         Source(),
-        ToDataFrame(index=index, columns=['my_int', 'my_string'])
+        ReduceToDataFrame(index=index, columns=['my_int', 'my_string'])
     ]).run()
 
     expected = []
@@ -645,11 +645,11 @@ def test_to_dataframe_with_index_from_lists():
     assert termination_result.equals(expected), f"{termination_result}\n!=\n{expected}"
 
 
-def test_to_dataframe_indexed_by_key():
+def test_reduce_to_dataframe_indexed_by_key():
     index = 'my_key'
     controller = build_flow([
         Source(),
-        ToDataFrame(index=index, insert_key_column_as=index)
+        ReduceToDataFrame(index=index, insert_key_column_as=index)
     ]).run()
 
     expected = []
@@ -661,3 +661,37 @@ def test_to_dataframe_indexed_by_key():
     controller.terminate()
     termination_result = controller.await_termination()
     assert termination_result.equals(expected), f"{termination_result}\n!=\n{expected}"
+
+
+def test_to_dataframe_with_index():
+    index = 'my_int'
+    controller = build_flow([
+        Source(),
+        Batch(5),
+        ToDataFrame(index=index),
+        Reduce([], append_and_return, full_event=True)
+    ]).run()
+
+    expected1 = []
+    for i in range(5):
+        data = {'my_int': i, 'my_string': f'this is {i}'}
+        controller.emit(data)
+        expected1.append(data)
+
+    expected2 = []
+    for i in range(5, 10):
+        data = {'my_int': i, 'my_string': f'this is {i}'}
+        controller.emit(data)
+        expected2.append(data)
+
+    expected1 = pd.DataFrame(expected1)
+    expected2 = pd.DataFrame(expected2)
+    expected1.set_index(index, inplace=True)
+    expected2.set_index(index, inplace=True)
+
+    controller.terminate()
+    termination_result = controller.await_termination()
+
+    assert len(termination_result) == 2
+    assert termination_result[0].body.equals(expected1), f"{termination_result[0]}\n!=\n{expected1}"
+    assert termination_result[1].body.equals(expected2), f"{termination_result[1]}\n!=\n{expected2}"

@@ -411,7 +411,7 @@ class Batch(Flow):
         self._timeout_task = None
 
         self._timeout_secs = timeout_secs
-        if self._timeout_secs <= 0:
+        if self._timeout_secs is not None and self._timeout_secs <= 0:
             raise ValueError('Batch timeout cannot be 0 or negative')
 
     async def sleep_and_emit(self):
