@@ -7,10 +7,11 @@ from .dtypes import _termination_obj, Event, FlowError, V3ioError
 
 
 class Flow:
-    def __init__(self, name=None, full_event=False, termination_result_fn=lambda x, y: None):
+    def __init__(self, name=None, full_event=False, termination_result_fn=lambda x, y: None, context=None, **kwargs):
         self._outlets = []
         self._full_event = full_event
         self._termination_result_fn = termination_result_fn
+        self._context = context
         if name:
             self._name = name
         else:
