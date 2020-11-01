@@ -7,14 +7,15 @@ from .dtypes import _termination_obj, Event, FlowError, V3ioError
 
 
 class Flow:
-    def __init__(self, name=None, full_event=False, termination_result_fn=lambda x, y: None):
+    def __init__(self, name=None, full_event=False, termination_result_fn=lambda x, y: None, context=None, **kwargs):
         self._outlets = []
         self._full_event = full_event
         self._termination_result_fn = termination_result_fn
+        self.context = context
         if name:
-            self._name = name
+            self.name = name
         else:
-            self._name = type(self).__name__
+            self.name = type(self).__name__
 
     def to(self, outlet):
         self._outlets.append(outlet)
@@ -221,6 +222,38 @@ class MapWithState(FunctionWithStateFlow):
     async def _do_internal(self, event, mapped_element):
         mapped_event = self._user_fn_output_to_event(event, mapped_element)
         await self._do_downstream(mapped_event)
+
+
+class MapClass(Flow):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._is_async = asyncio.iscoroutinefunction(self.do)
+        self._filter = False
+
+    def filter(self):
+        # used in the .do() code to signal filtering
+        self._filter = True
+
+    def do(self, event):
+        raise NotImplementedError()
+
+    async def _call(self, event):
+        res = self.do(event)
+        if self._is_async:
+            res = await res
+        return res
+
+    async def _do(self, event):
+        if event is _termination_obj:
+            return await self._do_downstream(_termination_obj)
+        else:
+            element = self._get_safe_event_or_body(event)
+            fn_result = await self._call(element)
+            if not self._filter:
+                mapped_event = self._user_fn_output_to_event(event, fn_result)
+                await self._do_downstream(mapped_event)
+            else:
+                self._filter = False  # clear the flag for future runs
 
 
 class Complete(Flow):

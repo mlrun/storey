@@ -7,7 +7,7 @@ from datetime import datetime
 import pandas as pd
 
 from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV, Complete, AsyncSource, Choice, Event, \
-    Batch, Cache, NoopDriver, WriteCSV, DataframeSource
+    Batch, Cache, NoopDriver, WriteCSV, DataframeSource, MapClass
 from storey.dataframe import ReduceToDataFrame, ToDataFrame, WriteToParquet
 
 
@@ -696,6 +696,32 @@ def test_to_dataframe_with_index():
     assert len(termination_result) == 2
     assert termination_result[0].body.equals(expected1), f"{termination_result[0]}\n!=\n{expected1}"
     assert termination_result[1].body.equals(expected2), f"{termination_result[1]}\n!=\n{expected2}"
+
+
+def test_map_class():
+    class MyMap(MapClass):
+        def __init__(self, mul=1, **kwargs):
+            super().__init__(**kwargs)
+            self._mul = mul
+
+        def do(self, event):
+            if event['bid'] > 700:
+                return self.filter()
+            event['xx'] = event['bid'] * self._mul
+            return event
+
+    controller = build_flow([
+        Source(),
+        MyMap(2),
+        Reduce(0, lambda acc, x: acc + x['xx']),
+    ]).run()
+
+    controller.emit({'bid': 600})
+    controller.emit({'bid': 700})
+    controller.emit({'bid': 1000})
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == 2600
 
 
 def test_write_to_parquet(tmpdir):

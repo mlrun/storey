@@ -8,7 +8,7 @@ from .drivers import (  # noqa: F401
 )
 from .flow import (  # noqa: F401
     Filter, FlatMap, Flow, FlowError, JoinWithV3IOTable, JoinWithHttp, Map, Reduce, Batch,
-    MapWithState, Complete, Choice, HttpRequest, HttpResponse, Cache, build_flow
+    MapWithState, MapClass, Complete, Choice, HttpRequest, HttpResponse, Cache, build_flow
 )
 from .dtypes import (  # noqa: F401
     Event
