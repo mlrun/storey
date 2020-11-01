@@ -11,11 +11,11 @@ class Flow:
         self._outlets = []
         self._full_event = full_event
         self._termination_result_fn = termination_result_fn
-        self._context = context
+        self.context = context
         if name:
-            self._name = name
+            self.name = name
         else:
-            self._name = type(self).__name__
+            self.name = type(self).__name__
 
     def to(self, outlet):
         self._outlets.append(outlet)
