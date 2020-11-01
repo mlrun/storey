@@ -223,6 +223,38 @@ class MapWithState(FunctionWithStateFlow):
         await self._do_downstream(mapped_event)
 
 
+class MapClass(Flow):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._is_async = asyncio.iscoroutinefunction(self.do)
+        self._filter = False
+
+    def filter(self):
+        # used in the .do() code to signal filtering
+        self._filter = True
+
+    def do(self, event):
+        raise NotImplementedError()
+
+    async def _call(self, event):
+        res = self.do(event)
+        if self._is_async:
+            res = await res
+        return res
+
+    async def _do(self, event):
+        if event is _termination_obj:
+            return await self._do_downstream(_termination_obj)
+        else:
+            element = self._get_safe_event_or_body(event)
+            fn_result = await self._call(element)
+            if not self._filter:
+                mapped_event = self._user_fn_output_to_event(event, fn_result)
+                await self._do_downstream(mapped_event)
+            else:
+                self._filter = False  # clear the flag for future runs
+
+
 class Complete(Flow):
     """
         Completes the AwaitableResult associated with incoming events.
