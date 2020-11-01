@@ -81,3 +81,20 @@ class ToDataFrame(Flow):
             new_event = copy.copy(event)
             new_event.body = df
             return await self._do_downstream(new_event)
+
+
+class WriteToParquet(Flow):
+    def __init__(self, path, partition_cols, **kwargs):
+        super().__init__(**kwargs)
+        self._path = path
+
+        if not partition_cols:
+            raise ValueError('partition_cols is required')
+        self._partition_cols = partition_cols
+
+    async def _do(self, event):
+        if event is _termination_obj:
+            return await self._do_downstream(_termination_obj)
+        else:
+            df = event.body
+            df.to_parquet(path=self._path, partition_cols=self._partition_cols)

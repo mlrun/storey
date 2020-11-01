@@ -1,13 +1,14 @@
 import asyncio
 import os
 import time
+import uuid
 from datetime import datetime
 
 import pandas as pd
 
 from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV, Complete, AsyncSource, Choice, Event, \
     Batch, Cache, NoopDriver, WriteCSV, DataframeSource, MapClass
-from storey.dataframe import ReduceToDataFrame, ToDataFrame
+from storey.dataframe import ReduceToDataFrame, ToDataFrame, WriteToParquet
 
 
 class ATestException(Exception):
@@ -721,3 +722,24 @@ def test_map_class():
     controller.terminate()
     termination_result = controller.await_termination()
     assert termination_result == 2600
+
+
+def test_write_to_parquet(tmpdir):
+    out_dir = f'{tmpdir}/test_write_to_parquet/{uuid.uuid4().hex}/'
+    columns = ['my_int', 'my_string']
+    controller = build_flow([
+        Source(),
+        ToDataFrame(columns=columns),
+        WriteToParquet(out_dir, partition_cols='my_int')
+    ]).run()
+
+    expected = []
+    for i in range(10):
+        controller.emit([[i, f'this is {i}']])
+        expected.append([i, f'this is {i}'])
+    expected = pd.DataFrame(expected, columns=columns, dtype='int32')
+    controller.terminate()
+    controller.await_termination()
+
+    read_back_df = pd.read_parquet(out_dir, columns=columns)
+    assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
