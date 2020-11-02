@@ -84,12 +84,9 @@ class ToDataFrame(Flow):
 
 
 class WriteToParquet(Flow):
-    def __init__(self, path, partition_cols, **kwargs):
+    def __init__(self, path, partition_cols=None, **kwargs):
         super().__init__(**kwargs)
         self._path = path
-
-        if not partition_cols:
-            raise ValueError('partition_cols is required')
         self._partition_cols = partition_cols
 
     async def _do(self, event):
