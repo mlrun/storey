@@ -1,5 +1,6 @@
 import asyncio
 import copy
+from typing import Optional
 
 import aiohttp
 
@@ -430,13 +431,13 @@ class Batch(Flow):
     Batches events into lists of up to max_events events. Each emitted list contained max_events events, unless timeout_secs seconds
     have passed since the first event in the batch was received, at which the batch is emitted with potentially fewer than max_events
     event.
-    :param max_events: Maximum number of events per emitted batch.
-    :type max_events: int
+    :param max_events: Maximum number of events per emitted batch. Set to None to emit all events in one batch on flow termination.
+    :type max_events: int or None
     :param timeout_secs: Maximum number of seconds to wait before a batch is emitted.
     :type timeout_secs: int
     """
 
-    def __init__(self, max_events, timeout_secs=None, **kwargs):
+    def __init__(self, max_events: Optional[int], timeout_secs=None, **kwargs):
         Flow.__init__(self, **kwargs)
         self._max_events = max_events
         self._event_count = 0
