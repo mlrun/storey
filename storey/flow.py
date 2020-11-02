@@ -614,7 +614,9 @@ class Cache:
         self._aggregation_store = store
 
     async def _persist_key(self, key):
-        aggr_by_key = self._aggregation_store[key]
+        aggr_by_key = None
+        if self._aggregation_store:
+            aggr_by_key = self._aggregation_store[key]
         additional_cache_data_by_key = self._cache.get(key, None)
         await self._storage._save_key(self._container, self._table_path, key, aggr_by_key, self._partitioned_by_key,
                                       additional_cache_data_by_key)

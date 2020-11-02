@@ -191,7 +191,7 @@ def test_aggregate_by_key_two_underlying_windows(setup_teardown_test, partitione
             f'actual did not match expected. \n actual: {actual} \n expected: {current_expected}'
 
 
-def test_write_cache(setup_teardown_test):
+def test_write_cache_with_aggregations(setup_teardown_test):
     cache = Cache(setup_teardown_test, V3ioDriver())
 
     cache._cache['tal'] = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': datetime.now()}
@@ -252,7 +252,7 @@ def test_write_cache(setup_teardown_test):
 
     controller = build_flow([
         Source(),
-        MapWithState(cache, enrich, group_by_key=True, full_event=True),
+        MapWithState(other_cache, enrich, group_by_key=True, full_event=True),
         QueryAggregationByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg"],
                                                SlidingWindows(['2h'], '10m'))],
                               other_cache),
@@ -268,6 +268,72 @@ def test_write_cache(setup_teardown_test):
     expected_results = [
         {'number_of_stuff_sum_2h': 30, 'number_of_stuff_avg_2h': 7.5, 'col1': 10, 'time_since_activity': 15000, 'total_activities': 11,
          'color': 'blue'}]
+
+    assert actual == expected_results, \
+        f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
+
+
+def test_write_cache(setup_teardown_test):
+    cache = Cache(setup_teardown_test, V3ioDriver())
+
+    cache._cache['tal'] = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': datetime.now()}
+
+    def enrich(event, state):
+        if 'first_activity' not in state:
+            state['first_activity'] = event.time
+
+        event.body['time_since_activity'] = (event.time - state['first_activity']).seconds
+        state['last_event'] = event.time
+        event.body['total_activities'] = state['total_activities'] = state.get('total_activities', 0) + 1
+        event.body['color'] = state['color']
+        return event, state
+
+    controller = build_flow([
+        Source(),
+        MapWithState(cache, enrich, group_by_key=True, full_event=True),
+        Persist(cache),
+        Reduce([], lambda acc, x: append_return(acc, x)),
+    ]).run()
+
+    items_in_ingest_batch = 10
+    for i in range(items_in_ingest_batch):
+        data = {'col1': i}
+        controller.emit(data, 'tal', test_base_time + timedelta(minutes=25 * i))
+
+    controller.terminate()
+    actual = controller.await_termination()
+    expected_results = [
+        {'col1': 0, 'time_since_activity': 0, 'total_activities': 1, 'color': 'blue'},
+        {'col1': 1, 'time_since_activity': 1500, 'total_activities': 2, 'color': 'blue'},
+        {'col1': 2, 'time_since_activity': 3000, 'total_activities': 3, 'color': 'blue'},
+        {'col1': 3, 'time_since_activity': 4500, 'total_activities': 4, 'color': 'blue'},
+        {'col1': 4, 'time_since_activity': 6000, 'total_activities': 5, 'color': 'blue'},
+        {'col1': 5, 'time_since_activity': 7500, 'total_activities': 6, 'color': 'blue'},
+        {'col1': 6, 'time_since_activity': 9000, 'total_activities': 7, 'color': 'blue'},
+        {'col1': 7, 'time_since_activity': 10500, 'total_activities': 8, 'color': 'blue'},
+        {'col1': 8, 'time_since_activity': 12000, 'total_activities': 9, 'color': 'blue'},
+        {'col1': 9, 'time_since_activity': 13500, 'total_activities': 10, 'color': 'blue'}]
+
+    assert actual == expected_results, \
+        f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
+
+    other_cache = Cache(setup_teardown_test, V3ioDriver())
+
+    controller = build_flow([
+        Source(),
+        MapWithState(other_cache, enrich, group_by_key=True, full_event=True),
+        Reduce([], lambda acc, x: append_return(acc, x)),
+    ]).run()
+
+    base_time = test_base_time + timedelta(minutes=25 * items_in_ingest_batch)
+    data = {'col1': items_in_ingest_batch}
+    controller.emit(data, 'tal', base_time)
+
+    controller.terminate()
+    actual = controller.await_termination()
+    other_cache.close()
+    expected_results = [
+        {'col1': 10, 'time_since_activity': 15000, 'total_activities': 11, 'color': 'blue'}]
 
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
