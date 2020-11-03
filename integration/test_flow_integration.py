@@ -3,13 +3,14 @@ import base64
 import json
 import time
 import pandas as pd
+import v3io_frames as frames
 
 import aiohttp
 
 from _datetime import datetime, timedelta
 
 from storey import Filter, JoinWithV3IOTable, JoinWithHttp, Map, Reduce, Source, HttpRequest, build_flow, \
-    WriteToV3IOStream, V3ioDriver, WriteToTSDB, Batch, FramesClient
+    WriteToV3IOStream, V3ioDriver, WriteToTSDB, Batch
 from .integration_test_utils import V3ioHeaders
 
 
@@ -160,8 +161,8 @@ def test_write_to_tsdb():
     controller.terminate()
     controller.await_termination()
 
-    client = FramesClient()
-    res = client.read("tsdb", tsdb_path)
+    client = frames.Client()
+    res = client.read("tsdb", tsdb_path, start='0', end='now')
     res = res.sort_values(['time'])
     res['node'] = pd.to_numeric(res["node"])
     df = pd.DataFrame(expected, columns=columns)
