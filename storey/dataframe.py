@@ -84,14 +84,18 @@ class ToDataFrame(Flow):
 
 
 class WriteToParquet(Flow):
-    def __init__(self, path, partition_cols=None, **kwargs):
+    def __init__(self, path, index=None, columns=None, partition_cols=None, **kwargs):
         super().__init__(**kwargs)
         self._path = path
+        self._index = index
+        self._columns = columns
         self._partition_cols = partition_cols
 
     async def _do(self, event):
         if event is _termination_obj:
             return await self._do_downstream(_termination_obj)
         else:
-            df = event.body
+            df = pd.DataFrame(event.body, columns=self._columns)
+            if self._index:
+                df.set_index(self._index, inplace=True)
             df.to_parquet(path=self._path, partition_cols=self._partition_cols)

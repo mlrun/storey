@@ -729,8 +729,7 @@ def test_write_to_parquet(tmpdir):
     columns = ['my_int', 'my_string']
     controller = build_flow([
         Source(),
-        ToDataFrame(columns=columns),
-        WriteToParquet(out_dir, partition_cols='my_int')
+        WriteToParquet(out_dir, partition_cols='my_int', columns=columns)
     ]).run()
 
     expected = []
@@ -751,8 +750,7 @@ def test_write_to_parquet_single_file_on_termination(tmpdir):
     controller = build_flow([
         Source(),
         Batch(max_events=None),
-        ToDataFrame(columns=columns),
-        WriteToParquet(out_file)
+        WriteToParquet(out_file, columns=columns)
     ]).run()
 
     expected = []
