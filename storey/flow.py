@@ -599,11 +599,11 @@ class Cache:
         self._cache[key] = value
 
     def update_key(self, key, data):
-        if key not in self._cache:
-            self._cache[key] = data
-        else:
+        if key in self._cache:
             for name, value in data.items():
                 self._cache[key][name] = value
+        else:
+            self._cache[key] = data
 
     async def lazy_load_key_with_aggregates(self, key, timestamp=None):
         if self._aggregation_store._read_only or key not in self._aggregation_store:

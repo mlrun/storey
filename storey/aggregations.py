@@ -29,7 +29,7 @@ class AggregateByKey(Flow):
     :type augmentation_fn: Function ((Event, dict) => Event)
     """
 
-    def __init__(self, aggregates, cache, key=None, emit_policy=_default_emit_policy, augmentation_fn=None):
+    def __init__(self, aggregates, cache, key=None, emit_policy=_default_emit_policy, augmentation_fn=None, enrich_with=None, aliases=None):
         Flow.__init__(self)
         self._aggregates_store = AggregateStore(aggregates)
 
@@ -38,6 +38,8 @@ class AggregateByKey(Flow):
 
         self._aggregates_metadata = aggregates
 
+        self._enrich_with = enrich_with or []
+        self._aliases = aliases or {}
         self._emit_policy = emit_policy
         self._events_in_batch = {}
         self._emit_worker_running = False
@@ -105,6 +107,11 @@ class AggregateByKey(Flow):
         await self._cache.lazy_load_key_with_aggregates(key, event_timestamp)
         features = await self._aggregates_store.get_features(key, event_timestamp)
         features = self._augmentation_fn(event.body, features)
+
+        for col in self._enrich_with:
+            emitted_attr_name = self._aliases.get(col, None) or col
+            if col in self._cache[key]:
+                features[emitted_attr_name] = self._cache[key][col]
         new_event = copy.copy(event)
         new_event.key = key
         new_event.body = features
@@ -153,8 +160,8 @@ class QueryAggregationByKey(AggregateByKey):
     :type augmentation_fn: Function ((Event, dict) => Event)
     """
 
-    def __init__(self, aggregates, cache, key=None, emit_policy=_default_emit_policy, augmentation_fn=None):
-        AggregateByKey.__init__(self, aggregates, cache, key, emit_policy, augmentation_fn)
+    def __init__(self, aggregates, cache, key=None, emit_policy=_default_emit_policy, augmentation_fn=None, enrich_with=None, aliases=None):
+        AggregateByKey.__init__(self, aggregates, cache, key, emit_policy, augmentation_fn, enrich_with, aliases)
         self._aggregates_store._read_only = True
 
     async def _do(self, event):
