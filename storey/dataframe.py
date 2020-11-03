@@ -100,7 +100,7 @@ class WriteToParquet(Flow):
 
 class WriteToTSDB(Flow):
     def __init__(self, path, time_col, columns, labels_cols=None, v3io_frames=None, access_key=None, container="",
-                 rate="", aggr="", aggr_gran="", **kwargs):
+                 rate="", aggr="", aggr_granularity="", **kwargs):
         super().__init__(**kwargs)
         self._path = path
         self._time_col = time_col
@@ -108,7 +108,7 @@ class WriteToTSDB(Flow):
         self._labels_cols = labels_cols
         self._rate = rate
         self._aggr = aggr
-        self._aggr_gran = aggr_gran
+        self.aggr_granularity = aggr_granularity
         self._created = False
         self._frames_client = frames.Client(address=v3io_frames, token=access_key, container=container)
 
@@ -128,5 +128,5 @@ class WriteToTSDB(Flow):
                 self._created = True
                 self._frames_client.create(
                     'tsdb', table=self._path, if_exists=frames.frames_pb2.IGNORE, rate=self._rate,
-                    aggregates=self._aggr, aggregation_granularity=self._aggr_gran)
+                    aggregates=self._aggr, aggregation_granularity=self.aggr_granularity)
             self._frames_client.write("tsdb", self._path, df)
