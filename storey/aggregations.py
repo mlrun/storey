@@ -155,7 +155,7 @@ class QueryAggregationByKey(AggregateByKey):
 
     def __init__(self, aggregates, cache, key=None, emit_policy=_default_emit_policy, augmentation_fn=None):
         AggregateByKey.__init__(self, aggregates, cache, key, emit_policy, augmentation_fn)
-        self._aggregates_store.read_only = True
+        self._aggregates_store._read_only = True
 
     async def _do(self, event):
         if event == _termination_obj:
@@ -264,8 +264,7 @@ class AggregateStore:
         self._container = None
         self._table_path = None
         self._schema = None
-        self.read_only = False
-        self.pending_updates = {}
+        self._read_only = False
 
     def __iter__(self):
         return iter(self._cache.items())
@@ -282,6 +281,14 @@ class AggregateStore:
 
         return self._cache[key].get_features(timestamp)
 
+    async def _get_or_load_key(self, key, timestamp=None):
+        if self._read_only or key not in self._cache:
+            # Try load from the store, and create a new one only if the key really is new
+            initial_data = await self._storage._load_aggregates_by_key(self._container, self._table_path, key)
+            self._cache[key] = AggregatedStoreElement(key, self._aggregates, timestamp, initial_data)
+
+        return self._cache[key]
+
     def __contains__(self, key):
         return key in self._cache
 
@@ -293,11 +300,12 @@ class AggregateStore:
 
     async def get_or_save_schema(self):
         self._schema = await self._storage._load_schema(self._container, self._table_path)
+
         should_update = True
         if self._schema:
             should_update = self._validate_schema_fit_aggregations(self._schema)
 
-        if should_update:
+        if should_update and not self._read_only:
             self._schema = await self._save_schema()
 
     async def _save_schema(self):
@@ -324,7 +332,7 @@ class AggregateStore:
         should_update = False
         for aggr in self._aggregates:
             if aggr.name not in schema:
-                if self.read_only:
+                if self._read_only:
                     raise ValueError(f'Requested aggregate {aggr.name}, does not exist in existing feature store at {self._table_path}')
                 else:
                     should_update = True
@@ -336,12 +344,12 @@ class AggregateStore:
             requested_raw_aggregates = aggr.get_all_raw_aggregates()
             existing_raw_aggregates = get_all_raw_aggregates(schema_aggr['aggregates'])
             # validate if current feature store contains all aggregates needed for the requested calculations
-            if self.read_only and not requested_raw_aggregates.issubset(existing_raw_aggregates):
+            if self._read_only and not requested_raw_aggregates.issubset(existing_raw_aggregates):
                 raise ValueError(
                     f'Requested aggregates for feature {aggr.name} do not match with existing aggregates at {self._table_path}. '
                     f"Requested: {aggr.aggregations}, existing: {schema_aggr['aggregates']}")
             # Check if more raw aggregates are requested, in which case a schema update is required
-            if not self.read_only and requested_raw_aggregates != existing_raw_aggregates:
+            if not self._read_only and requested_raw_aggregates != existing_raw_aggregates:
                 should_update = True
 
         return should_update

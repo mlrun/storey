@@ -1,5 +1,6 @@
 import asyncio
 import copy
+from typing import Optional
 
 import aiohttp
 
@@ -7,14 +8,15 @@ from .dtypes import _termination_obj, Event, FlowError, V3ioError
 
 
 class Flow:
-    def __init__(self, name=None, full_event=False, termination_result_fn=lambda x, y: None):
+    def __init__(self, name=None, full_event=False, termination_result_fn=lambda x, y: None, context=None, **kwargs):
         self._outlets = []
         self._full_event = full_event
         self._termination_result_fn = termination_result_fn
+        self.context = context
         if name:
-            self._name = name
+            self.name = name
         else:
-            self._name = type(self).__name__
+            self.name = type(self).__name__
 
     def to(self, outlet):
         self._outlets.append(outlet)
@@ -223,6 +225,38 @@ class MapWithState(FunctionWithStateFlow):
         await self._do_downstream(mapped_event)
 
 
+class MapClass(Flow):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._is_async = asyncio.iscoroutinefunction(self.do)
+        self._filter = False
+
+    def filter(self):
+        # used in the .do() code to signal filtering
+        self._filter = True
+
+    def do(self, event):
+        raise NotImplementedError()
+
+    async def _call(self, event):
+        res = self.do(event)
+        if self._is_async:
+            res = await res
+        return res
+
+    async def _do(self, event):
+        if event is _termination_obj:
+            return await self._do_downstream(_termination_obj)
+        else:
+            element = self._get_safe_event_or_body(event)
+            fn_result = await self._call(element)
+            if not self._filter:
+                mapped_event = self._user_fn_output_to_event(event, fn_result)
+                await self._do_downstream(mapped_event)
+            else:
+                self._filter = False  # clear the flag for future runs
+
+
 class Complete(Flow):
     """
         Completes the AwaitableResult associated with incoming events.
@@ -397,13 +431,13 @@ class Batch(Flow):
     Batches events into lists of up to max_events events. Each emitted list contained max_events events, unless timeout_secs seconds
     have passed since the first event in the batch was received, at which the batch is emitted with potentially fewer than max_events
     event.
-    :param max_events: Maximum number of events per emitted batch.
-    :type max_events: int
+    :param max_events: Maximum number of events per emitted batch. Set to None to emit all events in one batch on flow termination.
+    :type max_events: int or None
     :param timeout_secs: Maximum number of seconds to wait before a batch is emitted.
     :type timeout_secs: int
     """
 
-    def __init__(self, max_events, timeout_secs=None, **kwargs):
+    def __init__(self, max_events: Optional[int], timeout_secs=None, **kwargs):
         Flow.__init__(self, **kwargs)
         self._max_events = max_events
         self._event_count = 0
@@ -411,7 +445,7 @@ class Batch(Flow):
         self._timeout_task = None
 
         self._timeout_secs = timeout_secs
-        if self._timeout_secs <= 0:
+        if self._timeout_secs is not None and self._timeout_secs <= 0:
             raise ValueError('Batch timeout cannot be 0 or negative')
 
     async def sleep_and_emit(self):
@@ -477,7 +511,7 @@ class JoinWithV3IOTable(_ConcurrentJobExecution):
         self._attributes = attributes
 
     async def _process_event(self, event):
-        key = str(self._key_extractor(event))
+        key = str(self._key_extractor(self._get_safe_event_or_body(event)))
         return await self._storage._get_item(self._container, self._table_path, key, self._attributes)
 
     async def _handle_completed(self, event, response):
@@ -572,7 +606,7 @@ class Cache:
                 self._cache[key][name] = value
 
     async def lazy_load_key_with_aggregates(self, key, timestamp=None):
-        if self._aggregation_store.read_only or key not in self._aggregation_store:
+        if self._aggregation_store._read_only or key not in self._aggregation_store:
             # Try load from the store, and create a new one only if the key really is new
             aggregate_initial_data, additional_data = await self._storage._load_aggregates_by_key(self._container, self._table_path, key)
 
@@ -599,7 +633,9 @@ class Cache:
         self._aggregation_store = store
 
     async def _persist_key(self, key):
-        aggr_by_key = self._aggregation_store[key]
+        aggr_by_key = None
+        if self._aggregation_store:
+            aggr_by_key = self._aggregation_store[key]
         additional_cache_data_by_key = self._cache.get(key, None)
         await self._storage._save_key(self._container, self._table_path, key, aggr_by_key, self._partitioned_by_key,
                                       additional_cache_data_by_key)
