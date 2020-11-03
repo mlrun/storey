@@ -2,7 +2,6 @@ import copy
 
 import pandas as pd
 import v3io_frames as frames
-import os
 
 from .flow import _termination_obj, Flow
 
