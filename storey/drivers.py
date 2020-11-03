@@ -111,7 +111,8 @@ class V3ioDriver(NeedsV3ioAccess):
                                                      condition=condition_expression,
                                                      raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
         if response.status_code == 200:
-            aggr_item.storage_specific_cache[self._mtime_header_name] = response.headers[self._mtime_header_name]
+            if aggr_item:
+                aggr_item.storage_specific_cache[self._mtime_header_name] = response.headers[self._mtime_header_name]
         # In case Mtime condition evaluated to False, we run the conditioned expression, then fetch and cache the latest key's state
         elif self._is_false_condition_error(response):
             update_expression, condition_expression, pending_updates = self._build_feature_store_update_expression(aggr_item,
@@ -121,7 +122,7 @@ class V3ioDriver(NeedsV3ioAccess):
             response = await self._v3io_client.kv.update(container, table_path, key, expression=update_expression,
                                                          condition=condition_expression,
                                                          raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
-            if response.status_code == 200:
+            if response.status_code == 200 and aggr_item:
                 await self._fetch_state_by_key(aggr_item, container, table_path, key)
             else:
                 should_raise_error = True
@@ -172,22 +173,25 @@ class V3ioDriver(NeedsV3ioAccess):
 
     def _build_feature_store_update_expression(self, aggregation_element, additional_data, partitioned_by_key, pending=None):
         condition_expression = None
+        expressions = []
+        pending_updates = {}
 
-        # Generating aggregation related expressions
-        # In case we get an indication the data is (probably) not updated from multiple workers (for example: pre sharded by key) run a
-        # simpler expression.
-        if partitioned_by_key:
-            expressions, pending_updates = self._build_simplified_feature_store_request(aggregation_element)
-            condition_expression = aggregation_element.storage_specific_cache.get(self._mtime_header_name, "")
-        else:
-            expressions, pending_updates = self._build_conditioned_feature_store_request(aggregation_element, pending)
+        if aggregation_element:
+            # Generating aggregation related expressions
+            # In case we get an indication the data is (probably) not updated from multiple workers (for example: pre sharded by key) run a
+            # simpler expression.
+            if partitioned_by_key:
+                expressions, pending_updates = self._build_simplified_feature_store_request(aggregation_element)
+                condition_expression = aggregation_element.storage_specific_cache.get(self._mtime_header_name, "")
+            else:
+                expressions, pending_updates = self._build_conditioned_feature_store_request(aggregation_element, pending)
 
         # Generating additional cache expressions
         if additional_data:
             for name, value in additional_data.items():
                 expressions.append(f'{name}={self._convert_python_obj_to_expression_value(value)}')
-        update_expression = ';'.join(expressions)
 
+        update_expression = ';'.join(expressions)
         return update_expression, condition_expression, pending_updates
 
     def _discard_old_pending_items(self, pendings, max_window_millis):
@@ -369,11 +373,11 @@ class V3ioDriver(NeedsV3ioAccess):
         if response.status_code == 404:
             return None
         elif response.status_code == 200:
-            parsed_response = response.output.item
-            for name in parsed_response.items():
-                if name.startswith(self._aggregation_attribute_prefix):
-                    del parsed_response[name]
-            return parsed_response
+            res = {}
+            for name in response.output.item.keys():
+                if not name.startswith(self._aggregation_attribute_prefix):
+                    res[name] = response.output.item[name]
+            return res
         else:
             raise V3ioError(f'Failed to get item. Response status code was {response.status_code}: {response.body}')
 
