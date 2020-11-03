@@ -23,8 +23,10 @@ class Flow:
         return outlet
 
     def run(self):
+        closables = []
         for outlet in self._outlets:
-            outlet.run()
+            closables.extend(outlet.run())
+        return closables
 
     async def run_async(self):
         raise NotImplementedError
@@ -373,7 +375,7 @@ class _ConcurrentJobExecution(Flow):
 
         if self._worker_awaitable.done():
             await self._worker_awaitable
-            raise FlowError("JoinWithHttp worker has already terminated")
+            raise FlowError("ConcurrentJobExecution worker has already terminated")
 
         if event is _termination_obj:
             await self._q.put(_termination_obj)
@@ -384,6 +386,104 @@ class _ConcurrentJobExecution(Flow):
             await self._q.put((event, asyncio.get_running_loop().create_task(task)))
             if self._worker_awaitable.done():
                 await self._worker_awaitable
+
+
+class _PendingEvent:
+    def __init__(self):
+        self.in_flight = []
+        self.pending = []
+
+
+class _ConcurrentByKeyJobExecution(Flow):
+    def __init__(self, max_in_flight=8, **kwargs):
+        Flow.__init__(self, **kwargs)
+        self._max_in_flight = max_in_flight
+        self._q = None
+        self._pending_by_key = {}
+
+    async def _worker(self):
+        try:
+            while True:
+                job = await self._q.get()
+                if job is _termination_obj:
+                    for key, pending_event in self._pending_by_key.items():
+                        if self._pending_by_key[key].pending and not self._pending_by_key[key].in_flight:
+                            resp = await self._process_event(pending_event.pending[0])
+                            for event in pending_event.pending:
+                                await self._handle_completed(event, resp)
+                    if self._q.empty():
+                        break
+                    else:
+                        await self._q.put(_termination_obj)
+                        continue
+
+                event = job[0]
+                completed = await job[1]
+
+                for event in self._pending_by_key[event.key].in_flight:
+                    await self._handle_completed(event, completed)
+                self._pending_by_key[event.key].in_flight = []
+
+                # If we got more pending events for the same key process them
+                if self._pending_by_key[event.key].pending:
+                    first_event = self._pending_by_key[event.key].pending[0]
+                    self._pending_by_key[event.key].in_flight = self._pending_by_key[event.key].pending
+                    self._pending_by_key[event.key].pending = []
+
+                    task = self._process_event(first_event)
+                    await self._q.put((event, asyncio.get_running_loop().create_task(task)))
+                else:
+                    del self._pending_by_key[event.key]
+        except BaseException as ex:
+            if not self._q.empty():
+                await self._q.get()
+            raise ex
+        finally:
+            await self._cleanup()
+
+    async def _do(self, event):
+        if not self._q:
+            await self._lazy_init()
+            self._q = asyncio.queues.Queue(self._max_in_flight)
+            self._worker_awaitable = asyncio.get_running_loop().create_task(self._worker())
+
+        if self._worker_awaitable.done():
+            await self._worker_awaitable
+            raise FlowError("ConcurrentByKeyJobExecution worker has already terminated")
+
+        if event is _termination_obj:
+            await self._q.put(_termination_obj)
+            await self._worker_awaitable
+            return await self._do_downstream(_termination_obj)
+        else:
+            # Initializing the key with 2 lists. One for pending requests and one for requests that an update request has been issued for.
+            if event.key not in self._pending_by_key:
+                self._pending_by_key[event.key] = _PendingEvent()
+
+            # If there is a current update in flight for the key, add the event to the pending list. Otherwise update the key.
+            if len(self._pending_by_key[event.key].in_flight) > 0:
+                self._pending_by_key[event.key].pending.append(event)
+            else:
+                self._pending_by_key[event.key].pending.append(event)
+                self._pending_by_key[event.key].in_flight = self._pending_by_key[event.key].pending
+                self._pending_by_key[event.key].pending = []
+
+                task = self._process_event(event)
+                await self._q.put((event, asyncio.get_running_loop().create_task(task)))
+                if self._worker_awaitable.done():
+                    await self._worker_awaitable
+
+    async def _process_event(self, event):
+        raise NotImplementedError()
+
+    async def _handle_completed(self, event, response):
+        raise NotImplementedError()
+
+    async def _cleanup(self):
+        pass
+
+    async def _lazy_init(self):
+        pass
 
 
 class JoinWithHttp(_ConcurrentJobExecution):
@@ -613,7 +713,7 @@ class Cache:
         store._storage = self._storage
         self._aggregation_store = store
 
-    async def _persist_key(self, key):
+    async def persist_key(self, key):
         aggr_by_key = self._aggregation_store[key]
         additional_cache_data_by_key = self._cache.get(key, None)
         await self._storage._save_key(self._container, self._table_path, key, aggr_by_key, self._partitioned_by_key,

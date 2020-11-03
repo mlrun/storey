@@ -99,6 +99,7 @@ class Source(Flow):
         self._q = queue.Queue(buffer_size)
         self._termination_q = queue.Queue(1)
         self._ex = None
+        self._closables = []
 
     async def _run_loop(self):
         loop = asyncio.get_running_loop()
@@ -109,6 +110,8 @@ class Source(Flow):
             try:
                 termination_result = await self._do_downstream(event)
                 if event is _termination_obj:
+                    for closable in self._closables:
+                        await closable.close()
                     self._termination_future.set_result(termination_result)
             except BaseException as ex:
                 self._ex = ex
@@ -133,7 +136,7 @@ class Source(Flow):
         self._raise_on_error(self._ex)
 
     def run(self):
-        super().run()
+        self._closables = super().run()
 
         thread = threading.Thread(target=self._loop_thread_main)
         thread.start()
@@ -230,6 +233,7 @@ class AsyncSource(Flow):
             raise ValueError('Buffer size must be positive')
         self._q = asyncio.Queue(buffer_size, loop=asyncio.get_running_loop())
         self._ex = None
+        self._closables = []
 
     async def _run_loop(self):
         while True:
@@ -237,6 +241,8 @@ class AsyncSource(Flow):
             try:
                 termination_result = await self._do_downstream(event)
                 if event is _termination_obj:
+                    for closable in self._closables:
+                        await closable.close()
                     return termination_result
             except BaseException as ex:
                 self._ex = ex
@@ -258,6 +264,7 @@ class AsyncSource(Flow):
         self._raise_on_error()
 
     async def run(self):
+        self._closables = super().run()
         loop_task = asyncio.get_running_loop().create_task(self._run_loop())
         return AsyncFlowController(self._emit, loop_task)
 
@@ -269,6 +276,7 @@ class IterableSource(Flow):
 
         self._termination_q = queue.Queue(1)
         self._ex = None
+        self._closables = []
 
     async def _run_loop(self):
         raise NotImplementedError()
@@ -277,6 +285,8 @@ class IterableSource(Flow):
         try:
             self._termination_future = asyncio.get_running_loop().create_future()
             termination_result = await self._run_loop()
+            for closable in self._closables:
+                await closable.close()
             self._termination_future.set_result(termination_result)
         except BaseException as ex:
             self._ex = ex
@@ -291,7 +301,7 @@ class IterableSource(Flow):
             raise FlowError('Flow execution terminated due to an error') from self._ex
 
     def run(self):
-        super().run()
+        self._closables = super().run()
 
         thread = threading.Thread(target=self._loop_thread_main)
         thread.start()
@@ -303,7 +313,7 @@ class IterableSource(Flow):
         return FlowAwaiter(raise_error_or_return_termination_result)
 
     async def run_async(self):
-        super().run()
+        self._closables = super().run()
         return await self._run_loop()
 
 
