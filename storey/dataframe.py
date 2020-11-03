@@ -102,9 +102,9 @@ class WriteToParquet(Flow):
 class FramesClient:
     def __init__(self, v3io_frames=None, access_key=None, container=""):
         self._frames_client = None
-        v3io_frames = v3io_frames or os.getenv('V3IO_FRAMES')
+        v3io_frames = v3io_frames or os.getenv('V3IO_FRAMESD')
         if not v3io_frames:
-            raise ValueError('Missing v3io-frames parameter or V3IO_FRAMES environment variable')
+            raise ValueError('Missing v3io-frames parameter or V3IO_FRAMESD environment variable')
         access_key = access_key or os.getenv('V3IO_ACCESS_KEY')
         if not access_key:
             raise ValueError('Missing access_key parameter or V3IO_ACCESS_KEY environment variable')
