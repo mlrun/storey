@@ -23,10 +23,10 @@ class Flow:
         return outlet
 
     def run(self):
-        closables = []
+        closeables = []
         for outlet in self._outlets:
-            closables.extend(outlet.run())
-        return closables
+            closeables.extend(outlet.run())
+        return closeables
 
     async def run_async(self):
         raise NotImplementedError

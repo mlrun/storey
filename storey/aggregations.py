@@ -124,9 +124,9 @@ class AggregateByKey(Flow):
             next_emit_time = next_emit_time + seconds_to_sleep_between_emits
 
     def run(self):
-        closables = super().run()
-        closables.append(self._cache)
-        return closables
+        closeables = super().run()
+        closeables.append(self._cache)
+        return closeables
 
 
 class QueryAggregationByKey(AggregateByKey):
@@ -197,9 +197,9 @@ class Persist(_ConcurrentByKeyJobExecution):
         await self._do_downstream(event)
 
     def run(self):
-        closables = super().run()
-        closables.append(self._cache)
-        return closables
+        closeables = super().run()
+        closeables.append(self._cache)
+        return closeables
 
 
 class AggregatedStoreElement:
