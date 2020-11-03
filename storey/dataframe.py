@@ -1,6 +1,7 @@
 import copy
 
 import pandas as pd
+import v3io_frames as frames
 
 from .flow import _termination_obj, Flow
 
@@ -95,3 +96,37 @@ class WriteToParquet(Flow):
         else:
             df = event.body
             df.to_parquet(path=self._path, partition_cols=self._partition_cols)
+
+
+class WriteToTSDB(Flow):
+    def __init__(self, path, time_col, columns, labels_cols=None, v3io_frames=None, access_key=None, container="",
+                 rate="", aggr="", aggr_granularity="", **kwargs):
+        super().__init__(**kwargs)
+        self._path = path
+        self._time_col = time_col
+        self._columns = columns
+        self._labels_cols = labels_cols
+        self._rate = rate
+        self._aggr = aggr
+        self.aggr_granularity = aggr_granularity
+        self._created = False
+        self._frames_client = frames.Client(address=v3io_frames, token=access_key, container=container)
+
+    async def _do(self, event):
+        if event is _termination_obj:
+            return await self._do_downstream(_termination_obj)
+        else:
+            df = pd.DataFrame(event.body, columns=self._columns)
+            indices = [self._time_col]
+            if self._labels_cols:
+                if isinstance(self._labels_cols, list):
+                    indices.extend(self._labels_cols)
+                else:
+                    indices.append(self._labels_cols)
+            df.set_index(keys=indices, inplace=True)
+            if not self._created and self._rate:
+                self._created = True
+                self._frames_client.create(
+                    'tsdb', table=self._path, if_exists=frames.frames_pb2.IGNORE, rate=self._rate,
+                    aggregates=self._aggr, aggregation_granularity=self.aggr_granularity)
+            self._frames_client.write("tsdb", self._path, df)
