@@ -1,6 +1,8 @@
 import copy
 
 import pandas as pd
+import v3io_frames as frames
+import os
 
 from .flow import _termination_obj, Flow
 
@@ -81,3 +83,64 @@ class ToDataFrame(Flow):
             new_event = copy.copy(event)
             new_event.body = df
             return await self._do_downstream(new_event)
+
+
+class FramesClient:
+    def __init__(self, v3io_frames=None, access_key=None, container=""):
+        self._frames_client = None
+        v3io_frames = v3io_frames or os.getenv('V3IO_FRAMES')
+        if not v3io_frames:
+            raise ValueError('Missing v3io-frames parameter or V3IO_FRAMES environment variable')
+        access_key = access_key or os.getenv('V3IO_ACCESS_KEY')
+        if not access_key:
+            raise ValueError('Missing access_key parameter or V3IO_ACCESS_KEY environment variable')
+
+        self._access_key = access_key
+        self._frames_client = frames.Client(address=v3io_frames, token=access_key, container=container)
+
+    def create(self, path, rate, aggr="", aggr_gran=""):
+        self._frames_client.create(
+            'tsdb', table=path, if_exists=frames.frames_pb2.IGNORE, rate=rate, aggregates=aggr, aggregation_granularity=aggr_gran)
+
+    def write(self, backend, path, df):
+        self._frames_client.write(backend, path, df)
+
+    def read(self, backend, path, start='0', end='now'):
+        return self._frames_client.read(backend, path, start=start, end=end)
+
+
+class WriteToTSDB(Flow):
+    def __init__(self, path, time_col, columns, labels_cols=None, v3io_frames=None, access_key=None, container="",
+                 rate="", aggr="", aggr_gran="", **kwargs):
+        super().__init__(**kwargs)
+        if not path:
+            raise ValueError('path is required')
+        self._path = path
+        if not time_col:
+            raise ValueError('time_col is required')
+        self._time_col = time_col
+        if not columns:
+            raise ValueError('columns is required')
+        self._columns = columns
+        self._labels_cols = labels_cols
+        self._rate = rate
+        self._aggr = aggr
+        self._aggr_gran = aggr_gran
+        self._frames_client = FramesClient(v3io_frames, access_key, container)
+
+    async def _do(self, event):
+        if event is _termination_obj:
+            return await self._do_downstream(_termination_obj)
+        else:
+            df = pd.DataFrame(event.body, columns=self._columns)
+            indices = [self._time_col]
+            if self._labels_cols:
+                if isinstance(self._labels_cols, list):
+                    indices = self._labels_cols.append(self._time_col)
+                else:
+                    indices = [self._time_col, self._labels_cols]
+            df.set_index(keys=indices, inplace=True)
+            if self._rate:
+                self._frames_client.create(self._path, rate=self._rate, aggr=self._aggr, aggr_gran=self._aggr_gran)
+            self._frames_client.write('tsdb', self._path, df)
+            return 0
