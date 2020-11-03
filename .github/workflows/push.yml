@@ -24,6 +24,7 @@ jobs:
         env:
           V3IO_API: ${{ secrets.V3IO_API }}
           V3IO_ACCESS_KEY: ${{ secrets.V3IO_ACCESS_KEY }}
+          V3IO_FRAMES: ${{ secrets.V3IO_FRAMES }}
         run: make integration
       - name: benchmark
         run: make bench

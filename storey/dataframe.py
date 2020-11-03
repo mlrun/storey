@@ -85,6 +85,20 @@ class ToDataFrame(Flow):
             return await self._do_downstream(new_event)
 
 
+class WriteToParquet(Flow):
+    def __init__(self, path, partition_cols=None, **kwargs):
+        super().__init__(**kwargs)
+        self._path = path
+        self._partition_cols = partition_cols
+
+    async def _do(self, event):
+        if event is _termination_obj:
+            return await self._do_downstream(_termination_obj)
+        else:
+            df = event.body
+            df.to_parquet(path=self._path, partition_cols=self._partition_cols)
+
+
 class FramesClient:
     def __init__(self, v3io_frames=None, access_key=None, container=""):
         self._frames_client = None

@@ -1,13 +1,14 @@
 import asyncio
 import os
 import time
+import uuid
 from datetime import datetime
 
 import pandas as pd
 
 from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV, Complete, AsyncSource, Choice, Event, \
-    Batch, Cache, NoopDriver, WriteCSV, DataframeSource
-from storey.dataframe import ReduceToDataFrame, ToDataFrame
+    Batch, Cache, NoopDriver, WriteCSV, DataframeSource, MapClass
+from storey.dataframe import ReduceToDataFrame, ToDataFrame, WriteToParquet
 
 
 class ATestException(Exception):
@@ -695,3 +696,72 @@ def test_to_dataframe_with_index():
     assert len(termination_result) == 2
     assert termination_result[0].body.equals(expected1), f"{termination_result[0]}\n!=\n{expected1}"
     assert termination_result[1].body.equals(expected2), f"{termination_result[1]}\n!=\n{expected2}"
+
+
+def test_map_class():
+    class MyMap(MapClass):
+        def __init__(self, mul=1, **kwargs):
+            super().__init__(**kwargs)
+            self._mul = mul
+
+        def do(self, event):
+            if event['bid'] > 700:
+                return self.filter()
+            event['xx'] = event['bid'] * self._mul
+            return event
+
+    controller = build_flow([
+        Source(),
+        MyMap(2),
+        Reduce(0, lambda acc, x: acc + x['xx']),
+    ]).run()
+
+    controller.emit({'bid': 600})
+    controller.emit({'bid': 700})
+    controller.emit({'bid': 1000})
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == 2600
+
+
+def test_write_to_parquet(tmpdir):
+    out_dir = f'{tmpdir}/test_write_to_parquet/{uuid.uuid4().hex}/'
+    columns = ['my_int', 'my_string']
+    controller = build_flow([
+        Source(),
+        ToDataFrame(columns=columns),
+        WriteToParquet(out_dir, partition_cols='my_int')
+    ]).run()
+
+    expected = []
+    for i in range(10):
+        controller.emit([[i, f'this is {i}']])
+        expected.append([i, f'this is {i}'])
+    expected = pd.DataFrame(expected, columns=columns, dtype='int32')
+    controller.terminate()
+    controller.await_termination()
+
+    read_back_df = pd.read_parquet(out_dir, columns=columns)
+    assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+
+
+def test_write_to_parquet_single_file_on_termination(tmpdir):
+    out_file = f'{tmpdir}/test_write_to_parquet_single_file_on_termination_{uuid.uuid4().hex}.parquet'
+    columns = ['my_int', 'my_string']
+    controller = build_flow([
+        Source(),
+        Batch(max_events=None),
+        ToDataFrame(columns=columns),
+        WriteToParquet(out_file)
+    ]).run()
+
+    expected = []
+    for i in range(10):
+        controller.emit([i, f'this is {i}'])
+        expected.append([i, f'this is {i}'])
+    expected = pd.DataFrame(expected, columns=columns, dtype='int64')
+    controller.terminate()
+    controller.await_termination()
+
+    read_back_df = pd.read_parquet(out_file, columns=columns)
+    assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
