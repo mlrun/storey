@@ -2,11 +2,15 @@ import asyncio
 import base64
 import json
 import time
+import pandas as pd
+import v3io_frames as frames
 
 import aiohttp
 
+from _datetime import datetime, timedelta
+
 from storey import Filter, JoinWithV3IOTable, JoinWithHttp, Map, Reduce, Source, HttpRequest, build_flow, \
-    WriteToV3IOStream, V3ioDriver
+    WriteToV3IOStream, V3ioDriver, WriteToTSDB, Batch
 from .integration_test_utils import V3ioHeaders
 
 
@@ -135,3 +139,32 @@ def test_write_to_v3io_stream_unbalanced():
     assert shard0_data == [b'0', b'1', b'2', b'3', b'4', b'5', b'6', b'7', b'8', b'9']
     shard1_data = asyncio.run(GetShardData().get_shard_data(f'{stream_path}/1'))
     assert shard1_data == []
+
+
+def test_write_to_tsdb():
+    tsdb_path = f'tsdb_path-{int(time.time_ns() / 1000)}'
+    columns = ['cpu', 'disk', 'time', 'node']
+
+    controller = build_flow([
+        Source(),
+        Batch(2),
+        WriteToTSDB(path=tsdb_path, time_col='time', labels_cols='node', columns=columns, rate='1/h')
+    ]).run()
+
+    expected = []
+    date_time_str = '18/09/19 01:55:1'
+    for i in range(9):
+        now = datetime.strptime(date_time_str+str(i)+' UTC-0000', '%d/%m/%y %H:%M:%S UTC%z')
+        controller.emit([i+1, i+2, now, i])
+        expected.append([float(i+1), float(i+2), now, i])
+
+    controller.terminate()
+    controller.await_termination()
+
+    client = frames.Client()
+    res = client.read("tsdb", tsdb_path, start='0', end='now')
+    res = res.sort_values(['time'])
+    res['node'] = pd.to_numeric(res["node"])
+    df = pd.DataFrame(expected, columns=columns)
+    df.set_index(keys=['time'], inplace=True)
+    assert res.equals(df), f"result{res}\n!=\nexpected{df}"
