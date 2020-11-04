@@ -2,7 +2,7 @@ import asyncio
 from datetime import datetime, timedelta
 import pytest
 
-from storey import build_flow, Source, Reduce, Cache, V3ioDriver, FlowError, MapWithState, AggregateByKey, FieldAggregator, \
+from storey import build_flow, Source, Reduce, Table, V3ioDriver, FlowError, MapWithState, AggregateByKey, FieldAggregator, \
     QueryAggregationByKey, Persist
 
 from storey.dtypes import SlidingWindows
@@ -20,7 +20,7 @@ def append_return(lst, x):
 
 @pytest.mark.parametrize('partitioned_by_key', [True, False])
 def test_query_aggregate_by_key(setup_teardown_test, partitioned_by_key):
-    cache = Cache(setup_teardown_test, V3ioDriver(), partitioned_by_key=partitioned_by_key)
+    cache = Table(setup_teardown_test, V3ioDriver(), partitioned_by_key=partitioned_by_key)
 
     controller = build_flow([
         Source(),
@@ -84,7 +84,7 @@ def test_query_aggregate_by_key(setup_teardown_test, partitioned_by_key):
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
-    other_cache = Cache(setup_teardown_test, V3ioDriver())
+    other_cache = Table(setup_teardown_test, V3ioDriver())
     controller = build_flow([
         Source(),
         QueryAggregationByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg", "min", "max"],
@@ -127,7 +127,7 @@ def test_aggregate_by_key_one_underlying_window(setup_teardown_test, partitioned
 
     for current_expected in expected.values():
 
-        cache = Cache(setup_teardown_test, V3ioDriver(), partitioned_by_key=partitioned_by_key)
+        cache = Table(setup_teardown_test, V3ioDriver(), partitioned_by_key=partitioned_by_key)
         controller = build_flow([
             Source(),
             AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["count"],
@@ -167,7 +167,7 @@ def test_aggregate_by_key_two_underlying_windows(setup_teardown_test, partitione
     current_index = 0
     for current_expected in expected.values():
 
-        cache = Cache(setup_teardown_test, V3ioDriver(), partitioned_by_key=partitioned_by_key)
+        cache = Table(setup_teardown_test, V3ioDriver(), partitioned_by_key=partitioned_by_key)
         controller = build_flow([
             Source(),
             AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["count"],
@@ -192,7 +192,7 @@ def test_aggregate_by_key_two_underlying_windows(setup_teardown_test, partitione
 
 
 def test_write_cache_with_aggregations(setup_teardown_test):
-    cache = Cache(setup_teardown_test, V3ioDriver())
+    cache = Table(setup_teardown_test, V3ioDriver())
 
     cache._cache['tal'] = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': datetime.now()}
 
@@ -248,7 +248,7 @@ def test_write_cache_with_aggregations(setup_teardown_test):
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
-    other_cache = Cache(setup_teardown_test, V3ioDriver())
+    other_cache = Table(setup_teardown_test, V3ioDriver())
 
     controller = build_flow([
         Source(),
@@ -274,7 +274,7 @@ def test_write_cache_with_aggregations(setup_teardown_test):
 
 
 def test_write_cache(setup_teardown_test):
-    cache = Cache(setup_teardown_test, V3ioDriver())
+    cache = Table(setup_teardown_test, V3ioDriver())
 
     cache._cache['tal'] = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': datetime.now()}
 
@@ -317,7 +317,7 @@ def test_write_cache(setup_teardown_test):
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
-    other_cache = Cache(setup_teardown_test, V3ioDriver())
+    other_cache = Table(setup_teardown_test, V3ioDriver())
 
     controller = build_flow([
         Source(),
@@ -356,7 +356,7 @@ async def load_schema(path):
 
 
 def test_modify_schema(setup_teardown_test):
-    cache = Cache(setup_teardown_test, V3ioDriver())
+    cache = Table(setup_teardown_test, V3ioDriver())
 
     controller = build_flow([
         Source(),
@@ -419,7 +419,7 @@ def test_modify_schema(setup_teardown_test):
     expected_schema = {"number_of_stuff": {"period_millis": 600000, "aggregates": ['max', 'min', 'sum', 'count']}}
     _assert_schema_equal(schema, expected_schema)
 
-    other_cache = Cache(setup_teardown_test, V3ioDriver())
+    other_cache = Table(setup_teardown_test, V3ioDriver())
     controller = build_flow([
         Source(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg", "min", "max"],
@@ -453,7 +453,7 @@ def test_modify_schema(setup_teardown_test):
 
 
 def test_invalid_modify_schema(setup_teardown_test):
-    cache = Cache(setup_teardown_test, V3ioDriver())
+    cache = Table(setup_teardown_test, V3ioDriver())
 
     controller = build_flow([
         Source(),
@@ -516,7 +516,7 @@ def test_invalid_modify_schema(setup_teardown_test):
     expected_schema = {"number_of_stuff": {"period_millis": 600000, "aggregates": ['max', 'min', 'sum', 'count']}}
     _assert_schema_equal(schema, expected_schema)
 
-    other_cache = Cache(setup_teardown_test, V3ioDriver())
+    other_cache = Table(setup_teardown_test, V3ioDriver())
 
     try:
         controller = build_flow([
