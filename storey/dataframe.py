@@ -84,32 +84,20 @@ class ToDataFrame(Flow):
             return await self._do_downstream(new_event)
 
 
-class WriteToParquet(Flow, _Batching):
+class WriteToParquet(_Batching):
     def __init__(self, path, index=None, columns=None, partition_cols=None, max_events: Optional[int] = None, timeout_secs=None, **kwargs):
-        Flow.__init__(self, **kwargs)
-        _Batching.__init__(self, max_events, timeout_secs)
+        super().__init__(max_events, timeout_secs, **kwargs)
 
         self._path = path
         self._index = index
         self._columns = columns
         self._partition_cols = partition_cols
 
-    async def _emit_fn(self, batch_to_emit):
-        df = pd.DataFrame(batch_to_emit, columns=self._columns)
+    async def _emit(self, batch, batch_time):
+        df = pd.DataFrame(batch, columns=self._columns)
         if self._index:
             df.set_index(self._index, inplace=True)
         df.to_parquet(path=self._path, partition_cols=self._partition_cols)
 
-    async def _termination_fn(self):
+    async def _terminate(self):
         return await self._do_downstream(_termination_obj)
-
-    async def _do(self, event):
-        if event is _termination_obj:
-            await self._on_event(_termination_obj)
-            return await self._do_downstream(_termination_obj)
-        else:
-            batch = await self._on_event(event.body)
-            df = pd.DataFrame(batch, columns=self._columns)
-            if self._index:
-                df.set_index(self._index, inplace=True)
-            df.to_parquet(path=self._path, partition_cols=self._partition_cols)
