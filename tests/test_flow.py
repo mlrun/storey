@@ -729,12 +729,12 @@ def test_write_to_parquet(tmpdir):
     columns = ['my_int', 'my_string']
     controller = build_flow([
         Source(),
-        WriteToParquet(out_dir, partition_cols='my_int', columns=columns)
+        WriteToParquet(out_dir, partition_cols='my_int', columns=columns, max_events=1)
     ]).run()
 
     expected = []
     for i in range(10):
-        controller.emit([[i, f'this is {i}']])
+        controller.emit([i, f'this is {i}'])
         expected.append([i, f'this is {i}'])
     expected = pd.DataFrame(expected, columns=columns, dtype='int32')
     controller.terminate()
@@ -749,7 +749,6 @@ def test_write_to_parquet_single_file_on_termination(tmpdir):
     columns = ['my_int', 'my_string']
     controller = build_flow([
         Source(),
-        Batch(max_events=None),
         WriteToParquet(out_file, columns=columns)
     ]).run()
 

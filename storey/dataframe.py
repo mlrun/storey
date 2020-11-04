@@ -1,8 +1,9 @@
 import copy
+from typing import Optional
 
 import pandas as pd
 
-from .flow import _termination_obj, Flow
+from .flow import _termination_obj, Flow, _Batching
 
 
 class ReduceToDataFrame(Flow):
@@ -84,18 +85,31 @@ class ToDataFrame(Flow):
 
 
 class WriteToParquet(Flow):
-    def __init__(self, path, index=None, columns=None, partition_cols=None, **kwargs):
+    def __init__(self, path, index=None, columns=None, partition_cols=None, max_events: Optional[int] = None, timeout_secs=None, **kwargs):
         super().__init__(**kwargs)
         self._path = path
         self._index = index
         self._columns = columns
         self._partition_cols = partition_cols
 
+        async def emit_fn(batch_to_emit):
+            df = pd.DataFrame(batch_to_emit, columns=self._columns)
+            if self._index:
+                df.set_index(self._index, inplace=True)
+            df.to_parquet(path=self._path, partition_cols=self._partition_cols)
+
+        async def termination_fn():
+            return await self._do_downstream(_termination_obj)
+
+        self._batching = _Batching(emit_fn, termination_fn, max_events, timeout_secs)
+
     async def _do(self, event):
         if event is _termination_obj:
+            await self._batching.do(_termination_obj)
             return await self._do_downstream(_termination_obj)
         else:
-            df = pd.DataFrame(event.body, columns=self._columns)
+            batch = await self._batching.do(event.body)
+            df = pd.DataFrame(batch, columns=self._columns)
             if self._index:
                 df.set_index(self._index, inplace=True)
             df.to_parquet(path=self._path, partition_cols=self._partition_cols)

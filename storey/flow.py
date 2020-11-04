@@ -426,19 +426,11 @@ class JoinWithHttp(_ConcurrentJobExecution):
             await self._do_downstream(new_event)
 
 
-class Batch(Flow):
-    """
-    Batches events into lists of up to max_events events. Each emitted list contained max_events events, unless timeout_secs seconds
-    have passed since the first event in the batch was received, at which the batch is emitted with potentially fewer than max_events
-    event.
-    :param max_events: Maximum number of events per emitted batch. Set to None to emit all events in one batch on flow termination.
-    :type max_events: int or None
-    :param timeout_secs: Maximum number of seconds to wait before a batch is emitted.
-    :type timeout_secs: int
-    """
+class _Batching:
+    def __init__(self, emit_fn, termination_fn, max_events: Optional[int] = None, timeout_secs=None):
+        self._emit_fn = emit_fn
+        self._termination_fn = termination_fn
 
-    def __init__(self, max_events: Optional[int], timeout_secs=None, **kwargs):
-        Flow.__init__(self, **kwargs)
         self._max_events = max_events
         self._event_count = 0
         self._batch = []
@@ -452,12 +444,12 @@ class Batch(Flow):
         await asyncio.sleep(self._timeout_secs)
         await self.emit_batch()
 
-    async def _do(self, event):
+    async def do(self, event):
         if event is _termination_obj:
             if self._timeout_task and not self._timeout_task.cancelled():
                 self._timeout_task.cancel()
             await self.emit_batch()
-            return await self._do_downstream(_termination_obj)
+            return await self._termination_fn()
         else:
             if len(self._batch) == 0 and self._timeout_secs:
                 self._timeout_task = asyncio.get_running_loop().create_task(self.sleep_and_emit())
@@ -476,7 +468,34 @@ class Batch(Flow):
             self._batch = []
             self._event_count = 0
 
-            await self._do_downstream(Event([self._get_safe_event_or_body(event) for event in batch_to_emit], time=batch_to_emit[0].time))
+            await self._emit_fn(batch_to_emit)
+
+
+class Batch(Flow):
+    """
+    Batches events into lists of up to max_events events. Each emitted list contained max_events events, unless timeout_secs seconds
+    have passed since the first event in the batch was received, at which the batch is emitted with potentially fewer than max_events
+    event.
+    :param max_events: Maximum number of events per emitted batch. Set to None to emit all events in one batch on flow termination.
+    :type max_events: int or None
+    :param timeout_secs: Maximum number of seconds to wait before a batch is emitted.
+    :type timeout_secs: int
+    """
+
+    def __init__(self, max_events: Optional[int], timeout_secs=None, **kwargs):
+        Flow.__init__(self, **kwargs)
+
+        async def emit_fn(batch_to_emit):
+            event = Event([self._get_safe_event_or_body(event) for event in batch_to_emit], time=batch_to_emit[0].time)
+            return await self._do_downstream(event)
+
+        async def termination_fn():
+            return await self._do_downstream(_termination_obj)
+
+        self._batching = _Batching(emit_fn, termination_fn, max_events, timeout_secs)
+
+    async def _do(self, event):
+        return await self._batching.do(event)
 
 
 class JoinWithV3IOTable(_ConcurrentJobExecution):
