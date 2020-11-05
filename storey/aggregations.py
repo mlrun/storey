@@ -27,6 +27,10 @@ class AggregateByKey(Flow):
     :type emit_policy: {EmitEveryEvent, EmitAfterMaxEvent, EmitAfterPeriod, EmitAfterWindow}
     :param augmentation_fn: Function that augments the features into the event's body. Defaults to updating a dict. (Optional)
     :type augmentation_fn: Function ((Event, dict) => Event)
+    :param enrich_with: List of attributes names from the associated storage object to be fetched and added to every event. (Optional)
+    :type enrich_with: list of string
+    :param aliases: Dictionary specifying aliases to the enriched columns, of the format `{'col_name': 'new_col_name'}`. (Optional)
+    :type aliases: dict
     """
 
     def __init__(self, aggregates, table, key=None, emit_policy=_default_emit_policy, augmentation_fn=None, enrich_with=None, aliases=None):
@@ -158,6 +162,10 @@ class QueryAggregationByKey(AggregateByKey):
     :type emit_policy: {EmitEveryEvent, EmitAfterMaxEvent, EmitAfterPeriod, EmitAfterWindow}
     :param augmentation_fn: Function that augments the features into the event's body. Defaults to updating a dict. (Optional)
     :type augmentation_fn: Function ((Event, dict) => Event)
+    :param enrich_with: List of attributes names from the associated storage object to be fetched and added to every event. (Optional)
+    :type enrich_with: list of string
+    :param aliases: Dictionary specifying aliases to the enriched columns, of the format `{'col_name': 'new_col_name'}`. (Optional)
+    :type aliases: dict
     """
 
     def __init__(self, aggregates, table, key=None, emit_policy=_default_emit_policy, augmentation_fn=None, enrich_with=None, aliases=None):
