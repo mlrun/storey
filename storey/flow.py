@@ -196,7 +196,7 @@ class FunctionWithStateFlow(Flow):
     async def _call(self, event):
         element = self._get_safe_event_or_body(event)
         if self._group_by_key:
-            if isinstance(self._state, Cache):
+            if isinstance(self._state, Table):
                 key_data = await self._state.get_or_load_key(event.key)
             else:
                 key_data = self._state[event.key]
@@ -595,9 +595,9 @@ def _split_path(path):
         return parts[0], f'/{parts[1]}'
 
 
-class Cache:
+class Table:
     """
-        Cache object.
+        Table object, represents a single table in a specific storage.
 
         :param table_path: Path to the table in the storage.
         :type table_path: string

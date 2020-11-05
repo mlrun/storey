@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from storey import Source, Map, Reduce, build_flow, Complete, NoopDriver, FieldAggregator, AggregateByKey, Cache, Batch, AsyncSource
+from storey import Source, Map, Reduce, build_flow, Complete, NoopDriver, FieldAggregator, AggregateByKey, Table, Batch, AsyncSource
 from storey.dtypes import SlidingWindows
 
 test_base_time = datetime.fromisoformat("2020-07-21T21:40:00+00:00")
@@ -71,7 +71,7 @@ def test_aggregate_by_key_n_events(benchmark, n):
             Source(),
             AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg", "min", "max"],
                                             SlidingWindows(['1h', '2h', '24h'], '10m'))],
-                           Cache("test", NoopDriver())),
+                           Table("test", NoopDriver())),
         ]).run()
 
         for i in range(n):
