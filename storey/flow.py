@@ -13,6 +13,7 @@ class Flow:
         self._full_event = full_event
         self._termination_result_fn = termination_result_fn
         self.context = context
+        self._closeables = []
         if name:
             self.name = name
         else:
@@ -23,10 +24,9 @@ class Flow:
         return outlet
 
     def run(self):
-        closeables = []
         for outlet in self._outlets:
-            closeables.extend(outlet.run())
-        return closeables
+            self._closeables.extend(outlet.run())
+        return self._closeables
 
     async def run_async(self):
         raise NotImplementedError

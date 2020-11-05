@@ -32,6 +32,7 @@ class AggregateByKey(Flow):
     def __init__(self, aggregates, table, key=None, emit_policy=_default_emit_policy, augmentation_fn=None):
         Flow.__init__(self)
         self._aggregates_store = AggregateStore(aggregates)
+        self._closeables = [table]
 
         self._table = table
         self._table._set_aggregation_store(self._aggregates_store)
@@ -123,11 +124,6 @@ class AggregateByKey(Flow):
             await self._emit_all_events(next_emit_time * 1000)
             next_emit_time = next_emit_time + seconds_to_sleep_between_emits
 
-    def run(self):
-        closeables = super().run()
-        closeables.append(self._table)
-        return closeables
-
 
 class QueryAggregationByKey(AggregateByKey):
     """
@@ -189,17 +185,13 @@ class Persist(_ConcurrentByKeyJobExecution):
     def __init__(self, table):
         super().__init__()
         self._table = table
+        self._closeables = [table]
 
     async def _process_event(self, event):
         return await self._table.persist_key(event.key)
 
     async def _handle_completed(self, event, response):
         await self._do_downstream(event)
-
-    def run(self):
-        closeables = super().run()
-        closeables.append(self._table)
-        return closeables
 
 
 class AggregatedStoreElement:
