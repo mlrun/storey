@@ -7,7 +7,7 @@ from datetime import datetime
 import pandas as pd
 
 from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV, Complete, AsyncSource, Choice, Event, \
-    Batch, Cache, NoopDriver, WriteCSV, DataframeSource, MapClass
+    Batch, Table, NoopDriver, WriteCSV, DataframeSource, MapClass
 from storey.dataframe import ReduceToDataFrame, ToDataFrame, WriteToParquet
 
 
@@ -270,9 +270,9 @@ def test_map_with_state_flow():
 
 
 def test_map_with_cache_state_flow():
-    cache = Cache("table", NoopDriver())
-    cache._cache['tal'] = {'color': 'blue'}
-    cache._cache['dina'] = {'color': 'red'}
+    table_object = Table("table", NoopDriver())
+    table_object._cache['tal'] = {'color': 'blue'}
+    table_object._cache['dina'] = {'color': 'red'}
 
     def enrich(event, state):
         event['color'] = state['color']
@@ -281,7 +281,7 @@ def test_map_with_cache_state_flow():
 
     controller = build_flow([
         Source(),
-        MapWithState(cache, lambda x, state: enrich(x, state), group_by_key=True),
+        MapWithState(table_object, lambda x, state: enrich(x, state), group_by_key=True),
         Reduce([], append_and_return),
     ]).run()
 
@@ -306,11 +306,11 @@ def test_map_with_cache_state_flow():
     expected_cache = {'tal': {'color': 'blue', 'counter': 6}, 'dina': {'color': 'red', 'counter': 4}}
 
     assert termination_result == expected
-    assert cache._cache == expected_cache
+    assert table_object._cache == expected_cache
 
 
 def test_map_with_empty_cache_state_flow():
-    cache = Cache("table", NoopDriver())
+    table_object = Table("table", NoopDriver())
 
     def enrich(event, state):
         if 'first_value' not in state:
@@ -321,7 +321,7 @@ def test_map_with_empty_cache_state_flow():
 
     controller = build_flow([
         Source(),
-        MapWithState(cache, lambda x, state: enrich(x, state), group_by_key=True),
+        MapWithState(table_object, lambda x, state: enrich(x, state), group_by_key=True),
         Reduce([], append_and_return),
     ]).run()
 
@@ -345,7 +345,7 @@ def test_map_with_empty_cache_state_flow():
                 {'col1': 9, 'diff_from_first': 9}]
     expected_cache = {'dina': {'first_value': 0, 'counter': 4}, 'tal': {'first_value': 1, 'counter': 6}}
     assert termination_result == expected
-    assert cache._cache == expected_cache
+    assert table_object._cache == expected_cache
 
 
 def test_awaitable_result():
@@ -729,13 +729,12 @@ def test_write_to_parquet(tmpdir):
     columns = ['my_int', 'my_string']
     controller = build_flow([
         Source(),
-        ToDataFrame(columns=columns),
-        WriteToParquet(out_dir, partition_cols='my_int')
+        WriteToParquet(out_dir, partition_cols='my_int', columns=columns, max_events=1)
     ]).run()
 
     expected = []
     for i in range(10):
-        controller.emit([[i, f'this is {i}']])
+        controller.emit([i, f'this is {i}'])
         expected.append([i, f'this is {i}'])
     expected = pd.DataFrame(expected, columns=columns, dtype='int32')
     controller.terminate()
@@ -750,9 +749,7 @@ def test_write_to_parquet_single_file_on_termination(tmpdir):
     columns = ['my_int', 'my_string']
     controller = build_flow([
         Source(),
-        Batch(max_events=None),
-        ToDataFrame(columns=columns),
-        WriteToParquet(out_file)
+        WriteToParquet(out_file, columns=columns)
     ]).run()
 
     expected = []

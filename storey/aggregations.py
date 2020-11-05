@@ -12,14 +12,14 @@ _default_emit_policy = EmitEveryEvent()
 
 class AggregateByKey(Flow):
     """
-    Aggregates the data into the cache object provided for later persistence, and outputs an event enriched with the requested aggregation
+    Aggregates the data into the table object provided for later persistence, and outputs an event enriched with the requested aggregation
     features.
     Persistence is done via the `Persist` step and based on the Cache object persistence settings.
 
     :param aggregates: List of aggregates to apply for each event.
     :type aggregates: list of FieldAggregator
-    :param cache: A cache object to aggregate the data into.
-    :type cache: Cache
+    :param table: A Table object to aggregate the data into.
+    :type table: Table
     :param key: Key field to aggregate by, accepts either a string representing the key field or a key extracting function.
      Defaults to the key in the event's metadata. (Optional)
     :type key: string or Function (Event=>object)
@@ -29,12 +29,12 @@ class AggregateByKey(Flow):
     :type augmentation_fn: Function ((Event, dict) => Event)
     """
 
-    def __init__(self, aggregates, cache, key=None, emit_policy=_default_emit_policy, augmentation_fn=None, enrich_with=None, aliases=None):
+    def __init__(self, aggregates, table, key=None, emit_policy=_default_emit_policy, augmentation_fn=None, enrich_with=None, aliases=None):
         Flow.__init__(self)
         self._aggregates_store = AggregateStore(aggregates)
 
-        self._cache = cache
-        self._cache._set_aggregation_store(self._aggregates_store)
+        self._table = table
+        self._table._set_aggregation_store(self._aggregates_store)
 
         self._aggregates_metadata = aggregates
 
@@ -65,7 +65,7 @@ class AggregateByKey(Flow):
     async def _do(self, event):
         if event == _termination_obj:
             self._terminate_worker = True
-            await self._cache.close()
+            await self._table.close()
             return await self._do_downstream(_termination_obj)
 
         try:
@@ -84,7 +84,7 @@ class AggregateByKey(Flow):
             if isinstance(event_timestamp, datetime):
                 event_timestamp = event_timestamp.timestamp() * 1000
 
-            await self._cache.lazy_load_key_with_aggregates(key, event_timestamp)
+            await self._table.lazy_load_key_with_aggregates(key, event_timestamp)
             await self._aggregates_store.aggregate(key, element, event_timestamp)
 
             if isinstance(self._emit_policy, EmitEveryEvent):
@@ -95,7 +95,7 @@ class AggregateByKey(Flow):
                     await self._emit_event(key, event)
                     self._events_in_batch[key] = 0
         except Exception as ex:
-            await self._cache.close()
+            await self._table.close()
             raise ex
 
     # Emit a single event for the requested key
@@ -104,14 +104,14 @@ class AggregateByKey(Flow):
         if isinstance(event_timestamp, datetime):
             event_timestamp = event_timestamp.timestamp() * 1000
 
-        await self._cache.lazy_load_key_with_aggregates(key, event_timestamp)
+        await self._table.lazy_load_key_with_aggregates(key, event_timestamp)
         features = await self._aggregates_store.get_features(key, event_timestamp)
         features = self._augmentation_fn(event.body, features)
 
         for col in self._enrich_with:
             emitted_attr_name = self._aliases.get(col, None) or col
-            if col in self._cache[key]:
-                features[emitted_attr_name] = self._cache[key][col]
+            if col in self._table[key]:
+                features[emitted_attr_name] = self._table[key][col]
         new_event = copy.copy(event)
         new_event.key = key
         new_event.body = features
@@ -149,8 +149,8 @@ class QueryAggregationByKey(AggregateByKey):
 
     :param aggregates: List of aggregates to apply for each event.
     :type aggregates: list of FieldAggregator
-    :param cache: A cache object to aggregate the data into.
-    :type cache: Cache
+    :param table: A Table object to aggregate the data into.
+    :type table: Table
     :param key: Key field to aggregate by, accepts either a string representing the key field or a key extracting function.
      Defaults to the key in the event's metadata. (Optional)
     :type key: string or Function (Event=>object)
@@ -160,14 +160,14 @@ class QueryAggregationByKey(AggregateByKey):
     :type augmentation_fn: Function ((Event, dict) => Event)
     """
 
-    def __init__(self, aggregates, cache, key=None, emit_policy=_default_emit_policy, augmentation_fn=None, enrich_with=None, aliases=None):
-        AggregateByKey.__init__(self, aggregates, cache, key, emit_policy, augmentation_fn, enrich_with, aliases)
+    def __init__(self, aggregates, table, key=None, emit_policy=_default_emit_policy, augmentation_fn=None, enrich_with=None, aliases=None):
+        AggregateByKey.__init__(self, aggregates, table, key, emit_policy, augmentation_fn, enrich_with, aliases)
         self._aggregates_store._read_only = True
 
     async def _do(self, event):
         if event == _termination_obj:
             self._terminate_worker = True
-            await self._cache.close()
+            await self._table.close()
             return await self._do_downstream(_termination_obj)
 
         try:
@@ -190,29 +190,29 @@ class QueryAggregationByKey(AggregateByKey):
                     await self._emit_event(key, event)
                     self._events_in_batch[key] = 0
         except Exception as ex:
-            await self._cache.close()
+            await self._table.close()
             raise ex
 
 
 class Persist(Flow):
     """
-    Persists the data in `cache` to its associated storage by key.
+    Persists the data in `table` to its associated storage by key.
 
-    :param cache: A cache object.
-    :type cache: Cache
+    :param table: A table object.
+    :type table: Table
     """
 
-    def __init__(self, cache):
+    def __init__(self, table):
         super().__init__()
-        self._cache = cache
+        self._table = table
 
     async def _do(self, event):
         if event is _termination_obj:
-            await self._cache.close()
+            await self._table.close()
             return await self._do_downstream(_termination_obj)
         else:
             # todo: persist keys in parallel
-            await self._cache._persist_key(event.key)
+            await self._table._persist_key(event.key)
             await self._do_downstream(event)
 
 

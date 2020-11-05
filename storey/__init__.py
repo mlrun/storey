@@ -8,7 +8,7 @@ from .drivers import (  # noqa: F401
 )
 from .flow import (  # noqa: F401
     Filter, FlatMap, Flow, FlowError, JoinWithV3IOTable, JoinWithHttp, Map, Reduce, Batch,
-    MapWithState, MapClass, Complete, Choice, HttpRequest, HttpResponse, Cache, build_flow
+    MapWithState, MapClass, Complete, Choice, HttpRequest, HttpResponse, Table, build_flow
 )
 from .dtypes import (  # noqa: F401
     Event
@@ -20,5 +20,5 @@ from .writers import (  # noqa: F401
     WriteToV3IOStream, WriteCSV
 )
 from .dataframe import (  # noqa: F401
-    ToDataFrame, ReduceToDataFrame, WriteToParquet
+    ToDataFrame, ReduceToDataFrame, WriteToParquet, WriteToTSDB
 )

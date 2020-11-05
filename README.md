@@ -47,12 +47,12 @@ A Storey flow consist of steps linked together by the `build_flow` function, eac
 The following example reads user data, creates features using Storey's aggregates, persists the data to V3IO and emits events containing the features to a V3IO Stream for further processing.
 
 ```python
-from storey import build_flow, Source, Cache, V3ioDriver, AggregateByKey, FieldAggregator, Persist
+from storey import build_flow, Source, Table, V3ioDriver, AggregateByKey, FieldAggregator, Persist
 from storey.dtypes import SlidingWindows
 
 v3io_web_api = 'https://webapi.change-me.com'
 v3io_acceess_key = '1284ne83-i262-46m6-9a23-810n41f169ea'
-cache = Cache('/bigdata/my_features', V3ioDriver(v3io_web_api, v3io_acceess_key))
+table_object = Table('/bigdata/my_features', V3ioDriver(v3io_web_api, v3io_acceess_key))
 
 def enrich(event, state):
     if 'first_activity' not in state:
@@ -64,7 +64,7 @@ def enrich(event, state):
 
 controller = build_flow([
     Source(),
-    MapWithState(cache, enrich, group_by_key=True, full_event=True),
+    MapWithState(table_object, enrich, group_by_key=True, full_event=True),
     AggregateByKey([FieldAggregator("number_of_clicks", "click", ["count"],
                                     SlidingWindows(['1h','2h', '24h'], '10m')),
                     FieldAggregator("purchases", "purchase_amount", ["avg", "min", "max"],
@@ -72,8 +72,8 @@ controller = build_flow([
                     FieldAggregator("failed_activities", "activity", ["count"],
                                     SlidingWindows(['1h'], '10m'),
                                     aggr_filter=lambda element: element['activity_status'] == 'fail'))],
-                   cache),
-    Persist(cache),
+                   table_object),
+    Persist(table_object),
     WriteToV3IOStream(V3ioDriver(v3io_web_api, v3io_acceess_key), 'features_stream')
 ]).run()
 ```
@@ -90,6 +90,6 @@ controller = build_flow([
                            FieldAggregator("failed_activities", "activity", ["count"],
                                            SlidingWindows(['1h'], '10m'),
                                            aggr_filter=lambda element: element['activity_status'] == 'fail'))],
-                           cache)
+                           table_object)
 ]).run()
 ```
