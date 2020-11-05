@@ -1,6 +1,6 @@
 # Storey
 
-[![CI](https://github.com/v3io/storey/workflows/CI/badge.svg)](https://github.com/v3io/storey/actions?query=workflow%3ACI)
+[![CI](https://github.com/mlrun/storey/workflows/CI/badge.svg)](https://github.com/mlrun/storey/actions?query=workflow%3ACI)
 
 Storey is an asynchronous streaming library, for real time event processing and feature extraction.
 
