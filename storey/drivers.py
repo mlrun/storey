@@ -21,7 +21,7 @@ class NoopDriver:
         pass
 
     async def _load_aggregates_by_key(self, container, table_path, key):
-        pass
+        return None, None
 
     async def _load_by_key(self, container, table_path, key):
         pass
@@ -345,9 +345,9 @@ class V3ioDriver(NeedsV3ioAccess):
 
         response = await self._v3io_client.kv.get(container, table_path, key, raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
         if response.status_code == 404:
-            return None
+            return None, None
         elif response.status_code == 200:
-            res = {}
+            aggregations, additional_data = {}, {}
             for name, value in response.output.item.items():
                 if name.startswith(self._aggregation_attribute_prefix):
                     feature_and_aggr_name = name[len(self._aggregation_attribute_prefix):-2]
@@ -355,11 +355,13 @@ class V3ioDriver(NeedsV3ioAccess):
                     associated_time_attr = f'{self._aggregation_time_attribute_prefix}{feature_name}_{name[-1]}'
 
                     time_in_millis = int(response.output.item[associated_time_attr].timestamp() * 1000)
-                    if feature_and_aggr_name not in res:
-                        res[feature_and_aggr_name] = {}
-                    res[feature_and_aggr_name][time_in_millis] = value
-                    res[feature_and_aggr_name][associated_time_attr] = time_in_millis
-            return res
+                    if feature_and_aggr_name not in aggregations:
+                        aggregations[feature_and_aggr_name] = {}
+                    aggregations[feature_and_aggr_name][time_in_millis] = value
+                    aggregations[feature_and_aggr_name][associated_time_attr] = time_in_millis
+                elif not name.startswith(self._aggregation_time_attribute_prefix):
+                    additional_data[name] = value
+            return aggregations, additional_data
         else:
             raise V3ioError(f'Failed to get item. Response status code was {response.status_code}: {response.body}')
 

@@ -27,9 +27,13 @@ class AggregateByKey(Flow):
     :type emit_policy: {EmitEveryEvent, EmitAfterMaxEvent, EmitAfterPeriod, EmitAfterWindow}
     :param augmentation_fn: Function that augments the features into the event's body. Defaults to updating a dict. (Optional)
     :type augmentation_fn: Function ((Event, dict) => Event)
+    :param enrich_with: List of attributes names from the associated storage object to be fetched and added to every event. (Optional)
+    :type enrich_with: list of string
+    :param aliases: Dictionary specifying aliases to the enriched columns, of the format `{'col_name': 'new_col_name'}`. (Optional)
+    :type aliases: dict
     """
 
-    def __init__(self, aggregates, table, key=None, emit_policy=_default_emit_policy, augmentation_fn=None):
+    def __init__(self, aggregates, table, key=None, emit_policy=_default_emit_policy, augmentation_fn=None, enrich_with=None, aliases=None):
         Flow.__init__(self)
         self._aggregates_store = AggregateStore(aggregates)
         self._closeables = [table]
@@ -39,6 +43,8 @@ class AggregateByKey(Flow):
 
         self._aggregates_metadata = aggregates
 
+        self._enrich_with = enrich_with or []
+        self._aliases = aliases or {}
         self._emit_policy = emit_policy
         self._events_in_batch = {}
         self._emit_worker_running = False
@@ -78,7 +84,12 @@ class AggregateByKey(Flow):
             if self.key_extractor:
                 key = self.key_extractor(element)
 
-            await self._aggregates_store.aggregate(key, element, event.time)
+            event_timestamp = event.time
+            if isinstance(event_timestamp, datetime):
+                event_timestamp = event_timestamp.timestamp() * 1000
+
+            await self._table.lazy_load_key_with_aggregates(key, event_timestamp)
+            await self._aggregates_store.aggregate(key, element, event_timestamp)
 
             if isinstance(self._emit_policy, EmitEveryEvent):
                 await self._emit_event(key, event)
@@ -92,8 +103,18 @@ class AggregateByKey(Flow):
 
     # Emit a single event for the requested key
     async def _emit_event(self, key, event):
-        features = await self._aggregates_store.get_features(key, event.time)
+        event_timestamp = event.time
+        if isinstance(event_timestamp, datetime):
+            event_timestamp = event_timestamp.timestamp() * 1000
+
+        await self._table.lazy_load_key_with_aggregates(key, event_timestamp)
+        features = await self._aggregates_store.get_features(key, event_timestamp)
         features = self._augmentation_fn(event.body, features)
+
+        for col in self._enrich_with:
+            emitted_attr_name = self._aliases.get(col, None) or col
+            if col in self._table[key]:
+                features[emitted_attr_name] = self._table[key][col]
         new_event = copy.copy(event)
         new_event.key = key
         new_event.body = features
@@ -140,10 +161,14 @@ class QueryAggregationByKey(AggregateByKey):
     :type emit_policy: {EmitEveryEvent, EmitAfterMaxEvent, EmitAfterPeriod, EmitAfterWindow}
     :param augmentation_fn: Function that augments the features into the event's body. Defaults to updating a dict. (Optional)
     :type augmentation_fn: Function ((Event, dict) => Event)
+    :param enrich_with: List of attributes names from the associated storage object to be fetched and added to every event. (Optional)
+    :type enrich_with: list of string
+    :param aliases: Dictionary specifying aliases to the enriched columns, of the format `{'col_name': 'new_col_name'}`. (Optional)
+    :type aliases: dict
     """
 
-    def __init__(self, aggregates, table, key=None, emit_policy=_default_emit_policy, augmentation_fn=None):
-        AggregateByKey.__init__(self, aggregates, table, key, emit_policy, augmentation_fn)
+    def __init__(self, aggregates, table, key=None, emit_policy=_default_emit_policy, augmentation_fn=None, enrich_with=None, aliases=None):
+        AggregateByKey.__init__(self, aggregates, table, key, emit_policy, augmentation_fn, enrich_with, aliases)
         self._aggregates_store._read_only = True
 
     async def _do(self, event):
@@ -258,21 +283,13 @@ class AggregateStore:
         if not self._schema:
             await self.get_or_save_schema()
 
-        if isinstance(timestamp, datetime):
-            timestamp = timestamp.timestamp() * 1000
-
-        key_to_aggregate = await self._get_or_load_key(key, timestamp)
-        key_to_aggregate.aggregate(data, timestamp)
+        self._cache[key].aggregate(data, timestamp)
 
     async def get_features(self, key, timestamp):
         if not self._schema:
             await self.get_or_save_schema()
 
-        if isinstance(timestamp, datetime):
-            timestamp = timestamp.timestamp() * 1000
-
-        relevant_key = await self._get_or_load_key(key, timestamp)
-        return relevant_key.get_features(timestamp)
+        return self._cache[key].get_features(timestamp)
 
     async def _get_or_load_key(self, key, timestamp=None):
         if self._read_only or key not in self._cache:
@@ -282,8 +299,14 @@ class AggregateStore:
 
         return self._cache[key]
 
+    def __contains__(self, key):
+        return key in self._cache
+
     def get_keys(self):
         return self._cache.keys()
+
+    def add_key(self, key, base_timestamp, initial_data):
+        self._cache[key] = AggregatedStoreElement(key, self._aggregates, base_timestamp, initial_data)
 
     async def get_or_save_schema(self):
         self._schema = await self._storage._load_schema(self._container, self._table_path)
