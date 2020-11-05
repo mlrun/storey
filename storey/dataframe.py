@@ -86,7 +86,28 @@ class ToDataFrame(Flow):
 
 
 class WriteToParquet(_Batching):
-    def __init__(self, path, index=None, columns=None, partition_cols=None, max_events: Optional[int] = None, timeout_secs=None, **kwargs):
+    """Writes incoming events to parquet files.
+
+    :param path: Output path. Can be either a file or directory. This parameter is forwarded as-is to pandas.DataFrame.to_parquet().
+    :type path: string
+    :param index: Index columns for writing the data. This parameter is forwarded as-is to pandas.DataFrame.set_index().
+    If None (default), no index is set.
+    :type index: list of string
+    :param columns: Regular columns for writing the data. This parameter is forwarded as-is to pandas.DataFrame().
+    :type columns: list of string
+    :param partition_cols: Columns by which to partition the data into separate parquet files. If None (default), data will be written
+    to a single file at path. This parameter is forwarded as-is to pandas.DataFrame.to_parquet().
+    :type partition_cols: list of string
+    :param max_events: Maximum number of events to write at a time. If None (default), all events will be written on flow termination,
+    or after timeout_secs (if timeout_secs is set).
+    :type max_events: int
+    :param timeout_secs: Maximum number of seconds to hold events before they are written. If None (default), all events will be written
+    on flow termination, or after max_events are accumulated (if max_events is set).
+    :type timeout_secs: int
+    """
+
+    def __init__(self, path, index: Optional[list] = None, columns: Optional[list] = None, partition_cols: Optional[list] = None,
+                 max_events: Optional[int] = None, timeout_secs: Optional[int] = None, **kwargs):
         super().__init__(max_events, timeout_secs, **kwargs)
 
         self._path = path
