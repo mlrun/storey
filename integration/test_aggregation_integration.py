@@ -20,14 +20,14 @@ def append_return(lst, x):
 
 @pytest.mark.parametrize('partitioned_by_key', [True, False])
 def test_query_aggregate_by_key(setup_teardown_test, partitioned_by_key):
-    cache = Table(setup_teardown_test, V3ioDriver(), partitioned_by_key=partitioned_by_key)
+    table = Table(setup_teardown_test, V3ioDriver(), partitioned_by_key=partitioned_by_key)
 
     controller = build_flow([
         Source(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg", "min", "max", "sqr"],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
-                       cache),
-        Persist(cache),
+                       table),
+        Persist(table),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -84,12 +84,12 @@ def test_query_aggregate_by_key(setup_teardown_test, partitioned_by_key):
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
-    other_cache = Table(setup_teardown_test, V3ioDriver())
+    other_table = Table(setup_teardown_test, V3ioDriver())
     controller = build_flow([
         Source(),
         QueryAggregationByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg", "min", "max"],
                                                SlidingWindows(['1h', '2h', '24h'], '10m'))],
-                              other_cache),
+                              other_table),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -127,15 +127,15 @@ def test_aggregate_by_key_one_underlying_window(setup_teardown_test, partitioned
 
     for current_expected in expected.values():
 
-        cache = Table(setup_teardown_test, V3ioDriver(), partitioned_by_key=partitioned_by_key)
+        table = Table(setup_teardown_test, V3ioDriver(), partitioned_by_key=partitioned_by_key)
         controller = build_flow([
             Source(),
             AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["count"],
                                             SlidingWindows(['1h'], '10m')),
                             FieldAggregator("other_stuff", "col1", ["sum"],
                                             SlidingWindows(['1h'], '10m'))],
-                           cache),
-            Persist(cache),
+                           table),
+            Persist(table),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]).run()
 
@@ -167,15 +167,15 @@ def test_aggregate_by_key_two_underlying_windows(setup_teardown_test, partitione
     current_index = 0
     for current_expected in expected.values():
 
-        cache = Table(setup_teardown_test, V3ioDriver(), partitioned_by_key=partitioned_by_key)
+        table = Table(setup_teardown_test, V3ioDriver(), partitioned_by_key=partitioned_by_key)
         controller = build_flow([
             Source(),
             AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["count"],
                                             SlidingWindows(['24h'], '10m')),
                             FieldAggregator("other_stuff", "col1", ["sum"],
                                             SlidingWindows(['24h'], '10m'))],
-                           cache),
-            Persist(cache),
+                           table),
+            Persist(table),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]).run()
 
@@ -192,9 +192,9 @@ def test_aggregate_by_key_two_underlying_windows(setup_teardown_test, partitione
 
 
 def test_write_cache_with_aggregations(setup_teardown_test):
-    cache = Table(setup_teardown_test, V3ioDriver())
+    table = Table(setup_teardown_test, V3ioDriver())
 
-    cache._cache['tal'] = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': datetime.now()}
+    table._cache['tal'] = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': datetime.now()}
 
     def enrich(event, state):
         if 'first_activity' not in state:
@@ -208,11 +208,11 @@ def test_write_cache_with_aggregations(setup_teardown_test):
 
     controller = build_flow([
         Source(),
-        MapWithState(cache, enrich, group_by_key=True, full_event=True),
+        MapWithState(table, enrich, group_by_key=True, full_event=True),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg"],
                                         SlidingWindows(['2h'], '10m'))],
-                       cache),
-        Persist(cache),
+                       table),
+        Persist(table),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -248,14 +248,14 @@ def test_write_cache_with_aggregations(setup_teardown_test):
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
-    other_cache = Table(setup_teardown_test, V3ioDriver())
+    other_table = Table(setup_teardown_test, V3ioDriver())
 
     controller = build_flow([
         Source(),
-        MapWithState(other_cache, enrich, group_by_key=True, full_event=True),
+        MapWithState(other_table, enrich, group_by_key=True, full_event=True),
         QueryAggregationByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg"],
                                                SlidingWindows(['2h'], '10m'))],
-                              other_cache),
+                              other_table),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -274,9 +274,9 @@ def test_write_cache_with_aggregations(setup_teardown_test):
 
 
 def test_write_cache(setup_teardown_test):
-    cache = Table(setup_teardown_test, V3ioDriver())
+    table = Table(setup_teardown_test, V3ioDriver())
 
-    cache._cache['tal'] = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': datetime.now()}
+    table._cache['tal'] = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': datetime.now()}
 
     def enrich(event, state):
         if 'first_activity' not in state:
@@ -290,8 +290,8 @@ def test_write_cache(setup_teardown_test):
 
     controller = build_flow([
         Source(),
-        MapWithState(cache, enrich, group_by_key=True, full_event=True),
-        Persist(cache),
+        MapWithState(table, enrich, group_by_key=True, full_event=True),
+        Persist(table),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -317,11 +317,11 @@ def test_write_cache(setup_teardown_test):
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
-    other_cache = Table(setup_teardown_test, V3ioDriver())
+    other_table = Table(setup_teardown_test, V3ioDriver())
 
     controller = build_flow([
         Source(),
-        MapWithState(other_cache, enrich, group_by_key=True, full_event=True),
+        MapWithState(other_table, enrich, group_by_key=True, full_event=True),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -331,7 +331,7 @@ def test_write_cache(setup_teardown_test):
 
     controller.terminate()
     actual = controller.await_termination()
-    other_cache.close()
+    other_table.close()
     expected_results = [
         {'col1': 10, 'time_since_activity': 15000, 'total_activities': 11, 'color': 'blue'}]
 
@@ -356,14 +356,14 @@ async def load_schema(path):
 
 
 def test_modify_schema(setup_teardown_test):
-    cache = Table(setup_teardown_test, V3ioDriver())
+    table = Table(setup_teardown_test, V3ioDriver())
 
     controller = build_flow([
         Source(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg", "min", "max"],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
-                       cache),
-        Persist(cache),
+                       table),
+        Persist(table),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -419,14 +419,14 @@ def test_modify_schema(setup_teardown_test):
     expected_schema = {"number_of_stuff": {"period_millis": 600000, "aggregates": ['max', 'min', 'sum', 'count']}}
     _assert_schema_equal(schema, expected_schema)
 
-    other_cache = Table(setup_teardown_test, V3ioDriver())
+    other_table = Table(setup_teardown_test, V3ioDriver())
     controller = build_flow([
         Source(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg", "min", "max"],
                                         SlidingWindows(['1h', '2h', '24h'], '10m')),
                         FieldAggregator("new_aggr", "col1", ["min", "max"],
                                         SlidingWindows(['3h'], '10m'))],
-                       other_cache),
+                       other_table),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -453,14 +453,14 @@ def test_modify_schema(setup_teardown_test):
 
 
 def test_invalid_modify_schema(setup_teardown_test):
-    cache = Table(setup_teardown_test, V3ioDriver())
+    table = Table(setup_teardown_test, V3ioDriver())
 
     controller = build_flow([
         Source(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg", "min", "max"],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
-                       cache),
-        Persist(cache),
+                       table),
+        Persist(table),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -516,14 +516,14 @@ def test_invalid_modify_schema(setup_teardown_test):
     expected_schema = {"number_of_stuff": {"period_millis": 600000, "aggregates": ['max', 'min', 'sum', 'count']}}
     _assert_schema_equal(schema, expected_schema)
 
-    other_cache = Table(setup_teardown_test, V3ioDriver())
+    other_table = Table(setup_teardown_test, V3ioDriver())
 
     try:
         controller = build_flow([
             Source(),
             AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg", "min", "max"],
                                             SlidingWindows(['1h', '24h'], '3m'))],
-                           other_cache),
+                           other_table),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]).run()
 
