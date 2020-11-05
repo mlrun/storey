@@ -198,7 +198,7 @@ class FunctionWithStateFlow(Flow):
     async def _call(self, event):
         element = self._get_safe_event_or_body(event)
         if self._group_by_key:
-            if isinstance(self._state, Cache):
+            if isinstance(self._state, Table):
                 key_data = await self._state.get_or_load_key(event.key)
             else:
                 key_data = self._state[event.key]
@@ -526,7 +526,61 @@ class JoinWithHttp(_ConcurrentJobExecution):
             await self._do_downstream(new_event)
 
 
-class Batch(Flow):
+class _Batching(Flow):
+    def __init__(self, max_events: Optional[int] = None, timeout_secs=None, **kwargs):
+        super().__init__(**kwargs)
+        self._max_events = max_events
+        self._event_count = 0
+        self._batch = []
+        self._batch_time = None
+        self._timeout_task = None
+
+        self._timeout_secs = timeout_secs
+        if self._timeout_secs is not None and self._timeout_secs <= 0:
+            raise ValueError('Batch timeout cannot be 0 or negative')
+
+    async def _emit(self, batch, batch_time):
+        raise NotImplementedError
+
+    async def _terminate(self):
+        raise NotImplementedError
+
+    async def _sleep_and_emit(self):
+        await asyncio.sleep(self._timeout_secs)
+        await self._emit_batch()
+
+    async def _do(self, event):
+        if event is _termination_obj:
+            if self._timeout_task and not self._timeout_task.cancelled():
+                self._timeout_task.cancel()
+            await self._emit_batch()
+            return await self._terminate()
+        else:
+            if len(self._batch) == 0:
+                self._batch_time = event.time
+                if self._timeout_secs:
+                    self._timeout_task = asyncio.get_running_loop().create_task(self._sleep_and_emit())
+
+            self._event_count = self._event_count + 1
+            self._batch.append(self._get_safe_event_or_body(event))
+
+            if self._event_count == self._max_events:
+                if self._timeout_task and not self._timeout_task.cancelled():
+                    self._timeout_task.cancel()
+                await self._emit_batch()
+
+    async def _emit_batch(self):
+        if len(self._batch) > 0:
+            batch_to_emit = self._batch
+            batch_time = self._batch_time
+            self._batch = []
+            self._batch_time = None
+            self._event_count = 0
+
+            await self._emit(batch_to_emit, batch_time)
+
+
+class Batch(_Batching):
     """
     Batches events into lists of up to max_events events. Each emitted list contained max_events events, unless timeout_secs seconds
     have passed since the first event in the batch was received, at which the batch is emitted with potentially fewer than max_events
@@ -538,45 +592,14 @@ class Batch(Flow):
     """
 
     def __init__(self, max_events: Optional[int], timeout_secs=None, **kwargs):
-        Flow.__init__(self, **kwargs)
-        self._max_events = max_events
-        self._event_count = 0
-        self._batch = []
-        self._timeout_task = None
+        super().__init__(max_events, timeout_secs, **kwargs)
 
-        self._timeout_secs = timeout_secs
-        if self._timeout_secs is not None and self._timeout_secs <= 0:
-            raise ValueError('Batch timeout cannot be 0 or negative')
+    async def _emit(self, batch, batch_time):
+        event = Event(batch, time=batch_time)
+        return await self._do_downstream(event)
 
-    async def sleep_and_emit(self):
-        await asyncio.sleep(self._timeout_secs)
-        await self.emit_batch()
-
-    async def _do(self, event):
-        if event is _termination_obj:
-            if self._timeout_task and not self._timeout_task.cancelled():
-                self._timeout_task.cancel()
-            await self.emit_batch()
-            return await self._do_downstream(_termination_obj)
-        else:
-            if len(self._batch) == 0 and self._timeout_secs:
-                self._timeout_task = asyncio.get_running_loop().create_task(self.sleep_and_emit())
-
-            self._event_count = self._event_count + 1
-            self._batch.append(event)
-
-            if self._event_count == self._max_events:
-                if self._timeout_task and not self._timeout_task.cancelled():
-                    self._timeout_task.cancel()
-                await self.emit_batch()
-
-    async def emit_batch(self):
-        if len(self._batch) > 0:
-            batch_to_emit = self._batch
-            self._batch = []
-            self._event_count = 0
-
-            await self._do_downstream(Event([self._get_safe_event_or_body(event) for event in batch_to_emit], time=batch_to_emit[0].time))
+    async def _terminate(self):
+        return await self._do_downstream(_termination_obj)
 
 
 class JoinWithV3IOTable(_ConcurrentJobExecution):
@@ -672,9 +695,9 @@ def _split_path(path):
         return parts[0], f'/{parts[1]}'
 
 
-class Cache:
+class Table:
     """
-        Cache object.
+        Table object, represents a single table in a specific storage.
 
         :param table_path: Path to the table in the storage.
         :type table_path: string

@@ -231,14 +231,11 @@ class V3ioDriver(NeedsV3ioAccess):
                     index_to_update = int((bucket_start_time - expected_time) / bucket.window.period_millis)
 
                     get_array_time_expr = f'if_not_exists({array_time_attribute_name},0:0)'
-                    # TODO: Once IG-16915 fixed remove occurrences of `tmp_arr` and `workaround_expression`
                     if not initialized_attributes.get(array_attribute_name, 0) == expected_time:
                         initialized_attributes[array_attribute_name] = expected_time
-                        workaround_expression = \
-                            f'{array_attribute_name}=tmp_arr_{array_attribute_name};delete(tmp_arr_{array_attribute_name})'
-                        init_expression = f'tmp_arr_{array_attribute_name}=if_else(({get_array_time_expr}<{expected_time_expr}),' \
+                        init_expression = f'{array_attribute_name}=if_else(({get_array_time_expr}<{expected_time_expr}),' \
                             f"init_array({bucket.window.total_number_of_buckets},'double'," \
-                            f'{aggregation_value.get_default_value()}),{array_attribute_name});{workaround_expression}'
+                            f'{aggregation_value.get_default_value()}),{array_attribute_name})'
                         expressions.append(init_expression)
 
                     arr_at_index = f'{array_attribute_name}[{index_to_update}]'

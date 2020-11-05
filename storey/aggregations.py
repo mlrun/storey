@@ -12,14 +12,14 @@ _default_emit_policy = EmitEveryEvent()
 
 class AggregateByKey(Flow):
     """
-    Aggregates the data into the cache object provided for later persistence, and outputs an event enriched with the requested aggregation
+    Aggregates the data into the table object provided for later persistence, and outputs an event enriched with the requested aggregation
     features.
     Persistence is done via the `Persist` step and based on the Cache object persistence settings.
 
     :param aggregates: List of aggregates to apply for each event.
     :type aggregates: list of FieldAggregator
-    :param cache: A cache object to aggregate the data into.
-    :type cache: Cache
+    :param table: A Table object to aggregate the data into.
+    :type table: Table
     :param key: Key field to aggregate by, accepts either a string representing the key field or a key extracting function.
      Defaults to the key in the event's metadata. (Optional)
     :type key: string or Function (Event=>object)
@@ -29,12 +29,12 @@ class AggregateByKey(Flow):
     :type augmentation_fn: Function ((Event, dict) => Event)
     """
 
-    def __init__(self, aggregates, cache, key=None, emit_policy=_default_emit_policy, augmentation_fn=None):
+    def __init__(self, aggregates, table, key=None, emit_policy=_default_emit_policy, augmentation_fn=None):
         Flow.__init__(self)
         self._aggregates_store = AggregateStore(aggregates)
 
-        self._cache = cache
-        self._cache._set_aggregation_store(self._aggregates_store)
+        self._table = table
+        self._table._set_aggregation_store(self._aggregates_store)
 
         self._aggregates_metadata = aggregates
 
@@ -125,7 +125,7 @@ class AggregateByKey(Flow):
 
     def run(self):
         closeables = super().run()
-        closeables.append(self._cache)
+        closeables.append(self._table)
         return closeables
 
 
@@ -135,8 +135,8 @@ class QueryAggregationByKey(AggregateByKey):
 
     :param aggregates: List of aggregates to apply for each event.
     :type aggregates: list of FieldAggregator
-    :param cache: A cache object to aggregate the data into.
-    :type cache: Cache
+    :param table: A Table object to aggregate the data into.
+    :type table: Table
     :param key: Key field to aggregate by, accepts either a string representing the key field or a key extracting function.
      Defaults to the key in the event's metadata. (Optional)
     :type key: string or Function (Event=>object)
@@ -146,8 +146,8 @@ class QueryAggregationByKey(AggregateByKey):
     :type augmentation_fn: Function ((Event, dict) => Event)
     """
 
-    def __init__(self, aggregates, cache, key=None, emit_policy=_default_emit_policy, augmentation_fn=None):
-        AggregateByKey.__init__(self, aggregates, cache, key, emit_policy, augmentation_fn)
+    def __init__(self, aggregates, table, key=None, emit_policy=_default_emit_policy, augmentation_fn=None):
+        AggregateByKey.__init__(self, aggregates, table, key, emit_policy, augmentation_fn)
         self._aggregates_store._read_only = True
 
     async def _do(self, event):
@@ -180,25 +180,25 @@ class QueryAggregationByKey(AggregateByKey):
 
 class Persist(_ConcurrentByKeyJobExecution):
     """
-    Persists the data in `cache` to its associated storage by key.
+    Persists the data in `table` to its associated storage by key.
 
-    :param cache: A cache object.
-    :type cache: Cache
+    :param table: A table object.
+    :type table: Table
     """
 
-    def __init__(self, cache):
+    def __init__(self, table):
         super().__init__()
-        self._cache = cache
+        self._table = table
 
     async def _process_event(self, event):
-        return await self._cache.persist_key(event.key)
+        return await self._table.persist_key(event.key)
 
     async def _handle_completed(self, event, response):
         await self._do_downstream(event)
 
     def run(self):
         closeables = super().run()
-        closeables.append(self._cache)
+        closeables.append(self._table)
         return closeables
 
 
