@@ -5,7 +5,7 @@ from datetime import datetime
 from .aggregation_utils import is_raw_aggregate, get_virtual_aggregation_func, get_implied_aggregates, get_all_raw_aggregates, \
     get_all_raw_aggregates_with_hidden
 from .dtypes import EmitEveryEvent, FixedWindows, EmitAfterPeriod, EmitAfterWindow, EmitAfterMaxEvent
-from .flow import Flow, _termination_obj, Event
+from .flow import Flow, _termination_obj, Event, _ConcurrentByKeyJobExecution
 
 _default_emit_policy = EmitEveryEvent()
 
@@ -32,6 +32,7 @@ class AggregateByKey(Flow):
     def __init__(self, aggregates, table, key=None, emit_policy=_default_emit_policy, augmentation_fn=None):
         Flow.__init__(self)
         self._aggregates_store = AggregateStore(aggregates)
+        self._closeables = [table]
 
         self._table = table
         self._table._set_aggregation_store(self._aggregates_store)
@@ -63,7 +64,6 @@ class AggregateByKey(Flow):
     async def _do(self, event):
         if event == _termination_obj:
             self._terminate_worker = True
-            await self._table.close()
             return await self._do_downstream(_termination_obj)
 
         try:
@@ -88,7 +88,6 @@ class AggregateByKey(Flow):
                     await self._emit_event(key, event)
                     self._events_in_batch[key] = 0
         except Exception as ex:
-            await self._table.close()
             raise ex
 
     # Emit a single event for the requested key
@@ -150,7 +149,6 @@ class QueryAggregationByKey(AggregateByKey):
     async def _do(self, event):
         if event == _termination_obj:
             self._terminate_worker = True
-            await self._table.close()
             return await self._do_downstream(_termination_obj)
 
         try:
@@ -173,11 +171,10 @@ class QueryAggregationByKey(AggregateByKey):
                     await self._emit_event(key, event)
                     self._events_in_batch[key] = 0
         except Exception as ex:
-            await self._table.close()
             raise ex
 
 
-class Persist(Flow):
+class Persist(_ConcurrentByKeyJobExecution):
     """
     Persists the data in `table` to its associated storage by key.
 
@@ -188,15 +185,13 @@ class Persist(Flow):
     def __init__(self, table):
         super().__init__()
         self._table = table
+        self._closeables = [table]
 
-    async def _do(self, event):
-        if event is _termination_obj:
-            await self._table.close()
-            return await self._do_downstream(_termination_obj)
-        else:
-            # todo: persist keys in parallel
-            await self._table._persist_key(event.key)
-            await self._do_downstream(event)
+    async def _process_event(self, event):
+        return await self._table.persist_key(event.key)
+
+    async def _handle_completed(self, event, response):
+        await self._do_downstream(event)
 
 
 class AggregatedStoreElement:
