@@ -406,8 +406,8 @@ class _ConcurrentByKeyJobExecution(Flow):
             while True:
                 job = await self._q.get()
                 if job is _termination_obj:
-                    for key, pending_event in self._pending_by_key.items():
-                        if self._pending_by_key[key].pending and not self._pending_by_key[key].in_flight:
+                    for pending_event in self._pending_by_key.values():
+                        if pending_event.pending and not pending_event.in_flight:
                             resp = await self._process_event(pending_event.pending[0])
                             for event in pending_event.pending:
                                 await self._handle_completed(event, resp)
@@ -461,10 +461,8 @@ class _ConcurrentByKeyJobExecution(Flow):
                 self._pending_by_key[event.key] = _PendingEvent()
 
             # If there is a current update in flight for the key, add the event to the pending list. Otherwise update the key.
-            if len(self._pending_by_key[event.key].in_flight) > 0:
-                self._pending_by_key[event.key].pending.append(event)
-            else:
-                self._pending_by_key[event.key].pending.append(event)
+            self._pending_by_key[event.key].pending.append(event)
+            if len(self._pending_by_key[event.key].in_flight) == 0:
                 self._pending_by_key[event.key].in_flight = self._pending_by_key[event.key].pending
                 self._pending_by_key[event.key].pending = []
 

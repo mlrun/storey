@@ -194,12 +194,12 @@ class V3ioDriver(NeedsV3ioAccess):
         update_expression = ';'.join(expressions)
         return update_expression, condition_expression, pending_updates
 
-    def _discard_old_pending_items(self, pendings, max_window_millis):
+    def _discard_old_pending_items(self, pending, max_window_millis):
         res = {}
-        if pendings:
-            last_time = int(list(pendings.keys())[-1] / max_window_millis) * max_window_millis
+        if pending:
+            last_time = int(list(pending.keys())[-1] / max_window_millis) * max_window_millis
             min_time = last_time - max_window_millis
-            for time, value in pendings.items():
+            for time, value in pending.items():
                 if time > min_time:
                     res[time] = value
         return res
