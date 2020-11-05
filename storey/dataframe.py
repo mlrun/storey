@@ -1,9 +1,10 @@
 import copy
+from typing import Optional
 
 import pandas as pd
 import v3io_frames as frames
 
-from .flow import _termination_obj, Flow
+from .flow import _termination_obj, Flow, _Batching
 
 
 class ReduceToDataFrame(Flow):
@@ -84,18 +85,23 @@ class ToDataFrame(Flow):
             return await self._do_downstream(new_event)
 
 
-class WriteToParquet(Flow):
-    def __init__(self, path, partition_cols=None, **kwargs):
-        super().__init__(**kwargs)
+class WriteToParquet(_Batching):
+    def __init__(self, path, index=None, columns=None, partition_cols=None, max_events: Optional[int] = None, timeout_secs=None, **kwargs):
+        super().__init__(max_events, timeout_secs, **kwargs)
+
         self._path = path
+        self._index = index
+        self._columns = columns
         self._partition_cols = partition_cols
 
-    async def _do(self, event):
-        if event is _termination_obj:
-            return await self._do_downstream(_termination_obj)
-        else:
-            df = event.body
-            df.to_parquet(path=self._path, partition_cols=self._partition_cols)
+    async def _emit(self, batch, batch_time):
+        df = pd.DataFrame(batch, columns=self._columns)
+        if self._index:
+            df.set_index(self._index, inplace=True)
+        df.to_parquet(path=self._path, partition_cols=self._partition_cols)
+
+    async def _terminate(self):
+        return await self._do_downstream(_termination_obj)
 
 
 class WriteToTSDB(Flow):
