@@ -673,7 +673,7 @@ class JoinWithTable(_ConcurrentJobExecution):
         super().__init__(**kwargs)
 
         self._table = table
-        # todo: add closeable
+        self._closeables = [table]
 
         self._key_extractor = key_extractor
 
