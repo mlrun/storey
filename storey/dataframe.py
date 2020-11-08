@@ -106,9 +106,8 @@ class WriteToParquet(_Batching):
     :type timeout_secs: int
     """
 
-    def __init__(self, path, index: Optional[list] = None, columns: Optional[list] = None, partition_cols: Optional[list] = None,
-                 max_events: Optional[int] = None, timeout_secs: Optional[int] = None, **kwargs):
-        super().__init__(max_events, timeout_secs, **kwargs)
+    def __init__(self, path, index: Optional[list] = None, columns: Optional[list] = None, partition_cols: Optional[list] = None, **kwargs):
+        super().__init__(**kwargs)
 
         self._path = path
         self._index = index
@@ -120,9 +119,6 @@ class WriteToParquet(_Batching):
         if self._index:
             df.set_index(self._index, inplace=True)
         df.to_parquet(path=self._path, partition_cols=self._partition_cols)
-
-    async def _terminate(self):
-        return await self._do_downstream(_termination_obj)
 
 
 class WriteToTSDB(Flow):
