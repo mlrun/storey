@@ -782,7 +782,7 @@ class Table:
                 # Add additional data to simple cache
                 self.update_key(key, additional_data)
 
-    async def get_or_load_key(self, key, attributes=None):
+    async def get_or_load_key(self, key, attributes='*'):
         if key not in self._cache:
             res = await self._storage._load_by_key(self._container, self._table_path, key, attributes)
             if res:
