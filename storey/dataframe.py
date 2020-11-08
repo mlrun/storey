@@ -147,8 +147,8 @@ class WriteToTSDB(_Batching):
     """
 
     def __init__(self, path, time_col, columns, labels_cols=None, v3io_frames=None, access_key=None, container="",
-                 rate="", aggr="", aggr_granularity="", max_events: Optional[int] = None, timeout_secs: Optional[int] = None, **kwargs):
-        super().__init__(max_events, timeout_secs, **kwargs)
+                 rate="", aggr="", aggr_granularity="", **kwargs):
+        super().__init__(**kwargs)
         self._path = path
         self._time_col = time_col
         self._columns = columns
@@ -174,6 +174,3 @@ class WriteToTSDB(_Batching):
                 'tsdb', table=self._path, if_exists=frames.frames_pb2.IGNORE, rate=self._rate,
                 aggregates=self._aggr, aggregation_granularity=self.aggr_granularity)
         self._frames_client.write("tsdb", self._path, df)
-
-    async def _terminate(self):
-        return await self._do_downstream(_termination_obj)
