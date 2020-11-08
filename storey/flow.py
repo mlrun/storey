@@ -553,6 +553,50 @@ class JoinWithV3IOTable(_ConcurrentJobExecution):
         await self._storage.close()
 
 
+class JoinWithTable(_ConcurrentJobExecution):
+    """Joins each event with data from the given table.
+
+    :param table: Table to join with.
+    :type table: Table
+    :param key_extractor: Function for extracting the key for table access from an event.
+    :type key_extractor: Function (Event=>string)
+    :param attributes: A comma-separated list of attributes to be requested from V3IO. Defaults to '*' (all user attributes).
+    :type attributes: list of string
+    :param join_function: Joins the original event with relevant data received from V3IO.
+    :type join_function: Function ((Event, dict)=>Event)
+    :param name: Name of this step, as it should appear in logs. Defaults to class name (JoinWithV3IOTable).
+    :type name: string
+    :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
+    Defaults to False.
+    :type full_event: boolean
+    """
+
+    def __init__(self, table, key_extractor, attributes='*', join_function=None, **kwargs):
+        super().__init__(**kwargs)
+
+        self._table = table
+        # todo: add closeable
+
+        self._key_extractor = key_extractor
+
+        def _default_join_fn(event, join_res):
+            event.update(join_res)
+            return event
+        self._join_function = join_function or _default_join_fn
+
+        self._attributes = attributes
+
+    async def _process_event(self, event):
+        key = str(self._key_extractor(self._get_safe_event_or_body(event)))
+        return await self._table.get_or_load_key(key, self._attributes)
+
+    async def _handle_completed(self, event, response):
+        joined = self._join_function(self._get_safe_event_or_body(event), response)
+        if joined is not None:
+            new_event = self._user_fn_output_to_event(event, joined)
+            await self._do_downstream(new_event)
+
+
 def build_flow(steps):
     """Builds a flow from a list of steps, by chaining the steps according to their order in the list.
     Nested lists are used to represent branches in the flow.
@@ -618,9 +662,9 @@ class Table:
     def __getitem__(self, key):
         return self._cache[key]
 
-    async def get_or_load_key(self, key):
+    async def get_or_load_key(self, key, attributes=None):
         if key not in self._cache:
-            res = await self._storage._load_by_key(self._container, self._table_path, key)
+            res = await self._storage._load_by_key(self._container, self._table_path, key, attributes)
             if res:
                 self._cache[key] = res
             else:

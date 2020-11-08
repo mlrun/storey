@@ -7,11 +7,11 @@ import v3io_frames as frames
 
 import aiohttp
 
-from _datetime import datetime, timedelta
+from _datetime import datetime
 
 from storey import Filter, JoinWithV3IOTable, JoinWithHttp, Map, Reduce, Source, HttpRequest, build_flow, \
-    WriteToV3IOStream, V3ioDriver, WriteToTSDB, Batch
-from .integration_test_utils import V3ioHeaders
+    WriteToV3IOStream, V3ioDriver, WriteToTSDB, Batch, Table, JoinWithTable
+from .integration_test_utils import V3ioHeaders, append_return, setup_kv_teardown_test
 
 
 class SetupKvTable(V3ioHeaders):
@@ -168,3 +168,39 @@ def test_write_to_tsdb():
     df = pd.DataFrame(expected, columns=columns)
     df.set_index(keys=['time'], inplace=True)
     assert res.equals(df), f"result{res}\n!=\nexpected{df}"
+
+
+def test_join_by_key(setup_kv_teardown_test):
+    table = Table(setup_kv_teardown_test, V3ioDriver())
+
+    controller = build_flow([
+        Source(),
+        Filter(lambda x: x['col1'] > 8),
+        JoinWithTable(table, lambda x: x['col1']),
+        Reduce([], lambda acc, x: append_return(acc, x))
+    ]).run()
+    for i in range(10):
+        controller.emit({'col1': i})
+
+    expected = [{'col1': 9, 'age': 1, 'color': 'blue9'}]
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == expected
+
+
+def test_join_by_key_specific_attributes(setup_kv_teardown_test):
+    table = Table(setup_kv_teardown_test, V3ioDriver())
+
+    controller = build_flow([
+        Source(),
+        Filter(lambda x: x['col1'] > 8),
+        JoinWithTable(table, lambda x: x['col1'], attributes=['age']),
+        Reduce([], lambda acc, x: append_return(acc, x))
+    ]).run()
+    for i in range(10):
+        controller.emit({'col1': i})
+
+    expected = [{'col1': 9, 'age': 1}]
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == expected
