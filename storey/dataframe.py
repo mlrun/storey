@@ -126,6 +126,30 @@ class WriteToParquet(_Batching):
 
 
 class WriteToTSDB(Flow):
+    """Writes incoming events to TSDB table.
+
+    :param path: Path to TSDB  table.
+    :type path: string
+    :param time_col: Name of the time column
+    :type time_col: string
+    :param columns: Column names to create df from
+    :type columns: list of string
+    :param labels_cols: Labels column names
+    :type labels_cols: string or list of string
+    :param v3io_frames: frames server ip
+    :type v3io_frames: string
+    :param access_key: Access key yo to the system
+    :type access_key: string
+    :param container: Container name for the TSDB table
+    :type container: string
+    :param rate: Rate to create the TSDB table with
+    :type rate: string
+    :param aggr: aggregation names to create TSDB table with
+    :type aggr: string
+    :param aggr_granularity: aggregation granularity names to create TSDB table with
+    :type aggr_granularity: string
+    """
+
     def __init__(self, path, time_col, columns, labels_cols=None, v3io_frames=None, access_key=None, container="",
                  rate="", aggr="", aggr_granularity="", **kwargs):
         super().__init__(**kwargs)
