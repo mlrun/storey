@@ -527,6 +527,7 @@ class JoinWithHttp(_ConcurrentJobExecution):
 class _Batching(Flow):
     def __init__(self, max_events: Optional[int] = None, timeout_secs=None, **kwargs):
         super().__init__(**kwargs)
+
         self._max_events = max_events
         self._event_count = 0
         self._batch = []
@@ -540,9 +541,6 @@ class _Batching(Flow):
     async def _emit(self, batch, batch_time):
         raise NotImplementedError
 
-    async def _terminate(self):
-        raise NotImplementedError
-
     async def _sleep_and_emit(self):
         await asyncio.sleep(self._timeout_secs)
         await self._emit_batch()
@@ -552,7 +550,7 @@ class _Batching(Flow):
             if self._timeout_task and not self._timeout_task.cancelled():
                 self._timeout_task.cancel()
             await self._emit_batch()
-            return await self._terminate()
+            return await self._do_downstream(_termination_obj)
         else:
             if len(self._batch) == 0:
                 self._batch_time = event.time
@@ -589,15 +587,9 @@ class Batch(_Batching):
     :type timeout_secs: int
     """
 
-    def __init__(self, max_events: Optional[int], timeout_secs=None, **kwargs):
-        super().__init__(max_events, timeout_secs, **kwargs)
-
     async def _emit(self, batch, batch_time):
         event = Event(batch, time=batch_time)
         return await self._do_downstream(event)
-
-    async def _terminate(self):
-        return await self._do_downstream(_termination_obj)
 
 
 class JoinWithV3IOTable(_ConcurrentJobExecution):
