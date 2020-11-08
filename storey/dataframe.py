@@ -128,25 +128,25 @@ class WriteToParquet(_Batching):
 class WriteToTSDB(Flow):
     """Writes incoming events to TSDB table.
 
-    :param path: Path to TSDB  table.
+    :param path: Path to TSDB table.
     :type path: string
-    :param time_col: Name of the time column
+    :param time_col: Name of the time column.
     :type time_col: string
-    :param columns: Column names to create df from
+    :param columns: List of column names to be passed as-is to the DataFrame constructor.
     :type columns: list of string
-    :param labels_cols: Labels column names
+    :param labels_cols: List of column names to be used for metric labels.
     :type labels_cols: string or list of string
-    :param v3io_frames: frames server ip
+    :param v3io_frames: Frames service url.
     :type v3io_frames: string
-    :param access_key: Access key yo to the system
+    :param access_key: Access key to the system.
     :type access_key: string
-    :param container: Container name for the TSDB table
+    :param container: Container name for this TSDB table.
     :type container: string
-    :param rate: Rate to create the TSDB table with
+    :param rate: TSDB table sample rate.
     :type rate: string
-    :param aggr: aggregation names to create TSDB table with
+    :param aggr: Server-side aggregations for this TSDB table (e.g. 'sum,count').
     :type aggr: string
-    :param aggr_granularity: aggregation granularity names to create TSDB table with
+    :param aggr_granularity: Granularity of server-side aggregations for this TSDB table (e.g. '1h').
     :type aggr_granularity: string
     """
 
