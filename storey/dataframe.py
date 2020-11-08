@@ -125,7 +125,7 @@ class WriteToParquet(_Batching):
         return await self._do_downstream(_termination_obj)
 
 
-class WriteToTSDB(Flow):
+class WriteToTSDB(_Batching):
     """Writes incoming events to TSDB table.
 
     :param path: Path to TSDB table.
@@ -151,8 +151,8 @@ class WriteToTSDB(Flow):
     """
 
     def __init__(self, path, time_col, columns, labels_cols=None, v3io_frames=None, access_key=None, container="",
-                 rate="", aggr="", aggr_granularity="", **kwargs):
-        super().__init__(**kwargs)
+                 rate="", aggr="", aggr_granularity="", max_events: Optional[int] = None, timeout_secs: Optional[int] = None, **kwargs):
+        super().__init__(max_events, timeout_secs, **kwargs)
         self._path = path
         self._time_col = time_col
         self._columns = columns
@@ -163,21 +163,21 @@ class WriteToTSDB(Flow):
         self._created = False
         self._frames_client = frames.Client(address=v3io_frames, token=access_key, container=container)
 
-    async def _do(self, event):
-        if event is _termination_obj:
-            return await self._do_downstream(_termination_obj)
-        else:
-            df = pd.DataFrame(event.body, columns=self._columns)
-            indices = [self._time_col]
-            if self._labels_cols:
-                if isinstance(self._labels_cols, list):
-                    indices.extend(self._labels_cols)
-                else:
-                    indices.append(self._labels_cols)
-            df.set_index(keys=indices, inplace=True)
-            if not self._created and self._rate:
-                self._created = True
-                self._frames_client.create(
-                    'tsdb', table=self._path, if_exists=frames.frames_pb2.IGNORE, rate=self._rate,
-                    aggregates=self._aggr, aggregation_granularity=self.aggr_granularity)
-            self._frames_client.write("tsdb", self._path, df)
+    async def _emit(self, batch, batch_time):
+        df = pd.DataFrame(batch, columns=self._columns)
+        indices = [self._time_col]
+        if self._labels_cols:
+            if isinstance(self._labels_cols, list):
+                indices.extend(self._labels_cols)
+            else:
+                indices.append(self._labels_cols)
+        df.set_index(keys=indices, inplace=True)
+        if not self._created and self._rate:
+            self._created = True
+            self._frames_client.create(
+                'tsdb', table=self._path, if_exists=frames.frames_pb2.IGNORE, rate=self._rate,
+                aggregates=self._aggr, aggregation_granularity=self.aggr_granularity)
+        self._frames_client.write("tsdb", self._path, df)
+
+    async def _terminate(self):
+        return await self._do_downstream(_termination_obj)
