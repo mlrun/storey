@@ -21,7 +21,7 @@ class NoopDriver:
         pass
 
     async def _load_aggregates_by_key(self, container, table_path, key):
-        pass
+        return None, None
 
     async def _load_by_key(self, container, table_path, key, attribute):
         pass
@@ -104,6 +104,9 @@ class V3ioDriver(NeedsV3ioAccess):
         should_raise_error = False
         update_expression, condition_expression, pending_updates = self._build_feature_store_update_expression(aggr_item, additional_data,
                                                                                                                partitioned_by_key)
+        if not update_expression:
+            return
+
         response = await self._v3io_client.kv.update(container, table_path, key, expression=update_expression,
                                                      condition=condition_expression,
                                                      raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
@@ -191,11 +194,22 @@ class V3ioDriver(NeedsV3ioAccess):
         update_expression = ';'.join(expressions)
         return update_expression, condition_expression, pending_updates
 
+    def _discard_old_pending_items(self, pending, max_window_millis):
+        res = {}
+        if pending:
+            last_time = int(list(pending.keys())[-1] / max_window_millis) * max_window_millis
+            min_time = last_time - max_window_millis
+            for time, value in pending.items():
+                if time > min_time:
+                    res[time] = value
+        return res
+
     def _build_conditioned_feature_store_request(self, aggregation_element, pending=None):
         expressions = []
 
         times_update_expressions = {}
         pending_updates = {}
+        initialized_attributes = {}
         for name, bucket in aggregation_element.aggregation_buckets.items():
             # Only save raw aggregates, not virtual
             if bucket.should_persist:
@@ -203,7 +217,8 @@ class V3ioDriver(NeedsV3ioAccess):
                 if pending:
                     items_to_update = pending[name]
                 else:
-                    pending_updates[name] = bucket.get_and_flush_pending()
+                    # In case we have pending data that spreads over more then 2 windows discard the old ones.
+                    pending_updates[name] = self._discard_old_pending_items(bucket.get_and_flush_pending(), bucket.window.max_window_millis)
                     items_to_update = pending_updates[name]
                 for bucket_start_time, aggregation_value in items_to_update.items():
                     # the relevant attribute out of the 2 feature attributes
@@ -216,22 +231,24 @@ class V3ioDriver(NeedsV3ioAccess):
                     index_to_update = int((bucket_start_time - expected_time) / bucket.window.period_millis)
 
                     get_array_time_expr = f'if_not_exists({array_time_attribute_name},0:0)'
-                    init_expression = f'{array_attribute_name}=if_else(({get_array_time_expr}<{expected_time_expr}),' \
-                                      f"init_array({bucket.window.total_number_of_buckets},'double'," \
-                                      f'{aggregation_value.get_default_value()}),{array_attribute_name})'
+                    if not initialized_attributes.get(array_attribute_name, 0) == expected_time:
+                        initialized_attributes[array_attribute_name] = expected_time
+                        init_expression = f'{array_attribute_name}=if_else(({get_array_time_expr}<{expected_time_expr}),' \
+                            f"init_array({bucket.window.total_number_of_buckets},'double'," \
+                            f'{aggregation_value.get_default_value()}),{array_attribute_name})'
+                        expressions.append(init_expression)
 
                     arr_at_index = f'{array_attribute_name}[{index_to_update}]'
                     update_array_expression = f'{arr_at_index}=if_else(({get_array_time_expr}>{expected_time_expr}),{arr_at_index},' \
-                                              f'{self._get_update_expression_by_aggregation(arr_at_index, aggregation_value)})'
+                        f'{self._get_update_expression_by_aggregation(arr_at_index, aggregation_value)})'
 
-                    expressions.append(init_expression)
                     expressions.append(update_array_expression)
 
                     # Separating time attribute updates, so that they will be executed in the end and only once per feature name.
                     if array_time_attribute_name not in times_update_expressions:
                         times_update_expressions[array_time_attribute_name] = f'{array_time_attribute_name}=' \
-                                                                              f'if_else(({get_array_time_expr}<{expected_time_expr}),' \
-                                                                              f'{expected_time_expr},{array_time_attribute_name})'
+                            f'if_else(({get_array_time_expr}<{expected_time_expr}),' \
+                            f'{expected_time_expr},{array_time_attribute_name})'
 
         expressions.extend(times_update_expressions.values())
 
@@ -243,11 +260,13 @@ class V3ioDriver(NeedsV3ioAccess):
         times_update_expressions = {}
         new_cached_times = {}
         pending_updates = {}
+        initialized_attributes = {}
         for name, bucket in aggregation_element.aggregation_buckets.items():
             # Only save raw aggregates, not virtual
             if bucket.should_persist:
 
-                pending_updates[name] = bucket.get_and_flush_pending()
+                # In case we have pending data that spreads over more then 2 windows discard the old ones.
+                pending_updates[name] = self._discard_old_pending_items(bucket.get_and_flush_pending(), bucket.window.max_window_millis)
                 for bucket_start_time, aggregation_value in pending_updates[name].items():
                     # the relevant attribute out of the 2 feature attributes
                     feature_attr = 'a' if int(bucket_start_time / bucket.window.max_window_millis) % 2 == 0 else 'b'
@@ -262,8 +281,10 @@ class V3ioDriver(NeedsV3ioAccess):
 
                     # Possibly initiating the array
                     if cached_time < expected_time:
-                        expressions.append(f"{array_attribute_name}=init_array({bucket.window.total_number_of_buckets},'double',"
-                                           f'{aggregation_value.get_default_value()})')
+                        if not initialized_attributes.get(array_attribute_name, 0) == expected_time:
+                            initialized_attributes[array_attribute_name] = expected_time
+                            expressions.append(f"{array_attribute_name}=init_array({bucket.window.total_number_of_buckets},'double',"
+                                               f'{aggregation_value.get_default_value()})')
                         if array_time_attribute_name not in times_update_expressions:
                             times_update_expressions[array_time_attribute_name] = \
                                 f'{array_time_attribute_name}={expected_time_expr}'
@@ -324,9 +345,9 @@ class V3ioDriver(NeedsV3ioAccess):
 
         response = await self._v3io_client.kv.get(container, table_path, key, raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
         if response.status_code == 404:
-            return None
+            return None, None
         elif response.status_code == 200:
-            res = {}
+            aggregations, additional_data = {}, {}
             for name, value in response.output.item.items():
                 if name.startswith(self._aggregation_attribute_prefix):
                     feature_and_aggr_name = name[len(self._aggregation_attribute_prefix):-2]
@@ -334,11 +355,13 @@ class V3ioDriver(NeedsV3ioAccess):
                     associated_time_attr = f'{self._aggregation_time_attribute_prefix}{feature_name}_{name[-1]}'
 
                     time_in_millis = int(response.output.item[associated_time_attr].timestamp() * 1000)
-                    if feature_and_aggr_name not in res:
-                        res[feature_and_aggr_name] = {}
-                    res[feature_and_aggr_name][time_in_millis] = value
-                    res[feature_and_aggr_name][associated_time_attr] = time_in_millis
-            return res
+                    if feature_and_aggr_name not in aggregations:
+                        aggregations[feature_and_aggr_name] = {}
+                    aggregations[feature_and_aggr_name][time_in_millis] = value
+                    aggregations[feature_and_aggr_name][associated_time_attr] = time_in_millis
+                elif not name.startswith(self._aggregation_time_attribute_prefix):
+                    additional_data[name] = value
+            return aggregations, additional_data
         else:
             raise V3ioError(f'Failed to get item. Response status code was {response.status_code}: {response.body}')
 
