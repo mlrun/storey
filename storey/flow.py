@@ -355,7 +355,13 @@ class HttpRequest:
 
 
 class HttpResponse:
-    """A class representing an HTTP response, with a status code and body."""
+    """A class representing an HTTP response, with a status code and body.
+
+    :param body: Response body.
+    :type body: bytes
+    :param status: HTTP status code.
+    :type status: int
+    """
 
     def __init__(self, status, body):
         self.status = status
