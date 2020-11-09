@@ -396,7 +396,7 @@ class V3ioDriver(NeedsV3ioAccess):
     async def _get_item(self, container, table_path, key, attributes):
         self._lazy_init()
 
-        return await self._v3io_client.kv.get(container, table_path, key, attribute_names=attributes,
+        return await self._v3io_client.kv.get(container, table_path, str(key), attribute_names=attributes,
                                               raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
 
     async def close(self):

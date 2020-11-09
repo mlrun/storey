@@ -93,14 +93,14 @@ def setup_teardown_test():
 @pytest.fixture()
 def setup_kv_teardown_test():
     # Setup
-    table_name = _generate_table_name()
-    asyncio.run(create_temp_kv(table_name))
+    table_path = _generate_table_name()
+    asyncio.run(create_temp_kv(table_path))
 
     # Test runs
-    yield table_name
+    yield table_path
 
     # Teardown
-    asyncio.run(recursive_delete(table_name, V3ioHeaders()))
+    asyncio.run(recursive_delete(table_path, V3ioHeaders()))
 
 
 async def create_temp_kv(table_path):

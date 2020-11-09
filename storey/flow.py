@@ -658,18 +658,19 @@ class JoinWithTable(_ConcurrentJobExecution):
     :type table: Table
     :param key_extractor: Function for extracting the key for table access from an event.
     :type key_extractor: Function (Event=>string)
-    :param attributes: A comma-separated list of attributes to be requested from V3IO. Defaults to '*' (all user attributes).
+    :param attributes: A comma-separated list of attributes to be queried for. Defaults to all attributes.
     :type attributes: list of string
-    :param join_function: Joins the original event with relevant data received from V3IO.
+    :param join_function: Joins the original event with relevant data received from the storage. Defaults to assume the event's body is a
+    dict-like object and updating it.
     :type join_function: Function ((Event, dict)=>Event)
-    :param name: Name of this step, as it should appear in logs. Defaults to class name (JoinWithV3IOTable).
+    :param name: Name of this step, as it should appear in logs. Defaults to class name (JoinWithTable).
     :type name: string
     :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
     Defaults to False.
     :type full_event: boolean
     """
 
-    def __init__(self, table, key_extractor, attributes='*', join_function=None, **kwargs):
+    def __init__(self, table, key_extractor, attributes=None, join_function=None, **kwargs):
         super().__init__(**kwargs)
 
         self._table = table
@@ -677,15 +678,15 @@ class JoinWithTable(_ConcurrentJobExecution):
 
         self._key_extractor = key_extractor
 
-        def _default_join_fn(event, join_res):
+        def default_join_fn(event, join_res):
             event.update(join_res)
             return event
-        self._join_function = join_function or _default_join_fn
+        self._join_function = join_function or default_join_fn
 
-        self._attributes = attributes
+        self._attributes = attributes or '*'
 
     async def _process_event(self, event):
-        key = str(self._key_extractor(self._get_safe_event_or_body(event)))
+        key = self._key_extractor(self._get_safe_event_or_body(event))
         return await self._table.get_or_load_key(key, self._attributes)
 
     async def _handle_completed(self, event, response):
