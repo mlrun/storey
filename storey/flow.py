@@ -320,9 +320,19 @@ class Reduce(Flow):
 
 
 class HttpRequest:
-    """A class representing an HTTP request, with method, url, body, and headers."""
+    """A class representing an HTTP request, with method, url, body, and headers.
 
-    def __init__(self, method, url, body, headers=None):
+    :param method: HTTP method (e.g. GET).
+    :type method: string
+    :param url: Target URL (http and https schemes supported).
+    :type url: string
+    :param body: Request body.
+    :type body: bytes or string
+    :param headers: Request headers, in the form of a dictionary. Optional. Defaults to no headers.
+    :type headers: dictionary, or None.
+    """
+
+    def __init__(self, method, url, body, headers: Optional[dict] = None):
         self.method = method
         self.url = url
         self.body = body
