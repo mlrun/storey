@@ -7,7 +7,7 @@ from datetime import datetime
 import pandas as pd
 
 from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV, Complete, AsyncSource, Choice, Event, \
-    Batch, Table, NoopDriver, WriteCSV, DataframeSource, MapClass
+    Batch, Table, NoopDriver, WriteCSV, DataframeSource, MapClass, JoinWithTable
 from storey.dataframe import ReduceToDataFrame, ToDataFrame, WriteToParquet
 
 
@@ -762,3 +762,23 @@ def test_write_to_parquet_single_file_on_termination(tmpdir):
 
     read_back_df = pd.read_parquet(out_file, columns=columns)
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+
+
+def test_join_by_key():
+    table = Table('test', NoopDriver())
+    table.update_key(9, {'age': 1, 'color': 'blue9'})
+    table.update_key(7, {'age': 3, 'color': 'blue7'})
+
+    controller = build_flow([
+        Source(),
+        Filter(lambda x: x['col1'] > 8),
+        JoinWithTable(table, lambda x: x['col1']),
+        Reduce([], lambda acc, x: append_and_return(acc, x))
+    ]).run()
+    for i in range(10):
+        controller.emit({'col1': i})
+
+    expected = [{'col1': 9, 'age': 1, 'color': 'blue9'}]
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == expected

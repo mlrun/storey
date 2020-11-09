@@ -68,6 +68,11 @@ class V3ioHeaders(NeedsV3ioAccess):
         }
 
 
+def append_return(lst, x):
+    lst.append(x)
+    return lst
+
+
 def _generate_table_name(prefix='bigdata/aggr_test'):
     random_table = ''.join([random.choice(string.ascii_letters) for i in range(10)])
     return f'{prefix}/{random_table}'
@@ -83,6 +88,30 @@ def setup_teardown_test():
 
     # Teardown
     asyncio.run(recursive_delete(table_name, V3ioHeaders()))
+
+
+@pytest.fixture()
+def setup_kv_teardown_test():
+    # Setup
+    table_path = _generate_table_name()
+    asyncio.run(create_temp_kv(table_path))
+
+    # Test runs
+    yield table_path
+
+    # Teardown
+    asyncio.run(recursive_delete(table_path, V3ioHeaders()))
+
+
+async def create_temp_kv(table_path):
+    connector = aiohttp.TCPConnector()
+    v3io_access = V3ioHeaders()
+    client_session = aiohttp.ClientSession(connector=connector)
+    for i in range(1, 10):
+        request_body = json.dumps({'Item': {'age': {'N': f'{10 - i}'}, 'color': {'S': f'blue{i}'}}})
+        response = await client_session.request(
+            'PUT', f'{v3io_access._webapi_url}/{table_path}/{i}', headers=v3io_access._put_item_headers, data=request_body, ssl=False)
+        assert response.status == 200, f'Bad response {await response.text()} to request {request_body}'
 
 
 def _v3io_parse_get_items_response(response_body):

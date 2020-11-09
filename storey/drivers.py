@@ -23,7 +23,7 @@ class NoopDriver:
     async def _load_aggregates_by_key(self, container, table_path, key):
         return None, None
 
-    async def _load_by_key(self, container, table_path, key):
+    async def _load_by_key(self, container, table_path, key, attribute):
         pass
 
     async def close(self):
@@ -365,16 +365,16 @@ class V3ioDriver(NeedsV3ioAccess):
         else:
             raise V3ioError(f'Failed to get item. Response status code was {response.status_code}: {response.body}')
 
-    async def _load_by_key(self, container, table_path, key):
+    async def _load_by_key(self, container, table_path, key, attributes):
         self._lazy_init()
 
-        response = await self._v3io_client.kv.get(container, table_path, key, raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
+        response = await self._get_item(container, table_path, key, attributes)
         if response.status_code == 404:
             return None
         elif response.status_code == 200:
             res = {}
             for name in response.output.item.keys():
-                if not name.startswith(self._aggregation_attribute_prefix):
+                if not name.startswith((self._aggregation_attribute_prefix, self._aggregation_time_attribute_prefix)):
                     res[name] = response.output.item[name]
             return res
         else:
@@ -396,7 +396,7 @@ class V3ioDriver(NeedsV3ioAccess):
     async def _get_item(self, container, table_path, key, attributes):
         self._lazy_init()
 
-        return await self._v3io_client.kv.get(container, table_path, key, attribute_names=attributes,
+        return await self._v3io_client.kv.get(container, table_path, str(key), attribute_names=attributes,
                                               raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
 
     async def close(self):

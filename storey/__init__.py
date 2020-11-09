@@ -7,7 +7,7 @@ from .drivers import (  # noqa: F401
     V3ioDriver, NoopDriver
 )
 from .flow import (  # noqa: F401
-    Filter, FlatMap, Flow, FlowError, JoinWithV3IOTable, JoinWithHttp, Map, Reduce, Batch,
+    Filter, FlatMap, Flow, FlowError, JoinWithV3IOTable, JoinWithHttp, JoinWithTable, Map, Reduce, Batch,
     MapWithState, MapClass, Complete, Choice, HttpRequest, HttpResponse, Table, build_flow
 )
 from .dtypes import (  # noqa: F401
