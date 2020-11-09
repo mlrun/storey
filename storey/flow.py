@@ -194,6 +194,8 @@ class _FunctionWithStateFlow(Flow):
         self._state = initial_state
         self._fn = fn
         self._group_by_key = group_by_key
+        if hasattr(initial_state, 'close'):
+            self._closeables = [initial_state]
 
     async def _call(self, event):
         element = self._get_safe_event_or_body(event)
