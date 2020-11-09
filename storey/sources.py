@@ -11,6 +11,8 @@ from .flow import Flow
 
 
 class AwaitableResult:
+    """Future result of a computation. Calling await_result() will return with the result once the computation is completed."""
+
     def __init__(self):
         self._q = queue.Queue(1)
 
@@ -74,6 +76,9 @@ class FlowController:
 
 
 class FlowAwaiter:
+    """Future termination result of a flow. Calling await_termination() will wait for the flow to terminate and return its
+    termination result."""
+
     def __init__(self, await_termination_fn):
         self._await_termination_fn = await_termination_fn
 
@@ -149,6 +154,9 @@ class Source(Flow):
 
 
 class AsyncAwaitableResult:
+    """Future result of a computation. Calling await_result() will return with the result once the computation is completed.
+    Same as AwaitableResult but for an async context."""
+
     def __init__(self):
         self._q = asyncio.Queue(1)
 
@@ -269,7 +277,7 @@ class AsyncSource(Flow):
         return AsyncFlowController(self._emit, loop_task)
 
 
-class IterableSource(Flow):
+class _IterableSource(Flow):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -317,7 +325,7 @@ class IterableSource(Flow):
         return await self._run_loop()
 
 
-class ReadCSV(IterableSource):
+class ReadCSV(_IterableSource):
     """
     Reads CSV files as input source for a flow.
 
@@ -400,7 +408,7 @@ async def _aiter(iterable):
         yield x
 
 
-class DataframeSource(IterableSource):
+class DataframeSource(_IterableSource):
     """
         Use pandas dataframe as input source for a flow.
 

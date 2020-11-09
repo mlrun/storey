@@ -228,6 +228,8 @@ class MapWithState(FunctionWithStateFlow):
 
 
 class MapClass(Flow):
+    """Similar to Map, but instead of a function argument, this class should be extended and its do() method overridden."""
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._is_async = asyncio.iscoroutinefunction(self.do)
@@ -318,6 +320,8 @@ class Reduce(Flow):
 
 
 class HttpRequest:
+    """A class representing an HTTP request, with method, url, body, and headers."""
+
     def __init__(self, method, url, body, headers=None):
         self.method = method
         self.url = url
@@ -328,6 +332,8 @@ class HttpRequest:
 
 
 class HttpResponse:
+    """A class representing an HTTP response, with a status code and body."""
+
     def __init__(self, status, body):
         self.status = status
         self.body = body
