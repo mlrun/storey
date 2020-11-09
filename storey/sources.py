@@ -122,12 +122,11 @@ class Source(Flow):
                     self._q.get()
                 self._termination_future.set_result(None)
                 break
-            finally:
-                if event is _termination_obj or self._ex:
-                    for closeable in self._closeables:
-                        await closeable.close()
             if event is _termination_obj:
                 break
+
+        for closeable in self._closeables:
+            await closeable.close()
 
     def _loop_thread_main(self):
         asyncio.run(self._run_loop())
