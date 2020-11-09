@@ -107,7 +107,7 @@ class Choice(Flow):
             await self._default._do(event)
 
 
-class UnaryFunctionFlow(Flow):
+class _UnaryFunctionFlow(Flow):
     def __init__(self, fn, **kwargs):
         super().__init__(**kwargs)
         if not callable(fn):
@@ -133,9 +133,9 @@ class UnaryFunctionFlow(Flow):
             await self._do_internal(event, fn_result)
 
 
-class Map(UnaryFunctionFlow):
-    """
-    Maps, or transforms, incoming events using a user-provided function.
+class Map(_UnaryFunctionFlow):
+    """Maps, or transforms, incoming events using a user-provided function.
+
     :param fn: Function to apply to each event
     :type fn: Function (Event=>Event)
     :param name: Name of this step, as it should appear in logs. Defaults to class name (Map).
@@ -150,16 +150,16 @@ class Map(UnaryFunctionFlow):
         await self._do_downstream(mapped_event)
 
 
-class Filter(UnaryFunctionFlow):
-    """
-        Filters events based on a user-provided function.
-        :param fn: Function to decide whether to keep each event.
-        :type fn: Function (Event=>boolean)
-        :param name: Name of this step, as it should appear in logs. Defaults to class name (Filter).
-        :type name: string
-        :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
-        Defaults to False.
-        :type full_event: boolean
+class Filter(_UnaryFunctionFlow):
+    """Filters events based on a user-provided function.
+
+    :param fn: Function to decide whether to keep each event.
+    :type fn: Function (Event=>boolean)
+    :param name: Name of this step, as it should appear in logs. Defaults to class name (Filter).
+    :type name: string
+    :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
+    Defaults to False.
+    :type full_event: boolean
     """
 
     async def _do_internal(self, event, keep):
@@ -167,16 +167,16 @@ class Filter(UnaryFunctionFlow):
             await self._do_downstream(event)
 
 
-class FlatMap(UnaryFunctionFlow):
-    """
-        Maps, or transforms, each incoming event into any number of events.
-        :param fn: Function to transform each event to a list of events.
-        :type fn: Function (Event=>list of Event)
-        :param name: Name of this step, as it should appear in logs. Defaults to class name (FlatMap).
-        :type name: string
-        :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
-        Defaults to False.
-        :type full_event: boolean
+class FlatMap(_UnaryFunctionFlow):
+    """Maps, or transforms, each incoming event into any number of events.
+
+    :param fn: Function to transform each event to a list of events.
+    :type fn: Function (Event=>list of Event)
+    :param name: Name of this step, as it should appear in logs. Defaults to class name (FlatMap).
+    :type name: string
+    :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
+    Defaults to False.
+    :type full_event: boolean
     """
 
     async def _do_internal(self, event, fn_result):
@@ -185,7 +185,7 @@ class FlatMap(UnaryFunctionFlow):
             await self._do_downstream(mapped_event)
 
 
-class FunctionWithStateFlow(Flow):
+class _FunctionWithStateFlow(Flow):
     def __init__(self, initial_state, fn, group_by_key=False, **kwargs):
         super().__init__(**kwargs)
         if not callable(fn):
@@ -221,7 +221,20 @@ class FunctionWithStateFlow(Flow):
             await self._do_internal(event, fn_result)
 
 
-class MapWithState(FunctionWithStateFlow):
+class MapWithState(_FunctionWithStateFlow):
+    """Maps, or transforms, incoming events using a stateful user-provided function, and an initial state, which may be a database table.
+
+    :param initial_state: Initial state for the computation. If group_by_key is True, this must be a dictionary or a Table object.
+    :type initial_state: dictionary or Table if group_by_key is True. Any object otherwise.
+    :param fn: A function to run on each event and the current state. Must yield an event and an updated state.
+    :type fn: Function ((Event, state)=>(Event, state))
+    :param group_by_key: Whether the state is computed by key. Optional. Default to False.
+    :type group_by_key: boolean
+    :param full_event: Whether fn will receive and return an Event object or only the body (payload). Optional. Defaults to
+    False (body only).
+    :type full_event: boolean
+    """
+
     async def _do_internal(self, event, mapped_element):
         mapped_event = self._user_fn_output_to_event(event, mapped_element)
         await self._do_downstream(mapped_event)
