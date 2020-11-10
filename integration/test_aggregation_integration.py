@@ -407,7 +407,6 @@ def test_write_cache(setup_teardown_test):
 
     controller.terminate()
     actual = controller.await_termination()
-    other_table.close()
     expected_results = [
         {'col1': 10, 'time_since_activity': 15000, 'total_activities': 11, 'color': 'blue'}]
 

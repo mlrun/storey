@@ -115,8 +115,6 @@ class Source(Flow):
             try:
                 termination_result = await self._do_downstream(event)
                 if event is _termination_obj:
-                    for closeable in self._closeables:
-                        await closeable.close()
                     self._termination_future.set_result(termination_result)
             except BaseException as ex:
                 self._ex = ex
@@ -126,6 +124,9 @@ class Source(Flow):
                 break
             if event is _termination_obj:
                 break
+
+        for closeable in self._closeables:
+            await closeable.close()
 
     def _loop_thread_main(self):
         asyncio.run(self._run_loop())
@@ -249,8 +250,6 @@ class AsyncSource(Flow):
             try:
                 termination_result = await self._do_downstream(event)
                 if event is _termination_obj:
-                    for closeable in self._closeables:
-                        await closeable.close()
                     return termination_result
             except BaseException as ex:
                 self._ex = ex
@@ -261,6 +260,10 @@ class AsyncSource(Flow):
                 if not self._q.empty():
                     await self._q.get()
                 return None
+            finally:
+                if event is _termination_obj or self._ex:
+                    for closeable in self._closeables:
+                        await closeable.close()
 
     def _raise_on_error(self):
         if self._ex:
@@ -293,12 +296,13 @@ class _IterableSource(Flow):
         try:
             self._termination_future = asyncio.get_running_loop().create_future()
             termination_result = await self._run_loop()
-            for closeable in self._closeables:
-                await closeable.close()
             self._termination_future.set_result(termination_result)
         except BaseException as ex:
             self._ex = ex
             self._termination_future.set_result(None)
+        finally:
+            for closeable in self._closeables:
+                await closeable.close()
 
     def _loop_thread_main(self):
         asyncio.run(self._async_loop_thread_main())
