@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 import pytest
 
 from storey import build_flow, Source, Reduce, Table, V3ioDriver, FlowError, MapWithState, AggregateByKey, FieldAggregator, \
-    QueryAggregationByKey, Persist
+    QueryAggregationByKey, WriteToTable
 
 from storey.dtypes import SlidingWindows
 from storey.flow import _split_path
@@ -22,7 +22,7 @@ def test_query_aggregate_by_key(setup_teardown_test, partitioned_by_key):
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg", "min", "max", "sqr"],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
                        table),
-        Persist(table),
+        WriteToTable(table),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -130,7 +130,7 @@ def test_aggregate_by_key_one_underlying_window(setup_teardown_test, partitioned
                             FieldAggregator("other_stuff", "col1", ["sum"],
                                             SlidingWindows(['1h'], '10m'))],
                            table),
-            Persist(table),
+            WriteToTable(table),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]).run()
 
@@ -170,7 +170,7 @@ def test_aggregate_by_key_two_underlying_windows(setup_teardown_test, partitione
                             FieldAggregator("other_stuff", "col1", ["sum"],
                                             SlidingWindows(['24h'], '10m'))],
                            table),
-            Persist(table),
+            WriteToTable(table),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]).run()
 
@@ -207,7 +207,7 @@ def test_aggregate_by_key_with_extra_aliases(setup_teardown_test):
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg"],
                                         SlidingWindows(['2h'], '10m'))],
                        table),
-        Persist(table),
+        WriteToTable(table),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -289,7 +289,7 @@ def test_write_cache_with_aggregations(setup_teardown_test):
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg"],
                                         SlidingWindows(['2h'], '10m'))],
                        table),
-        Persist(table),
+        WriteToTable(table),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -367,7 +367,7 @@ def test_write_cache(setup_teardown_test):
     controller = build_flow([
         Source(),
         MapWithState(table, enrich, group_by_key=True, full_event=True),
-        Persist(table),
+        WriteToTable(table),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -438,7 +438,7 @@ def test_modify_schema(setup_teardown_test):
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg", "min", "max"],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
                        table),
-        Persist(table),
+        WriteToTable(table),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -535,7 +535,7 @@ def test_invalid_modify_schema(setup_teardown_test):
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg", "min", "max"],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
                        table),
-        Persist(table),
+        WriteToTable(table),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
