@@ -8,7 +8,7 @@ from .dtypes import _termination_obj, Event, FlowError, V3ioError
 
 
 class Flow:
-    def __init__(self, name=None, full_event=False, termination_result_fn=lambda x, y: None, context=None, **kwargs):
+    def __init__(self, name=None, full_event=False, termination_result_fn=lambda x, y: x if x is not None else y, context=None, **kwargs):
         self._outlets = []
         self._full_event = full_event
         self._termination_result_fn = termination_result_fn
@@ -710,6 +710,7 @@ class JoinWithTable(_ConcurrentJobExecution):
         def default_join_fn(event, join_res):
             event.update(join_res)
             return event
+
         self._join_function = join_function or default_join_fn
 
         self._attributes = attributes or '*'

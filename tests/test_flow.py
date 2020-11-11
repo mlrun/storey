@@ -782,3 +782,27 @@ def test_join_by_key():
     controller.terminate()
     termination_result = controller.await_termination()
     assert termination_result == expected
+
+
+def test_termination_result_order():
+    controller = build_flow([
+        Source(),
+        [Reduce(1, lambda acc, x: acc)],
+        [Reduce(2, lambda acc, x: acc)]
+    ]).run()
+
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == 1
+
+
+def test_termination_result_on_none():
+    controller = build_flow([
+        Source(),
+        [Reduce(None, lambda acc, x: acc)],
+        [Reduce(2, lambda acc, x: acc)]
+    ]).run()
+
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == 2
