@@ -17,7 +17,7 @@ from .sources import (  # noqa: F401
     Source, AsyncSource, DataframeSource, ReadCSV
 )
 from .writers import (  # noqa: F401
-    WriteToV3IOStream, WriteCSV
+    WriteToV3IOStream, WriteToCSV
 )
 from .dataframe import (  # noqa: F401
     ToDataFrame, ReduceToDataFrame, WriteToParquet, WriteToTSDB

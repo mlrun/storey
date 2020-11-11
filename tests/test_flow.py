@@ -1,3 +1,4 @@
+import _csv
 import asyncio
 import os
 import time
@@ -7,7 +8,7 @@ from datetime import datetime
 import pandas as pd
 
 from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV, Complete, AsyncSource, Choice, Event, \
-    Batch, Table, NoopDriver, WriteCSV, DataframeSource, MapClass, JoinWithTable
+    Batch, Table, NoopDriver, WriteToCSV, DataframeSource, MapClass, JoinWithTable
 from storey.dataframe import ReduceToDataFrame, ToDataFrame, WriteToParquet
 
 
@@ -533,65 +534,104 @@ def test_batch_with_timeout():
     assert termination_result == [[0, 1, 2], [3, 4, 5, 6], [7, 8, 9]]
 
 
-async def async_test_write_csv():
-    file_name = 'test_write_csv.csv'
-    try:
-        controller = await build_flow([
-            AsyncSource(),
-            WriteCSV(file_name, lambda x: [x, 10 * x], header=['n', 'n*10'])
-        ]).run()
+async def async_test_write_csv(tmpdir):
+    file_path = f'{tmpdir}/test_write_csv.csv'
+    controller = await build_flow([
+        AsyncSource(),
+        WriteToCSV(file_path, columns=['n', 'n*10'], write_header=True)
+    ]).run()
 
+    for i in range(10):
+        await controller.emit([i, 10 * i])
+
+    await controller.terminate()
+    await controller.await_termination()
+
+    with open(file_path) as file:
+        result = file.read()
+
+    expected = "n,n*10\n0,0\n1,10\n2,20\n3,30\n4,40\n5,50\n6,60\n7,70\n8,80\n9,90\n"
+    assert result == expected
+
+
+def test_write_csv(tmpdir):
+    asyncio.run(async_test_write_csv(tmpdir))
+
+
+async def async_test_write_csv_error(tmpdir):
+    file_path = f'{tmpdir}/test_write_csv_error.csv'
+
+    write_csv = WriteToCSV(file_path)
+    controller = await build_flow([
+        AsyncSource(),
+        write_csv
+    ]).run()
+
+    try:
         for i in range(10):
             await controller.emit(i)
-
         await controller.terminate()
         await controller.await_termination()
-
-        with open(file_name) as file:
-            result = file.read()
-
-        expected = "n,n*10\n0,0\n1,10\n2,20\n3,30\n4,40\n5,50\n6,60\n7,70\n8,80\n9,90\n"
-        assert result == expected
-    finally:
-        try:
-            os.remove(file_name)
-        except:
-            pass
+        assert False
+    except FlowError as ex:
+        assert isinstance(ex.__cause__, _csv.Error)
+    assert write_csv._open_file.closed
 
 
-def test_write_csv():
-    asyncio.run(async_test_write_csv())
+def test_write_csv_with_dict(tmpdir):
+    file_path = f'{tmpdir}/test_write_csv_with_dict.csv'
+    controller = build_flow([
+        Source(),
+        WriteToCSV(file_path, columns=['n', 'n*10'], write_header=True)
+    ]).run()
+
+    for i in range(10):
+        controller.emit({'n': i, 'n*10': 10 * i})
+
+    controller.terminate()
+    controller.await_termination()
+
+    with open(file_path) as file:
+        result = file.read()
+
+    expected = "n,n*10\n0,0\n1,10\n2,20\n3,30\n4,40\n5,50\n6,60\n7,70\n8,80\n9,90\n"
+    assert result == expected
 
 
-async def async_test_write_csv_error():
-    file_name = 'test_write_csv_error.csv'
+def test_write_csv_infer_columns(tmpdir):
+    file_path = f'{tmpdir}/test_write_csv_infer_columns.csv'
+    controller = build_flow([
+        Source(),
+        WriteToCSV(file_path, write_header=True)
+    ]).run()
+
+    for i in range(10):
+        controller.emit({'n': i, 'n*10': 10 * i})
+
+    controller.terminate()
+    controller.await_termination()
+
+    with open(file_path) as file:
+        result = file.read()
+
+    expected = "n,n*10\n0,0\n1,10\n2,20\n3,30\n4,40\n5,50\n6,60\n7,70\n8,80\n9,90\n"
+    assert result == expected
+
+
+def test_write_csv_fail_to_infer_columns(tmpdir):
+    file_path = f'{tmpdir}/test_write_csv_fail_to_infer_columns.csv'
+    controller = build_flow([
+        Source(),
+        WriteToCSV(file_path, write_header=True)
+    ]).run()
 
     try:
-        write_csv = WriteCSV(file_name, RaiseEx(5).raise_ex, header=['n', 'n*10'])
-        controller = await build_flow([
-            AsyncSource(),
-            Map(lambda x: [x]),
-            write_csv
-        ]).run()
-
-        try:
-            for i in range(10):
-                await controller.emit(i)
-            await controller.terminate()
-            await controller.await_termination()
-            assert False
-        except FlowError as ex:
-            assert isinstance(ex.__cause__, ATestException)
-        assert write_csv._open_file.closed
-    finally:
-        try:
-            os.remove(file_name)
-        except:
-            pass
-
-
-def test_write_csv_error():
-    asyncio.run(async_test_write_csv_error())
+        controller.emit([0])
+        controller.terminate()
+        controller.await_termination()
+        assert False
+    except FlowError as flow_ex:
+        assert isinstance(flow_ex.__cause__, ValueError)
 
 
 def test_reduce_to_dataframe():

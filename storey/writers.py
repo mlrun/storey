@@ -10,29 +10,38 @@ from .dtypes import V3ioError
 from .flow import Flow, _termination_obj, _split_path
 
 
-class WriteCSV(Flow):
+class WriteToCSV(Flow):
     """
     Writes events to a CSV file.
 
     :param path: path where CSV file will be written.
     :type path: string
-    :param event_to_line: function to transform an event to a CSV line (represented as a list).
-    :type event_to_line: Function (Event=>list of string)
-    :param header: a header for the output file.
-    :type header: list of string
-    :param name: Name of this step, as it should appear in logs. Defaults to class name (WriteCSV).
+    :param columns: fields to be written to CSV. Will be written as the file header if write_header is True. Will be extracted from
+    events when an event is a dictionary (lists will be written as is). Optional. Defaults to None (will be inferred if event is dictionary,
+    metadata_columns must be False).
+    :type columns: list of string
+    :param metadata_columns: Map from column name to metadata field name (e.g. {'event_time': 'time'}). Optional. Default to
+    None (all columns will be taken from data, none from metadata).
+    :type metadata_columns: dict
+    :param write_header: Whether to write the columns as a CSV header.
+    :type write_header: boolean
+    :param name: Name of this step, as it should appear in logs. Defaults to class name (WriteToCSV).
     :type name: string
     :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
     Defaults to False.
     :type full_event: boolean
     """
 
-    def __init__(self, path, event_to_line, header=None, **kwargs):
+    def __init__(self, path, columns=None, write_header=False, metadata_columns=None, **kwargs):
         super().__init__(**kwargs)
         self._path = path
-        self._header = header
-        self._event_to_line = event_to_line
+        self._columns = columns
+        self._write_header = write_header
         self._open_file = None
+        self._first_event = True
+
+        if metadata_columns and not columns:
+            raise ValueError('columns must be defined when metadata_columns is True')
 
     async def _do(self, event):
         if event is _termination_obj:
@@ -42,16 +51,30 @@ class WriteCSV(Flow):
         try:
             if not self._open_file:
                 self._open_file = await aiofiles.open(self._path, mode='w')
+            data = event.body
+            if isinstance(data, dict):
+                if self._first_event and not self._columns:
+                    self._columns = list(data.keys())
+                    self._columns.sort()
+                if self._columns:
+                    new_data = []
+                    for column in self._columns:
+                        new_data.append(data[column])
+                    data = new_data
+            if self._first_event:
+                if not self._columns and self._write_header:
+                    raise ValueError('columns must be defined when write_header is True and events type is not dictionary')
                 linebuf = io.StringIO()
                 csv_writer = csv.writer(linebuf)
-                if self._header:
-                    csv_writer.writerow(self._header)
+                if self._write_header:
+                    csv_writer.writerow(self._columns)
                 line = linebuf.getvalue()
                 await self._open_file.write(line)
-            line_arr = self._event_to_line(self._get_safe_event_or_body(event))
+
+            self._first_event = False
             linebuf = io.StringIO()
             csv_writer = csv.writer(linebuf)
-            csv_writer.writerow(line_arr)
+            csv_writer.writerow(data)
             line = linebuf.getvalue()
             await self._open_file.write(line)
         except BaseException as ex:
