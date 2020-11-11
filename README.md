@@ -31,7 +31,7 @@ A Storey flow consist of steps linked together by the `build_flow` function, eac
 * `JoinWithHttp` - 
 * `AggregateByKey(aggregations,cache, key=None, emit_policy=EmitEveryEvent(), augmentation_fn=None)` - This step aggregates the data into the cache object provided for later persistence, and outputs an event enriched with the requested aggregation features.
 * `QueryAggregationByKey(aggregations,cache, key=None, emit_policy=EmitEveryEvent(), augmentation_fn=None)` - Similar to to `AggregateByKey`, but this step is for serving only and does not aggregate the event.
-* `Persist(cache)` - Persists the data in `cache` to its associated storage by key.
+* `WriteToTable(table)` - Persists the data in `table` to its associated storage by key.
 
 
 #### Output Steps
@@ -47,7 +47,7 @@ A Storey flow consist of steps linked together by the `build_flow` function, eac
 The following example reads user data, creates features using Storey's aggregates, persists the data to V3IO and emits events containing the features to a V3IO Stream for further processing.
 
 ```python
-from storey import build_flow, Source, Table, V3ioDriver, AggregateByKey, FieldAggregator, Persist
+from storey import build_flow, Source, Table, V3ioDriver, AggregateByKey, FieldAggregator, WriteToTable
 from storey.dtypes import SlidingWindows
 
 v3io_web_api = 'https://webapi.change-me.com'
@@ -73,7 +73,7 @@ controller = build_flow([
                                     SlidingWindows(['1h'], '10m'),
                                     aggr_filter=lambda element: element['activity_status'] == 'fail'))],
                    table_object),
-    Persist(table_object),
+    WriteToTable(table_object),
     WriteToV3IOStream(V3ioDriver(v3io_web_api, v3io_acceess_key), 'features_stream')
 ]).run()
 ```
