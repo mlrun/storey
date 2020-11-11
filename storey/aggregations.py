@@ -14,7 +14,7 @@ class AggregateByKey(Flow):
     """
     Aggregates the data into the table object provided for later persistence, and outputs an event enriched with the requested aggregation
     features.
-    Persistence is done via the `Persist` step and based on the Cache object persistence settings.
+    Persistence is done via the `WriteToTable` step and based on the Cache object persistence settings.
 
     :param aggregates: List of aggregates to apply for each event.
     :type aggregates: list of FieldAggregator
@@ -199,7 +199,7 @@ class QueryAggregationByKey(AggregateByKey):
             raise ex
 
 
-class Persist(_ConcurrentByKeyJobExecution):
+class WriteToTable(_ConcurrentByKeyJobExecution):
     """
     Persists the data in `table` to its associated storage by key.
 

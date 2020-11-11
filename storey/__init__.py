@@ -1,7 +1,7 @@
 __version__ = '0.1.0'
 
 from .aggregations import (  # noqa: F401
-    AggregateByKey, QueryAggregationByKey, Persist, FieldAggregator
+    AggregateByKey, QueryAggregationByKey, WriteToTable, FieldAggregator
 )
 from .drivers import (  # noqa: F401
     V3ioDriver, NoopDriver
