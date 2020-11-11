@@ -37,6 +37,7 @@ class WriteToCSV(Flow):
         self._path = path
         self._columns = columns
         self._write_header = write_header
+        self._metadata_columns = metadata_columns
         self._open_file = None
         self._first_event = True
 
@@ -59,7 +60,12 @@ class WriteToCSV(Flow):
                 if self._columns:
                     new_data = []
                     for column in self._columns:
-                        new_data.append(data[column])
+                        if self._metadata_columns and column in self._metadata_columns:
+                            metadata_attr = self._metadata_columns[column]
+                            new_value = getattr(event, metadata_attr)
+                        else:
+                            new_value = data[column]
+                        new_data.append(new_value)
                     data = new_data
             if self._first_event:
                 if not self._columns and self._write_header:

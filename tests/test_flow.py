@@ -578,6 +578,10 @@ async def async_test_write_csv_error(tmpdir):
     assert write_csv._open_file.closed
 
 
+def test_write_csv_error(tmpdir):
+    asyncio.run(async_test_write_csv_error(tmpdir))
+
+
 def test_write_csv_with_dict(tmpdir):
     file_path = f'{tmpdir}/test_write_csv_with_dict.csv'
     controller = build_flow([
@@ -615,6 +619,26 @@ def test_write_csv_infer_columns(tmpdir):
         result = file.read()
 
     expected = "n,n*10\n0,0\n1,10\n2,20\n3,30\n4,40\n5,50\n6,60\n7,70\n8,80\n9,90\n"
+    assert result == expected
+
+
+def test_write_csv_with_metadata(tmpdir):
+    file_path = f'{tmpdir}/test_write_csv_with_metadata.csv'
+    controller = build_flow([
+        Source(),
+        WriteToCSV(file_path, columns=['mykey', 'n', 'n*10'], metadata_columns={'mykey': 'key'}, write_header=True)
+    ]).run()
+
+    for i in range(10):
+        controller.emit({'n': i, 'n*10': 10 * i}, key=f'key{i}')
+
+    controller.terminate()
+    controller.await_termination()
+
+    with open(file_path) as file:
+        result = file.read()
+
+    expected = "mykey,n,n*10\nkey0,0,0\nkey1,1,10\nkey2,2,20\nkey3,3,30\nkey4,4,40\nkey5,5,50\nkey6,6,60\nkey7,7,70\nkey8,8,80\nkey9,9,90\n"
     assert result == expected
 
 
