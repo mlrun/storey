@@ -17,8 +17,8 @@ class WriteToCSV(Flow):
     :param path: path where CSV file will be written.
     :type path: string
     :param columns: fields to be written to CSV. Will be written as the file header if write_header is True. Will be extracted from
-    events when an event is a dictionary (lists will be written as is). Optional. Defaults to None (will be inferred if event is dictionary,
-    metadata_columns must be False).
+    events when an event is a dictionary (lists will be written as is). Optional. Defaults to None (will be inferred if event is
+    dictionary).
     :type columns: list of string
     :param metadata_columns: Map from column name to metadata field name (e.g. {'event_time': 'time'}). Optional. Default to
     None (all columns will be taken from data, none from metadata).
@@ -41,9 +41,6 @@ class WriteToCSV(Flow):
         self._open_file = None
         self._first_event = True
 
-        if metadata_columns and not columns:
-            raise ValueError('columns must be defined when metadata_columns is True')
-
     async def _do(self, event):
         if event is _termination_obj:
             if self._open_file:
@@ -56,6 +53,8 @@ class WriteToCSV(Flow):
             if isinstance(data, dict):
                 if self._first_event and not self._columns:
                     self._columns = list(data.keys())
+                    if self._metadata_columns:
+                        self._columns.extend(self._metadata_columns.keys())
                     self._columns.sort()
                 if self._columns:
                     new_data = []
