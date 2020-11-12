@@ -57,7 +57,7 @@ class WriteToCSV(Flow, _Writer):
 
     :param path: path where CSV file will be written.
     :type path: string
-    :param columns: fields to be written to CSV. Will be written as the file header if write_header is True. Will be extracted from
+    :param columns: Fields to be written to CSV. Will be written as the file header if write_header is True. Will be extracted from
     events when an event is a dictionary (lists will be written as is). Optional. Defaults to None (will be inferred if event is
     dictionary).
     :type columns: list of string
@@ -122,8 +122,13 @@ class WriteToParquet(_Batching, _Writer):
     :param index: Index columns for writing the data. This parameter is forwarded as-is to pandas.DataFrame.set_index().
     If None (default), no index is set.
     :type index: list of string
-    :param columns: Regular columns for writing the data. This parameter is forwarded as-is to pandas.DataFrame().
+    :param columns: Fields to be written to parquet. Will be extracted from events when an event is a dictionary (lists will be written as
+    is). Optional. Defaults to None (will be inferred if event is
+    dictionary).
     :type columns: list of string
+    :param metadata_columns: Map from column name to metadata field name (e.g. {'event_time': 'time'}). Optional. Default to
+    None (all columns will be taken from data, none from metadata).
+    :type metadata_columns: dict
     :param partition_cols: Columns by which to partition the data into separate parquet files. If None (default), data will be written
     to a single file at path. This parameter is forwarded as-is to pandas.DataFrame.to_parquet().
     :type partition_cols: list of string
