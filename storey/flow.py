@@ -521,14 +521,14 @@ class _ConcurrentByKeyJobExecution(Flow):
         pass
 
 
-class JoinWithHttp(_ConcurrentJobExecution):
+class SendToHttp(_ConcurrentJobExecution):
     """Joins each event with data from any HTTP source. Used for event augmentation.
 
     :param request_builder: Creates an HTTP request from the event. This request is then sent to its destination.
     :type request_builder: Function (Event=>HttpRequest)
     :param join_from_response: Joins the original event with the HTTP response into a new event.
     :type join_from_response: Function ((Event, HttpResponse)=>Event)
-    :param name: Name of this step, as it should appear in logs. Defaults to class name (JoinWithHttp).
+    :param name: Name of this step, as it should appear in logs. Defaults to class name (SendToHttp).
     :type name: string
     :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
     Defaults to False.
