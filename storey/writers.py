@@ -66,6 +66,18 @@ class WriteToCSV(Flow):
                             new_value = data[column]
                         new_data.append(new_value)
                     data = new_data
+            elif isinstance(data, list) and self._columns and self._metadata_columns:
+                new_data = []
+                data_cursor = 0
+                for column in self._columns:
+                    if column in self._metadata_columns:
+                        metadata_attr = self._metadata_columns[column]
+                        new_value = getattr(event, metadata_attr)
+                        new_data.append(new_value)
+                    else:
+                        new_data.append(data[data_cursor])
+                        data_cursor += 1
+                data = new_data
             if self._first_event:
                 if not self._columns and self._write_header:
                     raise ValueError('columns must be defined when write_header is True and events type is not dictionary')
@@ -75,8 +87,7 @@ class WriteToCSV(Flow):
                     csv_writer.writerow(self._columns)
                 line = linebuf.getvalue()
                 await self._open_file.write(line)
-
-            self._first_event = False
+                self._first_event = False
             linebuf = io.StringIO()
             csv_writer = csv.writer(linebuf)
             csv_writer.writerow(data)
