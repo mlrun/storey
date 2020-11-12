@@ -3,20 +3,61 @@ import csv
 import io
 import json
 import random
+from typing import Optional
 
 import aiofiles
+import pandas as pd
 
 from .dtypes import V3ioError
-from .flow import Flow, _termination_obj, _split_path
+from .flow import Flow, _termination_obj, _split_path, _Batching
 
 
-class WriteToCSV(Flow):
+class _Writer:
+    def __init__(self):
+        self._first_event = None
+        self._columns = None
+        self._metadata_columns = None
+
+    def _event_to_writer_entry(self, event):
+        data = event.body
+        if isinstance(data, dict):
+            if self._first_event and not self._columns:
+                self._columns = list(data.keys())
+                if self._metadata_columns:
+                    self._columns.extend(self._metadata_columns.keys())
+                self._columns.sort()
+            if self._columns:
+                new_data = []
+                for column in self._columns:
+                    if self._metadata_columns and column in self._metadata_columns:
+                        metadata_attr = self._metadata_columns[column]
+                        new_value = getattr(event, metadata_attr)
+                    else:
+                        new_value = data[column]
+                    new_data.append(new_value)
+                data = new_data
+        elif isinstance(data, list) and self._columns and self._metadata_columns:
+            new_data = []
+            data_cursor = 0
+            for column in self._columns:
+                if column in self._metadata_columns:
+                    metadata_attr = self._metadata_columns[column]
+                    new_value = getattr(event, metadata_attr)
+                    new_data.append(new_value)
+                else:
+                    new_data.append(data[data_cursor])
+                    data_cursor += 1
+            data = new_data
+        return data
+
+
+class WriteToCSV(Flow, _Writer):
     """
     Writes events to a CSV file.
 
     :param path: path where CSV file will be written.
     :type path: string
-    :param columns: fields to be written to CSV. Will be written as the file header if write_header is True. Will be extracted from
+    :param columns: Fields to be written to CSV. Will be written as the file header if write_header is True. Will be extracted from
     events when an event is a dictionary (lists will be written as is). Optional. Defaults to None (will be inferred if event is
     dictionary).
     :type columns: list of string
@@ -33,7 +74,9 @@ class WriteToCSV(Flow):
     """
 
     def __init__(self, path, columns=None, write_header=False, metadata_columns=None, **kwargs):
-        super().__init__(**kwargs)
+        Flow.__init__(self, **kwargs)
+        _Writer.__init__(self)
+
         self._path = path
         self._columns = columns
         self._write_header = write_header
@@ -49,35 +92,7 @@ class WriteToCSV(Flow):
         try:
             if not self._open_file:
                 self._open_file = await aiofiles.open(self._path, mode='w')
-            data = event.body
-            if isinstance(data, dict):
-                if self._first_event and not self._columns:
-                    self._columns = list(data.keys())
-                    if self._metadata_columns:
-                        self._columns.extend(self._metadata_columns.keys())
-                    self._columns.sort()
-                if self._columns:
-                    new_data = []
-                    for column in self._columns:
-                        if self._metadata_columns and column in self._metadata_columns:
-                            metadata_attr = self._metadata_columns[column]
-                            new_value = getattr(event, metadata_attr)
-                        else:
-                            new_value = data[column]
-                        new_data.append(new_value)
-                    data = new_data
-            elif isinstance(data, list) and self._columns and self._metadata_columns:
-                new_data = []
-                data_cursor = 0
-                for column in self._columns:
-                    if column in self._metadata_columns:
-                        metadata_attr = self._metadata_columns[column]
-                        new_value = getattr(event, metadata_attr)
-                        new_data.append(new_value)
-                    else:
-                        new_data.append(data[data_cursor])
-                        data_cursor += 1
-                data = new_data
+            data = self._event_to_writer_entry(event)
             if self._first_event:
                 if not self._columns and self._write_header:
                     raise ValueError('columns must be defined when write_header is True and events type is not dictionary')
@@ -97,6 +112,53 @@ class WriteToCSV(Flow):
             if self._open_file:
                 await self._open_file.close()
             raise ex
+
+
+class WriteToParquet(_Batching, _Writer):
+    """Writes incoming events to parquet files.
+
+    :param path: Output path. Can be either a file or directory. This parameter is forwarded as-is to pandas.DataFrame.to_parquet().
+    :type path: string
+    :param index: Index columns for writing the data. This parameter is forwarded as-is to pandas.DataFrame.set_index().
+    If None (default), no index is set.
+    :type index: list of string
+    :param columns: Fields to be written to parquet. Will be extracted from events when an event is a dictionary (lists will be written as
+    is). Optional. Defaults to None (will be inferred if event is
+    dictionary).
+    :type columns: list of string
+    :param metadata_columns: Map from column name to metadata field name (e.g. {'event_time': 'time'}). Optional. Default to
+    None (all columns will be taken from data, none from metadata).
+    :type metadata_columns: dict
+    :param partition_cols: Columns by which to partition the data into separate parquet files. If None (default), data will be written
+    to a single file at path. This parameter is forwarded as-is to pandas.DataFrame.to_parquet().
+    :type partition_cols: list of string
+    :param max_events: Maximum number of events to write at a time. If None (default), all events will be written on flow termination,
+    or after timeout_secs (if timeout_secs is set).
+    :type max_events: int
+    :param timeout_secs: Maximum number of seconds to hold events before they are written. If None (default), all events will be written
+    on flow termination, or after max_events are accumulated (if max_events is set).
+    :type timeout_secs: int
+    """
+
+    def __init__(self, path, index: Optional[list] = None, columns: Optional[list] = None, partition_cols: Optional[list] = None,
+                 metadata_columns: Optional[dict] = None, **kwargs):
+        _Batching.__init__(self, **kwargs)
+        _Writer.__init__(self)
+
+        self._path = path
+        self._index = index
+        self._columns = columns
+        self._partition_cols = partition_cols
+        self._metadata_columns = metadata_columns
+
+    def _event_to_batch_entry(self, event):
+        return self._event_to_writer_entry(event)
+
+    async def _emit(self, batch, batch_time):
+        df = pd.DataFrame(batch, columns=self._columns)
+        if self._index:
+            df.set_index(self._index, inplace=True)
+        df.to_parquet(path=self._path, partition_cols=self._partition_cols)
 
 
 class WriteToV3IOStream(Flow):

@@ -582,6 +582,9 @@ class _Batching(Flow):
         await asyncio.sleep(self._timeout_secs)
         await self._emit_batch()
 
+    def _event_to_batch_entry(self, event):
+        return self._get_safe_event_or_body(event)
+
     async def _do(self, event):
         if event is _termination_obj:
             if self._timeout_task and not self._timeout_task.cancelled():
@@ -595,7 +598,7 @@ class _Batching(Flow):
                     self._timeout_task = asyncio.get_running_loop().create_task(self._sleep_and_emit())
 
             self._event_count = self._event_count + 1
-            self._batch.append(self._get_safe_event_or_body(event))
+            self._batch.append(self._event_to_batch_entry(event))
 
             if self._event_count == self._max_events:
                 if self._timeout_task and not self._timeout_task.cancelled():

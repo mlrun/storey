@@ -33,8 +33,9 @@ class AggregateByKey(Flow):
     :type aliases: dict
     """
 
-    def __init__(self, aggregates, table, key=None, emit_policy=_default_emit_policy, augmentation_fn=None, enrich_with=None, aliases=None):
-        Flow.__init__(self)
+    def __init__(self, aggregates, table, key=None, emit_policy=_default_emit_policy, augmentation_fn=None, enrich_with=None, aliases=None,
+                 **kwargs):
+        Flow.__init__(self, **kwargs)
         self._aggregates_store = AggregateStore(aggregates)
         self._closeables = [table]
 
