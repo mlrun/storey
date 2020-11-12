@@ -173,7 +173,7 @@ class WriteToV3IOStream(Flow):
 
         if self._worker_awaitable.done():
             await self._worker_awaitable
-            raise AssertionError("JoinWithHttp worker has already terminated")
+            raise AssertionError("WriteToV3IOStream worker has already terminated")
 
         if event is _termination_obj:
             await self._q.put(_termination_obj)

@@ -28,7 +28,7 @@ A Storey flow consist of steps linked together by the `build_flow` function, eac
 * `Batch(max_events, timeout)` - Batches events. This step emits a batch every max_events events, or when timeout seconds have passed since the first event in the batch was received.
 * `Choice` - 
 * `JoinWithV3IOTable` - 
-* `JoinWithHttp` - 
+* `SendToHttp` - 
 * `AggregateByKey(aggregations,cache, key=None, emit_policy=EmitEveryEvent(), augmentation_fn=None)` - This step aggregates the data into the cache object provided for later persistence, and outputs an event enriched with the requested aggregation features.
 * `QueryAggregationByKey(aggregations,cache, key=None, emit_policy=EmitEveryEvent(), augmentation_fn=None)` - Similar to to `AggregateByKey`, but this step is for serving only and does not aggregate the event.
 * `WriteToTable(table)` - Persists the data in `table` to its associated storage by key.

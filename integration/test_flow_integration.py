@@ -9,7 +9,7 @@ import aiohttp
 
 from _datetime import datetime
 
-from storey import Filter, JoinWithV3IOTable, JoinWithHttp, Map, Reduce, Source, HttpRequest, build_flow, \
+from storey import Filter, JoinWithV3IOTable, SendToHttp, Map, Reduce, Source, HttpRequest, build_flow, \
     WriteToV3IOStream, V3ioDriver, WriteToTSDB, Batch, Table, JoinWithTable
 from .integration_test_utils import V3ioHeaders, append_return, setup_kv_teardown_test
 
@@ -92,7 +92,7 @@ def test_join_with_http():
         Source(),
         Map(lambda x: x + 1),
         Filter(lambda x: x < 8),
-        JoinWithHttp(lambda _: HttpRequest('GET', 'https://google.com', ''), lambda _, response: response.status),
+        SendToHttp(lambda _: HttpRequest('GET', 'https://google.com', ''), lambda _, response: response.status),
         Reduce(0, lambda x, y: x + y)
     ]).run()
     for i in range(10):
