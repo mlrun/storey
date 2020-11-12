@@ -1,15 +1,13 @@
 import _csv
 import asyncio
-import os
 import time
 import uuid
 from datetime import datetime
 
 import pandas as pd
 
-from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV, Complete, AsyncSource, Choice, Event, \
-    Batch, Table, NoopDriver, WriteToCSV, DataframeSource, MapClass, JoinWithTable
-from storey.dataframe import ReduceToDataFrame, ToDataFrame, WriteToParquet
+from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV, Complete, AsyncSource, Choice, \
+    Event, Batch, Table, NoopDriver, WriteToCSV, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, WriteToParquet
 
 
 class ATestException(Exception):
@@ -863,6 +861,26 @@ def test_write_to_parquet_single_file_on_termination(tmpdir):
     for i in range(10):
         controller.emit([i, f'this is {i}'])
         expected.append([i, f'this is {i}'])
+    expected = pd.DataFrame(expected, columns=columns, dtype='int64')
+    controller.terminate()
+    controller.await_termination()
+
+    read_back_df = pd.read_parquet(out_file, columns=columns)
+    assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+
+
+def test_write_to_parquet_with_metadata(tmpdir):
+    out_file = f'{tmpdir}/test_write_to_parquet_with_metadata{uuid.uuid4().hex}.parquet'
+    columns = ['event_key', 'my_int', 'my_string']
+    controller = build_flow([
+        Source(),
+        WriteToParquet(out_file, columns=columns, metadata_columns={'event_key': 'key'})
+    ]).run()
+
+    expected = []
+    for i in range(10):
+        controller.emit([i, f'this is {i}'], key=f'key{i}')
+        expected.append([f'key{i}', i, f'this is {i}'])
     expected = pd.DataFrame(expected, columns=columns, dtype='int64')
     controller.terminate()
     controller.await_termination()

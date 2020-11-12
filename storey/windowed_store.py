@@ -9,8 +9,8 @@ _default_emit_policy = EmitAfterMaxEvent(10)
 
 
 class Window(Flow):
-    def __init__(self, window, emit_policy=_default_emit_policy, late_data_handling=LateDataHandling.Nothing):
-        Flow.__init__(self)
+    def __init__(self, window, emit_policy=_default_emit_policy, late_data_handling=LateDataHandling.Nothing, **kwargs):
+        Flow.__init__(self, **kwargs)
         self._windowed_store = WindowedStore(window, late_data_handling)
         self._window = window
         self._emit_policy = emit_policy
