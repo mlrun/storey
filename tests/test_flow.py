@@ -7,7 +7,8 @@ from datetime import datetime
 import pandas as pd
 
 from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV, Complete, AsyncSource, Choice, \
-    Event, Batch, Table, NoopDriver, WriteToCSV, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, WriteToParquet
+    Event, Batch, Table, NoopDriver, WriteToCSV, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, WriteToParquet, \
+    WriteToTSDB
 
 
 class ATestException(Exception):
@@ -931,3 +932,54 @@ def test_termination_result_on_none():
     controller.terminate()
     termination_result = controller.await_termination()
     assert termination_result == 2
+
+
+class MockFramesClient:
+    def __init__(self):
+        self.call_log = []
+
+    def create(self, backend, table, **kwargs):
+        kwargs['backend'] = backend
+        kwargs['table'] = table
+        self.call_log.append(('create', kwargs))
+
+    def write(self, backend, table, dfs, **kwargs):
+        kwargs['backend'] = backend
+        kwargs['table'] = table
+        kwargs['dfs'] = dfs
+        self.call_log.append(('write', kwargs))
+
+
+def test_write_to_tsdb():
+    columns = ['cpu', 'disk', 'time', 'node']
+    mock_frames_client = MockFramesClient()
+
+    controller = build_flow([
+        Source(),
+        WriteToTSDB(path='some/path', time_col='time', labels_cols='node', columns=columns, rate='1/h', max_events=1,
+                    frames_client=mock_frames_client)
+    ]).run()
+
+    expected_data = []
+    date_time_str = '18/09/19 01:55:1'
+    for i in range(9):
+        now = datetime.strptime(date_time_str + str(i) + ' UTC-0000', '%d/%m/%y %H:%M:%S UTC%z')
+        controller.emit([i + 1, i + 2, now, i])
+        expected_data.append([i + 1, i + 2, now, i])
+
+    controller.terminate()
+    controller.await_termination()
+
+    expected_create = ('create', {'if_exists': 1, 'rate': '1/h', 'aggregates': '', 'aggregation_granularity': '', 'backend': 'tsdb',
+                                  'table': 'some/path'})
+    assert mock_frames_client.call_log[0] == expected_create
+    i = 0
+    for write_call in mock_frames_client.call_log[1:]:
+        assert write_call[0] == 'write'
+        expected = pd.DataFrame([expected_data[i]], columns=columns)
+        expected.set_index(keys=['time', 'node'], inplace=True)
+        res = write_call[1]['dfs']
+        assert expected.equals(res), f"result{res}\n!=\nexpected{expected}"
+        del write_call[1]['dfs']
+        assert write_call[1] == {'backend': 'tsdb', 'table': 'some/path'}
+        i += 1
