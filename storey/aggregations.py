@@ -75,7 +75,7 @@ class AggregateByKey(Flow):
         if not isinstance(aggregates, list):
             raise TypeError('aggregates should be a list of FieldAggregator/dictionaries')
 
-        if isinstance(aggregates[0], FieldAggregator):
+        if not aggregates or isinstance(aggregates[0], FieldAggregator):
             return aggregates
 
         if isinstance(aggregates[0], dict):

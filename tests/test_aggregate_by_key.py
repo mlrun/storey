@@ -371,8 +371,7 @@ def test_aggregate_dict_fixed_window():
     aggregations = [{'name': 'number_of_stuff',
                      'column': 'col1',
                      'operations': ["count"],
-                     'windows': ['1h', '2h', '3h', '24h']
-                     }]
+                     'windows': ['1h', '2h', '3h', '24h']}]
     controller = build_flow([
         Source(),
         AggregateByKey(aggregations, Table("test", NoopDriver())),
