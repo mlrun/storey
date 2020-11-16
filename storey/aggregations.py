@@ -4,7 +4,7 @@ from datetime import datetime
 
 from .aggregation_utils import is_raw_aggregate, get_virtual_aggregation_func, get_implied_aggregates, get_all_raw_aggregates, \
     get_all_raw_aggregates_with_hidden
-from .dtypes import EmitEveryEvent, FixedWindows, EmitAfterPeriod, EmitAfterWindow, EmitAfterMaxEvent
+from .dtypes import EmitEveryEvent, FixedWindows, SlidingWindows, EmitAfterPeriod, EmitAfterWindow, EmitAfterMaxEvent
 from .flow import Flow, _termination_obj, Event, _ConcurrentByKeyJobExecution
 
 _default_emit_policy = EmitEveryEvent()
@@ -36,6 +36,8 @@ class AggregateByKey(Flow):
     def __init__(self, aggregates, table, key=None, emit_policy=_default_emit_policy, augmentation_fn=None, enrich_with=None, aliases=None,
                  **kwargs):
         Flow.__init__(self, **kwargs)
+
+        aggregates = self._parse_aggregates(aggregates)
         self._aggregates_store = AggregateStore(aggregates)
         self._closeables = [table]
 
@@ -67,6 +69,28 @@ class AggregateByKey(Flow):
                 self.key_extractor = lambda element: element[key]
             else:
                 raise TypeError(f'key is expected to be either a callable or string but got {type(key)}')
+
+    @staticmethod
+    def _parse_aggregates(aggregates):
+        if not isinstance(aggregates, list):
+            raise TypeError('aggregates should be a list of FieldAggregator/dictionaries')
+
+        if isinstance(aggregates[0], FieldAggregator):
+            return aggregates
+
+        if isinstance(aggregates[0], dict):
+            new_aggregates = []
+            for aggregate_dict in aggregates:
+                if 'period' in aggregate_dict:
+                    window = SlidingWindows(aggregate_dict['windows'], aggregate_dict['period'])
+                else:
+                    window = FixedWindows(aggregate_dict['windows'])
+                new_aggregates.append(FieldAggregator(aggregate_dict['name'], aggregate_dict['column'], aggregate_dict['operations'],
+                                                      window, aggregate_dict.get('aggregation_filter', None),
+                                                      aggregate_dict.get('max_value', None)))
+            return new_aggregates
+
+        raise TypeError('aggregates should be a list of FieldAggregator/dictionaries')
 
     async def _do(self, event):
         if event == _termination_obj:
