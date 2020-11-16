@@ -3,9 +3,12 @@ import csv
 import queue
 import threading
 from datetime import datetime, timezone
+from typing import Optional, Union
 
 import aiofiles
+import pandas
 
+from storey.sources import AsyncAwaitableResult
 from .dtypes import _termination_obj, Event, FlowError
 from .flow import Flow
 
@@ -35,17 +38,14 @@ class FlowController:
         self._emit_fn = emit_fn
         self._await_termination_fn = await_termination_fn
 
-    def emit(self, element, key=None, event_time=None, return_awaitable_result=False):
+    def emit(self, element: object, key: Optional[str] = None, event_time: Optional[datetime] = None,
+             return_awaitable_result: bool = False) -> Optional[AsyncAwaitableResult]:
         """Emits an event into the associated flow.
 
         :param element: The event data, or payload. To set metadata as well, pass an Event object.
-        :type element: object
         :param key: The event key (optional)
-        :type key: string
         :param event_time: The event time (default to current time, UTC).
-        :type event_time: datetime
         :param return_awaitable_result: Whether an AwaitableResult object should be returned. Defaults to False.
-        :type return_awaitable_result: boolean
 
         :returns: AsyncAwaitableResult if return_awaitable_result is True. None otherwise.
         """
@@ -92,12 +92,11 @@ class Source(Flow):
     for use from inside an async context.
 
     :param buffer_size: size of the incoming event buffer. Defaults to 1.
-    :type buffer_size: int
     :param name: Name of this step, as it should appear in logs. Defaults to class name (Source).
     :type name: string
     """
 
-    def __init__(self, buffer_size=1, **kwargs):
+    def __init__(self, buffer_size: int = 1, **kwargs):
         super().__init__(**kwargs)
         if buffer_size <= 0:
             raise ValueError('Buffer size must be positive')
@@ -231,12 +230,11 @@ class AsyncSource(Flow):
     See Source for use from inside a synchronous context.
 
     :param buffer_size: size of the incoming event buffer. Defaults to 1.
-    :type buffer_size: int
     :param name: Name of this step, as it should appear in logs. Defaults to class name (AsyncSource).
     :type name: string
     """
 
-    def __init__(self, buffer_size=1, **kwargs):
+    def __init__(self, buffer_size: int = 1, **kwargs):
         super().__init__(**kwargs)
         if buffer_size <= 0:
             raise ValueError('Buffer size must be positive')
@@ -334,22 +332,18 @@ class ReadCSV(_IterableSource):
     Reads CSV files as input source for a flow.
 
     :param paths: paths to CSV files
-    :type paths: list of string
     :param with_header: whether CSV files have a header or not. Defaults to False.
-    :type with_header: boolean
     :param build_dict: whether to format each record produced from the input file as a dictionary (as opposed to a list). Default to False.
-    :type build_dict: boolean
     :param key_field: the CSV field to be use as the key for events. May be an int (field index) or string (field name) if with_header
     is True. Defaults to None (no key).
-    :type key_field: int or string
     :param timestamp_field: the CSV field to be parsed as the timestamp for events. May be an int (field index) or string (field name) if
     with_header is True. Defaults to None (no timestamp field).
-    :type timestamp_field: int or string
     :param timestamp_format: timestamp format as defined in datetime.strptime(). Default to ISO-8601 as defined in datetime.fromisoformat().
-    :type timestamp_format: string
     """
 
-    def __init__(self, paths, with_header=False, build_dict=False, key_field=None, timestamp_field=None, timestamp_format=None, **kwargs):
+    def __init__(self, paths: Union[list, str], with_header: bool = False, build_dict: bool = False,
+                 key_field: Union[str, int, None] = None, timestamp_field: Union[str, int, None] = None, timestamp_format: str = None,
+                 **kwargs):
         super().__init__(**kwargs)
         if isinstance(paths, str):
             paths = [paths]
@@ -417,22 +411,19 @@ class DataframeSource(_IterableSource):
         Use pandas dataframe as input source for a flow.
 
         :param dfs: A pandas dataframe, or dataframes, to be used as input source for the flow.
-        :type paths: pandas.DataFrame, or list of pandas.DataFrame
         :param key_column: column to be used as key for events.
-        :type key_column: string
         :param time_column: column to be used as time for events.
-        :type time_column: datetime
         :param id_column: column to be used as ID for events.
-        :type id_column: string
     """
 
-    def __init__(self, dfs, key_column=None, time_column=None, id_column=None, **kwargs):
+    def __init__(self, dfs: Union[pandas.DataFrame, list], key_column: Optional[str] = None, time_column: Optional[str] = None,
+                 id_column: Optional[str] = None, **kwargs):
         super().__init__(**kwargs)
         if not isinstance(dfs, list):
             dfs = [dfs]
         self._dfs = dfs
-        self._key_field = key_column
-        self._time_field = time_column
+        self._key_column = key_column
+        self._time_column = time_column
         self._id_field = id_column
 
     async def _run_loop(self):
@@ -445,13 +436,13 @@ class DataframeSource(_IterableSource):
                         body[index_name] = indexes[i]
                     i += 1
                 key = None
-                if self._key_field:
-                    key = body[self._key_field]
-                    del body[self._key_field]
+                if self._key_column:
+                    key = body[self._key_column]
+                    del body[self._key_column]
                 time = None
-                if self._time_field:
-                    time = body[self._time_field]
-                    del body[self._time_field]
+                if self._time_column:
+                    time = body[self._time_column]
+                    del body[self._time_column]
                 id = None
                 if self._id_field:
                     id = body[self._id_field]

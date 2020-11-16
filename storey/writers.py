@@ -3,18 +3,19 @@ import csv
 import io
 import json
 import random
-from typing import Optional, Union
+from typing import Optional, Union, Callable
 
 import aiofiles
 import pandas as pd
 import v3io_frames as frames
+from drivers import V3ioDriver
 
-from .dtypes import V3ioError
+from .dtypes import V3ioError, Event
 from .flow import Flow, _termination_obj, _split_path, _Batching
 
 
 class _Writer:
-    def __init__(self, metadata_columns):
+    def __init__(self, metadata_columns: Union[list, dict]):
         self._first_event = None
         self._columns = None
         self._metadata_columns = metadata_columns
@@ -61,16 +62,12 @@ class WriteToCSV(Flow, _Writer):
     Writes events to a CSV file.
 
     :param path: path where CSV file will be written.
-    :type path: string
     :param columns: Fields to be written to CSV. Will be written as the file header if write_header is True. Will be extracted from
     events when an event is a dictionary (lists will be written as is). Optional. Defaults to None (will be inferred if event is
     dictionary).
-    :type columns: list of string
     :param metadata_columns: Map from column name to metadata field name (e.g. {'event_time': 'time'}), or list, if column names do not need
      to be mapped. Optional. Default to None (all columns will be taken from data, none from metadata).
-    :type metadata_columns: dict or list
     :param write_header: Whether to write the columns as a CSV header.
-    :type write_header: boolean
     :param name: Name of this step, as it should appear in logs. Defaults to class name (WriteToCSV).
     :type name: string
     :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
@@ -78,7 +75,7 @@ class WriteToCSV(Flow, _Writer):
     :type full_event: boolean
     """
 
-    def __init__(self, path, columns=None, write_header=False, metadata_columns=None, **kwargs):
+    def __init__(self, path: str, columns: list = None, write_header: bool = False, metadata_columns: Union[list, dict] = None, **kwargs):
         Flow.__init__(self, **kwargs)
         _Writer.__init__(self, metadata_columns)
 
@@ -123,20 +120,15 @@ class WriteToParquet(_Batching, _Writer):
     """Writes incoming events to parquet files.
 
     :param path: Output path. Can be either a file or directory. This parameter is forwarded as-is to pandas.DataFrame.to_parquet().
-    :type path: string
     :param index: Index columns for writing the data. This parameter is forwarded as-is to pandas.DataFrame.set_index().
     If None (default), no index is set.
-    :type index: list of string
     :param columns: Fields to be written to parquet. Will be extracted from events when an event is a dictionary (lists will be written as
     is). Optional. Defaults to None (will be inferred if event is
     dictionary).
-    :type columns: list of string
     :param metadata_columns: Map from column name to metadata field name (e.g. {'event_time': 'time'}), or list, if column names do not need
     to be mapped. Optional. Default to None (all columns will be taken from data, none from metadata).
-    :type metadata_columns: dict or list
     :param partition_cols: Columns by which to partition the data into separate parquet files. If None (default), data will be written
     to a single file at path. This parameter is forwarded as-is to pandas.DataFrame.to_parquet().
-    :type partition_cols: list of string
     :param max_events: Maximum number of events to write at a time. If None (default), all events will be written on flow termination,
     or after timeout_secs (if timeout_secs is set).
     :type max_events: int
@@ -145,7 +137,7 @@ class WriteToParquet(_Batching, _Writer):
     :type timeout_secs: int
     """
 
-    def __init__(self, path, index: Optional[list] = None, columns: Optional[list] = None, partition_cols: Optional[list] = None,
+    def __init__(self, path: str, index: Optional[list] = None, columns: Optional[list] = None, partition_cols: Optional[list] = None,
                  metadata_columns: Union[list, dict, None] = None, **kwargs):
         _Batching.__init__(self, **kwargs)
         _Writer.__init__(self, metadata_columns)
@@ -169,32 +161,22 @@ class WriteToTSDB(_Batching, _Writer):
     """Writes incoming events to TSDB table.
 
     :param path: Path to TSDB table.
-    :type path: string
     :param time_col: Name of the time column.
-    :type time_col: string
     :param columns: List of column names to be passed as-is to the DataFrame constructor.
-    :type columns: list of string
     :param metadata_columns: Map from column name to metadata field name (e.g. {'event_time': 'time'}), or list, if column names do not need
     to be mapped. Optional. Default to None (all columns will be taken from data, none from metadata).
-    :type metadata_columns: dict or list
     :param labels_cols: List of column names to be used for metric labels.
-    :type labels_cols: string or list of string
     :param v3io_frames: Frames service url.
-    :type v3io_frames: string
     :param access_key: Access key to the system.
-    :type access_key: string
     :param container: Container name for this TSDB table.
-    :type container: string
     :param rate: TSDB table sample rate.
-    :type rate: string
     :param aggr: Server-side aggregations for this TSDB table (e.g. 'sum,count').
-    :type aggr: string
     :param aggr_granularity: Granularity of server-side aggregations for this TSDB table (e.g. '1h').
-    :type aggr_granularity: string
     """
 
-    def __init__(self, path, time_col, columns, metadata_columns=None, labels_cols=None, v3io_frames=None, access_key=None, container="",
-                 rate="", aggr="", aggr_granularity="", frames_client=None, **kwargs):
+    def __init__(self, path: str, time_col: str, columns: Union[str, list], metadata_columns: Union[str, list] = None,
+                 labels_cols: Union[str, list] = None, v3io_frames: str = None, access_key: str = None, container: str = "", rate: str = "",
+                 aggr: str = "", aggr_granularity: str = "", frames_client: frames.Client = None, **kwargs):
         _Batching.__init__(self, **kwargs)
         _Writer.__init__(self, metadata_columns)
 
@@ -232,16 +214,12 @@ class WriteToV3IOStream(Flow):
     """Writes all incoming events into a V3IO stream.
 
     :param storage: V3IO driver.
-    :type storage: V3ioDriver
     :param stream_path: Path to the V3IO stream.
-    :type stream_path: string
     :param sharding_func: Function for determining the shard ID to which to write each event.
-    :type sharding_func: Function (Event=>int)
     :param batch_size: Batch size for each write request.
-    :type batch_size: int
     """
 
-    def __init__(self, storage, stream_path, sharding_func=None, batch_size=8, **kwargs):
+    def __init__(self, storage: V3ioDriver, stream_path: str, sharding_func: Callable[[Event], int] = None, batch_size: int = 8, **kwargs):
         Flow.__init__(self, **kwargs)
 
         self._storage = storage

@@ -1,14 +1,17 @@
 import asyncio
 import copy
-from typing import Optional
+from typing import Optional, Callable
 
 import aiohttp
 
+from storey import Table
 from .dtypes import _termination_obj, Event, FlowError, V3ioError
 
 
 class Flow:
-    def __init__(self, name=None, full_event=False, termination_result_fn=lambda x, y: x if x is not None else y, context=None, **kwargs):
+    def __init__(self, name: str = None, full_event: bool = False,
+                 termination_result_fn: Callable[[object, object], object] = lambda x, y: x if x is not None else y,
+                 context=None, **kwargs):
         self._outlets = []
         self._full_event = full_event
         self._termination_result_fn = termination_result_fn
@@ -108,7 +111,7 @@ class Choice(Flow):
 
 
 class _UnaryFunctionFlow(Flow):
-    def __init__(self, fn, **kwargs):
+    def __init__(self, fn: Callable[[Event], object], **kwargs):
         super().__init__(**kwargs)
         if not callable(fn):
             raise TypeError(f'Expected a callable, got {type(fn)}')
@@ -562,7 +565,7 @@ class SendToHttp(_ConcurrentJobExecution):
 
 
 class _Batching(Flow):
-    def __init__(self, max_events: Optional[int] = None, timeout_secs=None, **kwargs):
+    def __init__(self, max_events: Optional[int] = None, timeout_secs: Optional[int] = None, **kwargs):
         super().__init__(**kwargs)
 
         self._max_events = max_events
@@ -687,14 +690,10 @@ class JoinWithTable(_ConcurrentJobExecution):
     """Joins each event with data from the given table.
 
     :param table: Table to join with.
-    :type table: Table
     :param key_extractor: Function for extracting the key for table access from an event.
-    :type key_extractor: Function (Event=>string)
     :param attributes: A comma-separated list of attributes to be queried for. Defaults to all attributes.
-    :type attributes: list of string
     :param join_function: Joins the original event with relevant data received from the storage. Defaults to assume the event's body is a
     dict-like object and updating it.
-    :type join_function: Function ((Event, dict)=>Event)
     :param name: Name of this step, as it should appear in logs. Defaults to class name (JoinWithTable).
     :type name: string
     :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
@@ -702,7 +701,8 @@ class JoinWithTable(_ConcurrentJobExecution):
     :type full_event: boolean
     """
 
-    def __init__(self, table, key_extractor, attributes=None, join_function=None, **kwargs):
+    def __init__(self, table: Table, key_extractor: Callable[[Event], str], attributes: list = None,
+                 join_function: Callable[[Event, dict], Event] = None, **kwargs):
         super().__init__(**kwargs)
 
         self._table = table
