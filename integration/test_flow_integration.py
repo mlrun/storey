@@ -153,9 +153,38 @@ def test_write_to_tsdb():
     expected = []
     date_time_str = '18/09/19 01:55:1'
     for i in range(9):
-        now = datetime.strptime(date_time_str+str(i)+' UTC-0000', '%d/%m/%y %H:%M:%S UTC%z')
-        controller.emit([i+1, i+2, now, i])
-        expected.append([float(i+1), float(i+2), now, i])
+        now = datetime.strptime(date_time_str + str(i) + ' UTC-0000', '%d/%m/%y %H:%M:%S UTC%z')
+        controller.emit([i + 1, i + 2, now, i])
+        expected.append([float(i + 1), float(i + 2), now, i])
+
+    controller.terminate()
+    controller.await_termination()
+
+    client = frames.Client()
+    res = client.read("tsdb", tsdb_path, start='0', end='now')
+    res = res.sort_values(['time'])
+    res['node'] = pd.to_numeric(res["node"])
+    df = pd.DataFrame(expected, columns=columns)
+    df.set_index(keys=['time'], inplace=True)
+    assert res.equals(df), f"result{res}\n!=\nexpected{df}"
+
+
+def test_write_to_tsdb_with_metadata_label():
+    tsdb_path = f'tsdb_path-{int(time.time_ns() / 1000)}'
+    columns = ['cpu', 'disk', 'time', 'node']
+
+    controller = build_flow([
+        Source(),
+        WriteToTSDB(path=tsdb_path, time_col='time', labels_cols='node', columns=columns, metadata_columns=['time'], rate='1/h',
+                    max_events=2)
+    ]).run()
+
+    expected = []
+    date_time_str = '18/09/19 01:55:1'
+    for i in range(9):
+        now = datetime.strptime(date_time_str + str(i) + ' UTC-0000', '%d/%m/%y %H:%M:%S UTC%z')
+        controller.emit([i + 1, i + 2, i], event_time=now)
+        expected.append([float(i + 1), float(i + 2), now, i])
 
     controller.terminate()
     controller.await_termination()

@@ -3,20 +3,25 @@ import csv
 import io
 import json
 import random
-from typing import Optional
+from typing import Optional, Union
 
 import aiofiles
 import pandas as pd
+import v3io_frames as frames
 
 from .dtypes import V3ioError
 from .flow import Flow, _termination_obj, _split_path, _Batching
 
 
 class _Writer:
-    def __init__(self):
+    def __init__(self, metadata_columns):
         self._first_event = None
         self._columns = None
-        self._metadata_columns = None
+        self._metadata_columns = metadata_columns
+        if isinstance(metadata_columns, list):
+            self._metadata_columns = {}
+            for column in metadata_columns:
+                self._metadata_columns[column] = column
 
     def _event_to_writer_entry(self, event):
         data = event.body
@@ -61,9 +66,9 @@ class WriteToCSV(Flow, _Writer):
     events when an event is a dictionary (lists will be written as is). Optional. Defaults to None (will be inferred if event is
     dictionary).
     :type columns: list of string
-    :param metadata_columns: Map from column name to metadata field name (e.g. {'event_time': 'time'}). Optional. Default to
-    None (all columns will be taken from data, none from metadata).
-    :type metadata_columns: dict
+    :param metadata_columns: Map from column name to metadata field name (e.g. {'event_time': 'time'}), or list, if column names do not need
+     to be mapped. Optional. Default to None (all columns will be taken from data, none from metadata).
+    :type metadata_columns: dict or list
     :param write_header: Whether to write the columns as a CSV header.
     :type write_header: boolean
     :param name: Name of this step, as it should appear in logs. Defaults to class name (WriteToCSV).
@@ -75,7 +80,7 @@ class WriteToCSV(Flow, _Writer):
 
     def __init__(self, path, columns=None, write_header=False, metadata_columns=None, **kwargs):
         Flow.__init__(self, **kwargs)
-        _Writer.__init__(self)
+        _Writer.__init__(self, metadata_columns)
 
         self._path = path
         self._columns = columns
@@ -126,9 +131,9 @@ class WriteToParquet(_Batching, _Writer):
     is). Optional. Defaults to None (will be inferred if event is
     dictionary).
     :type columns: list of string
-    :param metadata_columns: Map from column name to metadata field name (e.g. {'event_time': 'time'}). Optional. Default to
-    None (all columns will be taken from data, none from metadata).
-    :type metadata_columns: dict
+    :param metadata_columns: Map from column name to metadata field name (e.g. {'event_time': 'time'}), or list, if column names do not need
+    to be mapped. Optional. Default to None (all columns will be taken from data, none from metadata).
+    :type metadata_columns: dict or list
     :param partition_cols: Columns by which to partition the data into separate parquet files. If None (default), data will be written
     to a single file at path. This parameter is forwarded as-is to pandas.DataFrame.to_parquet().
     :type partition_cols: list of string
@@ -141,15 +146,14 @@ class WriteToParquet(_Batching, _Writer):
     """
 
     def __init__(self, path, index: Optional[list] = None, columns: Optional[list] = None, partition_cols: Optional[list] = None,
-                 metadata_columns: Optional[dict] = None, **kwargs):
+                 metadata_columns: Union[list, dict, None] = None, **kwargs):
         _Batching.__init__(self, **kwargs)
-        _Writer.__init__(self)
+        _Writer.__init__(self, metadata_columns)
 
         self._path = path
         self._index = index
         self._columns = columns
         self._partition_cols = partition_cols
-        self._metadata_columns = metadata_columns
 
     def _event_to_batch_entry(self, event):
         return self._event_to_writer_entry(event)
@@ -159,6 +163,69 @@ class WriteToParquet(_Batching, _Writer):
         if self._index:
             df.set_index(self._index, inplace=True)
         df.to_parquet(path=self._path, partition_cols=self._partition_cols)
+
+
+class WriteToTSDB(_Batching, _Writer):
+    """Writes incoming events to TSDB table.
+
+    :param path: Path to TSDB table.
+    :type path: string
+    :param time_col: Name of the time column.
+    :type time_col: string
+    :param columns: List of column names to be passed as-is to the DataFrame constructor.
+    :type columns: list of string
+    :param metadata_columns: Map from column name to metadata field name (e.g. {'event_time': 'time'}), or list, if column names do not need
+    to be mapped. Optional. Default to None (all columns will be taken from data, none from metadata).
+    :type metadata_columns: dict or list
+    :param labels_cols: List of column names to be used for metric labels.
+    :type labels_cols: string or list of string
+    :param v3io_frames: Frames service url.
+    :type v3io_frames: string
+    :param access_key: Access key to the system.
+    :type access_key: string
+    :param container: Container name for this TSDB table.
+    :type container: string
+    :param rate: TSDB table sample rate.
+    :type rate: string
+    :param aggr: Server-side aggregations for this TSDB table (e.g. 'sum,count').
+    :type aggr: string
+    :param aggr_granularity: Granularity of server-side aggregations for this TSDB table (e.g. '1h').
+    :type aggr_granularity: string
+    """
+
+    def __init__(self, path, time_col, columns, metadata_columns=None, labels_cols=None, v3io_frames=None, access_key=None, container="",
+                 rate="", aggr="", aggr_granularity="", frames_client=None, **kwargs):
+        _Batching.__init__(self, **kwargs)
+        _Writer.__init__(self, metadata_columns)
+
+        self._path = path
+        self._time_col = time_col
+        self._columns = columns
+        self._labels_cols = labels_cols
+        self._rate = rate
+        self._aggr = aggr
+        self.aggr_granularity = aggr_granularity
+        self._created = False
+        self._frames_client = frames_client or frames.Client(address=v3io_frames, token=access_key, container=container)
+
+    def _event_to_batch_entry(self, event):
+        return self._event_to_writer_entry(event)
+
+    async def _emit(self, batch, batch_time):
+        df = pd.DataFrame(batch, columns=self._columns)
+        indices = [self._time_col]
+        if self._labels_cols:
+            if isinstance(self._labels_cols, list):
+                indices.extend(self._labels_cols)
+            else:
+                indices.append(self._labels_cols)
+        df.set_index(keys=indices, inplace=True)
+        if not self._created and self._rate:
+            self._created = True
+            self._frames_client.create(
+                'tsdb', table=self._path, if_exists=frames.frames_pb2.IGNORE, rate=self._rate,
+                aggregates=self._aggr, aggregation_granularity=self.aggr_granularity)
+        self._frames_client.write("tsdb", self._path, df)
 
 
 class WriteToV3IOStream(Flow):

@@ -1,9 +1,8 @@
 import copy
 
 import pandas as pd
-import v3io_frames as frames
 
-from .flow import _termination_obj, Flow, _Batching
+from .flow import _termination_obj, Flow
 
 
 class ReduceToDataFrame(Flow):
@@ -82,58 +81,3 @@ class ToDataFrame(Flow):
             new_event = copy.copy(event)
             new_event.body = df
             return await self._do_downstream(new_event)
-
-
-class WriteToTSDB(_Batching):
-    """Writes incoming events to TSDB table.
-
-    :param path: Path to TSDB table.
-    :type path: string
-    :param time_col: Name of the time column.
-    :type time_col: string
-    :param columns: List of column names to be passed as-is to the DataFrame constructor.
-    :type columns: list of string
-    :param labels_cols: List of column names to be used for metric labels.
-    :type labels_cols: string or list of string
-    :param v3io_frames: Frames service url.
-    :type v3io_frames: string
-    :param access_key: Access key to the system.
-    :type access_key: string
-    :param container: Container name for this TSDB table.
-    :type container: string
-    :param rate: TSDB table sample rate.
-    :type rate: string
-    :param aggr: Server-side aggregations for this TSDB table (e.g. 'sum,count').
-    :type aggr: string
-    :param aggr_granularity: Granularity of server-side aggregations for this TSDB table (e.g. '1h').
-    :type aggr_granularity: string
-    """
-
-    def __init__(self, path, time_col, columns, labels_cols=None, v3io_frames=None, access_key=None, container="",
-                 rate="", aggr="", aggr_granularity="", **kwargs):
-        super().__init__(**kwargs)
-        self._path = path
-        self._time_col = time_col
-        self._columns = columns
-        self._labels_cols = labels_cols
-        self._rate = rate
-        self._aggr = aggr
-        self.aggr_granularity = aggr_granularity
-        self._created = False
-        self._frames_client = frames.Client(address=v3io_frames, token=access_key, container=container)
-
-    async def _emit(self, batch, batch_time):
-        df = pd.DataFrame(batch, columns=self._columns)
-        indices = [self._time_col]
-        if self._labels_cols:
-            if isinstance(self._labels_cols, list):
-                indices.extend(self._labels_cols)
-            else:
-                indices.append(self._labels_cols)
-        df.set_index(keys=indices, inplace=True)
-        if not self._created and self._rate:
-            self._created = True
-            self._frames_client.create(
-                'tsdb', table=self._path, if_exists=frames.frames_pb2.IGNORE, rate=self._rate,
-                aggregates=self._aggr, aggregation_granularity=self.aggr_granularity)
-        self._frames_client.write("tsdb", self._path, df)
