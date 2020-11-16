@@ -663,6 +663,26 @@ def test_write_csv_from_lists_with_metadata(tmpdir):
     assert result == expected
 
 
+def test_write_csv_from_lists_with_metadata_and_column_pruning(tmpdir):
+    file_path = f'{tmpdir}/test_write_csv_from_lists_with_metadata_and_column_pruning.csv'
+    controller = build_flow([
+        Source(),
+        WriteToCSV(file_path, columns=['event_key', 'n*10'], metadata_columns={'event_key': 'key'}, write_header=True)
+    ]).run()
+
+    for i in range(10):
+        controller.emit({'n': i, 'n*10': 10 * i}, key=f'key{i}')
+
+    controller.terminate()
+    controller.await_termination()
+
+    with open(file_path) as file:
+        result = file.read()
+
+    expected = "event_key,n*10\nkey0,0\nkey1,10\nkey2,20\nkey3,30\nkey4,40\nkey5,50\nkey6,60\nkey7,70\nkey8,80\nkey9,90\n"
+    assert result == expected
+
+
 def test_write_csv_infer_with_metadata_columns(tmpdir):
     file_path = f'{tmpdir}/test_write_csv_infer_with_metadata_columns.csv'
     controller = build_flow([
