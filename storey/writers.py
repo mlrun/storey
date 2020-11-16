@@ -3,7 +3,7 @@ import csv
 import io
 import json
 import random
-from typing import Optional
+from typing import Optional, Union
 
 import aiofiles
 import pandas as pd
@@ -146,7 +146,7 @@ class WriteToParquet(_Batching, _Writer):
     """
 
     def __init__(self, path, index: Optional[list] = None, columns: Optional[list] = None, partition_cols: Optional[list] = None,
-                 metadata_columns: Optional[dict] = None, **kwargs):
+                 metadata_columns: Union[list, dict, None] = None, **kwargs):
         _Batching.__init__(self, **kwargs)
         _Writer.__init__(self, metadata_columns)
 
