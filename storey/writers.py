@@ -20,15 +20,18 @@ class _Writer:
 
         self._columns = []
         self._metadata_columns = {}
+        self._rename_columns = {}
         if columns:
             for col in columns:
                 if col.startswith('$'):
                     col = col[1:]
-                    if '=' in col:
-                        col, metadata_attr = col.split('=', maxsplit=1)
-                        self._metadata_columns[col] = metadata_attr
-                    else:
-                        self._metadata_columns[col] = col
+                    self._metadata_columns[col] = col
+                elif '=$' in col:
+                    col, metadata_attr = col.split('=$', maxsplit=1)
+                    self._metadata_columns[col] = metadata_attr
+                elif '=' in col:
+                    col, rename_from = col.split('=', maxsplit=1)
+                    self._rename_columns[col] = rename_from
                 self._columns.append(col)
 
     def _event_to_writer_entry(self, event):
@@ -44,6 +47,8 @@ class _Writer:
                     if column in self._metadata_columns:
                         metadata_attr = self._metadata_columns[column]
                         new_value = getattr(event, metadata_attr)
+                    elif column in self._rename_columns:
+                        new_value = data[self._rename_columns[column]]
                     else:
                         new_value = data[column]
                     new_data.append(new_value)
