@@ -910,6 +910,26 @@ def test_join_by_key():
     assert termination_result == expected
 
 
+def test_join_by_string_key():
+    table = Table('test', NoopDriver())
+    table.update_key(9, {'age': 1, 'color': 'blue9'})
+    table.update_key(7, {'age': 3, 'color': 'blue7'})
+
+    controller = build_flow([
+        Source(),
+        Filter(lambda x: x['col1'] > 8),
+        JoinWithTable(table, 'col1'),
+        Reduce([], lambda acc, x: append_and_return(acc, x))
+    ]).run()
+    for i in range(10):
+        controller.emit({'col1': i})
+
+    expected = [{'col1': 9, 'age': 1, 'color': 'blue9'}]
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == expected
+
+
 def test_termination_result_order():
     controller = build_flow([
         Source(),
