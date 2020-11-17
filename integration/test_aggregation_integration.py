@@ -8,9 +8,7 @@ from storey import build_flow, Source, Reduce, Table, V3ioDriver, FlowError, Map
 from storey.dtypes import SlidingWindows
 from storey.flow import _split_path
 
-from .integration_test_utils import setup_teardown_test, append_return
-
-test_base_time = datetime.fromisoformat("2020-07-21T21:40:00+00:00")
+from .integration_test_utils import setup_teardown_test, append_return, test_base_time
 
 
 @pytest.mark.parametrize('partitioned_by_key', [True, False])

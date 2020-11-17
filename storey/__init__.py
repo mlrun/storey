@@ -1,7 +1,7 @@
 __version__ = '0.1.0'
 
 from .aggregations import (  # noqa: F401
-    AggregateByKey, QueryAggregationByKey, WriteToTable, FieldAggregator
+    AggregateByKey, QueryAggregationByKey, FieldAggregator
 )
 from .dataframe import (  # noqa: F401
     ToDataFrame, ReduceToDataFrame
@@ -20,5 +20,5 @@ from .sources import (  # noqa: F401
     Source, AsyncSource, DataframeSource, ReadCSV
 )
 from .writers import (  # noqa: F401
-    WriteToV3IOStream, WriteToCSV, WriteToParquet, WriteToTSDB
+    WriteToV3IOStream, WriteToCSV, WriteToParquet, WriteToTSDB, WriteToTable
 )

@@ -10,7 +10,7 @@ import pandas as pd
 import v3io_frames as frames
 
 from .dtypes import V3ioError
-from .flow import Flow, _termination_obj, _split_path, _Batching
+from .flow import Flow, _termination_obj, _split_path, _Batching, _ConcurrentByKeyJobExecution
 
 
 class _Writer:
@@ -351,3 +351,26 @@ class WriteToV3IOStream(Flow):
             await self._q.put(event)
             if self._worker_awaitable.done():
                 await self._worker_awaitable
+
+
+class WriteToTable(_ConcurrentByKeyJobExecution):
+    """
+    Persists the data in `table` to its associated storage by key.
+
+    :param table: A table object.
+    :type table: Table
+    :param columns: List of specific columns to write. Writes all columns by default.
+    :type columns: list of str
+    """
+
+    def __init__(self, table, columns=None):
+        super().__init__()
+        self._table = table
+        self._closeables = [table]
+        self._columns = columns
+
+    async def _process_event(self, event):
+        return await self._table.persist_key(event.key, self._columns)
+
+    async def _handle_completed(self, event, response):
+        await self._do_downstream(event)

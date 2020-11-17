@@ -4,14 +4,15 @@ import json
 import time
 import pandas as pd
 import v3io_frames as frames
-
+import v3io
+import v3io.aio.dataplane
 import aiohttp
 
-from _datetime import datetime
+from _datetime import datetime, timedelta
 
 from storey import Filter, JoinWithV3IOTable, SendToHttp, Map, Reduce, Source, HttpRequest, build_flow, \
-    WriteToV3IOStream, V3ioDriver, WriteToTSDB, Batch, Table, JoinWithTable
-from .integration_test_utils import V3ioHeaders, append_return, setup_kv_teardown_test
+    WriteToV3IOStream, V3ioDriver, WriteToTSDB, Table, JoinWithTable, MapWithState, WriteToTable
+from .integration_test_utils import V3ioHeaders, append_return, setup_kv_teardown_test, setup_teardown_test, test_base_time
 
 
 class SetupKvTable(V3ioHeaders):
@@ -232,3 +233,68 @@ def test_join_by_key_specific_attributes(setup_kv_teardown_test):
     controller.terminate()
     termination_result = controller.await_termination()
     assert termination_result == expected
+
+
+def test_write_table_specific_columns(setup_teardown_test):
+    table = Table(setup_teardown_test, V3ioDriver())
+
+    table._cache['tal'] = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': datetime.now()}
+
+    def enrich(event, state):
+        if 'first_activity' not in state:
+            state['first_activity'] = event.time
+
+        event.body['time_since_activity'] = (event.time - state['first_activity']).seconds
+        state['last_event'] = event.time
+        event.body['total_activities'] = state['total_activities'] = state.get('total_activities', 0) + 1
+        event.body['color'] = state['color']
+        return event, state
+
+    controller = build_flow([
+        Source(),
+        MapWithState(table, enrich, group_by_key=True, full_event=True),
+        WriteToTable(table, columns=['color', 'age']),
+        Reduce([], lambda acc, x: append_return(acc, x)),
+    ]).run()
+
+    items_in_ingest_batch = 10
+    for i in range(items_in_ingest_batch):
+        data = {'col1': i}
+        controller.emit(data, 'tal', test_base_time + timedelta(minutes=25 * i))
+
+    controller.terminate()
+    actual = controller.await_termination()
+    expected_results = [
+        {'col1': 0, 'time_since_activity': 0, 'total_activities': 1, 'color': 'blue'},
+        {'col1': 1, 'time_since_activity': 1500, 'total_activities': 2, 'color': 'blue'},
+        {'col1': 2, 'time_since_activity': 3000, 'total_activities': 3, 'color': 'blue'},
+        {'col1': 3, 'time_since_activity': 4500, 'total_activities': 4, 'color': 'blue'},
+        {'col1': 4, 'time_since_activity': 6000, 'total_activities': 5, 'color': 'blue'},
+        {'col1': 5, 'time_since_activity': 7500, 'total_activities': 6, 'color': 'blue'},
+        {'col1': 6, 'time_since_activity': 9000, 'total_activities': 7, 'color': 'blue'},
+        {'col1': 7, 'time_since_activity': 10500, 'total_activities': 8, 'color': 'blue'},
+        {'col1': 8, 'time_since_activity': 12000, 'total_activities': 9, 'color': 'blue'},
+        {'col1': 9, 'time_since_activity': 13500, 'total_activities': 10, 'color': 'blue'}]
+
+    assert actual == expected_results, \
+        f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
+
+    response = asyncio.run(get_kv_item(setup_teardown_test, 'tal'))
+
+    assert response.status_code == 200
+    expected_cache = {'color': 'blue', 'age': 41}
+
+    assert expected_cache == response.output.item
+
+
+async def get_kv_item(full_path, key):
+    try:
+        headers = V3ioHeaders()
+        container, path = full_path.split('/', 1)
+
+        _v3io_client = v3io.aio.dataplane.Client(endpoint=headers._webapi_url, access_key=headers._access_key)
+        response = await _v3io_client.kv.get(container, path, key,
+                                                   raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
+        return response
+    finally:
+        await _v3io_client.close()
