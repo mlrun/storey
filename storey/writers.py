@@ -14,7 +14,7 @@ from .flow import Flow, _termination_obj, _split_path, _Batching
 
 
 class _Writer:
-    def __init__(self, columns, infer_columns_from_data):
+    def __init__(self, columns: Optional[list], infer_columns_from_data: bool):
         self._first_event = None
         self._infer_columns_from_data = infer_columns_from_data
 
@@ -75,8 +75,8 @@ class WriteToCSV(Flow, _Writer):
 
     :param path: path where CSV file will be written.
     :param columns: Fields to be written to CSV. Will be written as the file header if write_header is True. Will be extracted from
-    events when an event is a dictionary (lists will be written as is). Optional. Defaults to None (will be inferred if event is
-    dictionary).
+    events when an event is a dictionary (lists will be written as is). Use = notation for renaming fields (e.g. write_this=event_field).
+    Use $ notation to refer to metadata ($key, event_time=$time). Optional. Defaults to None (will be inferred if event is dictionary).
     :param header: Whether to write the columns as a CSV header.
     :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries. Optional. Default to False.
     If True, columns will be inferred from data and used in place of explicit columns list if none was provided, or appended to the provided
@@ -132,10 +132,11 @@ class WriteToParquet(_Batching, _Writer):
 
     :param path: Output path. Can be either a file or directory. This parameter is forwarded as-is to pandas.DataFrame.to_parquet().
     :type path: string
-    :param index_cols: Index columns for writing the data. This parameter is forwarded as-is to pandas.DataFrame.set_index().
+    :param index_cols: Index columns for writing the data. This parameter is forwarded to pandas.DataFrame.set_index().
     If None (default), no index is set.
     :param columns: Fields to be written to parquet. Will be extracted from events when an event is a dictionary (lists will be written as
-    is). Optional. Defaults to None (will be inferred if event is
+    is). Use = notation for renaming fields (e.g. write_this=event_field). Use $ notation to refer to metadata ($key, event_time=$time).
+    Optional. Defaults to None (will be inferred if event is
     dictionary).
     :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries. Optional. Default to False.
     If True, columns will be inferred from data and used in place of explicit columns list if none was provided, or appended to the provided
@@ -174,7 +175,8 @@ class WriteToTSDB(_Batching, _Writer):
 
     :param path: Path to TSDB table.
     :param time_col: Name of the time column.
-    :param columns: List of column names to be passed as-is to the DataFrame constructor.
+    :param columns: List of column names to be passed to the DataFrame constructor. Use = notation for renaming fields (e.g.
+    write_this=event_field). Use $ notation to refer to metadata ($key, event_time=$time).
     :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries. Optional. Default to False.
     If True, columns will be inferred from data and used in place of explicit columns list if none was provided, or appended to the provided
     list.
