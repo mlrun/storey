@@ -537,7 +537,7 @@ async def async_test_write_csv(tmpdir):
     file_path = f'{tmpdir}/test_write_csv.csv'
     controller = await build_flow([
         AsyncSource(),
-        WriteToCSV(file_path, columns=['n', 'n*10'], write_header=True)
+        WriteToCSV(file_path, columns=['n', 'n*10'], header=True)
     ]).run()
 
     for i in range(10):
@@ -585,7 +585,7 @@ def test_write_csv_with_dict(tmpdir):
     file_path = f'{tmpdir}/test_write_csv_with_dict.csv'
     controller = build_flow([
         Source(),
-        WriteToCSV(file_path, columns=['n', 'n*10'], write_header=True)
+        WriteToCSV(file_path, columns=['n', 'n*10'], header=True)
     ]).run()
 
     for i in range(10):
@@ -605,7 +605,7 @@ def test_write_csv_infer_columns(tmpdir):
     file_path = f'{tmpdir}/test_write_csv_infer_columns.csv'
     controller = build_flow([
         Source(),
-        WriteToCSV(file_path, write_header=True)
+        WriteToCSV(file_path, header=True)
     ]).run()
 
     for i in range(10):
@@ -625,7 +625,7 @@ def test_write_csv_with_metadata(tmpdir):
     file_path = f'{tmpdir}/test_write_csv_with_metadata.csv'
     controller = build_flow([
         Source(),
-        WriteToCSV(file_path, columns=['event_key', 'n', 'n*10'], metadata_columns={'event_key': 'key'}, write_header=True)
+        WriteToCSV(file_path, columns=['$event_key=key', 'n', 'n*10'], header=True)
     ]).run()
 
     for i in range(10):
@@ -646,7 +646,7 @@ def test_write_csv_from_lists_with_metadata(tmpdir):
     file_path = f'{tmpdir}/test_write_csv_with_metadata.csv'
     controller = build_flow([
         Source(),
-        WriteToCSV(file_path, columns=['event_key', 'n', 'n*10'], metadata_columns={'event_key': 'key'}, write_header=True)
+        WriteToCSV(file_path, columns=['$event_key=key', 'n', 'n*10'], header=True)
     ]).run()
 
     for i in range(10):
@@ -667,7 +667,7 @@ def test_write_csv_infer_with_metadata_columns(tmpdir):
     file_path = f'{tmpdir}/test_write_csv_infer_with_metadata_columns.csv'
     controller = build_flow([
         Source(),
-        WriteToCSV(file_path, metadata_columns={'event_key': 'key'}, write_header=True)
+        WriteToCSV(file_path, columns=['$event_key=key'], header=True, infer_columns_from_data=True)
     ]).run()
 
     for i in range(10):
@@ -688,7 +688,7 @@ def test_write_csv_fail_to_infer_columns(tmpdir):
     file_path = f'{tmpdir}/test_write_csv_fail_to_infer_columns.csv'
     controller = build_flow([
         Source(),
-        WriteToCSV(file_path, write_header=True)
+        WriteToCSV(file_path, header=True)
     ]).run()
 
     try:
@@ -875,7 +875,7 @@ def test_write_to_parquet_with_metadata(tmpdir):
     columns = ['event_key', 'my_int', 'my_string']
     controller = build_flow([
         Source(),
-        WriteToParquet(out_file, columns=columns, metadata_columns={'event_key': 'key'})
+        WriteToParquet(out_file, columns=['$event_key=key', 'my_int', 'my_string'])
     ]).run()
 
     expected = []
@@ -883,6 +883,27 @@ def test_write_to_parquet_with_metadata(tmpdir):
         controller.emit([i, f'this is {i}'], key=f'key{i}')
         expected.append([f'key{i}', i, f'this is {i}'])
     expected = pd.DataFrame(expected, columns=columns, dtype='int64')
+    controller.terminate()
+    controller.await_termination()
+
+    read_back_df = pd.read_parquet(out_file, columns=columns)
+    assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+
+
+def test_write_to_parquet_with_indices(tmpdir):
+    out_file = f'{tmpdir}/test_write_to_parquet_with_indices{uuid.uuid4().hex}.parquet'
+    controller = build_flow([
+        Source(),
+        WriteToParquet(out_file, index_cols='event_key', columns=['$event_key=key', 'my_int', 'my_string'])
+    ]).run()
+
+    expected = []
+    for i in range(10):
+        controller.emit([i, f'this is {i}'], key=f'key{i}')
+        expected.append([f'key{i}', i, f'this is {i}'])
+    columns = ['event_key', 'my_int', 'my_string']
+    expected = pd.DataFrame(expected, columns=columns, dtype='int64')
+    expected.set_index(['event_key'], inplace=True)
     controller.terminate()
     controller.await_termination()
 
