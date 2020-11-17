@@ -831,27 +831,18 @@ class Table:
         store._storage = self._storage
         self._aggregation_store = store
 
-    async def persist_key(self, key, columns):
+    async def persist_key(self, key, event_data_to_persist):
         aggr_by_key = None
         if self._aggregation_store:
             aggr_by_key = self._aggregation_store[key]
-        additional_cache_data_by_key = self._get_attributes_by_key(key, columns)
+        additional_data_persist = self._cache.get(key, None)
+        if event_data_to_persist:
+            if not additional_data_persist:
+                additional_data_persist = event_data_to_persist
+            else:
+                additional_data_persist.update(event_data_to_persist)
         await self._storage._save_key(self._container, self._table_path, key, aggr_by_key, self._partitioned_by_key,
-                                      additional_cache_data_by_key)
-
-    def _get_attributes_by_key(self, key, columns=None):
-        if key not in self._cache:
-            return None
-
-        if not columns:
-            return self._cache[key]
-
-        res = {}
-        for col in columns:
-            if col in self._cache[key]:
-                res[col] = self._cache[key][col]
-
-        return res
+                                      additional_data_persist)
 
     async def close(self):
         await self._storage.close()

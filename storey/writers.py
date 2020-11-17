@@ -370,7 +370,16 @@ class WriteToTable(_ConcurrentByKeyJobExecution):
         self._columns = columns
 
     async def _process_event(self, event):
-        return await self._table.persist_key(event.key, self._columns)
+        if not self._columns:
+            event_data_to_persist = None
+        elif self._columns == '*':
+            event_data_to_persist = event.body
+        else:
+            event_data_to_persist = {}
+            for col in self._columns:
+                event_data_to_persist[col] = event.body[col]
+
+        return await self._table.persist_key(event.key, event_data_to_persist)
 
     async def _handle_completed(self, event, response):
         await self._do_downstream(event)

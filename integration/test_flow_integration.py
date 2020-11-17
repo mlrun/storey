@@ -9,6 +9,8 @@ import v3io.aio.dataplane
 import aiohttp
 
 from _datetime import datetime, timedelta
+from datetime import timezone
+import pytz
 
 from storey import Filter, JoinWithV3IOTable, SendToHttp, Map, Reduce, Source, HttpRequest, build_flow, \
     WriteToV3IOStream, V3ioDriver, WriteToTSDB, Table, JoinWithTable, MapWithState, WriteToTable
@@ -238,7 +240,7 @@ def test_join_by_key_specific_attributes(setup_kv_teardown_test):
 def test_write_table_specific_columns(setup_teardown_test):
     table = Table(setup_teardown_test, V3ioDriver())
 
-    table._cache['tal'] = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': datetime.now()}
+    table._cache['tal'] = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': test_base_time}
 
     def enrich(event, state):
         if 'first_activity' not in state:
@@ -246,14 +248,15 @@ def test_write_table_specific_columns(setup_teardown_test):
 
         event.body['time_since_activity'] = (event.time - state['first_activity']).seconds
         state['last_event'] = event.time
-        event.body['total_activities'] = state['total_activities'] = state.get('total_activities', 0) + 1
+        state['total_activities'] = state.get('total_activities', 0) + 1
         event.body['color'] = state['color']
+        event.body['twice_total_activities'] = state['total_activities'] * 2
         return event, state
 
     controller = build_flow([
         Source(),
         MapWithState(table, enrich, group_by_key=True, full_event=True),
-        WriteToTable(table, columns=['color', 'age']),
+        WriteToTable(table, columns=['twice_total_activities']),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -265,16 +268,16 @@ def test_write_table_specific_columns(setup_teardown_test):
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [
-        {'col1': 0, 'time_since_activity': 0, 'total_activities': 1, 'color': 'blue'},
-        {'col1': 1, 'time_since_activity': 1500, 'total_activities': 2, 'color': 'blue'},
-        {'col1': 2, 'time_since_activity': 3000, 'total_activities': 3, 'color': 'blue'},
-        {'col1': 3, 'time_since_activity': 4500, 'total_activities': 4, 'color': 'blue'},
-        {'col1': 4, 'time_since_activity': 6000, 'total_activities': 5, 'color': 'blue'},
-        {'col1': 5, 'time_since_activity': 7500, 'total_activities': 6, 'color': 'blue'},
-        {'col1': 6, 'time_since_activity': 9000, 'total_activities': 7, 'color': 'blue'},
-        {'col1': 7, 'time_since_activity': 10500, 'total_activities': 8, 'color': 'blue'},
-        {'col1': 8, 'time_since_activity': 12000, 'total_activities': 9, 'color': 'blue'},
-        {'col1': 9, 'time_since_activity': 13500, 'total_activities': 10, 'color': 'blue'}]
+        {'col1': 0, 'time_since_activity': 0, 'twice_total_activities': 2, 'color': 'blue'},
+        {'col1': 1, 'time_since_activity': 1500, 'twice_total_activities': 4, 'color': 'blue'},
+        {'col1': 2, 'time_since_activity': 3000, 'twice_total_activities': 6, 'color': 'blue'},
+        {'col1': 3, 'time_since_activity': 4500, 'twice_total_activities': 8, 'color': 'blue'},
+        {'col1': 4, 'time_since_activity': 6000, 'twice_total_activities': 10, 'color': 'blue'},
+        {'col1': 5, 'time_since_activity': 7500, 'twice_total_activities': 12, 'color': 'blue'},
+        {'col1': 6, 'time_since_activity': 9000, 'twice_total_activities': 14, 'color': 'blue'},
+        {'col1': 7, 'time_since_activity': 10500, 'twice_total_activities': 16, 'color': 'blue'},
+        {'col1': 8, 'time_since_activity': 12000, 'twice_total_activities': 18, 'color': 'blue'},
+        {'col1': 9, 'time_since_activity': 13500, 'twice_total_activities': 20, 'color': 'blue'}]
 
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
@@ -282,7 +285,9 @@ def test_write_table_specific_columns(setup_teardown_test):
     response = asyncio.run(get_kv_item(setup_teardown_test, 'tal'))
 
     assert response.status_code == 200
-    expected_cache = {'color': 'blue', 'age': 41}
+    expected_cache = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': test_base_time, 'first_activity': test_base_time,
+                      'last_event': test_base_time + timedelta(minutes=25 * (items_in_ingest_batch-1)), 'total_activities': 10,
+                      'twice_total_activities': 20}
 
     assert expected_cache == response.output.item
 
