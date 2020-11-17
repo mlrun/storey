@@ -688,8 +688,8 @@ class JoinWithTable(_ConcurrentJobExecution):
 
     :param table: Table to join with.
     :type table: Table
-    :param key_extractor: Function for extracting the key for table access from an event.
-    :type key_extractor: Function (Event=>string)
+    :param key_extractor: Key's column name or a function for extracting the key, for table access from an event.
+    :type key_extractor: str or Function (Event=>string)
     :param attributes: A comma-separated list of attributes to be queried for. Defaults to all attributes.
     :type attributes: list of string
     :param join_function: Joins the original event with relevant data received from the storage. Defaults to assume the event's body is a
