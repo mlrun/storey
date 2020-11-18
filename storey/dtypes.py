@@ -235,20 +235,29 @@ class EmitEveryEvent(EmitBase):
 
 
 def _dict_to_emit_policy(policy_dict):
-    if policy_dict['mode'] == EmitEveryEvent.name():
-        return EmitEveryEvent()
-    elif policy_dict['mode'] == EmitAfterMaxEvent.name():
+    mode = policy_dict.pop('mode')
+    if mode == EmitEveryEvent.name():
+        policy = EmitEveryEvent()
+    elif mode == EmitAfterMaxEvent.name():
         if 'maxEvents' not in policy_dict:
             raise ValueError('maxEvents parameter must be specified for maxEvents emit policy')
-        return EmitAfterMaxEvent(policy_dict['maxEvents'])
-    elif policy_dict['mode'] == EmitAfterDelay.name():
+        policy = EmitAfterMaxEvent(policy_dict.pop('maxEvents'))
+    elif mode == EmitAfterDelay.name():
         if 'delay' not in policy_dict:
             raise ValueError('delay parameter must be specified for afterDelay emit policy')
-        return EmitAfterDelay(policy_dict['delay'])
-    elif policy_dict['mode'] == EmitAfterWindow.name():
-        return EmitAfterWindow(delay_in_seconds=policy_dict.get('delay', 0))
-    elif policy_dict['mode'] == EmitAfterPeriod.name():
-        return EmitAfterPeriod(delay_in_seconds=policy_dict.get('delay', 0))
+
+        policy = EmitAfterDelay(policy_dict.pop('delay'))
+    elif mode == EmitAfterWindow.name():
+        policy = EmitAfterWindow(delay_in_seconds=policy_dict.pop('delay', 0))
+    elif mode == EmitAfterPeriod.name():
+        policy = EmitAfterPeriod(delay_in_seconds=policy_dict.pop('delay', 0))
+    else:
+        raise TypeError(f'unsopperted emit policy type: {mode}')
+
+    if policy_dict:
+        raise ValueError(f'got unexpected arguments for emit policy: {policy_dict}')
+
+    return policy
 
 
 class LateDataHandling(Enum):

@@ -21,6 +21,24 @@ def test_emit_policy_bad_parameters(emit_policy):
         pass
 
 
+def test_emit_policy_wrong_type():
+    policy_dict = {'mode': 'd-o-g-g'}
+    try:
+        _dict_to_emit_policy(policy_dict)
+        assert False
+    except TypeError:
+        pass
+
+
+def test_emit_policy_wrong_args():
+    policy_dict = {'mode': EmitAfterWindow.name(), 'daily': 8}
+    try:
+        _dict_to_emit_policy(policy_dict)
+        assert False
+    except ValueError:
+        pass
+
+
 def test_emit_policy_delay():
     policy_dict = {'mode': EmitAfterDelay.name(), 'delay': 8}
     policy = _dict_to_emit_policy(policy_dict)

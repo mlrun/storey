@@ -1,7 +1,7 @@
 import asyncio
 import copy
 from datetime import datetime
-from typing import Optional, Union, Callable, List
+from typing import Optional, Union, Callable, List, Dict
 
 from .aggregation_utils import is_raw_aggregate, get_virtual_aggregation_func, get_implied_aggregates, get_all_raw_aggregates, \
     get_all_raw_aggregates_with_hidden
@@ -28,10 +28,11 @@ class AggregateByKey(Flow):
     :param aliases: Dictionary specifying aliases to the enriched columns, of the format `{'col_name': 'new_col_name'}`. (Optional)
     """
 
-    def __init__(self, aggregates: Union[List[FieldAggregator], List[dict]], table: Table, key: Union[str, Callable, None] = None,
+    def __init__(self, aggregates: Union[List[FieldAggregator], List[Dict[str, object]]], table: Table,
+                 key: Union[str, Callable, None] = None,
                  emit_policy: Union[EmitEveryEvent, FixedWindows, SlidingWindows, EmitAfterPeriod, EmitAfterWindow,
                                     EmitAfterMaxEvent, dict] = _default_emit_policy,
-                 augmentation_fn: [Callable] = None, enrich_with: Optional[List[str]] = None, aliases: Optional[dict] = None,
+                 augmentation_fn: [Callable] = None, enrich_with: Optional[List[str]] = None, aliases: Optional[Dict[str, str]] = None,
                  **kwargs):
         Flow.__init__(self, **kwargs)
 
@@ -185,10 +186,11 @@ class QueryAggregationByKey(AggregateByKey):
     :param aliases: Dictionary specifying aliases to the enriched columns, of the format `{'col_name': 'new_col_name'}`. (Optional)
     """
 
-    def __init__(self, aggregates: Union[List[FieldAggregator], List[dict]], table: Table, key: Union[str, Callable, None] = None,
+    def __init__(self, aggregates: Union[List[FieldAggregator], List[Dict[str, object]]], table: Table,
+                 key: Union[str, Callable, None] = None,
                  emit_policy: Union[EmitEveryEvent, FixedWindows, SlidingWindows, EmitAfterPeriod, EmitAfterWindow,
                                     EmitAfterMaxEvent, dict] = _default_emit_policy,
-                 augmentation_fn: [Callable] = None, enrich_with: Optional[List[str]] = None, aliases: Optional[dict] = None,
+                 augmentation_fn: [Callable] = None, enrich_with: Optional[List[str]] = None, aliases: Optional[Dict[str, str]] = None,
                  **kwargs):
         AggregateByKey.__init__(self, aggregates, table, key, emit_policy, augmentation_fn, enrich_with, aliases, **kwargs)
         self._aggregates_store._read_only = True
