@@ -3,7 +3,7 @@ import csv
 import io
 import json
 import random
-from typing import Optional, Union
+from typing import Optional, Union, List
 
 import aiofiles
 import pandas as pd
@@ -14,7 +14,7 @@ from .flow import Flow, _termination_obj, _split_path, _Batching, _ConcurrentByK
 
 
 class _Writer:
-    def __init__(self, columns: Optional[list], infer_columns_from_data: bool):
+    def __init__(self, columns: Optional[List[str]], infer_columns_from_data: bool):
         self._first_event = None
         self._infer_columns_from_data = infer_columns_from_data
 
@@ -88,7 +88,7 @@ class WriteToCSV(Flow, _Writer):
     :type full_event: boolean
     """
 
-    def __init__(self, path, columns: Optional[list] = None, header: bool = False, infer_columns_from_data: bool = False, **kwargs):
+    def __init__(self, path, columns: Optional[List[str]] = None, header: bool = False, infer_columns_from_data: bool = False, **kwargs):
         Flow.__init__(self, **kwargs)
         _Writer.__init__(self, columns, infer_columns_from_data or header and not columns)
 
@@ -151,8 +151,8 @@ class WriteToParquet(_Batching, _Writer):
     :type timeout_secs: int
     """
 
-    def __init__(self, path, index_cols: Union[list, str, None] = None, columns: Optional[list] = None,
-                 partition_cols: Optional[list] = None, infer_columns_from_data: bool = False, **kwargs):
+    def __init__(self, path, index_cols: Union[list, str, None] = None, columns: Optional[List[str]] = None,
+                 partition_cols: Optional[List[str]] = None, infer_columns_from_data: bool = False, **kwargs):
         _Batching.__init__(self, **kwargs)
         _Writer.__init__(self, columns, infer_columns_from_data)
 
@@ -189,8 +189,8 @@ class WriteToTSDB(_Batching, _Writer):
     :param aggr_granularity: Granularity of server-side aggregations for this TSDB table (e.g. '1h').
     """
 
-    def __init__(self, path: str, time_col: str, columns: list, infer_columns_from_data: bool = False,
-                 labels_cols: Union[str, list, None] = None, v3io_frames: Optional[str] = None, access_key: Optional[str] = None,
+    def __init__(self, path: str, time_col: str, columns: List[str], infer_columns_from_data: bool = False,
+                 labels_cols: Union[str, List[str], None] = None, v3io_frames: Optional[str] = None, access_key: Optional[str] = None,
                  container: str = "", rate: str = "", aggr: str = "", aggr_granularity: str = "", frames_client=None, **kwargs):
         _Batching.__init__(self, **kwargs)
         _Writer.__init__(self, columns, infer_columns_from_data)
@@ -362,7 +362,7 @@ class WriteToTable(_ConcurrentByKeyJobExecution, _Writer):
     list.
     """
 
-    def __init__(self, table: Table, columns: Optional[list] = None,  infer_columns_from_data: bool = False, **kwargs):
+    def __init__(self, table: Table, columns: Optional[List[str]] = None, infer_columns_from_data: bool = False, **kwargs):
         _ConcurrentByKeyJobExecution.__init__(self, **kwargs)
         _Writer.__init__(self, columns, infer_columns_from_data)
         self._table = table
