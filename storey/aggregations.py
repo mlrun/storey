@@ -7,7 +7,7 @@ from .aggregation_utils import is_raw_aggregate, get_virtual_aggregation_func, g
     get_all_raw_aggregates_with_hidden
 from .dtypes import EmitEveryEvent, FixedWindows, SlidingWindows, EmitAfterPeriod, EmitAfterWindow, EmitAfterMaxEvent, \
     _dict_to_emit_policy, FieldAggregator
-from .flow import Flow, _termination_obj, Event, _ConcurrentByKeyJobExecution, Table
+from .flow import Flow, _termination_obj, Event, Table
 
 _default_emit_policy = EmitEveryEvent()
 
@@ -221,26 +221,6 @@ class QueryAggregationByKey(AggregateByKey):
                     self._events_in_batch[key] = 0
         except Exception as ex:
             raise ex
-
-
-class WriteToTable(_ConcurrentByKeyJobExecution):
-    """
-    Persists the data in `table` to its associated storage by key.
-
-    :param table: A table object.
-    :type table: Table
-    """
-
-    def __init__(self, table):
-        super().__init__()
-        self._table = table
-        self._closeables = [table]
-
-    async def _process_event(self, event):
-        return await self._table.persist_key(event.key)
-
-    async def _handle_completed(self, event, response):
-        await self._do_downstream(event)
 
 
 class AggregatedStoreElement:

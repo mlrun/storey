@@ -3,18 +3,18 @@ import csv
 import io
 import json
 import random
-from typing import Optional, Union
+from typing import Optional, Union, List
 
 import aiofiles
 import pandas as pd
 import v3io_frames as frames
 
 from .dtypes import V3ioError
-from .flow import Flow, _termination_obj, _split_path, _Batching
+from .flow import Flow, _termination_obj, _split_path, _Batching, _ConcurrentByKeyJobExecution, Table
 
 
 class _Writer:
-    def __init__(self, columns: Optional[list], infer_columns_from_data: bool):
+    def __init__(self, columns: Optional[List[str]], infer_columns_from_data: bool):
         self._first_event = None
         self._infer_columns_from_data = infer_columns_from_data
 
@@ -88,7 +88,7 @@ class WriteToCSV(Flow, _Writer):
     :type full_event: boolean
     """
 
-    def __init__(self, path, columns: Optional[list] = None, header: bool = False, infer_columns_from_data: bool = False, **kwargs):
+    def __init__(self, path, columns: Optional[List[str]] = None, header: bool = False, infer_columns_from_data: bool = False, **kwargs):
         Flow.__init__(self, **kwargs)
         _Writer.__init__(self, columns, infer_columns_from_data or header and not columns)
 
@@ -151,8 +151,8 @@ class WriteToParquet(_Batching, _Writer):
     :type timeout_secs: int
     """
 
-    def __init__(self, path, index_cols: Union[list, str, None] = None, columns: Optional[list] = None,
-                 partition_cols: Optional[list] = None, infer_columns_from_data: bool = False, **kwargs):
+    def __init__(self, path, index_cols: Union[list, str, None] = None, columns: Optional[List[str]] = None,
+                 partition_cols: Optional[List[str]] = None, infer_columns_from_data: bool = False, **kwargs):
         _Batching.__init__(self, **kwargs)
         _Writer.__init__(self, columns, infer_columns_from_data)
 
@@ -189,8 +189,8 @@ class WriteToTSDB(_Batching, _Writer):
     :param aggr_granularity: Granularity of server-side aggregations for this TSDB table (e.g. '1h').
     """
 
-    def __init__(self, path: str, time_col: str, columns: list, infer_columns_from_data: bool = False,
-                 labels_cols: Union[str, list, None] = None, v3io_frames: Optional[str] = None, access_key: Optional[str] = None,
+    def __init__(self, path: str, time_col: str, columns: List[str], infer_columns_from_data: bool = False,
+                 labels_cols: Union[str, List[str], None] = None, v3io_frames: Optional[str] = None, access_key: Optional[str] = None,
                  container: str = "", rate: str = "", aggr: str = "", aggr_granularity: str = "", frames_client=None, **kwargs):
         _Batching.__init__(self, **kwargs)
         _Writer.__init__(self, columns, infer_columns_from_data)
@@ -347,3 +347,33 @@ class WriteToV3IOStream(Flow):
             await self._q.put(event)
             if self._worker_awaitable.done():
                 await self._worker_awaitable
+
+
+class WriteToTable(_ConcurrentByKeyJobExecution, _Writer):
+    """
+    Persists the data in `table` to its associated storage by key.
+
+    :param table: A table object.
+    :param columns: Fields to be written to the storage. Will be extracted from events when an event is a dictionary (lists will be written
+    as is). Use = notation for renaming fields (e.g. write_this=event_field).
+    Use $ notation to refer to metadata ($key, event_time=$time). Optional. Defaults to None (will be inferred if event is dictionary).
+    :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries. Optional. Default to False.
+    If True, columns will be inferred from data and used in place of explicit columns list if none was provided, or appended to the provided
+    list.
+    """
+
+    def __init__(self, table: Table, columns: Optional[List[str]] = None, infer_columns_from_data: bool = False, **kwargs):
+        _ConcurrentByKeyJobExecution.__init__(self, **kwargs)
+        _Writer.__init__(self, columns, infer_columns_from_data)
+        self._table = table
+        self._closeables = [table]
+
+    async def _process_event(self, events):
+        data_to_persist = {}
+        data = self._event_to_writer_entry(events[-1])
+        for i, col_name in enumerate(self._columns):
+            data_to_persist[col_name] = data[i]
+        return await self._table.persist_key(events[0].key, data_to_persist)
+
+    async def _handle_completed(self, event, response):
+        await self._do_downstream(event)
