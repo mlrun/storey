@@ -32,7 +32,7 @@ class AggregateByKey(Flow):
                  key: Union[str, Callable[[Event], object], None] = None,
                  emit_policy: Union[EmitEveryEvent, FixedWindows, SlidingWindows, EmitAfterPeriod, EmitAfterWindow,
                                     EmitAfterMaxEvent, Dict[str, object]] = _default_emit_policy,
-                 augmentation_fn: [Callable[[Event, Dict[str, object]], Event]] = None, enrich_with: Optional[List[str]] = None,
+                 augmentation_fn: Optional[Callable[[Event, Dict[str, object]], Event]] = None, enrich_with: Optional[List[str]] = None,
                  aliases: Optional[Dict[str, str]] = None, **kwargs):
         Flow.__init__(self, **kwargs)
 
@@ -190,7 +190,7 @@ class QueryAggregationByKey(AggregateByKey):
                  key: Union[str, Callable[[Event], object], None] = None,
                  emit_policy: Union[EmitEveryEvent, FixedWindows, SlidingWindows, EmitAfterPeriod, EmitAfterWindow,
                                     EmitAfterMaxEvent, Dict[str, object]] = _default_emit_policy,
-                 augmentation_fn: [Callable[[Event, Dict[str, object]], Event]] = None, enrich_with: Optional[List[str]] = None,
+                 augmentation_fn: Optional[Callable[[Event, Dict[str, object]], Event]] = None, enrich_with: Optional[List[str]] = None,
                  aliases: Optional[Dict[str, str]] = None, **kwargs):
         AggregateByKey.__init__(self, aggregates, table, key, emit_policy, augmentation_fn, enrich_with, aliases, **kwargs)
         self._aggregates_store._read_only = True
