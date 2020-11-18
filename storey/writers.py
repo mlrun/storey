@@ -10,7 +10,7 @@ import pandas as pd
 import v3io_frames as frames
 
 from .dtypes import V3ioError
-from .flow import Flow, _termination_obj, _split_path, _Batching, _ConcurrentByKeyJobExecution
+from .flow import Flow, _termination_obj, _split_path, _Batching, _ConcurrentByKeyJobExecution, Table
 
 
 class _Writer:
@@ -349,33 +349,26 @@ class WriteToV3IOStream(Flow):
                 await self._worker_awaitable
 
 
-class WriteToTable(_ConcurrentByKeyJobExecution):
+class WriteToTable(_ConcurrentByKeyJobExecution, _Writer):
     """
     Persists the data in `table` to its associated storage by key.
 
     :param table: A table object.
-    :type table: Table
     :param columns: List of specific columns to write or '*' for all columns. Do not save any event's columns by default.
-    :type columns: list of str
     """
 
-    def __init__(self, table, columns=None):
-        super().__init__()
+    def __init__(self, table: Table, columns: Optional[list] = None,  infer_columns_from_data: bool = False, **kwargs):
+        _ConcurrentByKeyJobExecution.__init__(self, **kwargs)
+        _Writer.__init__(self, columns, infer_columns_from_data)
         self._table = table
         self._closeables = [table]
-        self._columns = columns
 
     async def _process_event(self, events):
-        if not self._columns:
-            event_data_to_persist = None
-        elif self._columns == '*':
-            event_data_to_persist = events[-1].body
-        else:
-            event_data_to_persist = {}
-            for col in self._columns:
-                event_data_to_persist[col] = events[-1].body[col]
-
-        return await self._table.persist_key(events[0].key, event_data_to_persist)
+        data_to_persist = {}
+        data = self._event_to_writer_entry(events[-1])
+        for i, col_name in enumerate(self._columns):
+            data_to_persist[col_name] = data[i]
+        return await self._table.persist_key(events[0].key, data_to_persist)
 
     async def _handle_completed(self, event, response):
         await self._do_downstream(event)
