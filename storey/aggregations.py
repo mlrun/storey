@@ -1,11 +1,13 @@
 import asyncio
 import copy
 from datetime import datetime
+from typing import Optional, Union, Callable, List, Dict
 
 from .aggregation_utils import is_raw_aggregate, get_virtual_aggregation_func, get_implied_aggregates, get_all_raw_aggregates, \
     get_all_raw_aggregates_with_hidden
-from .dtypes import EmitEveryEvent, FixedWindows, SlidingWindows, EmitAfterPeriod, EmitAfterWindow, EmitAfterMaxEvent
-from .flow import Flow, _termination_obj, Event, _ConcurrentByKeyJobExecution
+from .dtypes import EmitEveryEvent, FixedWindows, SlidingWindows, EmitAfterPeriod, EmitAfterWindow, EmitAfterMaxEvent, \
+    _dict_to_emit_policy, FieldAggregator
+from .flow import Flow, _termination_obj, Event, _ConcurrentByKeyJobExecution, Table
 
 _default_emit_policy = EmitEveryEvent()
 
@@ -17,24 +19,21 @@ class AggregateByKey(Flow):
     Persistence is done via the `WriteToTable` step and based on the Cache object persistence settings.
 
     :param aggregates: List of aggregates to apply for each event.
-    :type aggregates: list of FieldAggregator
     :param table: A Table object to aggregate the data into.
-    :type table: Table
     :param key: Key field to aggregate by, accepts either a string representing the key field or a key extracting function.
      Defaults to the key in the event's metadata. (Optional)
-    :type key: string or Function (Event=>object)
     :param emit_policy: Policy indicating when the data will be emitted. Defaults to EmitEveryEvent. (Optional)
-    :type emit_policy: {EmitEveryEvent, EmitAfterMaxEvent, EmitAfterPeriod, EmitAfterWindow}
     :param augmentation_fn: Function that augments the features into the event's body. Defaults to updating a dict. (Optional)
-    :type augmentation_fn: Function ((Event, dict) => Event)
     :param enrich_with: List of attributes names from the associated storage object to be fetched and added to every event. (Optional)
-    :type enrich_with: list of string
     :param aliases: Dictionary specifying aliases to the enriched columns, of the format `{'col_name': 'new_col_name'}`. (Optional)
-    :type aliases: dict
     """
 
-    def __init__(self, aggregates, table, key=None, emit_policy=_default_emit_policy, augmentation_fn=None, enrich_with=None, aliases=None,
-                 **kwargs):
+    def __init__(self, aggregates: Union[List[FieldAggregator], List[Dict[str, object]]], table: Table,
+                 key: Union[str, Callable[[Event], object], None] = None,
+                 emit_policy: Union[EmitEveryEvent, FixedWindows, SlidingWindows, EmitAfterPeriod, EmitAfterWindow,
+                                    EmitAfterMaxEvent, Dict[str, object]] = _default_emit_policy,
+                 augmentation_fn: Optional[Callable[[Event, Dict[str, object]], Event]] = None, enrich_with: Optional[List[str]] = None,
+                 aliases: Optional[Dict[str, str]] = None, **kwargs):
         Flow.__init__(self, **kwargs)
 
         aggregates = self._parse_aggregates(aggregates)
@@ -49,6 +48,8 @@ class AggregateByKey(Flow):
         self._enrich_with = enrich_with or []
         self._aliases = aliases or {}
         self._emit_policy = emit_policy
+        if isinstance(self._emit_policy, dict):
+            self._emit_policy = _dict_to_emit_policy(self._emit_policy)
         self._events_in_batch = {}
         self._emit_worker_running = False
         self._terminate_worker = False
@@ -176,24 +177,22 @@ class QueryAggregationByKey(AggregateByKey):
     Similar to to `AggregateByKey`, but this step is for serving only and does not aggregate the event.
 
     :param aggregates: List of aggregates to apply for each event.
-    :type aggregates: list of FieldAggregator
     :param table: A Table object to aggregate the data into.
-    :type table: Table
     :param key: Key field to aggregate by, accepts either a string representing the key field or a key extracting function.
      Defaults to the key in the event's metadata. (Optional)
-    :type key: string or Function (Event=>object)
     :param emit_policy: Policy indicating when the data will be emitted. Defaults to EmitEveryEvent. (Optional)
-    :type emit_policy: {EmitEveryEvent, EmitAfterMaxEvent, EmitAfterPeriod, EmitAfterWindow}
     :param augmentation_fn: Function that augments the features into the event's body. Defaults to updating a dict. (Optional)
-    :type augmentation_fn: Function ((Event, dict) => Event)
     :param enrich_with: List of attributes names from the associated storage object to be fetched and added to every event. (Optional)
-    :type enrich_with: list of string
     :param aliases: Dictionary specifying aliases to the enriched columns, of the format `{'col_name': 'new_col_name'}`. (Optional)
-    :type aliases: dict
     """
 
-    def __init__(self, aggregates, table, key=None, emit_policy=_default_emit_policy, augmentation_fn=None, enrich_with=None, aliases=None):
-        AggregateByKey.__init__(self, aggregates, table, key, emit_policy, augmentation_fn, enrich_with, aliases)
+    def __init__(self, aggregates: Union[List[FieldAggregator], List[Dict[str, object]]], table: Table,
+                 key: Union[str, Callable[[Event], object], None] = None,
+                 emit_policy: Union[EmitEveryEvent, FixedWindows, SlidingWindows, EmitAfterPeriod, EmitAfterWindow,
+                                    EmitAfterMaxEvent, Dict[str, object]] = _default_emit_policy,
+                 augmentation_fn: Optional[Callable[[Event, Dict[str, object]], Event]] = None, enrich_with: Optional[List[str]] = None,
+                 aliases: Optional[Dict[str, str]] = None, **kwargs):
+        AggregateByKey.__init__(self, aggregates, table, key, emit_policy, augmentation_fn, enrich_with, aliases, **kwargs)
         self._aggregates_store._read_only = True
 
     async def _do(self, event):
@@ -607,51 +606,6 @@ class VirtualAggregationBuckets:
 
             result[f'{self.name}_{self.aggregation}_{window_string}'] = self.aggregation_func(current_args)
         return result
-
-
-class FieldAggregator:
-    """
-    Field Aggregator represents an set of aggregation features.
-
-    :param name: Name for the feature.
-    :type name: string
-    :param field: Field in the event body to aggregate.
-    :type field: string or Function (Event=>object)
-    :param aggr: List of aggregates to apply. Valid values are: [count, sum, sqr, avg, max, min, last, first, sttdev, stdvar]
-    :type aggr: list of string
-    :param windows: Time windows to aggregate the data by.
-    :type windows: {FixedWindows, SlidingWindows}
-    :param aggr_filter: Filter specifying which events to aggregate. (Optional)
-    :type aggr_filter: Function (Event=>boolean)
-    :param max_value: Maximum value for the aggregation (Optional)
-    :type max_value: float
-    """
-
-    def __init__(self, name, field, aggr, windows, aggr_filter=None, max_value=None):
-        if aggr_filter is not None and not callable(aggr_filter):
-            raise TypeError(f'aggr_filter expected to be callable, got {type(aggr_filter)}')
-
-        if callable(field):
-            self.value_extractor = field
-        elif isinstance(field, str):
-            self.value_extractor = lambda element: element[field]
-        else:
-            raise TypeError(f'field is expected to be either a callable or string but got {type(field)}')
-
-        self.name = name
-        self.aggregations = aggr
-        self.windows = windows
-        self.aggr_filter = aggr_filter
-        self.max_value = max_value
-
-    def get_all_raw_aggregates(self):
-        return get_all_raw_aggregates(self.aggregations)
-
-    def should_aggregate(self, element):
-        if not self.aggr_filter:
-            return True
-
-        return self.aggr_filter(element)
 
 
 class AggregationValue:
