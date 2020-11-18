@@ -253,7 +253,7 @@ def _dict_to_emit_policy(policy_dict):
     elif mode == EmitAfterPeriod.name():
         policy = EmitAfterPeriod(delay_in_seconds=policy_dict.pop('delay', 0))
     else:
-        raise TypeError(f'unsopperted emit policy type: {mode}')
+        raise TypeError(f'unsupported emit policy type: {mode}')
 
     if policy_dict:
         raise ValueError(f'got unexpected arguments for emit policy: {policy_dict}')
