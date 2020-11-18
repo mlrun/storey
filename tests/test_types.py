@@ -1,4 +1,3 @@
-# from storey.dtypes import _dict_to_emit_policy, EmitEveryEvent, EmitAfterPeriod, EmitAfterWindow, EmitAfterDelay, EmitAfterMaxEvent
 import pytest
 
 from storey.dtypes import EmitEveryEvent, EmitAfterPeriod, EmitAfterWindow, _dict_to_emit_policy, EmitAfterDelay, EmitAfterMaxEvent
