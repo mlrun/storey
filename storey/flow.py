@@ -688,8 +688,8 @@ class JoinWithTable(_ConcurrentJobExecution):
 
     :param table: Table to join with.
     :type table: Table
-    :param key_extractor: Function for extracting the key for table access from an event.
-    :type key_extractor: Function (Event=>string)
+    :param key_extractor: Key's column name or a function for extracting the key, for table access from an event.
+    :type key_extractor: str or Function (Event=>string)
     :param attributes: A comma-separated list of attributes to be queried for. Defaults to all attributes.
     :type attributes: list of string
     :param join_function: Joins the original event with relevant data received from the storage. Defaults to assume the event's body is a
@@ -708,7 +708,13 @@ class JoinWithTable(_ConcurrentJobExecution):
         self._table = table
         self._closeables = [table]
 
-        self._key_extractor = key_extractor
+        if key_extractor:
+            if callable(key_extractor):
+                self._key_extractor = key_extractor
+            elif isinstance(key_extractor, str):
+                self._key_extractor = lambda element: element[key_extractor]
+            else:
+                raise TypeError(f'key is expected to be either a callable or string but got {type(key_extractor)}')
 
         def default_join_fn(event, join_res):
             event.update(join_res)
