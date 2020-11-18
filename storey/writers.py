@@ -14,33 +14,46 @@ from .flow import Flow, _termination_obj, _split_path, _Batching, _ConcurrentByK
 
 
 class _Writer:
-    def __init__(self, metadata_columns):
+    def __init__(self, columns: Optional[list], infer_columns_from_data: bool):
         self._first_event = None
-        self._columns = None
-        self._metadata_columns = metadata_columns
-        if isinstance(metadata_columns, list):
-            self._metadata_columns = {}
-            for column in metadata_columns:
-                self._metadata_columns[column] = column
+        self._infer_columns_from_data = infer_columns_from_data
+
+        self._columns = []
+        self._metadata_columns = {}
+        self._rename_columns = {}
+        if columns:
+            for col in columns:
+                if col.startswith('$'):
+                    col = col[1:]
+                    self._metadata_columns[col] = col
+                elif '=$' in col:
+                    col, metadata_attr = col.split('=$', maxsplit=1)
+                    self._metadata_columns[col] = metadata_attr
+                elif '=' in col:
+                    col, rename_from = col.split('=', maxsplit=1)
+                    self._rename_columns[col] = rename_from
+                self._columns.append(col)
 
     def _event_to_writer_entry(self, event):
         data = event.body
         if isinstance(data, dict):
-            if self._first_event and not self._columns:
-                self._columns = list(data.keys())
-                if self._metadata_columns:
-                    self._columns.extend(self._metadata_columns.keys())
+            if self._first_event and self._infer_columns_from_data:
+                self._columns.extend(data.keys())
                 self._columns.sort()
+
             if self._columns:
                 new_data = []
                 for column in self._columns:
-                    if self._metadata_columns and column in self._metadata_columns:
+                    if column in self._metadata_columns:
                         metadata_attr = self._metadata_columns[column]
                         new_value = getattr(event, metadata_attr)
+                    elif column in self._rename_columns:
+                        new_value = data[self._rename_columns[column]]
                     else:
                         new_value = data[column]
                     new_data.append(new_value)
                 data = new_data
+
         elif isinstance(data, list) and self._columns and self._metadata_columns:
             new_data = []
             data_cursor = 0
@@ -61,16 +74,13 @@ class WriteToCSV(Flow, _Writer):
     Writes events to a CSV file.
 
     :param path: path where CSV file will be written.
-    :type path: string
     :param columns: Fields to be written to CSV. Will be written as the file header if write_header is True. Will be extracted from
-    events when an event is a dictionary (lists will be written as is). Optional. Defaults to None (will be inferred if event is
-    dictionary).
-    :type columns: list of string
-    :param metadata_columns: Map from column name to metadata field name (e.g. {'event_time': 'time'}), or list, if column names do not need
-     to be mapped. Optional. Default to None (all columns will be taken from data, none from metadata).
-    :type metadata_columns: dict or list
-    :param write_header: Whether to write the columns as a CSV header.
-    :type write_header: boolean
+    events when an event is a dictionary (lists will be written as is). Use = notation for renaming fields (e.g. write_this=event_field).
+    Use $ notation to refer to metadata ($key, event_time=$time). Optional. Defaults to None (will be inferred if event is dictionary).
+    :param header: Whether to write the columns as a CSV header.
+    :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries. Optional. Default to False.
+    If True, columns will be inferred from data and used in place of explicit columns list if none was provided, or appended to the provided
+    list. If header is True and columns is not provided, infer_columns_from_data=True is implied.
     :param name: Name of this step, as it should appear in logs. Defaults to class name (WriteToCSV).
     :type name: string
     :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
@@ -78,14 +88,12 @@ class WriteToCSV(Flow, _Writer):
     :type full_event: boolean
     """
 
-    def __init__(self, path, columns=None, write_header=False, metadata_columns=None, **kwargs):
+    def __init__(self, path, columns: Optional[list] = None, header: bool = False, infer_columns_from_data: bool = False, **kwargs):
         Flow.__init__(self, **kwargs)
-        _Writer.__init__(self, metadata_columns)
+        _Writer.__init__(self, columns, infer_columns_from_data or header and not columns)
 
         self._path = path
-        self._columns = columns
-        self._write_header = write_header
-        self._metadata_columns = metadata_columns
+        self._write_header = header
         self._open_file = None
         self._first_event = True
 
@@ -100,7 +108,7 @@ class WriteToCSV(Flow, _Writer):
             data = self._event_to_writer_entry(event)
             if self._first_event:
                 if not self._columns and self._write_header:
-                    raise ValueError('columns must be defined when write_header is True and events type is not dictionary')
+                    raise ValueError('columns must be defined when header is True and events type is not dictionary')
                 linebuf = io.StringIO()
                 csv_writer = csv.writer(linebuf)
                 if self._write_header:
@@ -124,19 +132,17 @@ class WriteToParquet(_Batching, _Writer):
 
     :param path: Output path. Can be either a file or directory. This parameter is forwarded as-is to pandas.DataFrame.to_parquet().
     :type path: string
-    :param index: Index columns for writing the data. This parameter is forwarded as-is to pandas.DataFrame.set_index().
+    :param index_cols: Index columns for writing the data. This parameter is forwarded to pandas.DataFrame.set_index().
     If None (default), no index is set.
-    :type index: list of string
     :param columns: Fields to be written to parquet. Will be extracted from events when an event is a dictionary (lists will be written as
-    is). Optional. Defaults to None (will be inferred if event is
+    is). Use = notation for renaming fields (e.g. write_this=event_field). Use $ notation to refer to metadata ($key, event_time=$time).
+    Optional. Defaults to None (will be inferred if event is
     dictionary).
-    :type columns: list of string
-    :param metadata_columns: Map from column name to metadata field name (e.g. {'event_time': 'time'}), or list, if column names do not need
-    to be mapped. Optional. Default to None (all columns will be taken from data, none from metadata).
-    :type metadata_columns: dict or list
+    :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries. Optional. Default to False.
+    If True, columns will be inferred from data and used in place of explicit columns list if none was provided, or appended to the provided
+    list.
     :param partition_cols: Columns by which to partition the data into separate parquet files. If None (default), data will be written
     to a single file at path. This parameter is forwarded as-is to pandas.DataFrame.to_parquet().
-    :type partition_cols: list of string
     :param max_events: Maximum number of events to write at a time. If None (default), all events will be written on flow termination,
     or after timeout_secs (if timeout_secs is set).
     :type max_events: int
@@ -145,14 +151,13 @@ class WriteToParquet(_Batching, _Writer):
     :type timeout_secs: int
     """
 
-    def __init__(self, path, index: Optional[list] = None, columns: Optional[list] = None, partition_cols: Optional[list] = None,
-                 metadata_columns: Union[list, dict, None] = None, **kwargs):
+    def __init__(self, path, index_cols: Union[list, str, None] = None, columns: Optional[list] = None,
+                 partition_cols: Optional[list] = None, infer_columns_from_data: bool = False, **kwargs):
         _Batching.__init__(self, **kwargs)
-        _Writer.__init__(self, metadata_columns)
+        _Writer.__init__(self, columns, infer_columns_from_data)
 
         self._path = path
-        self._index = index
-        self._columns = columns
+        self._index_cols = [index_cols] if isinstance(index_cols, str) else index_cols
         self._partition_cols = partition_cols
 
     def _event_to_batch_entry(self, event):
@@ -160,47 +165,38 @@ class WriteToParquet(_Batching, _Writer):
 
     async def _emit(self, batch, batch_time):
         df = pd.DataFrame(batch, columns=self._columns)
-        if self._index:
-            df.set_index(self._index, inplace=True)
-        df.to_parquet(path=self._path, partition_cols=self._partition_cols)
+        if self._index_cols:
+            df.set_index(self._index_cols, inplace=True)
+        df.to_parquet(path=self._path, index=bool(self._index_cols), partition_cols=self._partition_cols)
 
 
 class WriteToTSDB(_Batching, _Writer):
     """Writes incoming events to TSDB table.
 
     :param path: Path to TSDB table.
-    :type path: string
     :param time_col: Name of the time column.
-    :type time_col: string
-    :param columns: List of column names to be passed as-is to the DataFrame constructor.
-    :type columns: list of string
-    :param metadata_columns: Map from column name to metadata field name (e.g. {'event_time': 'time'}), or list, if column names do not need
-    to be mapped. Optional. Default to None (all columns will be taken from data, none from metadata).
-    :type metadata_columns: dict or list
+    :param columns: List of column names to be passed to the DataFrame constructor. Use = notation for renaming fields (e.g.
+    write_this=event_field). Use $ notation to refer to metadata ($key, event_time=$time).
+    :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries. Optional. Default to False.
+    If True, columns will be inferred from data and used in place of explicit columns list if none was provided, or appended to the provided
+    list.
     :param labels_cols: List of column names to be used for metric labels.
-    :type labels_cols: string or list of string
     :param v3io_frames: Frames service url.
-    :type v3io_frames: string
     :param access_key: Access key to the system.
-    :type access_key: string
     :param container: Container name for this TSDB table.
-    :type container: string
     :param rate: TSDB table sample rate.
-    :type rate: string
     :param aggr: Server-side aggregations for this TSDB table (e.g. 'sum,count').
-    :type aggr: string
     :param aggr_granularity: Granularity of server-side aggregations for this TSDB table (e.g. '1h').
-    :type aggr_granularity: string
     """
 
-    def __init__(self, path, time_col, columns, metadata_columns=None, labels_cols=None, v3io_frames=None, access_key=None, container="",
-                 rate="", aggr="", aggr_granularity="", frames_client=None, **kwargs):
+    def __init__(self, path: str, time_col: str, columns: list, infer_columns_from_data: bool = False,
+                 labels_cols: Union[str, list, None] = None, v3io_frames: Optional[str] = None, access_key: Optional[str] = None,
+                 container: str = "", rate: str = "", aggr: str = "", aggr_granularity: str = "", frames_client=None, **kwargs):
         _Batching.__init__(self, **kwargs)
-        _Writer.__init__(self, metadata_columns)
+        _Writer.__init__(self, columns, infer_columns_from_data)
 
         self._path = path
         self._time_col = time_col
-        self._columns = columns
         self._labels_cols = labels_cols
         self._rate = rate
         self._aggr = aggr

@@ -178,7 +178,7 @@ def test_write_to_tsdb_with_metadata_label():
 
     controller = build_flow([
         Source(),
-        WriteToTSDB(path=tsdb_path, time_col='time', labels_cols='node', columns=columns, metadata_columns=['time'], rate='1/h',
+        WriteToTSDB(path=tsdb_path, time_col='time', labels_cols='node', columns=['cpu', 'disk', '$time', 'node'], rate='1/h',
                     max_events=2)
     ]).run()
 
