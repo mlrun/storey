@@ -445,7 +445,7 @@ class _ConcurrentByKeyJobExecution(Flow):
                 if job is _termination_obj:
                     for pending_event in self._pending_by_key.values():
                         if pending_event.pending and not pending_event.in_flight:
-                            resp = await self._process_event(pending_event.pending[0])
+                            resp = await self._process_event(pending_event.pending)
                             for event in pending_event.pending:
                                 await self._handle_completed(event, resp)
                     if self._q.empty():
@@ -463,11 +463,10 @@ class _ConcurrentByKeyJobExecution(Flow):
 
                 # If we got more pending events for the same key process them
                 if self._pending_by_key[event.key].pending:
-                    first_event = self._pending_by_key[event.key].pending[0]
                     self._pending_by_key[event.key].in_flight = self._pending_by_key[event.key].pending
                     self._pending_by_key[event.key].pending = []
 
-                    task = self._process_event(first_event)
+                    task = self._process_event(self._pending_by_key[event.key].in_flight)
                     await self._q.put((event, asyncio.get_running_loop().create_task(task)))
                 else:
                     del self._pending_by_key[event.key]
@@ -503,7 +502,7 @@ class _ConcurrentByKeyJobExecution(Flow):
                 self._pending_by_key[event.key].in_flight = self._pending_by_key[event.key].pending
                 self._pending_by_key[event.key].pending = []
 
-                task = self._process_event(event)
+                task = self._process_event(self._pending_by_key[event.key].in_flight)
                 await self._q.put((event, asyncio.get_running_loop().create_task(task)))
                 if self._worker_awaitable.done():
                     await self._worker_awaitable
