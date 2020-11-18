@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from enum import Enum
 
 from .utils import parse_duration, bucketPerWindow, get_one_unit_of_duration
+from .aggregation_utils import get_all_raw_aggregates
 
 _termination_obj = object()
 
@@ -190,11 +191,19 @@ class EmitAfterPeriod(EmitBase):
         self.delay_in_seconds = delay_in_seconds
         EmitBase.__init__(self, emission_type)
 
+    @staticmethod
+    def name():
+        return 'afterPeriod'
+
 
 class EmitAfterWindow(EmitBase):
     def __init__(self, delay_in_seconds=0, emission_type=EmissionType.All):
         self.delay_in_seconds = delay_in_seconds
         EmitBase.__init__(self, emission_type)
+
+    @staticmethod
+    def name():
+        return 'afterWindow'
 
 
 class EmitAfterMaxEvent(EmitBase):
@@ -202,17 +211,91 @@ class EmitAfterMaxEvent(EmitBase):
         self.max_events = max_events
         EmitBase.__init__(self, emission_type)
 
+    @staticmethod
+    def name():
+        return 'maxEvents'
+
 
 class EmitAfterDelay(EmitBase):
     def __init__(self, delay_in_seconds, emission_type=EmissionType.All):
         self.delay_in_seconds = delay_in_seconds
         EmitBase.__init__(self, emission_type)
 
+    @staticmethod
+    def name():
+        return 'afterDelay'
+
 
 class EmitEveryEvent(EmitBase):
+    @staticmethod
+    def name():
+        return 'everyEvent'
+
     pass
+
+
+def _dict_to_emit_policy(policy_dict):
+    if policy_dict['mode'] == EmitEveryEvent.name():
+        return EmitEveryEvent()
+    elif policy_dict['mode'] == EmitAfterMaxEvent.name():
+        if 'maxEvents' not in policy_dict:
+            raise ValueError('maxEvents parameter must be specified for maxEvents emit policy')
+        return EmitAfterMaxEvent(policy_dict['maxEvents'])
+    elif policy_dict['mode'] == EmitAfterDelay.name():
+        if 'delay' not in policy_dict:
+            raise ValueError('delay parameter must be specified for afterDelay emit policy')
+        return EmitAfterDelay(policy_dict['delay'])
+    elif policy_dict['mode'] == EmitAfterWindow.name():
+        return EmitAfterWindow(delay_in_seconds=policy_dict.get('delay', 0))
+    elif policy_dict['mode'] == EmitAfterPeriod.name():
+        return EmitAfterPeriod(delay_in_seconds=policy_dict.get('delay', 0))
 
 
 class LateDataHandling(Enum):
     Nothing = 1
     Sort_before_emit = 2
+
+
+class FieldAggregator:
+    """
+    Field Aggregator represents an set of aggregation features.
+
+    :param name: Name for the feature.
+    :type name: string
+    :param field: Field in the event body to aggregate.
+    :type field: string or Function (Event=>object)
+    :param aggr: List of aggregates to apply. Valid values are: [count, sum, sqr, avg, max, min, last, first, sttdev, stdvar]
+    :type aggr: list of string
+    :param windows: Time windows to aggregate the data by.
+    :type windows: {FixedWindows, SlidingWindows}
+    :param aggr_filter: Filter specifying which events to aggregate. (Optional)
+    :type aggr_filter: Function (Event=>boolean)
+    :param max_value: Maximum value for the aggregation (Optional)
+    :type max_value: float
+    """
+
+    def __init__(self, name, field, aggr, windows, aggr_filter=None, max_value=None):
+        if aggr_filter is not None and not callable(aggr_filter):
+            raise TypeError(f'aggr_filter expected to be callable, got {type(aggr_filter)}')
+
+        if callable(field):
+            self.value_extractor = field
+        elif isinstance(field, str):
+            self.value_extractor = lambda element: element[field]
+        else:
+            raise TypeError(f'field is expected to be either a callable or string but got {type(field)}')
+
+        self.name = name
+        self.aggregations = aggr
+        self.windows = windows
+        self.aggr_filter = aggr_filter
+        self.max_value = max_value
+
+    def get_all_raw_aggregates(self):
+        return get_all_raw_aggregates(self.aggregations)
+
+    def should_aggregate(self, element):
+        if not self.aggr_filter:
+            return True
+
+        return self.aggr_filter(element)
