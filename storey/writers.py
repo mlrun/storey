@@ -359,7 +359,7 @@ class WriteToTable(_ConcurrentByKeyJobExecution):
 
     :param table: A table object.
     :type table: Table
-    :param columns: List of specific columns to write. Writes all columns by default.
+    :param columns: List of specific columns to write or '*' for all columns. Do not save any event's columns by default.
     :type columns: list of str
     """
 
