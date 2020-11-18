@@ -29,11 +29,11 @@ class AggregateByKey(Flow):
     """
 
     def __init__(self, aggregates: Union[List[FieldAggregator], List[Dict[str, object]]], table: Table,
-                 key: Union[str, Callable, None] = None,
+                 key: Union[str, Callable[[Event], object], None] = None,
                  emit_policy: Union[EmitEveryEvent, FixedWindows, SlidingWindows, EmitAfterPeriod, EmitAfterWindow,
                                     EmitAfterMaxEvent, dict] = _default_emit_policy,
-                 augmentation_fn: [Callable] = None, enrich_with: Optional[List[str]] = None, aliases: Optional[Dict[str, str]] = None,
-                 **kwargs):
+                 augmentation_fn: [Callable[[Event, dict], Event]] = None, enrich_with: Optional[List[str]] = None,
+                 aliases: Optional[Dict[str, str]] = None, **kwargs):
         Flow.__init__(self, **kwargs)
 
         aggregates = self._parse_aggregates(aggregates)
@@ -187,11 +187,11 @@ class QueryAggregationByKey(AggregateByKey):
     """
 
     def __init__(self, aggregates: Union[List[FieldAggregator], List[Dict[str, object]]], table: Table,
-                 key: Union[str, Callable, None] = None,
+                 key: Union[str, Callable[[Event], object], None] = None,
                  emit_policy: Union[EmitEveryEvent, FixedWindows, SlidingWindows, EmitAfterPeriod, EmitAfterWindow,
                                     EmitAfterMaxEvent, dict] = _default_emit_policy,
-                 augmentation_fn: [Callable] = None, enrich_with: Optional[List[str]] = None, aliases: Optional[Dict[str, str]] = None,
-                 **kwargs):
+                 augmentation_fn: [Callable[[Event, dict], Event]] = None, enrich_with: Optional[List[str]] = None,
+                 aliases: Optional[Dict[str, str]] = None, **kwargs):
         AggregateByKey.__init__(self, aggregates, table, key, emit_policy, augmentation_fn, enrich_with, aliases, **kwargs)
         self._aggregates_store._read_only = True
 

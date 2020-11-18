@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
+from typing import Union, Optional, Callable, List
 
 from .utils import parse_duration, bucketPerWindow, get_one_unit_of_duration
 from .aggregation_utils import get_all_raw_aggregates
@@ -270,20 +271,16 @@ class FieldAggregator:
     Field Aggregator represents an set of aggregation features.
 
     :param name: Name for the feature.
-    :type name: string
     :param field: Field in the event body to aggregate.
-    :type field: string or Function (Event=>object)
     :param aggr: List of aggregates to apply. Valid values are: [count, sum, sqr, avg, max, min, last, first, sttdev, stdvar]
-    :type aggr: list of string
     :param windows: Time windows to aggregate the data by.
-    :type windows: {FixedWindows, SlidingWindows}
     :param aggr_filter: Filter specifying which events to aggregate. (Optional)
-    :type aggr_filter: Function (Event=>boolean)
     :param max_value: Maximum value for the aggregation (Optional)
-    :type max_value: float
     """
 
-    def __init__(self, name, field, aggr, windows, aggr_filter=None, max_value=None):
+    def __init__(self, name: str, field: Union[str, Callable[[Event], object]], aggr: List[str],
+                 windows: Union[FixedWindows, SlidingWindows], aggr_filter: Optional[Callable[[Event], bool]] = None,
+                 max_value: Optional[float] = None):
         if aggr_filter is not None and not callable(aggr_filter):
             raise TypeError(f'aggr_filter expected to be callable, got {type(aggr_filter)}')
 
