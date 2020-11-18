@@ -354,7 +354,12 @@ class WriteToTable(_ConcurrentByKeyJobExecution, _Writer):
     Persists the data in `table` to its associated storage by key.
 
     :param table: A table object.
-    :param columns: List of specific columns to write or '*' for all columns. Do not save any event's columns by default.
+    :param columns: Fields to be written to the storage. Will be extracted from events when an event is a dictionary (lists will be written
+    as is). Use = notation for renaming fields (e.g. write_this=event_field).
+    Use $ notation to refer to metadata ($key, event_time=$time). Optional. Defaults to None (will be inferred if event is dictionary).
+    :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries. Optional. Default to False.
+    If True, columns will be inferred from data and used in place of explicit columns list if none was provided, or appended to the provided
+    list.
     """
 
     def __init__(self, table: Table, columns: Optional[list] = None,  infer_columns_from_data: bool = False, **kwargs):
