@@ -47,7 +47,7 @@ def test_functional_flow():
 
 def test_csv_reader():
     controller = build_flow([
-        ReadCSV('tests/test.csv', with_header=True),
+        ReadCSV('tests/test.csv', header=True),
         FlatMap(lambda x: x),
         Map(lambda x: int(x)),
         Reduce(0, lambda acc, x: acc + x),
@@ -59,7 +59,7 @@ def test_csv_reader():
 
 def test_csv_reader_as_dict():
     controller = build_flow([
-        ReadCSV('tests/test.csv', with_header=True, build_dict=True),
+        ReadCSV('tests/test.csv', header=True, build_dict=True),
         FlatMap(lambda x: [x['n1'], x['n2'], x['n3']]),
         Map(lambda x: int(x)),
         Reduce(0, lambda acc, x: acc + x),
@@ -76,7 +76,7 @@ def append_and_return(lst, x):
 
 def test_csv_reader_as_dict_with_key_and_timestamp():
     controller = build_flow([
-        ReadCSV('tests/test-with-timestamp.csv', with_header=True, build_dict=True, key_field='k',
+        ReadCSV('tests/test-with-timestamp.csv', header=True, build_dict=True, key_field='k',
                 timestamp_field='t', timestamp_format='%d/%m/%Y %H:%M:%S'),
         Reduce([], append_and_return, full_event=True),
     ]).run()
@@ -94,7 +94,7 @@ def test_csv_reader_as_dict_with_key_and_timestamp():
 
 def test_csv_reader_with_key_and_timestamp():
     controller = build_flow([
-        ReadCSV('tests/test-with-timestamp.csv', with_header=True, key_field='k',
+        ReadCSV('tests/test-with-timestamp.csv', header=True, key_field='k',
                 timestamp_field='t', timestamp_format='%d/%m/%Y %H:%M:%S'),
         Reduce([], append_and_return, full_event=True),
     ]).run()
@@ -112,7 +112,7 @@ def test_csv_reader_with_key_and_timestamp():
 
 def test_csv_reader_as_dict_no_header():
     controller = build_flow([
-        ReadCSV('tests/test-no-header.csv', with_header=False, build_dict=True),
+        ReadCSV('tests/test-no-header.csv', header=False, build_dict=True),
         FlatMap(lambda x: [x[0], x[1], x[2]]),
         Map(lambda x: int(x)),
         Reduce(0, lambda acc, x: acc + x),

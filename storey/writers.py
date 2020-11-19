@@ -3,13 +3,14 @@ import csv
 import io
 import json
 import random
-from typing import Optional, Union, List
+from typing import Optional, Union, List, Callable
 
 import aiofiles
 import pandas as pd
 import v3io_frames as frames
 
-from .dtypes import V3ioError
+from . import V3ioDriver
+from .dtypes import V3ioError, Event
 from .flow import Flow, _termination_obj, _split_path, _Batching, _ConcurrentByKeyJobExecution, Table
 
 
@@ -70,8 +71,7 @@ class _Writer:
 
 
 class WriteToCSV(Flow, _Writer):
-    """
-    Writes events to a CSV file.
+    """Writes events to a CSV file.
 
     :param path: path where CSV file will be written.
     :param columns: Fields to be written to CSV. Will be written as the file header if write_header is True. Will be extracted from
@@ -83,12 +83,10 @@ class WriteToCSV(Flow, _Writer):
     list. If header is True and columns is not provided, infer_columns_from_data=True is implied.
     :param name: Name of this step, as it should appear in logs. Defaults to class name (WriteToCSV).
     :type name: string
-    :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
-    Defaults to False.
-    :type full_event: boolean
     """
 
-    def __init__(self, path, columns: Optional[List[str]] = None, header: bool = False, infer_columns_from_data: bool = False, **kwargs):
+    def __init__(self, path: str, columns: Optional[List[str]] = None, header: bool = False, infer_columns_from_data: bool = False,
+                 **kwargs):
         Flow.__init__(self, **kwargs)
         _Writer.__init__(self, columns, infer_columns_from_data or header and not columns)
 
@@ -131,7 +129,6 @@ class WriteToParquet(_Batching, _Writer):
     """Writes incoming events to parquet files.
 
     :param path: Output path. Can be either a file or directory. This parameter is forwarded as-is to pandas.DataFrame.to_parquet().
-    :type path: string
     :param index_cols: Index columns for writing the data. This parameter is forwarded to pandas.DataFrame.set_index().
     If None (default), no index is set.
     :param columns: Fields to be written to parquet. Will be extracted from events when an event is a dictionary (lists will be written as
@@ -151,7 +148,7 @@ class WriteToParquet(_Batching, _Writer):
     :type timeout_secs: int
     """
 
-    def __init__(self, path, index_cols: Union[list, str, None] = None, columns: Optional[List[str]] = None,
+    def __init__(self, path: str, index_cols: Union[list, str, None] = None, columns: Optional[List[str]] = None,
                  partition_cols: Optional[List[str]] = None, infer_columns_from_data: bool = False, **kwargs):
         _Batching.__init__(self, **kwargs)
         _Writer.__init__(self, columns, infer_columns_from_data)
@@ -228,16 +225,13 @@ class WriteToV3IOStream(Flow):
     """Writes all incoming events into a V3IO stream.
 
     :param storage: V3IO driver.
-    :type storage: V3ioDriver
     :param stream_path: Path to the V3IO stream.
-    :type stream_path: string
     :param sharding_func: Function for determining the shard ID to which to write each event.
-    :type sharding_func: Function (Event=>int)
     :param batch_size: Batch size for each write request.
-    :type batch_size: int
     """
 
-    def __init__(self, storage, stream_path, sharding_func=None, batch_size=8, **kwargs):
+    def __init__(self, storage: V3ioDriver, stream_path: str, sharding_func: Optional[Callable[[Event], int]] = None, batch_size: int = 8,
+                 **kwargs):
         Flow.__init__(self, **kwargs)
 
         self._storage = storage
