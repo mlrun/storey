@@ -177,7 +177,7 @@ class WriteToTSDB(_Batching, _Writer):
     :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries. Optional. Default to False.
     If True, columns will be inferred from data and used in place of explicit columns list if none was provided, or appended to the provided
     list.
-    :param labels_cols: List of column names to be used for metric labels.
+    :param index_cols: List of column names to be used for metric labels.
     :param v3io_frames: Frames service url.
     :param access_key: Access key to the system.
     :param container: Container name for this TSDB table.
@@ -187,14 +187,14 @@ class WriteToTSDB(_Batching, _Writer):
     """
 
     def __init__(self, path: str, time_col: str, columns: List[str], infer_columns_from_data: bool = False,
-                 labels_cols: Union[str, List[str], None] = None, v3io_frames: Optional[str] = None, access_key: Optional[str] = None,
+                 index_cols: Union[str, List[str], None] = None, v3io_frames: Optional[str] = None, access_key: Optional[str] = None,
                  container: str = "", rate: str = "", aggr: str = "", aggr_granularity: str = "", frames_client=None, **kwargs):
         _Batching.__init__(self, **kwargs)
         _Writer.__init__(self, columns, infer_columns_from_data)
 
         self._path = path
         self._time_col = time_col
-        self._labels_cols = labels_cols
+        self._index_cols = index_cols
         self._rate = rate
         self._aggr = aggr
         self.aggr_granularity = aggr_granularity
@@ -207,11 +207,11 @@ class WriteToTSDB(_Batching, _Writer):
     async def _emit(self, batch, batch_time):
         df = pd.DataFrame(batch, columns=self._columns)
         indices = [self._time_col]
-        if self._labels_cols:
-            if isinstance(self._labels_cols, list):
-                indices.extend(self._labels_cols)
+        if self._index_cols:
+            if isinstance(self._index_cols, list):
+                indices.extend(self._index_cols)
             else:
-                indices.append(self._labels_cols)
+                indices.append(self._index_cols)
         df.set_index(keys=indices, inplace=True)
         if not self._created and self._rate:
             self._created = True
