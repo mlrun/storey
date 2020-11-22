@@ -13,7 +13,7 @@ from .dtypes import (  # noqa: F401
     Event, FieldAggregator
 )
 from .flow import (  # noqa: F401
-    Filter, FlatMap, Flow, FlowError, JoinWithV3IOTable, SendToHttp, JoinWithTable, Map, Reduce, Batch,
+    Filter, FlatMap, Flow, FlowError, JoinWithV3IOTable, SendToHttp, JoinWithTable, Map, Extend, Reduce, Batch,
     MapWithState, MapClass, Complete, Choice, HttpRequest, HttpResponse, Table, build_flow
 )
 from .sources import (  # noqa: F401
