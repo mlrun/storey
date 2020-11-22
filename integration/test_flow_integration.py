@@ -2,19 +2,17 @@ import asyncio
 import base64
 import json
 import time
+from _datetime import datetime, timedelta
+
+import aiohttp
 import pandas as pd
-import v3io_frames as frames
 import v3io
 import v3io.aio.dataplane
-import aiohttp
-
-from _datetime import datetime, timedelta
-from datetime import timezone
-import pytz
+import v3io_frames as frames
 
 from storey import Filter, JoinWithV3IOTable, SendToHttp, Map, Reduce, Source, HttpRequest, build_flow, \
     WriteToV3IOStream, V3ioDriver, WriteToTSDB, Table, JoinWithTable, MapWithState, WriteToTable
-from .integration_test_utils import V3ioHeaders, append_return, setup_kv_teardown_test, setup_teardown_test, test_base_time
+from .integration_test_utils import V3ioHeaders, append_return, test_base_time
 
 
 class SetupKvTable(V3ioHeaders):
@@ -146,11 +144,9 @@ def test_write_to_v3io_stream_unbalanced():
 
 def test_write_to_tsdb():
     tsdb_path = f'tsdb_path-{int(time.time_ns() / 1000)}'
-    columns = ['cpu', 'disk', 'time', 'node']
-
     controller = build_flow([
         Source(),
-        WriteToTSDB(path=tsdb_path, time_col='time', index_cols='node', columns=columns, rate='1/h', max_events=2)
+        WriteToTSDB(path=tsdb_path, time_col='time', index_cols='node', columns=['cpu', 'disk'], rate='1/h', max_events=2)
     ]).run()
 
     expected = []
@@ -167,7 +163,7 @@ def test_write_to_tsdb():
     res = client.read("tsdb", tsdb_path, start='0', end='now')
     res = res.sort_values(['time'])
     res['node'] = pd.to_numeric(res["node"])
-    df = pd.DataFrame(expected, columns=columns)
+    df = pd.DataFrame(expected, columns=['time', 'node', 'cpu', 'disk'])
     df.set_index(keys=['time'], inplace=True)
     assert res.equals(df), f"result{res}\n!=\nexpected{df}"
 
@@ -286,7 +282,7 @@ def test_write_table_specific_columns(setup_teardown_test):
 
     assert response.status_code == 200
     expected_cache = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': test_base_time, 'first_activity': test_base_time,
-                      'last_event': test_base_time + timedelta(minutes=25 * (items_in_ingest_batch-1)), 'total_activities': 10,
+                      'last_event': test_base_time + timedelta(minutes=25 * (items_in_ingest_batch - 1)), 'total_activities': 10,
                       'twice_total_activities': 20}
 
     assert expected_cache == response.output.item
@@ -341,7 +337,7 @@ def test_write_table_metadata_columns(setup_teardown_test):
 
     assert response.status_code == 200
     expected_cache = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': test_base_time, 'first_activity': test_base_time,
-                      'last_event': test_base_time + timedelta(minutes=25 * (items_in_ingest_batch-1)), 'total_activities': 10,
+                      'last_event': test_base_time + timedelta(minutes=25 * (items_in_ingest_batch - 1)), 'total_activities': 10,
                       'twice_total_activities': 20, 'my_key': 'tal'}
 
     assert expected_cache == response.output.item
@@ -354,7 +350,7 @@ async def get_kv_item(full_path, key):
 
         _v3io_client = v3io.aio.dataplane.Client(endpoint=headers._webapi_url, access_key=headers._access_key)
         response = await _v3io_client.kv.get(container, path, key,
-                                                   raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
+                                             raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
         return response
     finally:
         await _v3io_client.close()

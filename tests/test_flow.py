@@ -955,13 +955,13 @@ def test_write_to_parquet_with_indices(tmpdir):
     out_file = f'{tmpdir}/test_write_to_parquet_with_indices{uuid.uuid4().hex}.parquet'
     controller = build_flow([
         Source(),
-        WriteToParquet(out_file, index_cols='event_key', columns=['event_key=$key', 'my_int', 'my_string'])
+        WriteToParquet(out_file, index_cols='event_key=$key', columns=['my_int', 'my_string'])
     ]).run()
 
     expected = []
     for i in range(10):
         controller.emit([i, f'this is {i}'], key=f'key{i}')
-        expected.append([f'key{i}', i, f'this is {i}'])
+        expected.append([f'this is {i}', f'key{i}', i])
     columns = ['event_key', 'my_int', 'my_string']
     expected = pd.DataFrame(expected, columns=columns, dtype='int64')
     expected.set_index(['event_key'], inplace=True)
@@ -969,6 +969,26 @@ def test_write_to_parquet_with_indices(tmpdir):
     controller.await_termination()
 
     read_back_df = pd.read_parquet(out_file, columns=columns)
+    assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+
+
+def test_write_to_parquet_with_inference(tmpdir):
+    out_file = f'{tmpdir}/test_write_to_parquet_with_inference{uuid.uuid4().hex}.parquet'
+    controller = build_flow([
+        Source(),
+        WriteToParquet(out_file, index_cols='$key')
+    ]).run()
+
+    expected = []
+    for i in range(10):
+        controller.emit({'my_int': i, 'my_string': f'this is {i}'}, key=f'key{i}')
+        expected.append([f'key{i}', i, f'this is {i}'])
+    expected = pd.DataFrame(expected, columns=['key', 'my_int', 'my_string'], dtype='int64')
+    expected.set_index(['key'], inplace=True)
+    controller.terminate()
+    controller.await_termination()
+
+    read_back_df = pd.read_parquet(out_file)
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
 
 
@@ -1053,12 +1073,11 @@ class MockFramesClient:
 
 
 def test_write_to_tsdb():
-    columns = ['cpu', 'disk', 'time', 'node']
     mock_frames_client = MockFramesClient()
 
     controller = build_flow([
         Source(),
-        WriteToTSDB(path='some/path', time_col='time', index_cols='node', columns=columns, rate='1/h', max_events=1,
+        WriteToTSDB(path='some/path', time_col='time', index_cols='node', columns=['cpu', 'disk'], rate='1/h', max_events=1,
                     frames_client=mock_frames_client)
     ]).run()
 
@@ -1066,8 +1085,8 @@ def test_write_to_tsdb():
     date_time_str = '18/09/19 01:55:1'
     for i in range(9):
         now = datetime.strptime(date_time_str + str(i) + ' UTC-0000', '%d/%m/%y %H:%M:%S UTC%z')
-        controller.emit([i + 1, i + 2, now, i])
-        expected_data.append([i + 1, i + 2, now, i])
+        controller.emit([now, i, i + 1, i + 2])
+        expected_data.append([now, i, i + 1, i + 2])
 
     controller.terminate()
     controller.await_termination()
@@ -1078,7 +1097,7 @@ def test_write_to_tsdb():
     i = 0
     for write_call in mock_frames_client.call_log[1:]:
         assert write_call[0] == 'write'
-        expected = pd.DataFrame([expected_data[i]], columns=columns)
+        expected = pd.DataFrame([expected_data[i]], columns=['time', 'node', 'cpu', 'disk'])
         expected.set_index(keys=['time', 'node'], inplace=True)
         res = write_call[1]['dfs']
         assert expected.equals(res), f"result{res}\n!=\nexpected{expected}"
@@ -1092,7 +1111,7 @@ def test_write_to_tsdb_with_key_index():
 
     controller = build_flow([
         Source(),
-        WriteToTSDB(path='some/path', time_col='time', index_cols='node', columns=['cpu', 'disk', 'time', 'node=$key'], rate='1/h',
+        WriteToTSDB(path='some/path', time_col='time', index_cols='node=$key', columns=['cpu', 'disk'], rate='1/h',
                     max_events=1, frames_client=mock_frames_client)
     ]).run()
 
@@ -1100,8 +1119,8 @@ def test_write_to_tsdb_with_key_index():
     date_time_str = '18/09/19 01:55:1'
     for i in range(9):
         now = datetime.strptime(date_time_str + str(i) + ' UTC-0000', '%d/%m/%y %H:%M:%S UTC%z')
-        controller.emit([i + 1, i + 2, now], key=i)
-        expected_data.append([i + 1, i + 2, now, i])
+        controller.emit([now, i + 1, i + 2], key=i)
+        expected_data.append([now, i, i + 1, i + 2])
 
     controller.terminate()
     controller.await_termination()
@@ -1112,7 +1131,41 @@ def test_write_to_tsdb_with_key_index():
     i = 0
     for write_call in mock_frames_client.call_log[1:]:
         assert write_call[0] == 'write'
-        expected = pd.DataFrame([expected_data[i]], columns=['cpu', 'disk', 'time', 'node'])
+        expected = pd.DataFrame([expected_data[i]], columns=['time', 'node', 'cpu', 'disk'])
+        expected.set_index(keys=['time', 'node'], inplace=True)
+        res = write_call[1]['dfs']
+        assert expected.equals(res), f"result{res}\n!=\nexpected{expected}"
+        del write_call[1]['dfs']
+        assert write_call[1] == {'backend': 'tsdb', 'table': 'some/path'}
+        i += 1
+
+
+def test_write_to_tsdb_with_key_index_and_default_time():
+    mock_frames_client = MockFramesClient()
+
+    controller = build_flow([
+        Source(),
+        WriteToTSDB(path='some/path', index_cols='node=$key', columns=['cpu', 'disk'], rate='1/h',
+                    max_events=1, frames_client=mock_frames_client)
+    ]).run()
+
+    expected_data = []
+    date_time_str = '18/09/19 01:55:1'
+    for i in range(9):
+        now = datetime.strptime(date_time_str + str(i) + ' UTC-0000', '%d/%m/%y %H:%M:%S UTC%z')
+        controller.emit([i + 1, i + 2], key=i, event_time=now)
+        expected_data.append([now, i, i + 1, i + 2])
+
+    controller.terminate()
+    controller.await_termination()
+
+    expected_create = ('create', {'if_exists': 1, 'rate': '1/h', 'aggregates': '', 'aggregation_granularity': '', 'backend': 'tsdb',
+                                  'table': 'some/path'})
+    assert mock_frames_client.call_log[0] == expected_create
+    i = 0
+    for write_call in mock_frames_client.call_log[1:]:
+        assert write_call[0] == 'write'
+        expected = pd.DataFrame([expected_data[i]], columns=['time', 'node', 'cpu', 'disk'])
         expected.set_index(keys=['time', 'node'], inplace=True)
         res = write_call[1]['dfs']
         assert expected.equals(res), f"result{res}\n!=\nexpected{expected}"
