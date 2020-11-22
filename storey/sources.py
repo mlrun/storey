@@ -432,15 +432,12 @@ class DataframeSource(_IterableSource):
                 key = None
                 if self._key_field:
                     key = body[self._key_field]
-                    del body[self._key_field]
                 time = None
                 if self._time_field:
                     time = body[self._time_field]
-                    del body[self._time_field]
                 id = None
                 if self._id_field:
                     id = body[self._id_field]
-                    del body[self._id_field]
                 event = Event(body, key=key, time=time, id=id)
                 await self._do_downstream(event)
         return await self._do_downstream(_termination_obj)
