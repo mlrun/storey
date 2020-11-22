@@ -2,15 +2,13 @@ import asyncio
 import base64
 import json
 import time
+from _datetime import datetime, timedelta
+
+import aiohttp
 import pandas as pd
-import v3io_frames as frames
 import v3io
 import v3io.aio.dataplane
-import aiohttp
-
-from _datetime import datetime, timedelta
-from datetime import timezone
-import pytz
+import v3io_frames as frames
 
 from storey import Filter, JoinWithV3IOTable, SendToHttp, Map, Reduce, Source, HttpRequest, build_flow, \
     WriteToV3IOStream, V3ioDriver, WriteToTSDB, Table, JoinWithTable, MapWithState, WriteToTable
@@ -146,39 +144,34 @@ def test_write_to_v3io_stream_unbalanced():
 
 def test_write_to_tsdb():
     tsdb_path = f'tsdb_path-{int(time.time_ns() / 1000)}'
-    columns = ['cpu', 'disk', 'time', 'node']
-
     controller = build_flow([
         Source(),
-        WriteToTSDB(path=tsdb_path, time_col='time', index_cols='node', columns=columns, rate='1/h', max_events=2)
+        WriteToTSDB(path=tsdb_path, time_col='time', index_cols='node', columns=['cpu', 'disk'], rate='1/h', max_events=2)
     ]).run()
 
     expected = []
     date_time_str = '18/09/19 01:55:1'
     for i in range(9):
         now = datetime.strptime(date_time_str + str(i) + ' UTC-0000', '%d/%m/%y %H:%M:%S UTC%z')
-        controller.emit([i + 1, i + 2, now, i])
-        expected.append([float(i + 1), float(i + 2), now, i])
+        controller.emit([now, i, i + 1, i + 2])
+        expected.append([now, f'{i}', float(i + 1), float(i + 2)])
 
     controller.terminate()
     controller.await_termination()
 
     client = frames.Client()
-    res = client.read("tsdb", tsdb_path, start='0', end='now')
+    res = client.read('tsdb', tsdb_path, start='0', end='now', multi_index=True)
     res = res.sort_values(['time'])
-    res['node'] = pd.to_numeric(res["node"])
-    df = pd.DataFrame(expected, columns=columns)
-    df.set_index(keys=['time'], inplace=True)
+    df = pd.DataFrame(expected, columns=['time', 'node', 'cpu', 'disk'])
+    df.set_index(keys=['time', 'node'], inplace=True)
     assert res.equals(df), f"result{res}\n!=\nexpected{df}"
 
 
 def test_write_to_tsdb_with_metadata_label():
     tsdb_path = f'tsdb_path-{int(time.time_ns() / 1000)}'
-    columns = ['cpu', 'disk', 'time', 'node']
-
     controller = build_flow([
         Source(),
-        WriteToTSDB(path=tsdb_path, time_col='time', index_cols='node', columns=['cpu', 'disk', '$time', 'node'], rate='1/h',
+        WriteToTSDB(path=tsdb_path, index_cols='node', columns=['cpu', 'disk'], rate='1/h',
                     max_events=2)
     ]).run()
 
@@ -186,18 +179,17 @@ def test_write_to_tsdb_with_metadata_label():
     date_time_str = '18/09/19 01:55:1'
     for i in range(9):
         now = datetime.strptime(date_time_str + str(i) + ' UTC-0000', '%d/%m/%y %H:%M:%S UTC%z')
-        controller.emit([i + 1, i + 2, i], event_time=now)
-        expected.append([float(i + 1), float(i + 2), now, i])
+        controller.emit([i, i + 1, i + 2], event_time=now)
+        expected.append([now, f'{i}', float(i + 1), float(i + 2)])
 
     controller.terminate()
     controller.await_termination()
 
     client = frames.Client()
-    res = client.read("tsdb", tsdb_path, start='0', end='now')
+    res = client.read('tsdb', tsdb_path, start='0', end='now', multi_index=True)
     res = res.sort_values(['time'])
-    res['node'] = pd.to_numeric(res["node"])
-    df = pd.DataFrame(expected, columns=columns)
-    df.set_index(keys=['time'], inplace=True)
+    df = pd.DataFrame(expected, columns=['time', 'node', 'cpu', 'disk'])
+    df.set_index(keys=['time', 'node'], inplace=True)
     assert res.equals(df), f"result{res}\n!=\nexpected{df}"
 
 
@@ -286,7 +278,7 @@ def test_write_table_specific_columns(setup_teardown_test):
 
     assert response.status_code == 200
     expected_cache = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': test_base_time, 'first_activity': test_base_time,
-                      'last_event': test_base_time + timedelta(minutes=25 * (items_in_ingest_batch-1)), 'total_activities': 10,
+                      'last_event': test_base_time + timedelta(minutes=25 * (items_in_ingest_batch - 1)), 'total_activities': 10,
                       'twice_total_activities': 20}
 
     assert expected_cache == response.output.item
@@ -341,7 +333,7 @@ def test_write_table_metadata_columns(setup_teardown_test):
 
     assert response.status_code == 200
     expected_cache = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': test_base_time, 'first_activity': test_base_time,
-                      'last_event': test_base_time + timedelta(minutes=25 * (items_in_ingest_batch-1)), 'total_activities': 10,
+                      'last_event': test_base_time + timedelta(minutes=25 * (items_in_ingest_batch - 1)), 'total_activities': 10,
                       'twice_total_activities': 20, 'my_key': 'tal'}
 
     assert expected_cache == response.output.item
@@ -354,7 +346,7 @@ async def get_kv_item(full_path, key):
 
         _v3io_client = v3io.aio.dataplane.Client(endpoint=headers._webapi_url, access_key=headers._access_key)
         response = await _v3io_client.kv.get(container, path, key,
-                                                   raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
+                                             raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
         return response
     finally:
         await _v3io_client.close()
