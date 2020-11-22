@@ -185,6 +185,13 @@ class FlatMap(_UnaryFunctionFlow):
             await self._do_downstream(mapped_event)
 
 
+class Extend(_UnaryFunctionFlow):
+    async def _do_internal(self, event, fn_result):
+        for key, value in fn_result.items():
+            event.body[key] = value
+        await self._do_downstream(event)
+
+
 class _FunctionWithStateFlow(Flow):
     def __init__(self, initial_state, fn, group_by_key=False, **kwargs):
         super().__init__(**kwargs)

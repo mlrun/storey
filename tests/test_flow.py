@@ -1,4 +1,3 @@
-import _csv
 import asyncio
 import time
 import uuid
@@ -8,7 +7,17 @@ import pandas as pd
 
 from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV, Complete, AsyncSource, Choice, \
     Event, Batch, Table, NoopDriver, WriteToCSV, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, WriteToParquet, \
-    WriteToTSDB
+    WriteToTSDB, Extend
+import asyncio
+import time
+import uuid
+from datetime import datetime
+
+import pandas as pd
+
+from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV, Complete, AsyncSource, Choice, \
+    Event, Batch, Table, NoopDriver, WriteToCSV, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, WriteToParquet, \
+    WriteToTSDB, Extend
 
 
 class ATestException(Exception):
@@ -889,6 +898,21 @@ def test_map_class():
     controller.terminate()
     termination_result = controller.await_termination()
     assert termination_result == 2600
+
+
+def test_extend():
+    controller = build_flow([
+        Source(),
+        Extend(lambda x: {'bid2': x['bid'] + 1}),
+        Reduce([], append_and_return),
+    ]).run()
+
+    controller.emit({'bid': 1})
+    controller.emit({'bid': 11})
+    controller.emit({'bid': 111})
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == [{'bid': 1, 'bid2': 2}, {'bid': 11, 'bid2': 12}, {'bid': 111, 'bid2': 112}]
 
 
 def test_write_to_parquet(tmpdir):
