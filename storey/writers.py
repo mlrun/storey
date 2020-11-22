@@ -16,7 +16,7 @@ from .flow import Flow, _termination_obj, _split_path, _Batching, _ConcurrentByK
 
 class _Writer:
     def __init__(self, columns: Union[str, List[str], None], infer_columns_from_data: Optional[bool],
-                 index_cols: Union[list, str, None] = None):
+                 index_cols: Union[str, List[str], None] = None):
         if infer_columns_from_data is None:
             infer_columns_from_data = not bool(columns)
         self._infer_columns_from_data = infer_columns_from_data
@@ -84,12 +84,16 @@ class _Writer:
             self._get_column_data_from_dict(data, event, self._columns, self._metadata_columns, self._rename_columns)
             self._get_column_data_from_dict(data, event, self._index_cols, self._metadata_index_columns, self._rename_index_columns)
         elif isinstance(data, list):
+            if self._infer_columns_from_data:
+                raise TypeError('Cannot infer_columns_from_data when event type is list. Inference is only possible from dict.')
             sub_metadata = bool(self._columns) and bool(self._metadata_columns)
             sub_index_metadata = bool(self._index_cols) and bool(self._metadata_index_columns)
             if sub_metadata or sub_index_metadata:
                 data = []
                 cursor = self._get_column_data_from_list(data, event, event.body, self._index_cols, self._metadata_index_columns)
                 self._get_column_data_from_list(data, event, event.body[cursor:], self._columns, self._metadata_columns)
+        else:
+            raise TypeError('Writer supports only events of type dict or list.')
         return data
 
 
@@ -170,7 +174,7 @@ class WriteToParquet(_Batching, _Writer):
     :type timeout_secs: int
     """
 
-    def __init__(self, path: str, index_cols: Union[list, str, None] = None, columns: Union[str, List[str], None] = None,
+    def __init__(self, path: str, index_cols: Union[str, List[str], None] = None, columns: Union[str, List[str], None] = None,
                  partition_cols: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None, **kwargs):
         _Batching.__init__(self, **kwargs)
         _Writer.__init__(self, columns, infer_columns_from_data, index_cols)

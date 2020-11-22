@@ -573,7 +573,7 @@ async def async_test_write_csv_error(tmpdir):
         await controller.await_termination()
         assert False
     except FlowError as ex:
-        assert isinstance(ex.__cause__, _csv.Error)
+        assert isinstance(ex.__cause__, TypeError)
     assert write_csv._open_file.closed
 
 
@@ -758,7 +758,7 @@ def test_write_csv_fail_to_infer_columns(tmpdir):
         controller.await_termination()
         assert False
     except FlowError as flow_ex:
-        assert isinstance(flow_ex.__cause__, ValueError)
+        assert isinstance(flow_ex.__cause__, TypeError)
 
 
 def test_reduce_to_dataframe():
