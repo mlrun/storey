@@ -90,12 +90,12 @@ class Source(Flow):
     """Synchronous entry point into a flow. Produces a FlowController when run, for use from inside a synchronous context. See AsyncSource
     for use from inside an async context.
 
-    :param buffer_size: size of the incoming event buffer. Defaults to 1.
+    :param buffer_size: size of the incoming event buffer. Defaults to 1024.
     :param name: Name of this step, as it should appear in logs. Defaults to class name (Source).
     :type name: string
     """
 
-    def __init__(self, buffer_size: int = 1, **kwargs):
+    def __init__(self, buffer_size: int = 1024, **kwargs):
         super().__init__(**kwargs)
         if buffer_size <= 0:
             raise ValueError('Buffer size must be positive')
@@ -224,12 +224,12 @@ class AsyncSource(Flow):
     Asynchronous entry point into a flow. Produces an AsyncFlowController when run, for use from inside an async def.
     See Source for use from inside a synchronous context.
 
-    :param buffer_size: size of the incoming event buffer. Defaults to 1.
+    :param buffer_size: size of the incoming event buffer. Defaults to 1024.
     :param name: Name of this step, as it should appear in logs. Defaults to class name (AsyncSource).
     :type name: string
     """
 
-    def __init__(self, buffer_size: int = 1, **kwargs):
+    def __init__(self, buffer_size: int = 1024, **kwargs):
         super().__init__(**kwargs)
         if buffer_size <= 0:
             raise ValueError('Buffer size must be positive')
@@ -252,7 +252,7 @@ class AsyncSource(Flow):
                         await awaitable
                 if not self._q.empty():
                     await self._q.get()
-                return None
+                self._raise_on_error()
             finally:
                 if event is _termination_obj or self._ex:
                     for closeable in self._closeables:
@@ -432,15 +432,12 @@ class DataframeSource(_IterableSource):
                 key = None
                 if self._key_field:
                     key = body[self._key_field]
-                    del body[self._key_field]
                 time = None
                 if self._time_field:
                     time = body[self._time_field]
-                    del body[self._time_field]
                 id = None
                 if self._id_field:
                     id = body[self._id_field]
-                    del body[self._id_field]
                 event = Event(body, key=key, time=time, id=id)
                 await self._do_downstream(event)
         return await self._do_downstream(_termination_obj)
