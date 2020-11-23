@@ -1,4 +1,3 @@
-import _csv
 import asyncio
 import time
 import uuid
@@ -8,7 +7,7 @@ import pandas as pd
 
 from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV, Complete, AsyncSource, Choice, \
     Event, Batch, Table, NoopDriver, WriteToCSV, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, WriteToParquet, \
-    WriteToTSDB
+    WriteToTSDB, Extend
 
 
 class ATestException(Exception):
@@ -47,7 +46,7 @@ def test_functional_flow():
 
 def test_csv_reader():
     controller = build_flow([
-        ReadCSV('tests/test.csv', with_header=True),
+        ReadCSV('tests/test.csv', header=True),
         FlatMap(lambda x: x),
         Map(lambda x: int(x)),
         Reduce(0, lambda acc, x: acc + x),
@@ -59,7 +58,7 @@ def test_csv_reader():
 
 def test_csv_reader_as_dict():
     controller = build_flow([
-        ReadCSV('tests/test.csv', with_header=True, build_dict=True),
+        ReadCSV('tests/test.csv', header=True, build_dict=True),
         FlatMap(lambda x: [x['n1'], x['n2'], x['n3']]),
         Map(lambda x: int(x)),
         Reduce(0, lambda acc, x: acc + x),
@@ -76,7 +75,7 @@ def append_and_return(lst, x):
 
 def test_csv_reader_as_dict_with_key_and_timestamp():
     controller = build_flow([
-        ReadCSV('tests/test-with-timestamp.csv', with_header=True, build_dict=True, key_field='k',
+        ReadCSV('tests/test-with-timestamp.csv', header=True, build_dict=True, key_field='k',
                 timestamp_field='t', timestamp_format='%d/%m/%Y %H:%M:%S'),
         Reduce([], append_and_return, full_event=True),
     ]).run()
@@ -94,7 +93,7 @@ def test_csv_reader_as_dict_with_key_and_timestamp():
 
 def test_csv_reader_with_key_and_timestamp():
     controller = build_flow([
-        ReadCSV('tests/test-with-timestamp.csv', with_header=True, key_field='k',
+        ReadCSV('tests/test-with-timestamp.csv', header=True, key_field='k',
                 timestamp_field='t', timestamp_format='%d/%m/%Y %H:%M:%S'),
         Reduce([], append_and_return, full_event=True),
     ]).run()
@@ -112,7 +111,7 @@ def test_csv_reader_with_key_and_timestamp():
 
 def test_csv_reader_as_dict_no_header():
     controller = build_flow([
-        ReadCSV('tests/test-no-header.csv', with_header=False, build_dict=True),
+        ReadCSV('tests/test-no-header.csv', header=False, build_dict=True),
         FlatMap(lambda x: [x[0], x[1], x[2]]),
         Map(lambda x: int(x)),
         Reduce(0, lambda acc, x: acc + x),
@@ -537,7 +536,7 @@ async def async_test_write_csv(tmpdir):
     file_path = f'{tmpdir}/test_write_csv.csv'
     controller = await build_flow([
         AsyncSource(),
-        WriteToCSV(file_path, columns=['n', 'n*10'], write_header=True)
+        WriteToCSV(file_path, columns=['n', 'n*10'], header=True)
     ]).run()
 
     for i in range(10):
@@ -573,7 +572,7 @@ async def async_test_write_csv_error(tmpdir):
         await controller.await_termination()
         assert False
     except FlowError as ex:
-        assert isinstance(ex.__cause__, _csv.Error)
+        assert isinstance(ex.__cause__, TypeError)
     assert write_csv._open_file.closed
 
 
@@ -585,7 +584,7 @@ def test_write_csv_with_dict(tmpdir):
     file_path = f'{tmpdir}/test_write_csv_with_dict.csv'
     controller = build_flow([
         Source(),
-        WriteToCSV(file_path, columns=['n', 'n*10'], write_header=True)
+        WriteToCSV(file_path, columns=['n', 'n*10'], header=True)
     ]).run()
 
     for i in range(10):
@@ -605,7 +604,7 @@ def test_write_csv_infer_columns(tmpdir):
     file_path = f'{tmpdir}/test_write_csv_infer_columns.csv'
     controller = build_flow([
         Source(),
-        WriteToCSV(file_path, write_header=True)
+        WriteToCSV(file_path, header=True)
     ]).run()
 
     for i in range(10):
@@ -625,7 +624,7 @@ def test_write_csv_with_metadata(tmpdir):
     file_path = f'{tmpdir}/test_write_csv_with_metadata.csv'
     controller = build_flow([
         Source(),
-        WriteToCSV(file_path, columns=['event_key', 'n', 'n*10'], metadata_columns={'event_key': 'key'}, write_header=True)
+        WriteToCSV(file_path, columns=['event_key=$key', 'n', 'n*10'], header=True)
     ]).run()
 
     for i in range(10):
@@ -642,11 +641,52 @@ def test_write_csv_with_metadata(tmpdir):
     assert result == expected
 
 
+def test_write_csv_with_metadata_no_rename(tmpdir):
+    file_path = f'{tmpdir}/test_write_csv_with_metadata_no_rename.csv'
+    controller = build_flow([
+        Source(),
+        WriteToCSV(file_path, columns=['$key', 'n', 'n*10'], header=True)
+    ]).run()
+
+    for i in range(10):
+        controller.emit({'n': i, 'n*10': 10 * i}, key=f'key{i}')
+
+    controller.terminate()
+    controller.await_termination()
+
+    with open(file_path) as file:
+        result = file.read()
+
+    expected = \
+        "key,n,n*10\nkey0,0,0\nkey1,1,10\nkey2,2,20\nkey3,3,30\nkey4,4,40\nkey5,5,50\nkey6,6,60\nkey7,7,70\nkey8,8,80\nkey9,9,90\n"
+    assert result == expected
+
+
+def test_write_csv_with_rename(tmpdir):
+    file_path = f'{tmpdir}/test_write_csv_with_rename.csv'
+    controller = build_flow([
+        Source(),
+        WriteToCSV(file_path, columns=['n', 'n x 10=n*10'], header=True)
+    ]).run()
+
+    for i in range(10):
+        controller.emit({'n': i, 'n*10': 10 * i})
+
+    controller.terminate()
+    controller.await_termination()
+
+    with open(file_path) as file:
+        result = file.read()
+
+    expected = "n,n x 10\n0,0\n1,10\n2,20\n3,30\n4,40\n5,50\n6,60\n7,70\n8,80\n9,90\n"
+    assert result == expected
+
+
 def test_write_csv_from_lists_with_metadata(tmpdir):
     file_path = f'{tmpdir}/test_write_csv_with_metadata.csv'
     controller = build_flow([
         Source(),
-        WriteToCSV(file_path, columns=['event_key', 'n', 'n*10'], metadata_columns={'event_key': 'key'}, write_header=True)
+        WriteToCSV(file_path, columns=['event_key=$key', 'n', 'n*10'], header=True)
     ]).run()
 
     for i in range(10):
@@ -663,11 +703,31 @@ def test_write_csv_from_lists_with_metadata(tmpdir):
     assert result == expected
 
 
+def test_write_csv_from_lists_with_metadata_and_column_pruning(tmpdir):
+    file_path = f'{tmpdir}/test_write_csv_from_lists_with_metadata_and_column_pruning.csv'
+    controller = build_flow([
+        Source(),
+        WriteToCSV(file_path, columns=['event_key=$key', 'n*10'], header=True)
+    ]).run()
+
+    for i in range(10):
+        controller.emit({'n': i, 'n*10': 10 * i}, key=f'key{i}')
+
+    controller.terminate()
+    controller.await_termination()
+
+    with open(file_path) as file:
+        result = file.read()
+
+    expected = "event_key,n*10\nkey0,0\nkey1,10\nkey2,20\nkey3,30\nkey4,40\nkey5,50\nkey6,60\nkey7,70\nkey8,80\nkey9,90\n"
+    assert result == expected
+
+
 def test_write_csv_infer_with_metadata_columns(tmpdir):
     file_path = f'{tmpdir}/test_write_csv_infer_with_metadata_columns.csv'
     controller = build_flow([
         Source(),
-        WriteToCSV(file_path, metadata_columns={'event_key': 'key'}, write_header=True)
+        WriteToCSV(file_path, columns=['event_key=$key'], header=True, infer_columns_from_data=True)
     ]).run()
 
     for i in range(10):
@@ -688,7 +748,7 @@ def test_write_csv_fail_to_infer_columns(tmpdir):
     file_path = f'{tmpdir}/test_write_csv_fail_to_infer_columns.csv'
     controller = build_flow([
         Source(),
-        WriteToCSV(file_path, write_header=True)
+        WriteToCSV(file_path, header=True)
     ]).run()
 
     try:
@@ -697,7 +757,7 @@ def test_write_csv_fail_to_infer_columns(tmpdir):
         controller.await_termination()
         assert False
     except FlowError as flow_ex:
-        assert isinstance(flow_ex.__cause__, ValueError)
+        assert isinstance(flow_ex.__cause__, TypeError)
 
 
 def test_reduce_to_dataframe():
@@ -830,6 +890,21 @@ def test_map_class():
     assert termination_result == 2600
 
 
+def test_extend():
+    controller = build_flow([
+        Source(),
+        Extend(lambda x: {'bid2': x['bid'] + 1}),
+        Reduce([], append_and_return),
+    ]).run()
+
+    controller.emit({'bid': 1})
+    controller.emit({'bid': 11})
+    controller.emit({'bid': 111})
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == [{'bid': 1, 'bid2': 2}, {'bid': 11, 'bid2': 12}, {'bid': 111, 'bid2': 112}]
+
+
 def test_write_to_parquet(tmpdir):
     out_dir = f'{tmpdir}/test_write_to_parquet/{uuid.uuid4().hex}/'
     columns = ['my_int', 'my_string']
@@ -875,7 +950,7 @@ def test_write_to_parquet_with_metadata(tmpdir):
     columns = ['event_key', 'my_int', 'my_string']
     controller = build_flow([
         Source(),
-        WriteToParquet(out_file, columns=columns, metadata_columns={'event_key': 'key'})
+        WriteToParquet(out_file, columns=['event_key=$key', 'my_int', 'my_string'])
     ]).run()
 
     expected = []
@@ -890,6 +965,47 @@ def test_write_to_parquet_with_metadata(tmpdir):
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
 
 
+def test_write_to_parquet_with_indices(tmpdir):
+    out_file = f'{tmpdir}/test_write_to_parquet_with_indices{uuid.uuid4().hex}.parquet'
+    controller = build_flow([
+        Source(),
+        WriteToParquet(out_file, index_cols='event_key=$key', columns=['my_int', 'my_string'])
+    ]).run()
+
+    expected = []
+    for i in range(10):
+        controller.emit([i, f'this is {i}'], key=f'key{i}')
+        expected.append([f'this is {i}', f'key{i}', i])
+    columns = ['event_key', 'my_int', 'my_string']
+    expected = pd.DataFrame(expected, columns=columns, dtype='int64')
+    expected.set_index(['event_key'], inplace=True)
+    controller.terminate()
+    controller.await_termination()
+
+    read_back_df = pd.read_parquet(out_file, columns=columns)
+    assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+
+
+def test_write_to_parquet_with_inference(tmpdir):
+    out_file = f'{tmpdir}/test_write_to_parquet_with_inference{uuid.uuid4().hex}.parquet'
+    controller = build_flow([
+        Source(),
+        WriteToParquet(out_file, index_cols='$key')
+    ]).run()
+
+    expected = []
+    for i in range(10):
+        controller.emit({'my_int': i, 'my_string': f'this is {i}'}, key=f'key{i}')
+        expected.append([f'key{i}', i, f'this is {i}'])
+    expected = pd.DataFrame(expected, columns=['key', 'my_int', 'my_string'], dtype='int64')
+    expected.set_index(['key'], inplace=True)
+    controller.terminate()
+    controller.await_termination()
+
+    read_back_df = pd.read_parquet(out_file)
+    assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+
+
 def test_join_by_key():
     table = Table('test', NoopDriver())
     table.update_key(9, {'age': 1, 'color': 'blue9'})
@@ -899,6 +1015,26 @@ def test_join_by_key():
         Source(),
         Filter(lambda x: x['col1'] > 8),
         JoinWithTable(table, lambda x: x['col1']),
+        Reduce([], lambda acc, x: append_and_return(acc, x))
+    ]).run()
+    for i in range(10):
+        controller.emit({'col1': i})
+
+    expected = [{'col1': 9, 'age': 1, 'color': 'blue9'}]
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == expected
+
+
+def test_join_by_string_key():
+    table = Table('test', NoopDriver())
+    table.update_key(9, {'age': 1, 'color': 'blue9'})
+    table.update_key(7, {'age': 3, 'color': 'blue7'})
+
+    controller = build_flow([
+        Source(),
+        Filter(lambda x: x['col1'] > 8),
+        JoinWithTable(table, 'col1'),
         Reduce([], lambda acc, x: append_and_return(acc, x))
     ]).run()
     for i in range(10):
@@ -951,12 +1087,11 @@ class MockFramesClient:
 
 
 def test_write_to_tsdb():
-    columns = ['cpu', 'disk', 'time', 'node']
     mock_frames_client = MockFramesClient()
 
     controller = build_flow([
         Source(),
-        WriteToTSDB(path='some/path', time_col='time', labels_cols='node', columns=columns, rate='1/h', max_events=1,
+        WriteToTSDB(path='some/path', time_col='time', index_cols='node', columns=['cpu', 'disk'], rate='1/h', max_events=1,
                     frames_client=mock_frames_client)
     ]).run()
 
@@ -964,8 +1099,8 @@ def test_write_to_tsdb():
     date_time_str = '18/09/19 01:55:1'
     for i in range(9):
         now = datetime.strptime(date_time_str + str(i) + ' UTC-0000', '%d/%m/%y %H:%M:%S UTC%z')
-        controller.emit([i + 1, i + 2, now, i])
-        expected_data.append([i + 1, i + 2, now, i])
+        controller.emit([now, i, i + 1, i + 2])
+        expected_data.append([now, i, i + 1, i + 2])
 
     controller.terminate()
     controller.await_termination()
@@ -976,7 +1111,75 @@ def test_write_to_tsdb():
     i = 0
     for write_call in mock_frames_client.call_log[1:]:
         assert write_call[0] == 'write'
-        expected = pd.DataFrame([expected_data[i]], columns=columns)
+        expected = pd.DataFrame([expected_data[i]], columns=['time', 'node', 'cpu', 'disk'])
+        expected.set_index(keys=['time', 'node'], inplace=True)
+        res = write_call[1]['dfs']
+        assert expected.equals(res), f"result{res}\n!=\nexpected{expected}"
+        del write_call[1]['dfs']
+        assert write_call[1] == {'backend': 'tsdb', 'table': 'some/path'}
+        i += 1
+
+
+def test_write_to_tsdb_with_key_index():
+    mock_frames_client = MockFramesClient()
+
+    controller = build_flow([
+        Source(),
+        WriteToTSDB(path='some/path', time_col='time', index_cols='node=$key', columns=['cpu', 'disk'], rate='1/h',
+                    max_events=1, frames_client=mock_frames_client)
+    ]).run()
+
+    expected_data = []
+    date_time_str = '18/09/19 01:55:1'
+    for i in range(9):
+        now = datetime.strptime(date_time_str + str(i) + ' UTC-0000', '%d/%m/%y %H:%M:%S UTC%z')
+        controller.emit([now, i + 1, i + 2], key=i)
+        expected_data.append([now, i, i + 1, i + 2])
+
+    controller.terminate()
+    controller.await_termination()
+
+    expected_create = ('create', {'if_exists': 1, 'rate': '1/h', 'aggregates': '', 'aggregation_granularity': '', 'backend': 'tsdb',
+                                  'table': 'some/path'})
+    assert mock_frames_client.call_log[0] == expected_create
+    i = 0
+    for write_call in mock_frames_client.call_log[1:]:
+        assert write_call[0] == 'write'
+        expected = pd.DataFrame([expected_data[i]], columns=['time', 'node', 'cpu', 'disk'])
+        expected.set_index(keys=['time', 'node'], inplace=True)
+        res = write_call[1]['dfs']
+        assert expected.equals(res), f"result{res}\n!=\nexpected{expected}"
+        del write_call[1]['dfs']
+        assert write_call[1] == {'backend': 'tsdb', 'table': 'some/path'}
+        i += 1
+
+
+def test_write_to_tsdb_with_key_index_and_default_time():
+    mock_frames_client = MockFramesClient()
+
+    controller = build_flow([
+        Source(),
+        WriteToTSDB(path='some/path', index_cols='node=$key', columns=['cpu', 'disk'], rate='1/h',
+                    max_events=1, frames_client=mock_frames_client)
+    ]).run()
+
+    expected_data = []
+    date_time_str = '18/09/19 01:55:1'
+    for i in range(9):
+        now = datetime.strptime(date_time_str + str(i) + ' UTC-0000', '%d/%m/%y %H:%M:%S UTC%z')
+        controller.emit([i + 1, i + 2], key=i, event_time=now)
+        expected_data.append([now, i, i + 1, i + 2])
+
+    controller.terminate()
+    controller.await_termination()
+
+    expected_create = ('create', {'if_exists': 1, 'rate': '1/h', 'aggregates': '', 'aggregation_granularity': '', 'backend': 'tsdb',
+                                  'table': 'some/path'})
+    assert mock_frames_client.call_log[0] == expected_create
+    i = 0
+    for write_call in mock_frames_client.call_log[1:]:
+        assert write_call[0] == 'write'
+        expected = pd.DataFrame([expected_data[i]], columns=['time', 'node', 'cpu', 'disk'])
         expected.set_index(keys=['time', 'node'], inplace=True)
         res = write_call[1]['dfs']
         assert expected.equals(res), f"result{res}\n!=\nexpected{expected}"

@@ -3,8 +3,10 @@ import csv
 import queue
 import threading
 from datetime import datetime, timezone
+from typing import List, Optional, Union
 
 import aiofiles
+import pandas
 
 from .dtypes import _termination_obj, Event, FlowError
 from .flow import Flow
@@ -35,15 +37,13 @@ class FlowController:
         self._emit_fn = emit_fn
         self._await_termination_fn = await_termination_fn
 
-    def emit(self, element, key=None, event_time=None, return_awaitable_result=False):
+    def emit(self, element: object, key: Optional[str] = None, event_time: Optional[datetime] = None,
+             return_awaitable_result: bool = False):
         """Emits an event into the associated flow.
 
         :param element: The event data, or payload. To set metadata as well, pass an Event object.
-        :type element: object
         :param key: The event key (optional)
-        :type key: string
         :param event_time: The event time (default to current time, UTC).
-        :type event_time: datetime
         :param return_awaitable_result: Whether an AwaitableResult object should be returned. Defaults to False.
         :type return_awaitable_result: boolean
 
@@ -87,17 +87,15 @@ class FlowAwaiter:
 
 
 class Source(Flow):
-    """
-    Synchronous entry point into a flow. Produces a FlowController when run, for use from inside a synchronous context. See AsyncSource
+    """Synchronous entry point into a flow. Produces a FlowController when run, for use from inside a synchronous context. See AsyncSource
     for use from inside an async context.
 
     :param buffer_size: size of the incoming event buffer. Defaults to 1.
-    :type buffer_size: int
     :param name: Name of this step, as it should appear in logs. Defaults to class name (Source).
     :type name: string
     """
 
-    def __init__(self, buffer_size=1, **kwargs):
+    def __init__(self, buffer_size: int = 1, **kwargs):
         super().__init__(**kwargs)
         if buffer_size <= 0:
             raise ValueError('Buffer size must be positive')
@@ -180,20 +178,16 @@ class AsyncFlowController:
         self._emit_fn = emit_fn
         self._loop_task = loop_task
 
-    async def emit(self, element, key=None, event_time=None, await_result=False):
+    async def emit(self, element: object, key: Optional[str] = None, event_time: Optional[datetime] = None,
+                   await_result: bool = False) -> object:
         """Emits an event into the associated flow.
 
         :param element: The event data, or payload. To set metadata as well, pass an Event object.
-        :type element: object
         :param key: The event key (optional)
-        :type key: string
         :param event_time: The event time (default to current time, UTC).
-        :type event_time: datetime
         :param await_result: Whether to await a result from the flow (as signaled by the Complete step). Defaults to False.
-        :type await_result: boolean
 
         :returns: The result received from the flow if await_result is True. None otherwise.
-        :rtype: object
         """
         if event_time is None:
             event_time = datetime.now(timezone.utc)
@@ -231,12 +225,11 @@ class AsyncSource(Flow):
     See Source for use from inside a synchronous context.
 
     :param buffer_size: size of the incoming event buffer. Defaults to 1.
-    :type buffer_size: int
     :param name: Name of this step, as it should appear in logs. Defaults to class name (AsyncSource).
     :type name: string
     """
 
-    def __init__(self, buffer_size=1, **kwargs):
+    def __init__(self, buffer_size: int = 1, **kwargs):
         super().__init__(**kwargs)
         if buffer_size <= 0:
             raise ValueError('Buffer size must be positive')
@@ -334,35 +327,31 @@ class ReadCSV(_IterableSource):
     Reads CSV files as input source for a flow.
 
     :param paths: paths to CSV files
-    :type paths: list of string
-    :param with_header: whether CSV files have a header or not. Defaults to False.
-    :type with_header: boolean
+    :param header: whether CSV files have a header or not. Defaults to False.
     :param build_dict: whether to format each record produced from the input file as a dictionary (as opposed to a list). Default to False.
-    :type build_dict: boolean
     :param key_field: the CSV field to be use as the key for events. May be an int (field index) or string (field name) if with_header
     is True. Defaults to None (no key).
-    :type key_field: int or string
     :param timestamp_field: the CSV field to be parsed as the timestamp for events. May be an int (field index) or string (field name) if
     with_header is True. Defaults to None (no timestamp field).
-    :type timestamp_field: int or string
     :param timestamp_format: timestamp format as defined in datetime.strptime(). Default to ISO-8601 as defined in datetime.fromisoformat().
-    :type timestamp_format: string
     """
 
-    def __init__(self, paths, with_header=False, build_dict=False, key_field=None, timestamp_field=None, timestamp_format=None, **kwargs):
+    def __init__(self, paths: Union[List[str], str], header: bool = False, build_dict: bool = False,
+                 key_field: Union[int, str, None] = None, timestamp_field: Union[int, str, None] = None,
+                 timestamp_format: Optional[str] = None, **kwargs):
         super().__init__(**kwargs)
         if isinstance(paths, str):
             paths = [paths]
         self._paths = paths
-        self._with_header = with_header
+        self._with_header = header
         self._build_dict = build_dict
         self._key_field = key_field
         self._timestamp_field = timestamp_field
         self._timestamp_format = timestamp_format
 
-        if not with_header and isinstance(key_field, str):
+        if not header and isinstance(key_field, str):
             raise ValueError('key_field can only be set to an integer when with_header is false')
-        if not with_header and isinstance(timestamp_field, str):
+        if not header and isinstance(timestamp_field, str):
             raise ValueError('timestamp_field can only be set to an integer when with_header is false')
 
     async def _run_loop(self):
@@ -413,20 +402,16 @@ async def _aiter(iterable):
 
 
 class DataframeSource(_IterableSource):
-    """
-        Use pandas dataframe as input source for a flow.
+    """Use pandas dataframe as input source for a flow.
 
-        :param dfs: A pandas dataframe, or dataframes, to be used as input source for the flow.
-        :type paths: pandas.DataFrame, or list of pandas.DataFrame
-        :param key_column: column to be used as key for events.
-        :type key_column: string
-        :param time_column: column to be used as time for events.
-        :type time_column: datetime
-        :param id_column: column to be used as ID for events.
-        :type id_column: string
+    :param dfs: A pandas dataframe, or dataframes, to be used as input source for the flow.
+    :param key_column: column to be used as key for events.
+    :param time_column: column to be used as time for events.
+    :param id_column: column to be used as ID for events.
     """
 
-    def __init__(self, dfs, key_column=None, time_column=None, id_column=None, **kwargs):
+    def __init__(self, dfs: Union[pandas.DataFrame, List[pandas.DataFrame]], key_column: Optional[str] = None,
+                 time_column: Optional[str] = None, id_column: Optional[str] = None, **kwargs):
         super().__init__(**kwargs)
         if not isinstance(dfs, list):
             dfs = [dfs]

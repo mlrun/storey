@@ -185,6 +185,13 @@ class FlatMap(_UnaryFunctionFlow):
             await self._do_downstream(mapped_event)
 
 
+class Extend(_UnaryFunctionFlow):
+    async def _do_internal(self, event, fn_result):
+        for key, value in fn_result.items():
+            event.body[key] = value
+        await self._do_downstream(event)
+
+
 class _FunctionWithStateFlow(Flow):
     def __init__(self, initial_state, fn, group_by_key=False, **kwargs):
         super().__init__(**kwargs)
@@ -445,7 +452,7 @@ class _ConcurrentByKeyJobExecution(Flow):
                 if job is _termination_obj:
                     for pending_event in self._pending_by_key.values():
                         if pending_event.pending and not pending_event.in_flight:
-                            resp = await self._process_event(pending_event.pending[0])
+                            resp = await self._process_event(pending_event.pending)
                             for event in pending_event.pending:
                                 await self._handle_completed(event, resp)
                     if self._q.empty():
@@ -463,11 +470,10 @@ class _ConcurrentByKeyJobExecution(Flow):
 
                 # If we got more pending events for the same key process them
                 if self._pending_by_key[event.key].pending:
-                    first_event = self._pending_by_key[event.key].pending[0]
                     self._pending_by_key[event.key].in_flight = self._pending_by_key[event.key].pending
                     self._pending_by_key[event.key].pending = []
 
-                    task = self._process_event(first_event)
+                    task = self._process_event(self._pending_by_key[event.key].in_flight)
                     await self._q.put((event, asyncio.get_running_loop().create_task(task)))
                 else:
                     del self._pending_by_key[event.key]
@@ -503,7 +509,7 @@ class _ConcurrentByKeyJobExecution(Flow):
                 self._pending_by_key[event.key].in_flight = self._pending_by_key[event.key].pending
                 self._pending_by_key[event.key].pending = []
 
-                task = self._process_event(event)
+                task = self._process_event(self._pending_by_key[event.key].in_flight)
                 await self._q.put((event, asyncio.get_running_loop().create_task(task)))
                 if self._worker_awaitable.done():
                     await self._worker_awaitable
@@ -688,8 +694,8 @@ class JoinWithTable(_ConcurrentJobExecution):
 
     :param table: Table to join with.
     :type table: Table
-    :param key_extractor: Function for extracting the key for table access from an event.
-    :type key_extractor: Function (Event=>string)
+    :param key_extractor: Key's column name or a function for extracting the key, for table access from an event.
+    :type key_extractor: str or Function (Event=>string)
     :param attributes: A comma-separated list of attributes to be queried for. Defaults to all attributes.
     :type attributes: list of string
     :param join_function: Joins the original event with relevant data received from the storage. Defaults to assume the event's body is a
@@ -708,7 +714,13 @@ class JoinWithTable(_ConcurrentJobExecution):
         self._table = table
         self._closeables = [table]
 
-        self._key_extractor = key_extractor
+        if key_extractor:
+            if callable(key_extractor):
+                self._key_extractor = key_extractor
+            elif isinstance(key_extractor, str):
+                self._key_extractor = lambda element: element[key_extractor]
+            else:
+                raise TypeError(f'key is expected to be either a callable or string but got {type(key_extractor)}')
 
         def default_join_fn(event, join_res):
             event.update(join_res)
@@ -831,13 +843,18 @@ class Table:
         store._storage = self._storage
         self._aggregation_store = store
 
-    async def persist_key(self, key):
+    async def persist_key(self, key, event_data_to_persist):
         aggr_by_key = None
         if self._aggregation_store:
             aggr_by_key = self._aggregation_store[key]
-        additional_cache_data_by_key = self._cache.get(key, None)
+        additional_data_persist = self._cache.get(key, None)
+        if event_data_to_persist:
+            if not additional_data_persist:
+                additional_data_persist = event_data_to_persist
+            else:
+                additional_data_persist.update(event_data_to_persist)
         await self._storage._save_key(self._container, self._table_path, key, aggr_by_key, self._partitioned_by_key,
-                                      additional_cache_data_by_key)
+                                      additional_data_persist)
 
     async def close(self):
         await self._storage.close()
