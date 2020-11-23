@@ -157,7 +157,8 @@ def test_dataframe_source_with_metadata():
     ]).run()
 
     termination_result = controller.await_termination()
-    expected = [Event({'my_value': 1.1}, key='key1', time=t1, id='id1'), Event({'my_value': 2.2}, key='key2', time=t2, id='id2')]
+    expected = [Event({'my_key': 'key1', 'my_time': t1, 'my_id': 'id1', 'my_value': 1.1}, key='key1', time=t1, id='id1'),
+                Event({'my_key': 'key2', 'my_time': t2, 'my_id': 'id2', 'my_value': 2.2}, key='key2', time=t2, id='id2')]
     assert termination_result == expected
 
 
