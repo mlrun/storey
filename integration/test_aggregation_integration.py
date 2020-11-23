@@ -247,7 +247,7 @@ def test_aggregate_by_key_with_extra_aliases(setup_teardown_test):
 
     controller = build_flow([
         Source(),
-        QueryByKey(['number_of_stuff_sum_1h', 'number_of_stuff_avg_2h', 'color', 'age', 'iss', 'sometime'],
+        QueryByKey(['number_of_stuff_sum_2h', 'number_of_stuff_avg_2h', 'color', 'age', 'iss', 'sometime'],
                               other_table, aliases={'color': 'external.color', 'iss': 'external.iss'}),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
@@ -259,7 +259,7 @@ def test_aggregate_by_key_with_extra_aliases(setup_teardown_test):
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [
-        {'number_of_stuff_sum_1h': 10, 'number_of_stuff_avg_2h': 7.5, 'col1': 10, 'external.color': 'blue', 'age': 41, 'external.iss': True,
+        {'number_of_stuff_sum_2h': 30, 'number_of_stuff_avg_2h': 7.5, 'col1': 10, 'external.color': 'blue', 'age': 41, 'external.iss': True,
          'sometime': test_base_time}]
 
     assert actual == expected_results, \
