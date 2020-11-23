@@ -522,6 +522,8 @@ class AggregationBuckets:
 
             # Starting with the latest bucket
             for i in range(len(aggregation_bucket_initial_data[last_time]) - 1, 0, -1):
+                if bucket_index < 0:
+                    return
                 curr_value = aggregation_bucket_initial_data[last_time][i]
                 if curr_value != default_aggr_value or self.last_bucket_start_time:
                     self.buckets[bucket_index] = AggregationValue(self.aggregation, self.max_value, curr_value)
