@@ -73,7 +73,7 @@ def append_return(lst, x):
     return lst
 
 
-def _generate_table_name(prefix='bigdata/aggr_test'):
+def _generate_table_name(prefix='bigdata/Aggr_test'):
     random_table = ''.join([random.choice(string.ascii_letters) for i in range(10)])
     return f'{prefix}/{random_table}'
 

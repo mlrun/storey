@@ -1,10 +1,11 @@
 import asyncio
 import copy
 from datetime import datetime
+import re
 
 from .aggregation_utils import is_raw_aggregate, get_virtual_aggregation_func, get_implied_aggregates, get_all_raw_aggregates, \
     get_all_raw_aggregates_with_hidden
-from .dtypes import EmitEveryEvent, FixedWindows, EmitAfterPeriod, EmitAfterWindow, EmitAfterMaxEvent
+from .dtypes import EmitEveryEvent, FixedWindows, EmitAfterPeriod, EmitAfterWindow, EmitAfterMaxEvent, SlidingWindows
 from .flow import Flow, _termination_obj, Event, _ConcurrentByKeyJobExecution
 
 _default_emit_policy = EmitEveryEvent()
@@ -34,9 +35,9 @@ class AggregateByKey(Flow):
     """
 
     def __init__(self, aggregates, table, key=None, emit_policy=_default_emit_policy, augmentation_fn=None, enrich_with=None, aliases=None,
-                 **kwargs):
+                 use_windows_from_schema=False, **kwargs):
         Flow.__init__(self, **kwargs)
-        self._aggregates_store = AggregateStore(aggregates)
+        self._aggregates_store = AggregateStore(aggregates, use_windows_from_schema)
         self._closeables = [table]
 
         self._table = table
@@ -147,29 +148,44 @@ class AggregateByKey(Flow):
             next_emit_time = next_emit_time + seconds_to_sleep_between_emits
 
 
-class QueryAggregationByKey(AggregateByKey):
+class QueryByKey(AggregateByKey):
     """
-    Similar to to `AggregateByKey`, but this step is for serving only and does not aggregate the event.
+    Query features by name
 
-    :param aggregates: List of aggregates to apply for each event.
-    :type aggregates: list of FieldAggregator
+    :param features: List of features to get.
+    :type features: list of string
     :param table: A Table object to aggregate the data into.
     :type table: Table
     :param key: Key field to aggregate by, accepts either a string representing the key field or a key extracting function.
      Defaults to the key in the event's metadata. (Optional)
     :type key: string or Function (Event=>object)
-    :param emit_policy: Policy indicating when the data will be emitted. Defaults to EmitEveryEvent. (Optional)
-    :type emit_policy: {EmitEveryEvent, EmitAfterMaxEvent, EmitAfterPeriod, EmitAfterWindow}
     :param augmentation_fn: Function that augments the features into the event's body. Defaults to updating a dict. (Optional)
     :type augmentation_fn: Function ((Event, dict) => Event)
-    :param enrich_with: List of attributes names from the associated storage object to be fetched and added to every event. (Optional)
-    :type enrich_with: list of string
     :param aliases: Dictionary specifying aliases to the enriched columns, of the format `{'col_name': 'new_col_name'}`. (Optional)
     :type aliases: dict
     """
 
-    def __init__(self, aggregates, table, key=None, emit_policy=_default_emit_policy, augmentation_fn=None, enrich_with=None, aliases=None):
-        AggregateByKey.__init__(self, aggregates, table, key, emit_policy, augmentation_fn, enrich_with, aliases)
+    def __init__(self, features, table, key=None, augmentation_fn=None, aliases=None):
+        self._schema = table._storage._load_schema(table._container, table._table_path)
+        self._aggrs = []
+        self._enrich_cols = []
+        resolved_aggrs = {}
+        for feature in features:
+            if re.match(r".*_[a-z]+_[0-9]+[a-z]", feature):
+                parts = feature.rsplit('_', 1)
+                if parts[0] in resolved_aggrs:
+                    resolved_aggrs[parts[0]].append(parts[1])
+                else:
+                    resolved_aggrs[parts[0]] = [parts[1]]
+            else:
+                self._enrich_cols.append(feature)
+        for name, windows in resolved_aggrs.items():
+            parts = name.rsplit('_', 1)
+            # setting as SlidingWindow temporarily until actual window type will be read from schema
+            self._aggrs.append(FieldAggregator(name=parts[0], field=None, aggr=[parts[1]], windows=SlidingWindows(windows, '10m')))
+
+        AggregateByKey.__init__(self, self._aggrs, table, key, augmentation_fn=augmentation_fn,
+                                enrich_with=self._enrich_cols, aliases=aliases, use_windows_from_schema=True)
         self._aggregates_store._read_only = True
 
     async def _do(self, event):
@@ -178,24 +194,12 @@ class QueryAggregationByKey(AggregateByKey):
             return await self._do_downstream(_termination_obj)
 
         try:
-            # check whether a background loop is needed, if so create start one
-            if (not self._emit_worker_running) and \
-                    (isinstance(self._emit_policy, EmitAfterPeriod) or isinstance(self._emit_policy, EmitAfterWindow)):
-                asyncio.get_running_loop().create_task(self._emit_worker())
-                self._emit_worker_running = True
-
             element = event.body
             key = event.key
             if self.key_extractor:
                 key = self.key_extractor(element)
+            await self._emit_event(key, event)
 
-            if isinstance(self._emit_policy, EmitEveryEvent):
-                await self._emit_event(key, event)
-            elif isinstance(self._emit_policy, EmitAfterMaxEvent):
-                self._events_in_batch[key] = self._events_in_batch.get(key, 0) + 1
-                if self._events_in_batch[key] == self._emit_policy.max_events:
-                    await self._emit_event(key, event)
-                    self._events_in_batch[key] = 0
         except Exception as ex:
             raise ex
 
@@ -231,11 +235,16 @@ class AggregatedStoreElement:
         for aggregation_metadata in aggregates:
             for aggr, is_hidden in get_all_raw_aggregates_with_hidden(aggregation_metadata.aggregations).items():
                 column_name = f'{aggregation_metadata.name}_{aggr}'
-                initial_column_data = None
-                if initial_data and column_name in initial_data:
-                    initial_column_data = initial_data[column_name]
-                self.aggregation_buckets[column_name] = \
-                    AggregationBuckets(aggregation_metadata.name, aggr, aggregation_metadata.windows, base_time,
+                if column_name in self.aggregation_buckets:
+                    bucket = self.aggregation_buckets[column_name]
+ #                   bucket.is_hidden |= is_hidden
+
+                else:
+                    initial_column_data = None
+                    if initial_data and column_name in initial_data:
+                       initial_column_data = initial_data[column_name]
+                    self.aggregation_buckets[column_name] = \
+                        AggregationBuckets(aggregation_metadata.name, aggr, aggregation_metadata.windows, base_time,
                                        aggregation_metadata.max_value, is_hidden, initial_column_data)
 
         # Add all virtual aggregates
@@ -268,7 +277,7 @@ class AggregatedStoreElement:
 
 
 class AggregateStore:
-    def __init__(self, aggregates):
+    def __init__(self, aggregates, use_windows_from_schema = False):
         self._cache = {}
         self._aggregates = aggregates
         self._storage = None
@@ -276,6 +285,7 @@ class AggregateStore:
         self._table_path = None
         self._schema = None
         self._read_only = False
+        self._use_windows_from_schema = use_windows_from_schema
 
     def __iter__(self):
         return iter(self._cache.items())
@@ -314,6 +324,19 @@ class AggregateStore:
 
         should_update = True
         if self._schema:
+            if self._use_windows_from_schema:
+                for aggr in self._aggregates:
+                    schema_aggr = self._schema[aggr.name]
+                    window_type = schema_aggr['window_type']
+                    window_secs = str(int(aggr.windows.max_window_millis / 1000)) + 's'
+                    period_secs = str(int(schema_aggr['period_millis'] / 1000)) + 's'
+                    if window_type == "SlidingWindow":
+                        aggr.windows = SlidingWindows([window_secs], period_secs)
+                    elif window_type == "FixedWindow":
+                        aggr.windows = FixedWindows([window_secs])
+                        aggr.windows.period_millis = schema_aggr['period_millis']
+                    else:
+                        raise TypeError(f'"{window_type}" unknown window type')
             should_update = self._validate_schema_fit_aggregations(self._schema)
 
         if should_update and not self._read_only:
@@ -371,7 +394,12 @@ class AggregateStore:
     def _aggregates_to_schema(self):
         schema = {}
         for aggr in self._aggregates:
-            schema[aggr.name] = {'period_millis': aggr.windows.period_millis, 'aggregates': list(get_all_raw_aggregates(aggr.aggregations))}
+            if isinstance(aggr.windows, SlidingWindows):
+                window_type = "SlidingWindow"
+            else:
+                window_type = "FixedWindow"
+            schema[aggr.name] = {'period_millis': aggr.windows.period_millis, 'aggregates': list(get_all_raw_aggregates(aggr.aggregations)), 'window_type': window_type, 'max_window_millis': aggr.windows.max_window_millis}
+
         return schema
 
     def __getitem__(self, key):
@@ -611,8 +639,6 @@ class FieldAggregator:
             self.value_extractor = field
         elif isinstance(field, str):
             self.value_extractor = lambda element: element[field]
-        else:
-            raise TypeError(f'field is expected to be either a callable or string but got {type(field)}')
 
         self.name = name
         self.aggregations = aggr

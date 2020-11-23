@@ -30,7 +30,7 @@ A Storey flow consist of steps linked together by the `build_flow` function, eac
 * `JoinWithV3IOTable` - 
 * `SendToHttp` - 
 * `AggregateByKey(aggregations,cache, key=None, emit_policy=EmitEveryEvent(), augmentation_fn=None)` - This step aggregates the data into the cache object provided for later persistence, and outputs an event enriched with the requested aggregation features.
-* `QueryAggregationByKey(aggregations,cache, key=None, emit_policy=EmitEveryEvent(), augmentation_fn=None)` - Similar to to `AggregateByKey`, but this step is for serving only and does not aggregate the event.
+* `QueryByKey(features, cache, key=None, augmentation_fn=None, aliases=None)` - Similar to to `AggregateByKey`, but this step is for serving only and does not aggregate the event.
 * `WriteToTable(table)` - Persists the data in `table` to its associated storage by key.
 
 
