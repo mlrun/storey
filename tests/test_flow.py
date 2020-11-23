@@ -1,4 +1,5 @@
 import asyncio
+import queue
 import time
 import uuid
 from datetime import datetime
@@ -518,15 +519,23 @@ def test_batch_full_event():
 
 
 def test_batch_with_timeout():
+    q = queue.Queue(1)
+
+    def reduce_fn(acc, x):
+        if x[0] == 0:
+            q.put(None)
+        acc.append(x)
+        return acc
+
     controller = build_flow([
         Source(),
-        Batch(4, 2),
-        Reduce([], lambda acc, x: append_and_return(acc, x)),
+        Batch(4, 1),
+        Reduce([], reduce_fn),
     ]).run()
 
     for i in range(10):
         if i == 3:
-            time.sleep(3)
+            q.get()
         controller.emit(i)
     controller.terminate()
     termination_result = controller.await_termination()
