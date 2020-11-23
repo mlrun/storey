@@ -236,16 +236,14 @@ class AggregatedStoreElement:
             for aggr, is_hidden in get_all_raw_aggregates_with_hidden(aggregation_metadata.aggregations).items():
                 column_name = f'{aggregation_metadata.name}_{aggr}'
                 if column_name in self.aggregation_buckets:
-                    bucket = self.aggregation_buckets[column_name]
- #                   bucket.is_hidden |= is_hidden
-
+                    self.aggregation_buckets[column_name].is_hidden &= is_hidden
                 else:
                     initial_column_data = None
                     if initial_data and column_name in initial_data:
-                       initial_column_data = initial_data[column_name]
+                        initial_column_data = initial_data[column_name]
                     self.aggregation_buckets[column_name] = \
                         AggregationBuckets(aggregation_metadata.name, aggr, aggregation_metadata.windows, base_time,
-                                       aggregation_metadata.max_value, is_hidden, initial_column_data)
+                                           aggregation_metadata.max_value, is_hidden, initial_column_data)
 
         # Add all virtual aggregates
         for aggregation_metadata in aggregates:
@@ -277,7 +275,7 @@ class AggregatedStoreElement:
 
 
 class AggregateStore:
-    def __init__(self, aggregates, use_windows_from_schema = False):
+    def __init__(self, aggregates, use_windows_from_schema=False):
         self._cache = {}
         self._aggregates = aggregates
         self._storage = None
@@ -398,7 +396,9 @@ class AggregateStore:
                 window_type = "SlidingWindow"
             else:
                 window_type = "FixedWindow"
-            schema[aggr.name] = {'period_millis': aggr.windows.period_millis, 'aggregates': list(get_all_raw_aggregates(aggr.aggregations)), 'window_type': window_type, 'max_window_millis': aggr.windows.max_window_millis}
+            schema[aggr.name] = {'period_millis': aggr.windows.period_millis,
+                                 'aggregates': list(get_all_raw_aggregates(aggr.aggregations)),
+                                 'window_type': window_type, 'max_window_millis': aggr.windows.max_window_millis}
 
         return schema
 
