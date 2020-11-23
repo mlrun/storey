@@ -1,4 +1,5 @@
 import asyncio
+import queue
 import time
 import uuid
 from datetime import datetime
@@ -157,7 +158,8 @@ def test_dataframe_source_with_metadata():
     ]).run()
 
     termination_result = controller.await_termination()
-    expected = [Event({'my_value': 1.1}, key='key1', time=t1, id='id1'), Event({'my_value': 2.2}, key='key2', time=t2, id='id2')]
+    expected = [Event({'my_key': 'key1', 'my_time': t1, 'my_id': 'id1', 'my_value': 1.1}, key='key1', time=t1, id='id1'),
+                Event({'my_key': 'key2', 'my_time': t2, 'my_id': 'id2', 'my_value': 2.2}, key='key2', time=t2, id='id2')]
     assert termination_result == expected
 
 
@@ -517,15 +519,23 @@ def test_batch_full_event():
 
 
 def test_batch_with_timeout():
+    q = queue.Queue(1)
+
+    def reduce_fn(acc, x):
+        if x[0] == 0:
+            q.put(None)
+        acc.append(x)
+        return acc
+
     controller = build_flow([
         Source(),
-        Batch(4, 2),
-        Reduce([], lambda acc, x: append_and_return(acc, x)),
+        Batch(4, 1),
+        Reduce([], reduce_fn),
     ]).run()
 
     for i in range(10):
         if i == 3:
-            time.sleep(3)
+            q.get()
         controller.emit(i)
     controller.terminate()
     termination_result = controller.await_termination()
