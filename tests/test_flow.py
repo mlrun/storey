@@ -524,7 +524,8 @@ def test_batch_with_timeout():
     def reduce_fn(acc, x):
         if x[0] == 0:
             q.put(None)
-        return append_and_return(acc, x)
+        acc.append(x)
+        return acc
 
     controller = build_flow([
         Source(),
