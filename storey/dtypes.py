@@ -278,7 +278,7 @@ class FieldAggregator:
     :param max_value: Maximum value for the aggregation (Optional)
     """
 
-    def __init__(self, name: str, field: Union[str, Callable[[Event], object]], aggr: List[str],
+    def __init__(self, name: str, field: Union[str, Callable[[Event], object], None], aggr: List[str],
                  windows: Union[FixedWindows, SlidingWindows], aggr_filter: Optional[Callable[[Event], bool]] = None,
                  max_value: Optional[float] = None):
         if aggr_filter is not None and not callable(aggr_filter):

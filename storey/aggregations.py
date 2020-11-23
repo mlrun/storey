@@ -187,30 +187,30 @@ class QueryByKey(AggregateByKey):
     :param augmentation_fn: Function that augments the features into the event's body. Defaults to updating a dict. (Optional)
     :type augmentation_fn: Function ((Event, dict) => Event)
     :param aliases: Dictionary specifying aliases to the enriched columns, of the format `{'col_name': 'new_col_name'}`. (Optional)
-    :type aliases: dict
     """
 
-    def __init__(self, features, table, key=None, augmentation_fn=None, aliases=None):
-        self._schema = table._storage._load_schema(table._container, table._table_path)
+    def __init__(self, features: List[str], table: Table, key: Union[str, Callable[[Event], object], None] = None,
+                 augmentation_fn: Optional[Callable[[Event, Dict[str, object]], Event]] = None,
+                 aliases: Optional[Dict[str, str]] = None, **kwargs):
         self._aggrs = []
         self._enrich_cols = []
         resolved_aggrs = {}
         for feature in features:
-            if re.match(r".*_[a-z]+_[0-9]+[a-z]", feature):
-                parts = feature.rsplit('_', 1)
-                if parts[0] in resolved_aggrs:
-                    resolved_aggrs[parts[0]].append(parts[1])
+            if re.match(r".*_[a-z]+_[0-9]+[smhd]", feature):
+                name, window = feature.rsplit('_', 1)
+                if name in resolved_aggrs:
+                    resolved_aggrs[name].append(window)
                 else:
-                    resolved_aggrs[parts[0]] = [parts[1]]
+                    resolved_aggrs[name] = [window]
             else:
                 self._enrich_cols.append(feature)
         for name, windows in resolved_aggrs.items():
-            parts = name.rsplit('_', 1)
+            feature, aggr = name.rsplit('_', 1)
             # setting as SlidingWindow temporarily until actual window type will be read from schema
-            self._aggrs.append(FieldAggregator(name=parts[0], field=None, aggr=[parts[1]], windows=SlidingWindows(windows, '10m')))
+            self._aggrs.append(FieldAggregator(name=feature, field=None, aggr=[aggr], windows=SlidingWindows(windows, '10m')))
 
         AggregateByKey.__init__(self, self._aggrs, table, key, augmentation_fn=augmentation_fn,
-                                enrich_with=self._enrich_cols, aliases=aliases, use_windows_from_schema=True)
+                                enrich_with=self._enrich_cols, aliases=aliases, use_windows_from_schema=True, **kwargs)
         self._aggregates_store._read_only = True
 
     async def _do(self, event):
