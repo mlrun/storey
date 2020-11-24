@@ -42,10 +42,11 @@ class Flow:
             for i in range(1, len(self._outlets)):
                 termination_result = self._termination_result_fn(termination_result, await self._outlets[i]._do(_termination_obj))
             return termination_result
+        # If there is more than one outlet, allow concurrent execution.
         tasks = []
         for i in range(1, len(self._outlets)):
             tasks.append(asyncio.get_running_loop().create_task(self._outlets[i]._do(event)))
-        await self._outlets[0]._do(event)
+        await self._outlets[0]._do(event)  # Optimization - avoids creating a task for the first outlet.
         for task in tasks:
             await task
 
