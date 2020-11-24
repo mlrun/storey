@@ -42,8 +42,12 @@ class Flow:
             for i in range(1, len(self._outlets)):
                 termination_result = self._termination_result_fn(termination_result, await self._outlets[i]._do(_termination_obj))
             return termination_result
-        for outlet in self._outlets:
-            await outlet._do(event)
+        tasks = []
+        for i in range(1, len(self._outlets)):
+            tasks.append(asyncio.get_running_loop().create_task(self._outlets[i]._do(event)))
+        await self._outlets[0]._do(event)
+        for task in tasks:
+            await task
 
     def _get_safe_event_or_body(self, event):
         if self._full_event:
