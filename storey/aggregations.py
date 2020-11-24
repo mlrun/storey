@@ -34,11 +34,11 @@ class AggregateByKey(Flow):
                  emit_policy: Union[EmitEveryEvent, FixedWindows, SlidingWindows, EmitAfterPeriod, EmitAfterWindow,
                                     EmitAfterMaxEvent, Dict[str, object]] = _default_emit_policy,
                  augmentation_fn: Optional[Callable[[Event, Dict[str, object]], Event]] = None, enrich_with: Optional[List[str]] = None,
-                 aliases: Optional[Dict[str, str]] = None, **kwargs):
+                 aliases: Optional[Dict[str, str]] = None, use_windows_from_schema: bool = False, **kwargs):
         Flow.__init__(self, **kwargs)
 
         aggregates = self._parse_aggregates(aggregates)
-        self._aggregates_store = AggregateStore(aggregates)
+        self._aggregates_store = AggregateStore(aggregates, use_windows_from_schema=use_windows_from_schema)
         self._closeables = [table]
 
         self._table = table
