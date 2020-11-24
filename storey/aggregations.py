@@ -178,14 +178,10 @@ class QueryByKey(AggregateByKey):
     Query features by name
 
     :param features: List of features to get.
-    :type features: list of string
     :param table: A Table object to aggregate the data into.
-    :type table: Table
     :param key: Key field to aggregate by, accepts either a string representing the key field or a key extracting function.
      Defaults to the key in the event's metadata. (Optional)
-    :type key: string or Function (Event=>object)
     :param augmentation_fn: Function that augments the features into the event's body. Defaults to updating a dict. (Optional)
-    :type augmentation_fn: Function ((Event, dict) => Event)
     :param aliases: Dictionary specifying aliases to the enriched columns, of the format `{'col_name': 'new_col_name'}`. (Optional)
     """
 
