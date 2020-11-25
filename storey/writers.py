@@ -1,11 +1,10 @@
 import asyncio
 import csv
-import io
 import json
+import queue
 import random
 from typing import Optional, Union, List, Callable
 
-import aiofiles
 import pandas as pd
 import v3io_frames as frames
 
@@ -119,37 +118,41 @@ class WriteToCSV(Flow, _Writer):
 
         self._path = path
         self._write_header = header
-        self._open_file = None
-        self._first_event = True
+        self._write_loop_future = None
+        self._data_buffer = queue.Queue(1024)
+
+    def _run_in_executor(self):
+        got_first_event = False
+        with open(self._path, mode='w') as f:
+            csv_writer = csv.writer(f)
+            while True:
+                data = self._data_buffer.get()
+                if data is _termination_obj:
+                    break
+                if not got_first_event:
+                    if not self._columns and self._write_header:
+                        raise ValueError('columns must be defined when header is True and events type is not dictionary')
+                    if self._write_header:
+                        csv_writer.writerow(self._columns)
+                    got_first_event = True
+                csv_writer.writerow(data)
 
     async def _do(self, event):
-        if event is _termination_obj:
-            if self._open_file:
-                await self._open_file.close()
-            return await self._do_downstream(_termination_obj)
-        try:
-            if not self._open_file:
-                self._open_file = await aiofiles.open(self._path, mode='w')
-            data = self._event_to_writer_entry(event)
-            if self._first_event:
-                if not self._columns and self._write_header:
-                    raise ValueError('columns must be defined when header is True and events type is not dictionary')
-                linebuf = io.StringIO()
-                csv_writer = csv.writer(linebuf)
-                if self._write_header:
-                    csv_writer.writerow(self._columns)
-                line = linebuf.getvalue()
-                await self._open_file.write(line)
-                self._first_event = False
-            linebuf = io.StringIO()
-            csv_writer = csv.writer(linebuf)
-            csv_writer.writerow(data)
-            line = linebuf.getvalue()
-            await self._open_file.write(line)
-        except BaseException as ex:
-            if self._open_file:
-                await self._open_file.close()
-            raise ex
+        if not self._write_loop_future:
+            self._write_loop_future = asyncio.get_running_loop().run_in_executor(None, self._run_in_executor)
+        data = event
+        if data is not _termination_obj:
+            try:
+                data = self._event_to_writer_entry(event)
+            except BaseException as ex:
+                asyncio.get_running_loop().run_in_executor(None, lambda: self._data_buffer.put(_termination_obj))
+                raise ex
+        asyncio.get_running_loop().run_in_executor(None, lambda: self._data_buffer.put(data))
+        downstream_res = await self._do_downstream(event)
+
+        if event is _termination_obj and self._write_loop_future:
+            await self._write_loop_future
+        return downstream_res
 
 
 class WriteToParquet(_Batching, _Writer):
