@@ -1,10 +1,11 @@
 import asyncio
 import copy
-from typing import Optional
+from typing import Optional, Union, Callable, List, Dict
 
 import aiohttp
 
-from .dtypes import _termination_obj, Event, FlowError, V3ioError
+from .dtypes import _termination_obj, Event, FlowError, V3ioError, Table
+from .utils import _split_path
 
 
 class Flow:
@@ -694,27 +695,28 @@ class JoinWithV3IOTable(_ConcurrentJobExecution):
 class JoinWithTable(_ConcurrentJobExecution):
     """Joins each event with data from the given table.
 
-    :param table: Table to join with.
-    :type table: Table
+    :param table: Table to join with.  Alternatively can provide the table's name if a the relevant Table entry exists
+     in the context provided.
     :param key_extractor: Key's column name or a function for extracting the key, for table access from an event.
-    :type key_extractor: str or Function (Event=>string)
     :param attributes: A comma-separated list of attributes to be queried for. Defaults to all attributes.
-    :type attributes: list of string
     :param join_function: Joins the original event with relevant data received from the storage. Defaults to assume the event's body is a
     dict-like object and updating it.
-    :type join_function: Function ((Event, dict)=>Event)
     :param name: Name of this step, as it should appear in logs. Defaults to class name (JoinWithTable).
-    :type name: string
     :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
     Defaults to False.
-    :type full_event: boolean
+    :param context: Context object that holds global configurations and secrets.
     """
 
-    def __init__(self, table, key_extractor, attributes=None, join_function=None, **kwargs):
+    def __init__(self, table: Union[Table, str], key_extractor: Union[str, Callable[[Event], str]], attributes: Optional[List[str]] = None,
+                 join_function: Optional[Callable[[Event, Dict[str, object]], Event]] = None, **kwargs):
         super().__init__(**kwargs)
 
         self._table = table
-        self._closeables = [table]
+        if isinstance(table, str):
+            if not self.context:
+                raise TypeError("table can not be string if no context was provided to the step")
+            self._table = self.context.get_table(table)
+        self._closeables = [self._table]
 
         if key_extractor:
             if callable(key_extractor):
@@ -772,91 +774,3 @@ def build_flow(steps):
             cur_step.to(next_step)
             cur_step = next_step
     return steps[0]
-
-
-def _split_path(path):
-    while path.startswith('/'):
-        path = path[1:]
-
-    parts = path.split('/', 1)
-    if len(parts) == 1:
-        return parts[0], '/'
-    else:
-        return parts[0], f'/{parts[1]}'
-
-
-class Table:
-    """
-        Table object, represents a single table in a specific storage.
-
-        :param table_path: Path to the table in the storage.
-        :type table_path: string
-        :param storage: Storage driver
-        :type storage: {V3ioDriver, NoopDriver}
-        :param partitioned_by_key: Whether that data is partitioned by the key or not, based on this indication storage drivers
-         can optimize writes. Defaults to True.
-        :type partitioned_by_key: boolean
-        """
-
-    def __init__(self, table_path, storage, partitioned_by_key=True):
-        self._container, self._table_path = _split_path(table_path)
-        self._storage = storage
-        self._cache = {}
-        self._aggregation_store = None
-        self._partitioned_by_key = partitioned_by_key
-
-    def __getitem__(self, key):
-        return self._cache[key]
-
-    def __setitem__(self, key, value):
-        self._cache[key] = value
-
-    def update_key(self, key, data):
-        if key in self._cache:
-            for name, value in data.items():
-                self._cache[key][name] = value
-        else:
-            self._cache[key] = data
-
-    async def lazy_load_key_with_aggregates(self, key, timestamp=None):
-        if self._aggregation_store._read_only or key not in self._aggregation_store:
-            # Try load from the store, and create a new one only if the key really is new
-            aggregate_initial_data, additional_data = await self._storage._load_aggregates_by_key(self._container, self._table_path, key)
-
-            # Create new aggregation element
-            self._aggregation_store.add_key(key, timestamp, aggregate_initial_data)
-
-            if additional_data:
-                # Add additional data to simple cache
-                self.update_key(key, additional_data)
-
-    async def get_or_load_key(self, key, attributes='*'):
-        if key not in self._cache:
-            res = await self._storage._load_by_key(self._container, self._table_path, key, attributes)
-            if res:
-                self._cache[key] = res
-            else:
-                self._cache[key] = {}
-        return self._cache[key]
-
-    def _set_aggregation_store(self, store):
-        store._container = self._container
-        store._table_path = self._table_path
-        store._storage = self._storage
-        self._aggregation_store = store
-
-    async def persist_key(self, key, event_data_to_persist):
-        aggr_by_key = None
-        if self._aggregation_store:
-            aggr_by_key = self._aggregation_store[key]
-        additional_data_persist = self._cache.get(key, None)
-        if event_data_to_persist:
-            if not additional_data_persist:
-                additional_data_persist = event_data_to_persist
-            else:
-                additional_data_persist.update(event_data_to_persist)
-        await self._storage._save_key(self._container, self._table_path, key, aggr_by_key, self._partitioned_by_key,
-                                      additional_data_persist)
-
-    async def close(self):
-        await self._storage.close()

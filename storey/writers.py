@@ -10,8 +10,8 @@ import pandas as pd
 import v3io_frames as frames
 
 from . import V3ioDriver
-from .dtypes import V3ioError, Event
-from .flow import Flow, _termination_obj, _split_path, _Batching, _ConcurrentByKeyJobExecution, Table
+from .dtypes import V3ioError, Event, Table
+from .flow import Flow, _termination_obj, _split_path, _Batching, _ConcurrentByKeyJobExecution
 
 
 class _Writer:
@@ -378,7 +378,8 @@ class WriteToTable(_ConcurrentByKeyJobExecution, _Writer):
     """
     Persists the data in `table` to its associated storage by key.
 
-    :param table: A table object.
+    :param table: A table object. Alternatively can provide the table's name if a the relevant Table entry exists
+     in the context provided.
     :param columns: Fields to be written to the storage. Will be extracted from events when an event is a dictionary (lists will be written
     as is). Use = notation for renaming fields (e.g. write_this=event_field).
     Use $ notation to refer to metadata ($key, event_time=$time). Optional. Defaults to None (will be inferred if event is dictionary).
@@ -387,11 +388,15 @@ class WriteToTable(_ConcurrentByKeyJobExecution, _Writer):
     and columns is not provided, infer_columns_from_data=True is implied. Optional. Default to False if columns is provided, True otherwise.
     """
 
-    def __init__(self, table: Table, columns: Optional[List[str]] = None, infer_columns_from_data: bool = False, **kwargs):
+    def __init__(self, table: Union[Table, str], columns: Optional[List[str]] = None, infer_columns_from_data: bool = False, **kwargs):
         _ConcurrentByKeyJobExecution.__init__(self, **kwargs)
         _Writer.__init__(self, columns, infer_columns_from_data)
         self._table = table
-        self._closeables = [table]
+        if isinstance(table, str):
+            if not self.context:
+                raise TypeError("table can not be string if no context was provided to the step")
+            self._table = self.context.get_table(table)
+        self._closeables = [self._table]
 
     async def _process_event(self, events):
         data_to_persist = {}

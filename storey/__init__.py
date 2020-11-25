@@ -10,11 +10,11 @@ from .drivers import (  # noqa: F401
     V3ioDriver, NoopDriver
 )
 from .dtypes import (  # noqa: F401
-    Event, FieldAggregator
+    Event, FieldAggregator, Table, Context
 )
 from .flow import (  # noqa: F401
     Filter, FlatMap, Flow, FlowError, JoinWithV3IOTable, SendToHttp, JoinWithTable, Map, Extend, Reduce, Batch,
-    MapWithState, MapClass, Complete, Choice, HttpRequest, HttpResponse, Table, build_flow
+    MapWithState, MapClass, Complete, Choice, HttpRequest, HttpResponse, build_flow
 )
 from .sources import (  # noqa: F401
     Source, AsyncSource, DataframeSource, ReadCSV

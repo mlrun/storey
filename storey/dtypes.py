@@ -1,9 +1,9 @@
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Union, Optional, Callable, List
+from typing import Union, Optional, Callable, List, Dict
 
-from .utils import parse_duration, bucketPerWindow, get_one_unit_of_duration
+from .utils import parse_duration, bucketPerWindow, get_one_unit_of_duration, _split_path
 from .aggregation_utils import get_all_raw_aggregates
 
 _termination_obj = object()
@@ -305,3 +305,114 @@ class FieldAggregator:
             return True
 
         return self.aggr_filter(element)
+
+
+class Table:
+    """
+        Table object, represents a single table in a specific storage.
+
+        :param table_path: Path to the table in the storage.
+        :type table_path: string
+        :param storage: Storage driver
+        :type storage: {V3ioDriver, NoopDriver}
+        :param partitioned_by_key: Whether that data is partitioned by the key or not, based on this indication storage drivers
+         can optimize writes. Defaults to True.
+        :type partitioned_by_key: boolean
+        """
+
+    def __init__(self, table_path: str, storage, partitioned_by_key=True):
+        self._container, self._table_path = _split_path(table_path)
+        self._storage = storage
+        self._cache = {}
+        self._aggregation_store = None
+        self._partitioned_by_key = partitioned_by_key
+
+    def __getitem__(self, key):
+        return self._cache[key]
+
+    def __setitem__(self, key, value):
+        self._cache[key] = value
+
+    def update_key(self, key, data):
+        if key in self._cache:
+            for name, value in data.items():
+                self._cache[key][name] = value
+        else:
+            self._cache[key] = data
+
+    async def lazy_load_key_with_aggregates(self, key, timestamp=None):
+        if self._aggregation_store._read_only or key not in self._aggregation_store:
+            # Try load from the store, and create a new one only if the key really is new
+            aggregate_initial_data, additional_data = await self._storage._load_aggregates_by_key(self._container, self._table_path, key)
+
+            # Create new aggregation element
+            self._aggregation_store.add_key(key, timestamp, aggregate_initial_data)
+
+            if additional_data:
+                # Add additional data to simple cache
+                self.update_key(key, additional_data)
+
+    async def get_or_load_key(self, key, attributes='*'):
+        if key not in self._cache:
+            res = await self._storage._load_by_key(self._container, self._table_path, key, attributes)
+            if res:
+                self._cache[key] = res
+            else:
+                self._cache[key] = {}
+        return self._cache[key]
+
+    def _set_aggregation_store(self, store):
+        store._container = self._container
+        store._table_path = self._table_path
+        store._storage = self._storage
+        self._aggregation_store = store
+
+    async def persist_key(self, key, event_data_to_persist):
+        aggr_by_key = None
+        if self._aggregation_store:
+            aggr_by_key = self._aggregation_store[key]
+        additional_data_persist = self._cache.get(key, None)
+        if event_data_to_persist:
+            if not additional_data_persist:
+                additional_data_persist = event_data_to_persist
+            else:
+                additional_data_persist.update(event_data_to_persist)
+        await self._storage._save_key(self._container, self._table_path, key, aggr_by_key, self._partitioned_by_key,
+                                      additional_data_persist)
+
+    async def close(self):
+        await self._storage.close()
+
+
+class Context:
+    """
+    Context object that holds global secrets and configurations to be passed to relevant steps.
+
+    :param initial_secrets: Initial dict of secrets.
+    :param initial_parameters: Initial dict of parameters.
+    :param initial_tables: Initial dict of tables.
+    """
+
+    def __init__(self, initial_secrets: Optional[Dict[str, str]] = None, initial_parameters: Optional[Dict[str, object]] = None,
+                 initial_tables: Optional[Dict[str, Table]] = None):
+        self._secrets = initial_secrets or {}
+        self._parameters = initial_parameters or {}
+        self._tables = initial_tables or {}
+
+    def get_param(self, key, default):
+        return self._parameters.get(key, default)
+
+    def set_param(self, key, value):
+        self._parameters[key] = value
+
+    def get_secret(self, key):
+        return self._secrets.get(key, None)
+
+    def set_secret(self, key, secret):
+        self._secrets[key] = secret
+
+    def get_table(self, key):
+        return self._tables[key]
+
+    def set_table(self, key, table):
+        self._tables[key] = table
