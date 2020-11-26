@@ -354,7 +354,7 @@ class ReadCSV(_IterableSource):
         if not header and isinstance(timestamp_field, str):
             raise ValueError('timestamp_field can only be set to an integer when with_header is false')
 
-    def _run_in_executor(self):
+    def _blocking_io_loop(self):
         for path in self._paths:
             with open(path, mode='r') as f:
                 header = None
@@ -396,12 +396,21 @@ class ReadCSV(_IterableSource):
         self._event_buffer.put(_termination_obj)
 
     async def _run_loop(self):
-        asyncio.get_running_loop().run_in_executor(None, self._run_in_executor)
+        thread = threading.Thread(target=self._blocking_io_loop)
+        thread.start()
+
+        def get_multiple():
+            events = [self._event_buffer.get()]
+            while not self._event_buffer.empty() and len(events) < 128:
+                events.append(self._event_buffer.get())
+            return events
+
         while True:
-            event = await asyncio.get_running_loop().run_in_executor(None, self._event_buffer.get)
-            res = await self._do_downstream(event)
-            if event is _termination_obj:
-                return res
+            events = await asyncio.get_running_loop().run_in_executor(None, get_multiple)
+            for event in events:
+                res = await self._do_downstream(event)
+                if event is _termination_obj:
+                    return res
 
 
 async def _aiter(iterable):
