@@ -1,6 +1,5 @@
 import asyncio
 import queue
-import time
 import uuid
 from datetime import datetime
 
@@ -583,7 +582,6 @@ async def async_test_write_csv_error(tmpdir):
         assert False
     except FlowError as ex:
         assert isinstance(ex.__cause__, TypeError)
-    assert write_csv._open_file.closed
 
 
 def test_write_csv_error(tmpdir):

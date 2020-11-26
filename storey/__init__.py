@@ -1,7 +1,7 @@
 __version__ = '0.1.0'
 
 from .aggregations import (  # noqa: F401
-    AggregateByKey, QueryAggregationByKey
+    AggregateByKey, QueryByKey
 )
 from .dataframe import (  # noqa: F401
     ToDataFrame, ReduceToDataFrame
