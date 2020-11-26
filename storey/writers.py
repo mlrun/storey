@@ -108,17 +108,20 @@ class WriteToCSV(Flow, _Writer):
     :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries. If True, columns will be
     inferred from data and used in place of explicit columns list if none was provided, or appended to the provided list. If header is True
     and columns is not provided, infer_columns_from_data=True is implied. Optional. Default to False if columns is provided, True otherwise.
+    :param force_flush_after: Number of lines to write before flushing data to the output file. Defaults to 1 (after every line). Set to
+    zero to disable (leave flushing to the standard library).
     :param name: Name of this step, as it should appear in logs. Defaults to class name (WriteToCSV).
     :type name: string
     """
 
     def __init__(self, path: str, columns: Optional[List[str]] = None, header: bool = False, infer_columns_from_data: bool = False,
-                 **kwargs):
+                 force_flush_after: int = 1, **kwargs):
         Flow.__init__(self, **kwargs)
         _Writer.__init__(self, columns, infer_columns_from_data or header and not columns)
 
         self._path = path
         self._write_header = header
+        self._force_flush_after = force_flush_after if force_flush_after > 0 else 0
         self._write_loop_future = None
         self._data_buffer = queue.Queue(1024)
 
@@ -126,10 +129,12 @@ class WriteToCSV(Flow, _Writer):
         got_first_event = False
         with open(self._path, mode='w') as f:
             csv_writer = csv.writer(f)
+            line_number = 0
             while True:
                 data = self._data_buffer.get()
                 if data is _termination_obj:
                     break
+                line_number += 1
                 if not got_first_event:
                     if not self._columns and self._write_header:
                         raise ValueError('columns must be defined when header is True and events type is not dictionary')
@@ -137,6 +142,9 @@ class WriteToCSV(Flow, _Writer):
                         csv_writer.writerow(self._columns)
                     got_first_event = True
                 csv_writer.writerow(data)
+                line_number += 1
+                if self._force_flush_after and line_number % self._force_flush_after == 0:
+                    f.flush()
 
     async def _do(self, event):
         if not self._write_loop_future:
