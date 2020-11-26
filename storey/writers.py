@@ -134,7 +134,6 @@ class WriteToCSV(Flow, _Writer):
                 data = self._data_buffer.get()
                 if data is _termination_obj:
                     break
-                line_number += 1
                 if not got_first_event:
                     if not self._columns and self._write_header:
                         raise ValueError('columns must be defined when header is True and events type is not dictionary')
