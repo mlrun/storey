@@ -232,7 +232,7 @@ class AsyncSource(Flow):
         super().__init__(**kwargs)
         if buffer_size <= 0:
             raise ValueError('Buffer size must be positive')
-        self._q = asyncio.Queue(buffer_size, loop=asyncio.get_running_loop())
+        self._q = asyncio.Queue(buffer_size)
         self._ex = None
         self._closeables = []
 
