@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 import pytest
 
 from storey import build_flow, Source, Reduce, Table, V3ioDriver, FlowError, MapWithState, AggregateByKey, FieldAggregator, \
-    QueryAggregationByKey, WriteToTable
+    QueryByKey, WriteToTable
 
 from storey.dtypes import SlidingWindows
 from storey.flow import _split_path
@@ -80,9 +80,8 @@ def test_aggregate_and_query_with_different_windows(setup_teardown_test, partiti
     other_table = Table(setup_teardown_test, V3ioDriver())
     controller = build_flow([
         Source(),
-        QueryAggregationByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg", "min", "max"],
-                                               SlidingWindows(['1h'], '10m'))],
-                              other_table),
+        QueryByKey(["number_of_stuff_sum_1h", "number_of_stuff_avg_1h", "number_of_stuff_min_1h", "number_of_stuff_max_1h"],
+                   other_table),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -169,9 +168,11 @@ def test_query_aggregate_by_key(setup_teardown_test, partitioned_by_key):
     other_table = Table(setup_teardown_test, V3ioDriver())
     controller = build_flow([
         Source(),
-        QueryAggregationByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg", "min", "max"],
-                                               SlidingWindows(['1h', '2h', '24h'], '10m'))],
-                              other_table),
+        QueryByKey(["number_of_stuff_sum_1h", "number_of_stuff_sum_2h", "number_of_stuff_sum_24h",
+                    "number_of_stuff_avg_1h", "number_of_stuff_avg_2h", "number_of_stuff_avg_24h",
+                    "number_of_stuff_min_1h", "number_of_stuff_min_2h", "number_of_stuff_min_24h",
+                    "number_of_stuff_max_1h", "number_of_stuff_max_2h", "number_of_stuff_max_24h"],
+                   other_table),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -183,9 +184,9 @@ def test_query_aggregate_by_key(setup_teardown_test, partitioned_by_key):
     actual = controller.await_termination()
     expected_results = [
         {'col1': 10, 'number_of_stuff_sum_1h': 17, 'number_of_stuff_sum_2h': 30, 'number_of_stuff_sum_24h': 45,
-         'number_of_stuff_min_1h': 8, 'number_of_stuff_min_2h': 6, 'number_of_stuff_min_24h': 0, 'number_of_stuff_max_1h': 9,
-         'number_of_stuff_max_2h': 9, 'number_of_stuff_max_24h': 9, 'number_of_stuff_avg_1h': 8.5, 'number_of_stuff_avg_2h': 7.5,
-         'number_of_stuff_avg_24h': 4.5}
+         'number_of_stuff_min_1h': 8, 'number_of_stuff_min_2h': 6, 'number_of_stuff_min_24h': 0,
+         'number_of_stuff_max_1h': 9, 'number_of_stuff_max_2h': 9, 'number_of_stuff_max_24h': 9,
+         'number_of_stuff_avg_1h': 8.5, 'number_of_stuff_avg_2h': 7.5, 'number_of_stuff_avg_24h': 4.5}
     ]
 
     assert actual == expected_results, \
@@ -334,10 +335,8 @@ def test_aggregate_by_key_with_extra_aliases(setup_teardown_test):
 
     controller = build_flow([
         Source(),
-        QueryAggregationByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg"],
-                                               SlidingWindows(['2h'], '10m'))],
-                              other_table, enrich_with=['color', 'age', 'iss', 'sometime'],
-                              aliases={'color': 'external.color', 'iss': 'external.iss'}),
+        QueryByKey(['number_of_stuff_sum_2h', 'number_of_stuff_avg_2h', 'color', 'age', 'iss', 'sometime'],
+                              other_table, aliases={'color': 'external.color', 'iss': 'external.iss'}),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -416,9 +415,8 @@ def test_write_cache_with_aggregations(setup_teardown_test):
 
     controller = build_flow([
         Source(),
-        QueryAggregationByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg"],
-                                               SlidingWindows(['2h'], '10m'))],
-                              other_table, enrich_with=['color', 'age', 'iss', 'sometime']),
+        QueryByKey(["number_of_stuff_sum_2h", "number_of_stuff_avg_2h", 'color', 'age', 'iss', 'sometime'],
+                   other_table),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 

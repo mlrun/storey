@@ -278,7 +278,7 @@ class FieldAggregator:
     :param max_value: Maximum value for the aggregation (Optional)
     """
 
-    def __init__(self, name: str, field: Union[str, Callable[[Event], object]], aggr: List[str],
+    def __init__(self, name: str, field: Union[str, Callable[[Event], object], None], aggr: List[str],
                  windows: Union[FixedWindows, SlidingWindows], aggr_filter: Optional[Callable[[Event], bool]] = None,
                  max_value: Optional[float] = None):
         if aggr_filter is not None and not callable(aggr_filter):
@@ -288,8 +288,6 @@ class FieldAggregator:
             self.value_extractor = field
         elif isinstance(field, str):
             self.value_extractor = lambda element: element[field]
-        else:
-            raise TypeError(f'field is expected to be either a callable or string but got {type(field)}')
 
         self.name = name
         self.aggregations = aggr
