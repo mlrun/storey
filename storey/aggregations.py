@@ -7,7 +7,8 @@ from typing import Optional, Union, Callable, List, Dict
 from .aggregation_utils import is_raw_aggregate, get_virtual_aggregation_func, get_implied_aggregates, get_all_raw_aggregates, \
     get_all_raw_aggregates_with_hidden
 from .dtypes import EmitEveryEvent, FixedWindows, SlidingWindows, EmitAfterPeriod, EmitAfterWindow, EmitAfterMaxEvent, \
-    _dict_to_emit_policy, FieldAggregator, Table
+    _dict_to_emit_policy, FieldAggregator
+from .table import Table
 from .flow import Flow, _termination_obj, Event
 
 _default_emit_policy = EmitEveryEvent()
@@ -20,8 +21,7 @@ class AggregateByKey(Flow):
     Persistence is done via the `WriteToTable` step and based on the Cache object persistence settings.
 
     :param aggregates: List of aggregates to apply for each event.
-    :param table: A Table object to aggregate the data into. Alternatively can provide the table's name if a the relevant Table entry exists
-     in the context provided.
+    :param table: A Table object or name for persistence of aggregations. If a table name is provided, it will be looked up in the context.
     :param key: Key field to aggregate by, accepts either a string representing the key field or a key extracting function.
      Defaults to the key in the event's metadata. (Optional)
     :param emit_policy: Policy indicating when the data will be emitted. Defaults to EmitEveryEvent. (Optional)
@@ -44,7 +44,7 @@ class AggregateByKey(Flow):
         self._table = table
         if isinstance(table, str):
             if not self.context:
-                raise TypeError("table can not be string if no context was provided to the step")
+                raise TypeError("Table can not be string if no context was provided to the step")
             self._table = self.context.get_table(table)
         self._table._set_aggregation_store(self._aggregates_store)
         self._closeables = [self._table]
@@ -183,8 +183,7 @@ class QueryByKey(AggregateByKey):
     Query features by name
 
     :param features: List of features to get.
-    :param table: A Table object to aggregate the data into. Alternatively can provide the table's name if a the relevant Table entry exists
-     in the context provided.
+    :param table: A Table object or name for persistence of aggregations. If a table name is provided, it will be looked up in the context.
     :param key: Key field to aggregate by, accepts either a string representing the key field or a key extracting function.
      Defaults to the key in the event's metadata. (Optional)
     :param augmentation_fn: Function that augments the features into the event's body. Defaults to updating a dict. (Optional)

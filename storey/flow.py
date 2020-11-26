@@ -4,7 +4,8 @@ from typing import Optional, Union, Callable, List, Dict
 
 import aiohttp
 
-from .dtypes import _termination_obj, Event, FlowError, V3ioError, Table
+from .dtypes import _termination_obj, Event, FlowError, V3ioError
+from .table import Table
 from .utils import _split_path
 
 
@@ -695,8 +696,7 @@ class JoinWithV3IOTable(_ConcurrentJobExecution):
 class JoinWithTable(_ConcurrentJobExecution):
     """Joins each event with data from the given table.
 
-    :param table: Table to join with.  Alternatively can provide the table's name if a the relevant Table entry exists
-     in the context provided.
+    :param table: A Table object or name to join with. If a table name is provided, it will be looked up in the context.
     :param key_extractor: Key's column name or a function for extracting the key, for table access from an event.
     :param attributes: A comma-separated list of attributes to be queried for. Defaults to all attributes.
     :param join_function: Joins the original event with relevant data received from the storage. Defaults to assume the event's body is a
@@ -714,7 +714,7 @@ class JoinWithTable(_ConcurrentJobExecution):
         self._table = table
         if isinstance(table, str):
             if not self.context:
-                raise TypeError("table can not be string if no context was provided to the step")
+                raise TypeError("Table can not be string if no context was provided to the step")
             self._table = self.context.get_table(table)
         self._closeables = [self._table]
 
@@ -774,3 +774,37 @@ def build_flow(steps):
             cur_step.to(next_step)
             cur_step = next_step
     return steps[0]
+
+
+class Context:
+    """
+    Context object that holds global secrets and configurations to be passed to relevant steps.
+
+    :param initial_secrets: Initial dict of secrets.
+    :param initial_parameters: Initial dict of parameters.
+    :param initial_tables: Initial dict of tables.
+    """
+
+    def __init__(self, initial_secrets: Optional[Dict[str, str]] = None, initial_parameters: Optional[Dict[str, object]] = None,
+                 initial_tables: Optional[Dict[str, Table]] = None):
+        self._secrets = initial_secrets or {}
+        self._parameters = initial_parameters or {}
+        self._tables = initial_tables or {}
+
+    def get_param(self, key, default):
+        return self._parameters.get(key, default)
+
+    def set_param(self, key, value):
+        self._parameters[key] = value
+
+    def get_secret(self, key):
+        return self._secrets.get(key, None)
+
+    def set_secret(self, key, secret):
+        self._secrets[key] = secret
+
+    def get_table(self, key):
+        return self._tables[key]
+
+    def set_table(self, key, table):
+        self._tables[key] = table
