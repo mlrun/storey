@@ -108,20 +108,19 @@ class WriteToCSV(_Batching, _Writer):
     :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries. If True, columns will be
     inferred from data and used in place of explicit columns list if none was provided, or appended to the provided list. If header is True
     and columns is not provided, infer_columns_from_data=True is implied. Optional. Default to False if columns is provided, True otherwise.
-    :param force_flush_after: Number of lines to write before flushing data to the output file. Defaults to 1 (after every line). Set to
-    zero to disable (leave flushing to the standard library).
+    :param max_lines_before_flush: Number of lines to write before flushing data to the output file. Defaults to 128.
+    :param max_seconds_before_flush: Maximum delay in seconds before flushing lines. Defaults to 3.
     :param name: Name of this step, as it should appear in logs. Defaults to class name (WriteToCSV).
     :type name: string
     """
 
     def __init__(self, path: str, columns: Optional[List[str]] = None, header: bool = False, infer_columns_from_data: bool = False,
-                 force_flush_after: int = 1, **kwargs):
-        _Batching.__init__(self, max_events=128, timeout_secs=3, **kwargs)
+                 max_lines_before_flush: int = 128, max_seconds_before_flush: int = 3, **kwargs):
+        _Batching.__init__(self, max_events=max_lines_before_flush, timeout_secs=max_seconds_before_flush, **kwargs)
         _Writer.__init__(self, columns, infer_columns_from_data or header and not columns)
 
         self._path = path
         self._write_header = header
-        self._force_flush_after = force_flush_after if force_flush_after > 0 else 0
         self._blocking_io_loop_future = None
         self._data_buffer = queue.Queue(1024)
 
@@ -143,8 +142,7 @@ class WriteToCSV(_Batching, _Writer):
                         got_first_event = True
                     csv_writer.writerow(data)
                     line_number += 1
-                    if self._force_flush_after and line_number % self._force_flush_after == 0:
-                        f.flush()
+                f.flush()
 
     def _event_to_batch_entry(self, event):
         return self._event_to_writer_entry(event)
