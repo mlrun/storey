@@ -5,7 +5,6 @@ import threading
 from datetime import datetime, timezone
 from typing import List, Optional, Union
 
-import aiofiles
 import pandas
 
 from .dtypes import _termination_obj, Event, FlowError
@@ -233,7 +232,7 @@ class AsyncSource(Flow):
         super().__init__(**kwargs)
         if buffer_size <= 0:
             raise ValueError('Buffer size must be positive')
-        self._q = asyncio.Queue(buffer_size, loop=asyncio.get_running_loop())
+        self._q = asyncio.Queue(buffer_size)
         self._ex = None
         self._closeables = []
 
@@ -348,24 +347,25 @@ class ReadCSV(_IterableSource):
         self._key_field = key_field
         self._timestamp_field = timestamp_field
         self._timestamp_format = timestamp_format
+        self._event_buffer = queue.Queue(1024)
 
         if not header and isinstance(key_field, str):
             raise ValueError('key_field can only be set to an integer when with_header is false')
         if not header and isinstance(timestamp_field, str):
             raise ValueError('timestamp_field can only be set to an integer when with_header is false')
 
-    async def _run_loop(self):
+    def _run_in_executor(self):
         for path in self._paths:
-            async with aiofiles.open(path, mode='r') as f:
+            with open(path, mode='r') as f:
                 header = None
                 field_name_to_index = None
                 if self._with_header:
-                    line = await f.readline()
+                    line = f.readline()
                     header = next(csv.reader([line]))
                     field_name_to_index = {}
                     for i in range(len(header)):
                         field_name_to_index[header[i]] = i
-                async for line in f:
+                for line in f:
                     parsed_line = next(csv.reader([line]))
                     element = parsed_line
                     key = None
@@ -392,8 +392,16 @@ class ReadCSV(_IterableSource):
                             timestamp = datetime.fromisoformat(timestamp_str)
                     else:
                         timestamp = datetime.now()
-                    await self._do_downstream(Event(element, key=key, time=timestamp))
-        return await self._do_downstream(_termination_obj)
+                    self._event_buffer.put(Event(element, key=key, time=timestamp))
+        self._event_buffer.put(_termination_obj)
+
+    async def _run_loop(self):
+        asyncio.get_running_loop().run_in_executor(None, self._run_in_executor)
+        while True:
+            event = await asyncio.get_running_loop().run_in_executor(None, self._event_buffer.get)
+            res = await self._do_downstream(event)
+            if event is _termination_obj:
+                return res
 
 
 async def _aiter(iterable):

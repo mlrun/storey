@@ -87,3 +87,14 @@ def extract_array_tlv(b):
     else:
         values = [v for v in struct.unpack("{}".format("d" * size), v)]
     return array(array_type[0], values)
+
+
+def _split_path(path):
+    while path.startswith('/'):
+        path = path[1:]
+
+    parts = path.split('/', 1)
+    if len(parts) == 1:
+        return parts[0], '/'
+    else:
+        return parts[0], f'/{parts[1]}'

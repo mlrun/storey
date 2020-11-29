@@ -1,17 +1,17 @@
 import asyncio
 import csv
-import io
 import json
+import queue
 import random
 from typing import Optional, Union, List, Callable
 
-import aiofiles
 import pandas as pd
 import v3io_frames as frames
 
 from . import V3ioDriver
 from .dtypes import V3ioError, Event
-from .flow import Flow, _termination_obj, _split_path, _Batching, _ConcurrentByKeyJobExecution, Table
+from .flow import Flow, _termination_obj, _split_path, _Batching, _ConcurrentByKeyJobExecution
+from .table import Table
 
 
 class _Writer:
@@ -108,48 +108,59 @@ class WriteToCSV(Flow, _Writer):
     :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries. If True, columns will be
     inferred from data and used in place of explicit columns list if none was provided, or appended to the provided list. If header is True
     and columns is not provided, infer_columns_from_data=True is implied. Optional. Default to False if columns is provided, True otherwise.
+    :param force_flush_after: Number of lines to write before flushing data to the output file. Defaults to 1 (after every line). Set to
+    zero to disable (leave flushing to the standard library).
     :param name: Name of this step, as it should appear in logs. Defaults to class name (WriteToCSV).
     :type name: string
     """
 
     def __init__(self, path: str, columns: Optional[List[str]] = None, header: bool = False, infer_columns_from_data: bool = False,
-                 **kwargs):
+                 force_flush_after: int = 1, **kwargs):
         Flow.__init__(self, **kwargs)
         _Writer.__init__(self, columns, infer_columns_from_data or header and not columns)
 
         self._path = path
         self._write_header = header
-        self._open_file = None
-        self._first_event = True
+        self._force_flush_after = force_flush_after if force_flush_after > 0 else 0
+        self._write_loop_future = None
+        self._data_buffer = queue.Queue(1024)
+
+    def _run_in_executor(self):
+        got_first_event = False
+        with open(self._path, mode='w') as f:
+            csv_writer = csv.writer(f)
+            line_number = 0
+            while True:
+                data = self._data_buffer.get()
+                if data is _termination_obj:
+                    break
+                if not got_first_event:
+                    if not self._columns and self._write_header:
+                        raise ValueError('columns must be defined when header is True and events type is not dictionary')
+                    if self._write_header:
+                        csv_writer.writerow(self._columns)
+                    got_first_event = True
+                csv_writer.writerow(data)
+                line_number += 1
+                if self._force_flush_after and line_number % self._force_flush_after == 0:
+                    f.flush()
 
     async def _do(self, event):
-        if event is _termination_obj:
-            if self._open_file:
-                await self._open_file.close()
-            return await self._do_downstream(_termination_obj)
-        try:
-            if not self._open_file:
-                self._open_file = await aiofiles.open(self._path, mode='w')
-            data = self._event_to_writer_entry(event)
-            if self._first_event:
-                if not self._columns and self._write_header:
-                    raise ValueError('columns must be defined when header is True and events type is not dictionary')
-                linebuf = io.StringIO()
-                csv_writer = csv.writer(linebuf)
-                if self._write_header:
-                    csv_writer.writerow(self._columns)
-                line = linebuf.getvalue()
-                await self._open_file.write(line)
-                self._first_event = False
-            linebuf = io.StringIO()
-            csv_writer = csv.writer(linebuf)
-            csv_writer.writerow(data)
-            line = linebuf.getvalue()
-            await self._open_file.write(line)
-        except BaseException as ex:
-            if self._open_file:
-                await self._open_file.close()
-            raise ex
+        if not self._write_loop_future:
+            self._write_loop_future = asyncio.get_running_loop().run_in_executor(None, self._run_in_executor)
+        data = event
+        if data is not _termination_obj:
+            try:
+                data = self._event_to_writer_entry(event)
+            except BaseException as ex:
+                asyncio.get_running_loop().run_in_executor(None, lambda: self._data_buffer.put(_termination_obj))
+                raise ex
+        asyncio.get_running_loop().run_in_executor(None, lambda: self._data_buffer.put(data))
+        downstream_res = await self._do_downstream(event)
+
+        if event is _termination_obj and self._write_loop_future:
+            await self._write_loop_future
+        return downstream_res
 
 
 class WriteToParquet(_Batching, _Writer):
@@ -378,7 +389,7 @@ class WriteToTable(_ConcurrentByKeyJobExecution, _Writer):
     """
     Persists the data in `table` to its associated storage by key.
 
-    :param table: A table object.
+    :param table: A Table object or name to persist. If a table name is provided, it will be looked up in the context.
     :param columns: Fields to be written to the storage. Will be extracted from events when an event is a dictionary (lists will be written
     as is). Use = notation for renaming fields (e.g. write_this=event_field).
     Use $ notation to refer to metadata ($key, event_time=$time). Optional. Defaults to None (will be inferred if event is dictionary).
@@ -387,11 +398,15 @@ class WriteToTable(_ConcurrentByKeyJobExecution, _Writer):
     and columns is not provided, infer_columns_from_data=True is implied. Optional. Default to False if columns is provided, True otherwise.
     """
 
-    def __init__(self, table: Table, columns: Optional[List[str]] = None, infer_columns_from_data: bool = False, **kwargs):
+    def __init__(self, table: Union[Table, str], columns: Optional[List[str]] = None, infer_columns_from_data: bool = False, **kwargs):
         _ConcurrentByKeyJobExecution.__init__(self, **kwargs)
         _Writer.__init__(self, columns, infer_columns_from_data)
         self._table = table
-        self._closeables = [table]
+        if isinstance(table, str):
+            if not self.context:
+                raise TypeError("Table can not be string if no context was provided to the step")
+            self._table = self.context.get_table(table)
+        self._closeables = [self._table]
 
     async def _process_event(self, events):
         data_to_persist = {}
