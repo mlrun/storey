@@ -191,6 +191,7 @@ class QueryByKey(AggregateByKey):
         self._aggrs = []
         self._enrich_cols = []
         resolved_aggrs = {}
+        print("QUERY")
         for feature in features:
             if re.match(r".*_[a-z]+_[0-9]+[smhd]", feature):
                 name, window = feature.rsplit('_', 1)
@@ -234,17 +235,22 @@ class AggregatedStoreElement:
 
         # Add all raw aggregates, including aggregates not explicitly requested.
         for aggregation_metadata in aggregates:
-            for aggr, is_hidden in get_all_raw_aggregates_with_hidden(aggregation_metadata.aggregations).items():
-                column_name = f'{aggregation_metadata.name}_{aggr}'
-                if column_name in self.aggregation_buckets:
-                    self.aggregation_buckets[column_name].is_hidden &= is_hidden
-                else:
-                    initial_column_data = None
-                    if initial_data and column_name in initial_data:
-                        initial_column_data = initial_data[column_name]
-                    self.aggregation_buckets[column_name] = \
-                        AggregationBuckets(aggregation_metadata.name, aggr, aggregation_metadata.windows, base_time,
-                                           aggregation_metadata.max_value, is_hidden, initial_column_data)
+            for meta in aggregation_metadata.aggregations:
+                for aggr, is_hidden in get_all_raw_aggregates_with_hidden([meta]).items():
+                    column_name = f'{aggregation_metadata.name}_{aggr}'
+                    if column_name in self.aggregation_buckets:
+                        self.aggregation_buckets[column_name].is_hidden &= is_hidden
+                        changed = self.aggregation_buckets[column_name].window.\
+                            merge_window(aggregation_metadata.windows, is_hidden)
+                        if changed:
+                            self.aggregation_buckets[column_name].update_buckets()
+                    else:
+                        initial_column_data = None
+                        if initial_data and column_name in initial_data:
+                            initial_column_data = initial_data[column_name]
+                        self.aggregation_buckets[column_name] = \
+                            AggregationBuckets(aggregation_metadata.name, aggr, copy.deepcopy(aggregation_metadata.windows), base_time,
+                                               aggregation_metadata.max_value, is_hidden, initial_column_data)
 
         # Add all virtual aggregates
         for aggregation_metadata in aggregates:
@@ -418,16 +424,25 @@ class AggregationBuckets:
         self.should_persist = True
         self.pending_aggr = {}
         self.storage_specific_cache = {}
+        self.base_time = base_time
 
+        if is_hidden:
+            self.window.hidden_windows = window.windows
+        else:
+            self.window.explicit_windows = window.windows
         if initial_data:
             self.last_bucket_start_time = None
             self.initialize_from_data(initial_data)
         else:
-            self.first_bucket_start_time = self.window.get_window_start_time_by_time(base_time)
+            self.first_bucket_start_time = self.window.get_window_start_time_by_time(self.base_time)
             self.last_bucket_start_time = \
-                self.first_bucket_start_time + (window.total_number_of_buckets - 1) * window.period_millis
+                self.first_bucket_start_time + (self.window.total_number_of_buckets - 1) * self.window.period_millis
 
             self.initialize_column()
+
+    def update_buckets(self):
+        self.first_bucket_start_time = self.last_bucket_start_time - (
+                self.window.total_number_of_buckets - 1) * self.window.period_millis
 
     def initialize_column(self):
         self.buckets = []
@@ -491,7 +506,7 @@ class AggregationBuckets:
             return 'sum'
         return self.aggregation
 
-    def get_features(self, timestamp):
+    def get_features(self, timestamp, get_hidden=False):
         result = {}
 
         current_time_bucket_index = self.get_bucket_index_by_timestamp(timestamp)
@@ -500,9 +515,13 @@ class AggregationBuckets:
 
         aggregated_value = AggregationValue(self.get_aggregation_for_aggregation())
         prev_windows_millis = 0
-        for i in range(len(self.window.windows)):
-            window_string = self.window.windows[i][1]
-            window_millis = self.window.windows[i][0]
+        if get_hidden:
+            loop_over = self.window.hidden_windows
+        else:
+            loop_over = self.window.explicit_windows
+        for i in range(len(loop_over)):
+            window_string = loop_over[i][1]
+            window_millis = loop_over[i][0]
 
             # In case the current bucket is outside our time range just create a feature with the current aggregated
             # value
@@ -515,9 +534,13 @@ class AggregationBuckets:
             if last_bucket_to_aggregate < 0:
                 last_bucket_to_aggregate = 0
 
+            print(self.aggregation + " current_time_bucket_index " + str(current_time_bucket_index) +" last_bucket_to_aggregate "+str(last_bucket_to_aggregate) + " len(self.buckets) "+str(len(self.buckets)))
+            print('[%s]' % ', '.join(map(str, loop_over)))
             for bucket_index in range(current_time_bucket_index, last_bucket_to_aggregate - 1, -1):
                 if bucket_index < len(self.buckets):
                     t, v = self.buckets[bucket_index].get_value()
+                    print(" t " + str(t) + " v "+str(v))
+
                     aggregated_value.aggregate(t, v)
 
             # advance the time bucket, so that next iteration won't calculate the same buckets again
@@ -526,7 +549,9 @@ class AggregationBuckets:
             # create a feature for the current time window
             result[f'{self.name}_{self.aggregation}_{window_string}'] = aggregated_value.get_value()[1]
             prev_windows_millis = window_millis
-
+        print("res")
+        for key, value in result.items():
+            print(key, value)
         return result
 
     def initialize_from_data(self, data):
@@ -604,15 +629,17 @@ class VirtualAggregationBuckets:
     def get_features(self, timestamp):
         result = {}
 
-        args_results = [list(bucket.get_features(timestamp).values()) for bucket in self.args]
-
-        for i in range(len(args_results[0])):
-            window_string = self.window.windows[i][1]
+        args_results = [bucket.get_features(timestamp, get_hidden=True) for bucket in self.args]
+        for j in range(len(self.window.windows)):
+            window_string = self.window.windows[j][1]
             current_args = []
-            for window_result in args_results:
-                current_args.append(window_result[i])
-
+            for i in range(len(args_results)):
+                for key, value in args_results[i].items():
+                    if key.endswith('_' + window_string):
+                        current_args.append(value)
+                        break
             result[f'{self.name}_{self.aggregation}_{window_string}'] = self.aggregation_func(current_args)
+
         return result
 
 
