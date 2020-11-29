@@ -396,8 +396,7 @@ class ReadCSV(_IterableSource):
         self._event_buffer.put(_termination_obj)
 
     async def _run_loop(self):
-        thread = threading.Thread(target=self._blocking_io_loop)
-        thread.start()
+        asyncio.get_running_loop().run_in_executor(None, self._blocking_io_loop)
 
         def get_multiple():
             events = [self._event_buffer.get()]

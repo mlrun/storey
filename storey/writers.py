@@ -3,7 +3,6 @@ import csv
 import json
 import queue
 import random
-import threading
 from typing import Optional, Union, List, Callable
 
 import pandas as pd
@@ -123,7 +122,7 @@ class WriteToCSV(_Batching, _Writer):
         self._path = path
         self._write_header = header
         self._force_flush_after = force_flush_after if force_flush_after > 0 else 0
-        self._blocking_io_loop_thread = None
+        self._blocking_io_loop_future = None
         self._data_buffer = queue.Queue(1024)
 
     def _blocking_io_loop(self):
@@ -152,12 +151,11 @@ class WriteToCSV(_Batching, _Writer):
 
     async def _terminate(self):
         asyncio.get_running_loop().run_in_executor(None, lambda: self._data_buffer.put(_termination_obj))
-        self._blocking_io_loop_thread.join()
+        await self._blocking_io_loop_future
 
     async def _emit(self, batch, batch_time):
-        if not self._blocking_io_loop_thread:
-            self._blocking_io_loop_thread = threading.Thread(target=self._blocking_io_loop)
-            self._blocking_io_loop_thread.start()
+        if not self._blocking_io_loop_future:
+            self._blocking_io_loop_future = asyncio.get_running_loop().run_in_executor(None, self._blocking_io_loop)
 
         asyncio.get_running_loop().run_in_executor(None, lambda: self._data_buffer.put(batch))
 
