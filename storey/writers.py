@@ -1,6 +1,7 @@
 import asyncio
 import csv
 import json
+import os
 import queue
 import random
 from typing import Optional, Union, List, Callable
@@ -126,6 +127,7 @@ class WriteToCSV(_Batching, _Writer):
 
     def _blocking_io_loop(self):
         got_first_event = False
+        os.makedirs(os.path.dirname(self._path), exist_ok=True)
         with open(self._path, mode='w') as f:
             csv_writer = csv.writer(f)
             line_number = 0
@@ -190,11 +192,15 @@ class WriteToParquet(_Batching, _Writer):
 
         self._path = path
         self._partition_cols = partition_cols
+        self._first_event = True
 
     def _event_to_batch_entry(self, event):
         return self._event_to_writer_entry(event)
 
     async def _emit(self, batch, batch_time):
+        if self._first_event:
+            await asyncio.get_running_loop().run_in_executor(None, lambda: os.makedirs(os.path.dirname(self._path), exist_ok=True))
+            self._first_event = False
         df_columns = []
         df_columns.extend(self._columns)
         if self._index_cols:

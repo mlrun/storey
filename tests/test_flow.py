@@ -934,7 +934,7 @@ def test_write_to_parquet(tmpdir):
 
 
 def test_write_to_parquet_single_file_on_termination(tmpdir):
-    out_file = f'{tmpdir}/test_write_to_parquet_single_file_on_termination_{uuid.uuid4().hex}.parquet'
+    out_file = f'{tmpdir}/test_write_to_parquet_single_file_on_termination_{uuid.uuid4().hex}/out.parquet'
     columns = ['my_int', 'my_string']
     controller = build_flow([
         Source(),
