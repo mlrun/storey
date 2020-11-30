@@ -1,5 +1,6 @@
 import asyncio
 import csv
+import datetime
 import json
 import queue
 import random
@@ -261,6 +262,18 @@ class WriteToTSDB(_Batching, _Writer):
         self._frames_client.write("tsdb", self._path, df)
 
 
+def _reify_metadata(event, metadata=None):
+    if event is _termination_obj or not isinstance(event.body, dict):
+        return
+    if not metadata:
+        metadata = ['key', 'time', 'id']
+    for field in metadata:
+        value = getattr(event, field)
+        if isinstance(value, datetime.datetime):
+            value = value.isoformat()
+        event.body[field] = value
+
+
 class WriteToV3IOStream(Flow):
     """Writes all incoming events into a V3IO stream.
 
@@ -268,10 +281,12 @@ class WriteToV3IOStream(Flow):
     :param stream_path: Path to the V3IO stream.
     :param sharding_func: Function for determining the shard ID to which to write each event.
     :param batch_size: Batch size for each write request.
+    :param write_metadata_fields: If event body is a dictionary, which event metadata fields should be added to it.
+    Defaults to ['key', 'time', 'id']. If event body is not a dictionary, this parameter has no effect.
     """
 
     def __init__(self, storage: V3ioDriver, stream_path: str, sharding_func: Optional[Callable[[Event], int]] = None, batch_size: int = 8,
-                 **kwargs):
+                 write_metadata_fields: Optional[List[str]] = None, **kwargs):
         Flow.__init__(self, **kwargs)
 
         self._storage = storage
@@ -282,8 +297,8 @@ class WriteToV3IOStream(Flow):
         self._container, self._stream_path = _split_path(stream_path)
 
         self._sharding_func = sharding_func
-
         self._batch_size = batch_size
+        self._write_metadata_fields = write_metadata_fields
 
         self._shard_count = None
 
@@ -368,6 +383,8 @@ class WriteToV3IOStream(Flow):
 
     async def _do(self, event):
         await self._lazy_init()
+
+        _reify_metadata(event, self._write_metadata_fields)
 
         if self._worker_awaitable.done():
             await self._worker_awaitable

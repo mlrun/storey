@@ -123,6 +123,37 @@ def test_write_to_v3io_stream():
     assert shard1_data == [b'1', b'3', b'5', b'7', b'9']
 
 
+def test_write_dict_to_v3io_stream():
+    stream_path = f'bigdata/test_write_dict_to_v3io_stream/{int(time.time_ns() / 1000)}/'
+    asyncio.run(SetupStream().setup(stream_path))
+    controller = build_flow([
+        Source(),
+        WriteToV3IOStream(V3ioDriver(), stream_path, sharding_func=lambda event: int(event.key), write_metadata_fields=['key'])
+    ]).run()
+    expected_shard0 = []
+    expected_shard1 = []
+    for i in range(10):
+        controller.emit({'mydata': 'abcdefg'}, key=f'{i}')
+        expected = {'mydata': 'abcdefg', 'key': f'{i}'}
+        if i % 2 == 0:
+            expected_shard0.append(expected)
+        else:
+            expected_shard1.append(expected)
+
+    controller.terminate()
+    controller.await_termination()
+    shard0_data = asyncio.run(GetShardData().get_shard_data(f'{stream_path}/0'))
+    shard1_data = asyncio.run(GetShardData().get_shard_data(f'{stream_path}/1'))
+
+    for i in range(len(shard0_data)):
+        shard0_data[i] = json.loads(shard0_data[i])
+    for i in range(len(shard1_data)):
+        shard1_data[i] = json.loads(shard1_data[i])
+
+    assert shard0_data == expected_shard0
+    assert shard1_data == expected_shard1
+
+
 def test_write_to_v3io_stream_unbalanced():
     stream_path = f'bigdata/test_write_to_v3io_stream/{int(time.time_ns() / 1000)}/'
     asyncio.run(SetupStream().setup(stream_path))
