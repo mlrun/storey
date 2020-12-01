@@ -628,6 +628,26 @@ def test_write_csv_infer_columns(tmpdir):
     assert result == expected
 
 
+def test_write_csv_infer_columns_without_header(tmpdir):
+    file_path = f'{tmpdir}/test_write_csv_infer_columns_without_header.csv'
+    controller = build_flow([
+        Source(),
+        WriteToCSV(file_path)
+    ]).run()
+
+    for i in range(10):
+        controller.emit({'n': i, 'n*10': 10 * i})
+
+    controller.terminate()
+    controller.await_termination()
+
+    with open(file_path) as file:
+        result = file.read()
+
+    expected = "0,0\n1,10\n2,20\n3,30\n4,40\n5,50\n6,60\n7,70\n8,80\n9,90\n"
+    assert result == expected
+
+
 def test_write_csv_with_metadata(tmpdir):
     file_path = f'{tmpdir}/test_write_csv_with_metadata.csv'
     controller = build_flow([
