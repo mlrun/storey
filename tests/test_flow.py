@@ -542,7 +542,7 @@ def test_batch_with_timeout():
 
 
 async def async_test_write_csv(tmpdir):
-    file_path = f'{tmpdir}/test_write_csv.csv'
+    file_path = f'{tmpdir}/test_write_csv/out.csv'
     controller = await build_flow([
         AsyncSource(),
         WriteToCSV(file_path, columns=['n', 'n*10'], header=True)
@@ -934,7 +934,7 @@ def test_write_to_parquet(tmpdir):
 
 
 def test_write_to_parquet_single_file_on_termination(tmpdir):
-    out_file = f'{tmpdir}/test_write_to_parquet_single_file_on_termination_{uuid.uuid4().hex}.parquet'
+    out_file = f'{tmpdir}/test_write_to_parquet_single_file_on_termination_{uuid.uuid4().hex}/out.parquet'
     columns = ['my_int', 'my_string']
     controller = build_flow([
         Source(),

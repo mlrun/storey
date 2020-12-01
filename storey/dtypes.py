@@ -111,9 +111,13 @@ def sort_windows_and_convert_to_millis(windows):
     if len(windows) == 0:
         raise ValueError('Windows list can not be empty')
 
-    # Validate windows order
-    windows_tuples = [(parse_duration(window), window) for window in windows]
-    windows_tuples.sort(key=lambda tup: tup[0])
+    if isinstance(windows[0], str):
+        # Validate windows order
+        windows_tuples = [(parse_duration(window), window) for window in windows]
+        windows_tuples.sort(key=lambda tup: tup[0])
+    else:
+        # Internally windows can be passed as tuples
+        windows_tuples = windows
     return windows_tuples
 
 
@@ -123,10 +127,9 @@ class FixedWindows(WindowsBase):
     For example: 1h will represent 1h windows starting every round hour.
 
     :param windows: List of time windows in the format [0-9]+[smhd]
-    :type windows: list of string
     """
 
-    def __init__(self, windows):
+    def __init__(self, windows: List[str]):
         windows_tuples = sort_windows_and_convert_to_millis(windows)
         # The period should be a divisor of the unit of the smallest window,
         # for example if the smallest request window is 2h, the period will be 1h / `bucketPerWindow`
@@ -149,20 +152,18 @@ class SlidingWindows(WindowsBase):
     For example: 1h will represent 1h windows starting from the current time.
 
     :param windows: List of time windows in the format [0-9]+[smhd]
-    :type windows: list of string
     :param period: Period in the format [0-9]+[smhd]
-    :type period: string
     """
 
-    def __init__(self, windows, period=None):
+    def __init__(self, windows: List[str], period: Optional[str] = None):
         windows_tuples = sort_windows_and_convert_to_millis(windows)
 
         if period:
             period_millis = parse_duration(period)
 
             # Verify the given period is a divisor of the windows
-            for window in windows:
-                if not parse_duration(window) % period_millis == 0:
+            for window in windows_tuples:
+                if not window[0] % period_millis == 0:
                     raise ValueError(
                         f'Period must be a divisor of every window, but period {period} does not divide {window}')
         else:

@@ -321,7 +321,9 @@ class AggregateStore:
     def get_keys(self):
         return self._cache.keys()
 
-    def add_key(self, key, base_timestamp, initial_data):
+    async def add_key(self, key, base_timestamp, initial_data):
+        if not self._schema:
+            await self.get_or_save_schema()
         self._cache[key] = AggregatedStoreElement(key, self._aggregates, base_timestamp, initial_data)
 
     async def get_or_save_schema(self):
@@ -333,12 +335,11 @@ class AggregateStore:
                 for aggr in self._aggregates:
                     schema_aggr = self._schema[aggr.name]
                     window_type = schema_aggr['window_type']
-                    window_secs = str(int(aggr.windows.max_window_millis / 1000)) + 's'
                     period_secs = str(int(schema_aggr['period_millis'] / 1000)) + 's'
                     if window_type == "SlidingWindow":
-                        aggr.windows = SlidingWindows([window_secs], period_secs)
+                        aggr.windows = SlidingWindows(aggr.windows.windows, period_secs)
                     elif window_type == "FixedWindow":
-                        aggr.windows = FixedWindows([window_secs])
+                        aggr.windows = FixedWindows([aggr.windows.windows])
                         aggr.windows.period_millis = schema_aggr['period_millis']
                     else:
                         raise TypeError(f'"{window_type}" unknown window type')
