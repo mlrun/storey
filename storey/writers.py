@@ -1,6 +1,7 @@
 import asyncio
 import csv
 import json
+import os
 import queue
 import random
 from typing import Optional, Union, List, Callable
@@ -97,7 +98,7 @@ class _Writer:
         return data
 
 
-class WriteToCSV(Flow, _Writer):
+class WriteToCSV(_Batching, _Writer):
     """Writes events to a CSV file.
 
     :param path: path where CSV file will be written.
@@ -108,59 +109,58 @@ class WriteToCSV(Flow, _Writer):
     :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries. If True, columns will be
     inferred from data and used in place of explicit columns list if none was provided, or appended to the provided list. If header is True
     and columns is not provided, infer_columns_from_data=True is implied. Optional. Default to False if columns is provided, True otherwise.
-    :param force_flush_after: Number of lines to write before flushing data to the output file. Defaults to 1 (after every line). Set to
-    zero to disable (leave flushing to the standard library).
+    :param max_lines_before_flush: Number of lines to write before flushing data to the output file. Defaults to 128.
+    :param max_seconds_before_flush: Maximum delay in seconds before flushing lines. Defaults to 3.
     :param name: Name of this step, as it should appear in logs. Defaults to class name (WriteToCSV).
     :type name: string
     """
 
     def __init__(self, path: str, columns: Optional[List[str]] = None, header: bool = False, infer_columns_from_data: bool = False,
-                 force_flush_after: int = 1, **kwargs):
-        Flow.__init__(self, **kwargs)
+                 max_lines_before_flush: int = 128, max_seconds_before_flush: int = 3, **kwargs):
+        _Batching.__init__(self, max_events=max_lines_before_flush, timeout_secs=max_seconds_before_flush, **kwargs)
         _Writer.__init__(self, columns, infer_columns_from_data or header and not columns)
 
         self._path = path
         self._write_header = header
-        self._force_flush_after = force_flush_after if force_flush_after > 0 else 0
-        self._write_loop_future = None
+        self._blocking_io_loop_future = None
         self._data_buffer = queue.Queue(1024)
 
-    def _run_in_executor(self):
+    def _blocking_io_loop(self):
         got_first_event = False
+        os.makedirs(os.path.dirname(self._path), exist_ok=True)
         with open(self._path, mode='w') as f:
             csv_writer = csv.writer(f)
             line_number = 0
             while True:
-                data = self._data_buffer.get()
-                if data is _termination_obj:
+                batch = self._data_buffer.get()
+                if batch is _termination_obj:
                     break
-                if not got_first_event:
-                    if not self._columns and self._write_header:
-                        raise ValueError('columns must be defined when header is True and events type is not dictionary')
-                    if self._write_header:
-                        csv_writer.writerow(self._columns)
-                    got_first_event = True
-                csv_writer.writerow(data)
-                line_number += 1
-                if self._force_flush_after and line_number % self._force_flush_after == 0:
-                    f.flush()
+                for data in batch:
+                    if not got_first_event:
+                        if not self._columns and self._write_header:
+                            raise ValueError('columns must be defined when header is True and events type is not dictionary')
+                        if self._write_header:
+                            csv_writer.writerow(self._columns)
+                        got_first_event = True
+                    csv_writer.writerow(data)
+                    line_number += 1
+                f.flush()
 
-    async def _do(self, event):
-        if not self._write_loop_future:
-            self._write_loop_future = asyncio.get_running_loop().run_in_executor(None, self._run_in_executor)
-        data = event
-        if data is not _termination_obj:
-            try:
-                data = self._event_to_writer_entry(event)
-            except BaseException as ex:
-                asyncio.get_running_loop().run_in_executor(None, lambda: self._data_buffer.put(_termination_obj))
-                raise ex
-        asyncio.get_running_loop().run_in_executor(None, lambda: self._data_buffer.put(data))
-        downstream_res = await self._do_downstream(event)
+    def _event_to_batch_entry(self, event):
+        return self._event_to_writer_entry(event)
 
-        if event is _termination_obj and self._write_loop_future:
-            await self._write_loop_future
-        return downstream_res
+    async def _terminate(self):
+        asyncio.get_running_loop().run_in_executor(None, lambda: self._data_buffer.put(_termination_obj))
+        await self._blocking_io_loop_future
+
+    async def _emit(self, batch, batch_time):
+        if not self._blocking_io_loop_future:
+            self._blocking_io_loop_future = asyncio.get_running_loop().run_in_executor(None, self._blocking_io_loop)
+
+        asyncio.get_running_loop().run_in_executor(None, lambda: self._data_buffer.put(batch))
+
+        for data in batch:
+            await self._do_downstream(data)
 
 
 class WriteToParquet(_Batching, _Writer):
@@ -192,11 +192,15 @@ class WriteToParquet(_Batching, _Writer):
 
         self._path = path
         self._partition_cols = partition_cols
+        self._first_event = True
 
     def _event_to_batch_entry(self, event):
         return self._event_to_writer_entry(event)
 
     async def _emit(self, batch, batch_time):
+        if self._first_event:
+            await asyncio.get_running_loop().run_in_executor(None, lambda: os.makedirs(os.path.dirname(self._path), exist_ok=True))
+            self._first_event = False
         df_columns = []
         df_columns.extend(self._columns)
         if self._index_cols:

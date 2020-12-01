@@ -588,6 +588,9 @@ class _Batching(Flow):
     async def _emit(self, batch, batch_time):
         raise NotImplementedError
 
+    async def _terminate(self):
+        pass
+
     async def _sleep_and_emit(self):
         await asyncio.sleep(self._timeout_secs)
         await self._emit_batch()
@@ -600,6 +603,7 @@ class _Batching(Flow):
             if self._timeout_task and not self._timeout_task.cancelled():
                 self._timeout_task.cancel()
             await self._emit_batch()
+            await self._terminate()
             return await self._do_downstream(_termination_obj)
         else:
             if len(self._batch) == 0:
