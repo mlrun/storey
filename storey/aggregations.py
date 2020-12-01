@@ -439,8 +439,9 @@ class AggregationBuckets:
         else:
             self.explicit_windows = initial_windows
 
-        self._period_millis = initial_windows.period_millis
-        self._total_number_of_buckets = initial_windows.total_number_of_buckets
+        self.period_millis = initial_windows.period_millis
+        self.max_window_millis = initial_windows.max_window_millis
+        self.total_number_of_buckets = initial_windows.total_number_of_buckets
 
     def init(self):
         if self._initial_data:
@@ -452,7 +453,7 @@ class AggregationBuckets:
             else:
                 self.first_bucket_start_time = self.hidden_windows.get_window_start_time_by_time(self.base_time)
             self.last_bucket_start_time = \
-                self.first_bucket_start_time + (self._total_number_of_buckets - 1) * self._period_millis
+                self.first_bucket_start_time + (self.total_number_of_buckets - 1) * self.period_millis
 
             self.initialize_column()
 
@@ -461,6 +462,7 @@ class AggregationBuckets:
             current = self.hidden_windows
         else:
             current = self.explicit_windows
+
         if current:
             if current.period_millis != new.period_millis:
                 raise ValueError('Cannot use different periods for same aggregation')
@@ -474,30 +476,36 @@ class AggregationBuckets:
             sorted(set(current), key=lambda tup: tup[0])
         else:
             current = new
-        if self._total_number_of_buckets < current.total_number_of_buckets:
-            self._total_number_of_buckets = current.total_number_of_buckets
+            if is_hidden:
+                self.hidden_windows = new
+            else:
+                self.explicit_windows = new
+        if self.total_number_of_buckets < current.total_number_of_buckets:
+            self.total_number_of_buckets = current.total_number_of_buckets
+        if self.max_window_millis < current.max_window_millis:
+            self.max_window_millis = current.max_window_millis
         self.first_bucket_start_time = current.get_window_start_time_by_time(self.base_time)
         self.last_bucket_start_time = \
-            self.first_bucket_start_time + (self._total_number_of_buckets - 1) * self._period_millis
+            self.first_bucket_start_time + (self.total_number_of_buckets - 1) * self.period_millis
 
     def initialize_column(self):
         self.buckets = []
 
-        for _ in range(self._total_number_of_buckets):
+        for _ in range(self.total_number_of_buckets):
             self.buckets.append(self.new_aggregation_value())
 
     def get_or_advance_bucket_index_by_timestamp(self, timestamp):
-        if timestamp < self.last_bucket_start_time + self._period_millis:
-            bucket_index = int((timestamp - self.first_bucket_start_time) / self._period_millis)
+        if timestamp < self.last_bucket_start_time + self.period_millis:
+            bucket_index = int((timestamp - self.first_bucket_start_time) / self.period_millis)
             return bucket_index
         else:
             self.advance_window_period(timestamp)
-            return self._total_number_of_buckets - 1  # return last index
+            return self.total_number_of_buckets - 1  # return last index
 
     #  Get the index of the bucket corresponding to the requested timestamp
     #  Note: This method can return indexes outside the 'buckets' array
     def get_bucket_index_by_timestamp(self, timestamp):
-        bucket_index = int((timestamp - self.first_bucket_start_time) / self._period_millis)
+        bucket_index = int((timestamp - self.first_bucket_start_time) / self.period_millis)
         return bucket_index
 
     def get_nearest_window_index_by_timestamp(self, timestamp, window_millis):
@@ -505,11 +513,11 @@ class AggregationBuckets:
         return bucket_index
 
     def advance_window_period(self, advance_to):
-        desired_bucket_index = int((advance_to - self.first_bucket_start_time) / self._period_millis)
-        buckets_to_advance = desired_bucket_index - (self._total_number_of_buckets - 1)
+        desired_bucket_index = int((advance_to - self.first_bucket_start_time) / self.period_millis)
+        buckets_to_advance = desired_bucket_index - (self.total_number_of_buckets - 1)
 
         if buckets_to_advance > 0:
-            if buckets_to_advance > self._total_number_of_buckets:
+            if buckets_to_advance > self.total_number_of_buckets:
                 self.initialize_column()
             else:
                 self.buckets = self.buckets[buckets_to_advance:]
@@ -517,9 +525,9 @@ class AggregationBuckets:
                     self.buckets.extend([self.new_aggregation_value()])
 
             self.first_bucket_start_time = \
-                self.first_bucket_start_time + buckets_to_advance * self._period_millis
+                self.first_bucket_start_time + buckets_to_advance * self.period_millis
             self.last_bucket_start_time = \
-                self.last_bucket_start_time + buckets_to_advance * self._period_millis
+                self.last_bucket_start_time + buckets_to_advance * self.period_millis
 
     def aggregate(self, timestamp, value):
         index = self.get_or_advance_bucket_index_by_timestamp(timestamp)
@@ -528,7 +536,7 @@ class AggregationBuckets:
         self.add_to_pending(timestamp, value)
 
     def add_to_pending(self, timestamp, value):
-        bucket_start_time = int(timestamp / self._period_millis) * self._period_millis
+        bucket_start_time = int(timestamp / self.period_millis) * self.period_millis
         if bucket_start_time not in self.pending_aggr:
             self.pending_aggr[bucket_start_time] = self.new_aggregation_value()
 
@@ -568,18 +576,15 @@ class AggregationBuckets:
             if current_time_bucket_index < 0:
                 result[f'{self.name}_{self.aggregation}_{window_string}'] = aggregated_value.get_value()
 
-            number_of_buckets_backwards = int((window_millis - prev_windows_millis) / self._period_millis)
+            number_of_buckets_backwards = int((window_millis - prev_windows_millis) / self.period_millis)
             last_bucket_to_aggregate = current_time_bucket_index - number_of_buckets_backwards + 1
 
             if last_bucket_to_aggregate < 0:
                 last_bucket_to_aggregate = 0
 
-            print(self.aggregation + " current_time_bucket_index " + str(current_time_bucket_index) + " last_bucket_to_aggregate " + str(last_bucket_to_aggregate) + " len(self.buckets) "+str(len(self.buckets)))
-            print('[%s]' % ', '.join(map(str, loop_over.windows)))
             for bucket_index in range(current_time_bucket_index, last_bucket_to_aggregate - 1, -1):
                 if bucket_index < len(self.buckets):
                     t, v = self.buckets[bucket_index].get_value()
-                    print(" t " + str(t) + " v "+str(v))
 
                     aggregated_value.aggregate(t, v)
 
@@ -589,13 +594,11 @@ class AggregationBuckets:
             # create a feature for the current time window
             result[f'{self.name}_{self.aggregation}_{window_string}'] = aggregated_value.get_value()[1]
             prev_windows_millis = window_millis
-        print("res")
-        for key, value in result.items():
-            print(key, value)
+
         return result
 
     def initialize_from_data(self):
-        self.buckets = [None] * self._total_number_of_buckets
+        self.buckets = [None] * self.total_number_of_buckets
         aggregation_bucket_initial_data = {}
 
         for key, value in self._initial_data.items():
@@ -609,7 +612,7 @@ class AggregationBuckets:
             timestamp1, timestamp2 = aggregation_bucket_initial_data.keys()
             first_time, last_time = min(timestamp1, timestamp2), max(timestamp1, timestamp2)
 
-            bucket_index = self._total_number_of_buckets - 1
+            bucket_index = self.total_number_of_buckets - 1
 
             # Starting with the latest bucket
             for i in range(len(aggregation_bucket_initial_data[last_time]) - 1, 0, -1):
@@ -621,9 +624,9 @@ class AggregationBuckets:
                     bucket_index = bucket_index - 1
 
                     if not self.last_bucket_start_time:
-                        self.last_bucket_start_time = last_time + i * self._period_millis
+                        self.last_bucket_start_time = last_time + i * self.period_millis
                         self.first_bucket_start_time = self.last_bucket_start_time - (
-                                self._total_number_of_buckets - 1) * self._period_millis
+                                self.total_number_of_buckets - 1) * self.period_millis
 
             for i in range(len(aggregation_bucket_initial_data[first_time]) - 1, 0, -1):
                 curr_value = aggregation_bucket_initial_data[first_time][i]
@@ -636,7 +639,7 @@ class AggregationBuckets:
             first_time = list(aggregation_bucket_initial_data.keys())[0]
             self.first_bucket_start_time = first_time
             self.last_bucket_start_time = \
-                self.first_bucket_start_time + (self._total_number_of_buckets - 1) * self._period_millis
+                self.first_bucket_start_time + (self.total_number_of_buckets - 1) * self.period_millis
 
             i = 0
             for val in aggregation_bucket_initial_data[first_time]:

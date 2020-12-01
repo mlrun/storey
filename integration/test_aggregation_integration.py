@@ -195,9 +195,10 @@ def test_query_aggregate_by_key(setup_teardown_test, partitioned_by_key):
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
 
-@pytest.mark.parametrize('partitioned_by_key', [True, False])
-def test_aggregate_and_query_with_dependent_aggrs_different_windows(setup_teardown_test, partitioned_by_key):
-    table = Table(setup_teardown_test, V3ioDriver(), partitioned_by_key=partitioned_by_key)
+@pytest.mark.parametrize('query_aggregations', [["number_of_stuff_sum_1h", "number_of_stuff_avg_2h"],
+                                                ["number_of_stuff_avg_2h", "number_of_stuff_sum_1h"]])
+def test_aggregate_and_query_with_dependent_aggrs_different_windows(setup_teardown_test, query_aggregations):
+    table = Table(setup_teardown_test, V3ioDriver())
 
     controller = build_flow([
         Source(),
@@ -244,7 +245,7 @@ def test_aggregate_and_query_with_dependent_aggrs_different_windows(setup_teardo
     other_table = Table(setup_teardown_test, V3ioDriver())
     controller = build_flow([
         Source(),
-        QueryByKey(["number_of_stuff_avg_2h", "number_of_stuff_sum_1h"],
+        QueryByKey(query_aggregations,
                    other_table),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
