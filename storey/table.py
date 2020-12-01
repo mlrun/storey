@@ -38,7 +38,7 @@ class Table:
             aggregate_initial_data, additional_data = await self._storage._load_aggregates_by_key(self._container, self._table_path, key)
 
             # Create new aggregation element
-            self._aggregation_store.add_key(key, timestamp, aggregate_initial_data)
+            await self._aggregation_store.add_key(key, timestamp, aggregate_initial_data)
 
             if additional_data:
                 # Add additional data to simple cache

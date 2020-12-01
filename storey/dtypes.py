@@ -106,6 +106,12 @@ class WindowsBase:
         self.windows = windows  # list of tuples of the form (3600000, '1h')
         self.total_number_of_buckets = int(self.max_window_millis / self.period_millis)
 
+    def get_window_string_from_tuples(self):
+        window_strs = []
+        for window in self.windows:
+            window_strs.append(window[1])
+        return window_strs
+
 
 def sort_windows_and_convert_to_millis(windows):
     if len(windows) == 0:
