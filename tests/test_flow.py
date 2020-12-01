@@ -542,7 +542,7 @@ def test_batch_with_timeout():
 
 
 async def async_test_write_csv(tmpdir):
-    file_path = f'{tmpdir}/test_write_csv.csv'
+    file_path = f'{tmpdir}/test_write_csv/out.csv'
     controller = await build_flow([
         AsyncSource(),
         WriteToCSV(file_path, columns=['n', 'n*10'], header=True)
