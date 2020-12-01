@@ -11,6 +11,38 @@ def append_return(lst, x):
     return lst
 
 
+def test_sliding_window_simple_sum():
+    controller = build_flow([
+        Source(),
+        AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["avg"],
+                                        SlidingWindows(['1h'], '10m'))],
+                       Table("test", NoopDriver())),
+        Reduce([], lambda acc, x: append_return(acc, x)),
+    ]).run()
+
+    for i in range(10):
+        data = {'col1': i}
+        controller.emit(data, 'tal', test_base_time + timedelta(minutes=25 * i))
+
+    controller.terminate()
+    actual = controller.await_termination()
+    expected_results = [
+        {'col1': 0, 'number_of_stuff_avg_1h': 0.0},
+        {'col1': 1, 'number_of_stuff_avg_1h': 0.5},
+        {'col1': 2, 'number_of_stuff_avg_1h': 1.0},
+        {'col1': 3, 'number_of_stuff_avg_1h': 2.0},
+        {'col1': 4, 'number_of_stuff_avg_1h': 3.0},
+        {'col1': 5, 'number_of_stuff_avg_1h': 4.0},
+        {'col1': 6, 'number_of_stuff_avg_1h': 5.0},
+        {'col1': 7, 'number_of_stuff_avg_1h': 6.0},
+        {'col1': 8, 'number_of_stuff_avg_1h': 7.0},
+        {'col1': 9, 'number_of_stuff_avg_1h': 8.0}
+    ]
+
+    assert actual == expected_results, \
+        f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
+
+
 def test_sliding_window_simple_aggregation_flow():
     controller = build_flow([
         Source(),
@@ -67,7 +99,7 @@ def test_sliding_window_multiple_keys_aggregation_flow():
     controller = build_flow([
         Source(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg"],
-                                        SlidingWindows(['1h', '2h', '24h'], '10m'))],
+                                        SlidingWindows(['1h'], '10m'))],
                        Table("test", NoopDriver())),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
@@ -79,26 +111,26 @@ def test_sliding_window_multiple_keys_aggregation_flow():
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [
-        {'col1': 0, 'number_of_stuff_sum_1h': 0, 'number_of_stuff_sum_2h': 0, 'number_of_stuff_sum_24h': 0,
-         'number_of_stuff_avg_1h': 0.0, 'number_of_stuff_avg_2h': 0.0, 'number_of_stuff_avg_24h': 0.0},
-        {'col1': 1, 'number_of_stuff_sum_1h': 1, 'number_of_stuff_sum_2h': 1, 'number_of_stuff_sum_24h': 1,
-         'number_of_stuff_avg_1h': 1.0, 'number_of_stuff_avg_2h': 1.0, 'number_of_stuff_avg_24h': 1.0},
-        {'col1': 2, 'number_of_stuff_sum_1h': 2, 'number_of_stuff_sum_2h': 2, 'number_of_stuff_sum_24h': 2,
-         'number_of_stuff_avg_1h': 1.0, 'number_of_stuff_avg_2h': 1.0, 'number_of_stuff_avg_24h': 1.0},
-        {'col1': 3, 'number_of_stuff_sum_1h': 4, 'number_of_stuff_sum_2h': 4, 'number_of_stuff_sum_24h': 4,
-         'number_of_stuff_avg_1h': 2.0, 'number_of_stuff_avg_2h': 2.0, 'number_of_stuff_avg_24h': 2.0},
-        {'col1': 4, 'number_of_stuff_sum_1h': 6, 'number_of_stuff_sum_2h': 6, 'number_of_stuff_sum_24h': 6,
-         'number_of_stuff_avg_1h': 2.0, 'number_of_stuff_avg_2h': 2.0, 'number_of_stuff_avg_24h': 2.0},
-        {'col1': 5, 'number_of_stuff_sum_1h': 9, 'number_of_stuff_sum_2h': 9, 'number_of_stuff_sum_24h': 9,
-         'number_of_stuff_avg_1h': 3.0, 'number_of_stuff_avg_2h': 3.0, 'number_of_stuff_avg_24h': 3.0},
-        {'col1': 6, 'number_of_stuff_sum_1h': 12, 'number_of_stuff_sum_2h': 12, 'number_of_stuff_sum_24h': 12,
-         'number_of_stuff_avg_1h': 3.0, 'number_of_stuff_avg_2h': 3.0, 'number_of_stuff_avg_24h': 3.0},
-        {'col1': 7, 'number_of_stuff_sum_1h': 16, 'number_of_stuff_sum_2h': 16, 'number_of_stuff_sum_24h': 16,
-         'number_of_stuff_avg_1h': 4.0, 'number_of_stuff_avg_2h': 4.0, 'number_of_stuff_avg_24h': 4.0},
-        {'col1': 8, 'number_of_stuff_sum_1h': 20, 'number_of_stuff_sum_2h': 20, 'number_of_stuff_sum_24h': 20,
-         'number_of_stuff_avg_1h': 4.0, 'number_of_stuff_avg_2h': 4.0, 'number_of_stuff_avg_24h': 4.0},
-        {'col1': 9, 'number_of_stuff_sum_1h': 25, 'number_of_stuff_sum_2h': 25, 'number_of_stuff_sum_24h': 25,
-         'number_of_stuff_avg_1h': 5.0, 'number_of_stuff_avg_2h': 5.0, 'number_of_stuff_avg_24h': 5.0}]
+        {'col1': 0, 'number_of_stuff_sum_1h': 0,
+         'number_of_stuff_avg_1h': 0.0},
+        {'col1': 1, 'number_of_stuff_sum_1h': 1,
+         'number_of_stuff_avg_1h': 1.0},
+        {'col1': 2, 'number_of_stuff_sum_1h': 2,
+         'number_of_stuff_avg_1h': 1.0},
+        {'col1': 3, 'number_of_stuff_sum_1h': 4,
+         'number_of_stuff_avg_1h': 2.0},
+        {'col1': 4, 'number_of_stuff_sum_1h': 6,
+         'number_of_stuff_avg_1h': 2.0},
+        {'col1': 5, 'number_of_stuff_sum_1h': 9,
+         'number_of_stuff_avg_1h': 3.0},
+        {'col1': 6, 'number_of_stuff_sum_1h': 12,
+         'number_of_stuff_avg_1h': 3.0},
+        {'col1': 7, 'number_of_stuff_sum_1h': 16,
+         'number_of_stuff_avg_1h': 4.0},
+        {'col1': 8, 'number_of_stuff_sum_1h': 20,
+         'number_of_stuff_avg_1h': 4.0},
+        {'col1': 9, 'number_of_stuff_sum_1h': 25,
+         'number_of_stuff_avg_1h': 5.0}]
 
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'

@@ -105,32 +105,6 @@ class WindowsBase:
         self.period_millis = period
         self.windows = windows  # list of tuples of the form (3600000, '1h')
         self.total_number_of_buckets = int(self.max_window_millis / self.period_millis)
-        self.hidden_windows = []
-        self.explicit_windows = []
-
-    def merge_window(self, windows, hidden):
-        changed = False
-        if self.max_window_millis < windows.max_window_millis:
-            self.max_window_millis = windows.max_window_millis
-            changed = True
-        if self.period_millis < windows.period_millis:
-            self.period_millis = windows.period_millis
-            changed = True
-        if self.smallest_window_millis > windows.smallest_window_millis:
-            self.smallest_window_millis = windows.smallest_window_millis
-            changed = True
-        if self.total_number_of_buckets < windows.total_number_of_buckets:
-            self.total_number_of_buckets = windows.total_number_of_buckets
-            changed = True
-
-        if hidden:
-            self.hidden_windows.extend(windows.windows)
-            self.hidden_windows = sorted(set(self.hidden_windows), key=lambda tup: tup[0])
-        else:
-            self.explicit_windows.extend(windows.windows)
-            self.explicit_windows = sorted(set(self.explicit_windows), key=lambda tup: tup[0])
-
-        return changed
 
 
 def sort_windows_and_convert_to_millis(windows):
