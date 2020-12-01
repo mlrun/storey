@@ -40,7 +40,6 @@ class AggregateByKey(Flow):
         Flow.__init__(self, **kwargs)
         aggregates = self._parse_aggregates(aggregates)
         self._aggregates_store = AggregateStore(aggregates, use_windows_from_schema=use_windows_from_schema)
-        self._closeables = [table]
 
         self._table = table
         if isinstance(table, str):
