@@ -339,7 +339,7 @@ class AggregateStore:
                     if window_type == "SlidingWindow":
                         aggr.windows = SlidingWindows(aggr.windows.windows, period_secs)
                     elif window_type == "FixedWindow":
-                        aggr.windows = FixedWindows([aggr.windows.windows])
+                        aggr.windows = FixedWindows(aggr.windows.windows)
                         aggr.windows.period_millis = schema_aggr['period_millis']
                     else:
                         raise TypeError(f'"{window_type}" unknown window type')
