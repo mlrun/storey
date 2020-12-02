@@ -128,7 +128,8 @@ def test_write_dict_to_v3io_stream():
     asyncio.run(SetupStream().setup(stream_path))
     controller = build_flow([
         Source(),
-        WriteToV3IOStream(V3ioDriver(), stream_path, sharding_func=lambda event: int(event.key), write_metadata_fields=['key'])
+        WriteToV3IOStream(V3ioDriver(), stream_path, sharding_func=lambda event: int(event.key), columns=['mydata', '$key'],
+                          infer_columns_from_data=True)
     ]).run()
     expected_shard0 = []
     expected_shard1 = []

@@ -245,7 +245,7 @@ class AsyncSource(Flow):
                     return termination_result
             except BaseException as ex:
                 self._ex = ex
-                if event._awaitable_result:
+                if event is not _termination_obj and event._awaitable_result:
                     awaitable = event._awaitable_result._set_error(ex)
                     if awaitable:
                         await awaitable
