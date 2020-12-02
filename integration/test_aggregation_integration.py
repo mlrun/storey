@@ -88,11 +88,13 @@ def test_aggregate_and_query_with_different_windows(setup_teardown_test, partiti
     base_time = test_base_time + timedelta(minutes=25 * items_in_ingest_batch)
     data = {'col1': items_in_ingest_batch}
     controller.emit(data, 'tal', base_time)
+    controller.emit(data, 'tal', base_time + timedelta(minutes=25))
 
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [
-        {'col1': 10, 'number_of_stuff_sum_1h': 17, 'number_of_stuff_min_1h': 8, 'number_of_stuff_max_1h': 9, 'number_of_stuff_avg_1h': 8.5}
+        {'col1': 10, 'number_of_stuff_sum_1h': 17, 'number_of_stuff_min_1h': 8, 'number_of_stuff_max_1h': 9, 'number_of_stuff_avg_1h': 8.5},
+        {'col1': 10, 'number_of_stuff_sum_1h': 9.0, 'number_of_stuff_min_1h': 9.0, 'number_of_stuff_max_1h': 9.0,'number_of_stuff_avg_1h': 9.0},
     ]
 
     assert actual == expected_results, \

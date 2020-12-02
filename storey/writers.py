@@ -1,6 +1,7 @@
 import asyncio
 import csv
 import json
+import os
 import queue
 import random
 from typing import Optional, Union, List, Callable
@@ -114,10 +115,10 @@ class WriteToCSV(_Batching, _Writer):
     :type name: string
     """
 
-    def __init__(self, path: str, columns: Optional[List[str]] = None, header: bool = False, infer_columns_from_data: bool = False,
+    def __init__(self, path: str, columns: Optional[List[str]] = None, header: bool = False, infer_columns_from_data: Optional[bool] = None,
                  max_lines_before_flush: int = 128, max_seconds_before_flush: int = 3, **kwargs):
         _Batching.__init__(self, max_events=max_lines_before_flush, timeout_secs=max_seconds_before_flush, **kwargs)
-        _Writer.__init__(self, columns, infer_columns_from_data or header and not columns)
+        _Writer.__init__(self, columns, infer_columns_from_data)
 
         self._path = path
         self._write_header = header
@@ -128,6 +129,7 @@ class WriteToCSV(_Batching, _Writer):
     def _blocking_io_loop(self):
         try:
             got_first_event = False
+            os.makedirs(os.path.dirname(self._path), exist_ok=True)
             with open(self._path, mode='w') as f:
                 csv_writer = csv.writer(f)
                 line_number = 0
@@ -200,11 +202,15 @@ class WriteToParquet(_Batching, _Writer):
 
         self._path = path
         self._partition_cols = partition_cols
+        self._first_event = True
 
     def _event_to_batch_entry(self, event):
         return self._event_to_writer_entry(event)
 
     async def _emit(self, batch, batch_time):
+        if self._first_event:
+            await asyncio.get_running_loop().run_in_executor(None, lambda: os.makedirs(os.path.dirname(self._path), exist_ok=True))
+            self._first_event = False
         df_columns = []
         df_columns.extend(self._columns)
         if self._index_cols:
@@ -235,9 +241,9 @@ class WriteToTSDB(_Batching, _Writer):
     """
 
     def __init__(self, path: str, time_col: str = '$time', columns: Union[str, List[str], None] = None,
-                 infer_columns_from_data: bool = False, index_cols: Union[str, List[str], None] = None, v3io_frames: Optional[str] = None,
-                 access_key: Optional[str] = None, container: str = "", rate: str = "", aggr: str = "", aggr_granularity: str = "",
-                 frames_client=None, **kwargs):
+                 infer_columns_from_data: Optional[bool] = None, index_cols: Union[str, List[str], None] = None,
+                 v3io_frames: Optional[str] = None, access_key: Optional[str] = None, container: str = "", rate: str = "", aggr: str = "",
+                 aggr_granularity: str = "", frames_client=None, **kwargs):
         _Batching.__init__(self, **kwargs)
         new_index_cols = [time_col]
         if index_cols:
@@ -406,7 +412,8 @@ class WriteToTable(_ConcurrentByKeyJobExecution, _Writer):
     and columns is not provided, infer_columns_from_data=True is implied. Optional. Default to False if columns is provided, True otherwise.
     """
 
-    def __init__(self, table: Union[Table, str], columns: Optional[List[str]] = None, infer_columns_from_data: bool = False, **kwargs):
+    def __init__(self, table: Union[Table, str], columns: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None,
+                 **kwargs):
         _ConcurrentByKeyJobExecution.__init__(self, **kwargs)
         _Writer.__init__(self, columns, infer_columns_from_data)
         self._table = table

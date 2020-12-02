@@ -542,7 +542,7 @@ def test_batch_with_timeout():
 
 
 async def async_test_write_csv(tmpdir):
-    file_path = f'{tmpdir}/test_write_csv.csv'
+    file_path = f'{tmpdir}/test_write_csv/out.csv'
     controller = await build_flow([
         AsyncSource(),
         WriteToCSV(file_path, columns=['n', 'n*10'], header=True)
@@ -625,6 +625,26 @@ def test_write_csv_infer_columns(tmpdir):
         result = file.read()
 
     expected = "n,n*10\n0,0\n1,10\n2,20\n3,30\n4,40\n5,50\n6,60\n7,70\n8,80\n9,90\n"
+    assert result == expected
+
+
+def test_write_csv_infer_columns_without_header(tmpdir):
+    file_path = f'{tmpdir}/test_write_csv_infer_columns_without_header.csv'
+    controller = build_flow([
+        Source(),
+        WriteToCSV(file_path)
+    ]).run()
+
+    for i in range(10):
+        controller.emit({'n': i, 'n*10': 10 * i})
+
+    controller.terminate()
+    controller.await_termination()
+
+    with open(file_path) as file:
+        result = file.read()
+
+    expected = "0,0\n1,10\n2,20\n3,30\n4,40\n5,50\n6,60\n7,70\n8,80\n9,90\n"
     assert result == expected
 
 
@@ -934,7 +954,7 @@ def test_write_to_parquet(tmpdir):
 
 
 def test_write_to_parquet_single_file_on_termination(tmpdir):
-    out_file = f'{tmpdir}/test_write_to_parquet_single_file_on_termination_{uuid.uuid4().hex}.parquet'
+    out_file = f'{tmpdir}/test_write_to_parquet_single_file_on_termination_{uuid.uuid4().hex}/out.parquet'
     columns = ['my_int', 'my_string']
     controller = build_flow([
         Source(),
