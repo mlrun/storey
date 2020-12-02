@@ -281,6 +281,9 @@ class WriteToV3IOStream(Flow, _Writer):
     :param stream_path: Path to the V3IO stream.
     :param sharding_func: Function for determining the shard ID to which to write each event.
     :param batch_size: Batch size for each write request.
+    :param columns: Fields to be written to stream. Will be extracted from events when an event is a dictionary (other types will be written
+    as is). Use = notation for renaming fields (e.g. write_this=event_field). Use $ notation to refer to metadata ($key, event_time=$time).
+    Optional. Defaults to None (will be inferred if event is dictionary).
     :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries. If True, columns will be
     inferred from data and used in place of explicit columns list if none was provided, or appended to the provided list. If header is True
     and columns is not provided, infer_columns_from_data=True is implied. Optional. Default to False if columns is provided, True otherwise.
