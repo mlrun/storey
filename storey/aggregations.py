@@ -479,9 +479,11 @@ class AggregationBuckets:
 
     def aggregate(self, timestamp, value):
         index = self.get_or_advance_bucket_index_by_timestamp(timestamp)
-        self.buckets[index].aggregate(timestamp, value)
 
-        self.add_to_pending(timestamp, value)
+        # Only aggregate points that are in range
+        if index >= 0:
+            self.buckets[index].aggregate(timestamp, value)
+            self.add_to_pending(timestamp, value)
 
     def add_to_pending(self, timestamp, value):
         bucket_start_time = int(timestamp / self.window.period_millis) * self.window.period_millis
@@ -502,6 +504,9 @@ class AggregationBuckets:
         result = {}
 
         current_time_bucket_index = self.get_bucket_index_by_timestamp(timestamp)
+        if current_time_bucket_index < 0:
+            return result
+
         if isinstance(self.window, FixedWindows):
             current_time_bucket_index = self.get_bucket_index_by_timestamp(self.window.round_up_time_to_window(timestamp) - 1)
 
