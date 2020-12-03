@@ -12,28 +12,8 @@ import v3io_frames as frames
 
 from storey import Filter, JoinWithV3IOTable, SendToHttp, Map, Reduce, Source, HttpRequest, build_flow, \
     WriteToV3IOStream, V3ioDriver, WriteToTSDB, Table, JoinWithTable, MapWithState, WriteToTable
-from .integration_test_utils import V3ioHeaders, append_return, setup_kv_teardown_test, setup_teardown_test, test_base_time
-
-
-class SetupKvTable(V3ioHeaders):
-    async def setup(self, table_path):
-        connector = aiohttp.TCPConnector()
-        client_session = aiohttp.ClientSession(connector=connector)
-        for i in range(1, 10):
-            request_body = json.dumps({'Item': {'secret': {'N': f'{10 - i}'}}})
-            response = await client_session.request(
-                'PUT', f'{self._webapi_url}/{table_path}/{i}', headers=self._put_item_headers, data=request_body, ssl=False)
-            assert response.status == 200, f'Bad response {await response.text()} to request {request_body}'
-
-
-class SetupStream(V3ioHeaders):
-    async def setup(self, stream_path):
-        connector = aiohttp.TCPConnector()
-        client_session = aiohttp.ClientSession(connector=connector)
-        request_body = json.dumps({"ShardCount": 2, "RetentionPeriodHours": 1})
-        response = await client_session.request(
-            'POST', f'{self._webapi_url}/{stream_path}/', headers=self._create_stream_headers, data=request_body, ssl=False)
-        assert response.status == 204, f'Bad response {await response.text()} to request {request_body}'
+from .integration_test_utils import V3ioHeaders, append_return, test_base_time, setup_kv_teardown_test, setup_teardown_test, \
+    setup_stream_teardown_test
 
 
 class GetShardData(V3ioHeaders):
@@ -70,14 +50,13 @@ class GetShardData(V3ioHeaders):
         return data
 
 
-def test_join_with_v3io_table():
-    table_path = f'bigdata/test_join_with_v3io_table/{int(time.time_ns() / 1000)}'
-    asyncio.run(SetupKvTable().setup(table_path))
+def test_join_with_v3io_table(setup_kv_teardown_test):
+    table_path = setup_kv_teardown_test
     controller = build_flow([
         Source(),
         Map(lambda x: x + 1),
         Filter(lambda x: x < 8),
-        JoinWithV3IOTable(V3ioDriver(), lambda x: x, lambda x, y: y['secret'], table_path),
+        JoinWithV3IOTable(V3ioDriver(), lambda x: x, lambda x, y: y['age'], table_path),
         Reduce(0, lambda x, y: x + y)
     ]).run()
     for i in range(10):
@@ -104,9 +83,8 @@ def test_join_with_http():
     assert termination_result == 200 * 7
 
 
-def test_write_to_v3io_stream():
-    stream_path = f'bigdata/test_write_to_v3io_stream/{int(time.time_ns() / 1000)}/'
-    asyncio.run(SetupStream().setup(stream_path))
+def test_write_to_v3io_stream(setup_stream_teardown_test):
+    stream_path = setup_stream_teardown_test
     controller = build_flow([
         Source(),
         Map(lambda x: str(x)),
@@ -123,9 +101,8 @@ def test_write_to_v3io_stream():
     assert shard1_data == [b'1', b'3', b'5', b'7', b'9']
 
 
-def test_write_dict_to_v3io_stream():
-    stream_path = f'bigdata/test_write_dict_to_v3io_stream/{int(time.time_ns() / 1000)}/'
-    asyncio.run(SetupStream().setup(stream_path))
+def test_write_dict_to_v3io_stream(setup_stream_teardown_test):
+    stream_path = setup_stream_teardown_test
     controller = build_flow([
         Source(),
         WriteToV3IOStream(V3ioDriver(), stream_path, sharding_func=lambda event: int(event.key), columns=['$key'],
@@ -155,9 +132,8 @@ def test_write_dict_to_v3io_stream():
     assert shard1_data == expected_shard1
 
 
-def test_write_to_v3io_stream_unbalanced():
-    stream_path = f'bigdata/test_write_to_v3io_stream/{int(time.time_ns() / 1000)}/'
-    asyncio.run(SetupStream().setup(stream_path))
+def test_write_to_v3io_stream_unbalanced(setup_stream_teardown_test):
+    stream_path = setup_stream_teardown_test
     controller = build_flow([
         Source(),
         Map(lambda x: str(x)),
