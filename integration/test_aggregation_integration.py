@@ -5,7 +5,7 @@ import pytest
 from storey import build_flow, Source, Reduce, Table, V3ioDriver, FlowError, MapWithState, AggregateByKey, FieldAggregator, \
     QueryByKey, WriteToTable, Context
 
-from storey.dtypes import SlidingWindows
+from storey.dtypes import SlidingWindows, FixedWindows
 from storey.utils import _split_path
 
 from .integration_test_utils import setup_teardown_test, append_return, test_base_time
@@ -764,3 +764,103 @@ def test_invalid_modify_schema(setup_teardown_test):
         controller.await_termination()
     except FlowError as flow_ex:
         assert isinstance(flow_ex.__cause__, ValueError)
+
+
+def test_query_aggregate_by_key_sliding_window_new_time_exceeds_stored_window(setup_teardown_test):
+    table = Table(setup_teardown_test, V3ioDriver())
+
+    controller = build_flow([
+        Source(),
+        AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["count"],
+                                        SlidingWindows(['30m', '2h'], '1m'))],
+                       table),
+        WriteToTable(table),
+        Reduce([], lambda acc, x: append_return(acc, x)),
+    ]).run()
+
+    items_in_ingest_batch = 3
+    for i in range(items_in_ingest_batch):
+        data = {'col1': i}
+        controller.emit(data, 'tal', test_base_time + timedelta(hours=i))
+
+    controller.terminate()
+    actual = controller.await_termination()
+    expected_results = [
+        {'col1': 0, 'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 1},
+        {'col1': 1, 'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 2},
+        {'col1': 2, 'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 2},
+    ]
+
+    assert actual == expected_results, \
+        f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
+
+    other_table = Table(setup_teardown_test, V3ioDriver())
+    controller = build_flow([
+        Source(),
+        QueryByKey(["number_of_stuff_count_30m", "number_of_stuff_count_2h"],
+                   other_table),
+        Reduce([], lambda acc, x: append_return(acc, x)),
+    ]).run()
+
+    base_time = test_base_time + timedelta(hours=items_in_ingest_batch)
+    data = {'col1': items_in_ingest_batch}
+    controller.emit(data, 'tal', base_time)
+
+    controller.terminate()
+    actual = controller.await_termination()
+    expected_results = [
+        {'col1': 3, 'number_of_stuff_count_30m': 0, 'number_of_stuff_count_2h': 1}
+    ]
+
+    assert actual == expected_results, \
+        f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
+
+
+def test_query_aggregate_by_key_fixed_window_new_time_exceeds_stored_window(setup_teardown_test):
+    table = Table(setup_teardown_test, V3ioDriver())
+
+    controller = build_flow([
+        Source(),
+        AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["count"],
+                                        FixedWindows(['30m', '2h']))],
+                       table),
+        WriteToTable(table),
+        Reduce([], lambda acc, x: append_return(acc, x)),
+    ]).run()
+
+    items_in_ingest_batch = 3
+    for i in range(items_in_ingest_batch):
+        data = {'col1': i}
+        controller.emit(data, 'tal', test_base_time + timedelta(minutes=45*i))
+
+    controller.terminate()
+    actual = controller.await_termination()
+    expected_results = [
+        {'col1': 0, 'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 1},
+        {'col1': 1, 'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 2},
+        {'col1': 2, 'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 3},
+    ]
+
+    assert actual == expected_results, \
+        f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
+
+    other_table = Table(setup_teardown_test, V3ioDriver())
+    controller = build_flow([
+        Source(),
+        QueryByKey(["number_of_stuff_count_30m", "number_of_stuff_count_2h"],
+                   other_table),
+        Reduce([], lambda acc, x: append_return(acc, x)),
+    ]).run()
+
+    base_time = test_base_time + timedelta(hours=items_in_ingest_batch)
+    data = {'col1': items_in_ingest_batch}
+    controller.emit(data, 'tal', base_time)
+
+    controller.terminate()
+    actual = controller.await_termination()
+    expected_results = [
+        {'col1': 3, 'number_of_stuff_count_30m': 0, 'number_of_stuff_count_2h': 1}
+    ]
+
+    assert actual == expected_results, \
+        f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
