@@ -552,7 +552,7 @@ class AggregationBuckets:
             else:
                 self.storage_specific_cache[key] = value
 
-        first_time, last_time = None, list(aggregation_bucket_initial_data.keys())[0]
+        first_time, last_time = None, next(iter(aggregation_bucket_initial_data))
         if len(aggregation_bucket_initial_data.keys()) == 2:
             timestamp1, timestamp2 = aggregation_bucket_initial_data.keys()
             first_time, last_time = min(timestamp1, timestamp2), max(timestamp1, timestamp2)

@@ -17,7 +17,7 @@ class NoopDriver:
     async def _load_schema(self, container, table_path):
         pass
 
-    async def _save_key(self, container, table_path, key, aggr_item, additional_data):
+    async def _save_key(self, container, table_path, key, aggr_item, partitioned_by_key, additional_data):
         pass
 
     async def _load_aggregates_by_key(self, container, table_path, key):
