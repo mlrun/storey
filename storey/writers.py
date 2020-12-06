@@ -124,27 +124,34 @@ class WriteToCSV(_Batching, _Writer):
         self._write_header = header
         self._blocking_io_loop_future = None
         self._data_buffer = queue.Queue(1024)
+        self._blocking_io_loop_failed = False
 
     def _blocking_io_loop(self):
-        got_first_event = False
-        os.makedirs(os.path.dirname(self._path), exist_ok=True)
-        with open(self._path, mode='w') as f:
-            csv_writer = csv.writer(f)
-            line_number = 0
-            while True:
-                batch = self._data_buffer.get()
-                if batch is _termination_obj:
-                    break
-                for data in batch:
-                    if not got_first_event:
-                        if not self._columns and self._write_header:
-                            raise ValueError('columns must be defined when header is True and events type is not dictionary')
-                        if self._write_header:
-                            csv_writer.writerow(self._columns)
-                        got_first_event = True
-                    csv_writer.writerow(data)
-                    line_number += 1
-                f.flush()
+        try:
+            got_first_event = False
+            os.makedirs(os.path.dirname(self._path), exist_ok=True)
+            with open(self._path, mode='w') as f:
+                csv_writer = csv.writer(f)
+                line_number = 0
+                while True:
+                    batch = self._data_buffer.get()
+                    if batch is _termination_obj:
+                        break
+                    for data in batch:
+                        if not got_first_event:
+                            if not self._columns and self._write_header:
+                                raise ValueError('columns must be defined when header is True and events type is not dictionary')
+                            if self._write_header:
+                                csv_writer.writerow(self._columns)
+                            got_first_event = True
+                        csv_writer.writerow(data)
+                        line_number += 1
+                    f.flush()
+        except BaseException as ex:
+            self._blocking_io_loop_failed = True
+            if not self._data_buffer.empty():
+                self._data_buffer.get()
+            raise ex
 
     def _event_to_batch_entry(self, event):
         return self._event_to_writer_entry(event)
@@ -157,7 +164,10 @@ class WriteToCSV(_Batching, _Writer):
         if not self._blocking_io_loop_future:
             self._blocking_io_loop_future = asyncio.get_running_loop().run_in_executor(None, self._blocking_io_loop)
 
-        asyncio.get_running_loop().run_in_executor(None, lambda: self._data_buffer.put(batch))
+        if self._blocking_io_loop_failed:
+            await self._blocking_io_loop_future
+        else:
+            await asyncio.get_running_loop().run_in_executor(None, lambda: self._data_buffer.put(batch))
 
         for data in batch:
             await self._do_downstream(data)
