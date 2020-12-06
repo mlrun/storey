@@ -571,15 +571,15 @@ class AggregationBuckets:
 
         if start_index < len(aggregation_bucket_initial_data[last_time]):
             # Starting with the latest bucket
-            for i in range(start_index, 0, -1):
+            for i in range(start_index, -1, -1):
                 if bucket_index < 0:
                     return
                 curr_value = aggregation_bucket_initial_data[last_time][i]
                 self.buckets[bucket_index] = AggregationValue(self.aggregation, self.max_value, curr_value)
                 bucket_index = bucket_index - 1
 
-            if first_time:
-                for i in range(len(aggregation_bucket_initial_data[first_time]) - 1, 0, -1):
+            if first_time and bucket_index >= 0 and base_time > first_time:
+                for i in range(len(aggregation_bucket_initial_data[first_time]) - 1, -1, -1):
                     curr_value = aggregation_bucket_initial_data[first_time][i]
                     self.buckets[bucket_index] = AggregationValue(self.aggregation, self.max_value, curr_value)
                     bucket_index = bucket_index - 1
@@ -588,8 +588,8 @@ class AggregationBuckets:
                         break
 
         # Initialize every remaining buckets
-        if bucket_index > 0:
-            for i in range(bucket_index+1):
+        if bucket_index >= 0:
+            for i in range(bucket_index + 1):
                 self.buckets[i] = self.new_aggregation_value()
 
     def get_and_flush_pending(self):
