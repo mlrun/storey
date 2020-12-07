@@ -438,13 +438,15 @@ class DataframeSource(_IterableSource):
 
     async def _run_loop(self):
         async for df in _aiter(self._dfs):
-            async for indexes, series in _aiter(df.iterrows()):
-                body = series.to_dict()
-                i = 0
-                for index_name in df.index.names:
-                    if index_name:
-                        body[index_name] = indexes[i]
-                    i += 1
+            async for namedtuple in _aiter(df.itertuples()):
+                body = namedtuple._asdict()
+                index = body.pop('Index')
+                if len(df.index.names) > 1:
+                    for i, index_column in enumerate(df.index.names):
+                        body[index_column] = index[i]
+                elif df.index.names[0] is not None:
+                    body[df.index.names[0]] = index
+
                 key = None
                 if self._key_field:
                     key = body[self._key_field]
