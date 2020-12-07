@@ -421,11 +421,6 @@ class ReadCSV(_IterableSource):
                     return res
 
 
-async def _aiter(iterable):
-    for x in iterable:
-        yield x
-
-
 class DataframeSource(_IterableSource):
     """Use pandas dataframe as input source for a flow.
 
@@ -446,8 +441,8 @@ class DataframeSource(_IterableSource):
         self._id_field = id_column
 
     async def _run_loop(self):
-        async for df in _aiter(self._dfs):
-            async for namedtuple in _aiter(df.itertuples()):
+        for df in self._dfs:
+            for namedtuple in df.itertuples():
                 body = namedtuple._asdict()
                 index = body.pop('Index')
                 if len(df.index.names) > 1:
