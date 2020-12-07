@@ -355,53 +355,62 @@ class ReadCSV(_IterableSource):
             raise ValueError('timestamp_field can only be set to an integer when with_header is false')
 
     def _blocking_io_loop(self):
-        for path in self._paths:
-            with open(path, mode='r') as f:
-                header = None
-                field_name_to_index = None
-                if self._with_header:
-                    line = f.readline()
-                    header = next(csv.reader([line]))
-                    field_name_to_index = {}
-                    for i in range(len(header)):
-                        field_name_to_index[header[i]] = i
-                for line in f:
-                    parsed_line = next(csv.reader([line]))
-                    element = parsed_line
-                    key = None
-                    if header:
-                        if len(parsed_line) != len(header):
-                            raise ValueError(f'CSV line with {len(parsed_line)} fields did not match header with {len(header)} fields')
-                        if self._build_dict:
-                            element = {}
-                            for i in range(len(parsed_line)):
-                                element[header[i]] = parsed_line[i]
-                    if self._key_field:
-                        key_field = self._key_field
-                        if self._with_header and isinstance(key_field, str):
-                            key_field = field_name_to_index[key_field]
-                        key = parsed_line[key_field]
-                    if self._timestamp_field:
-                        timestamp_field = self._timestamp_field
-                        if self._with_header and isinstance(timestamp_field, str):
-                            timestamp_field = field_name_to_index[timestamp_field]
-                        timestamp_str = parsed_line[timestamp_field]
-                        if self._timestamp_format:
-                            timestamp = datetime.strptime(timestamp_str, self._timestamp_format)
+        try:
+            for path in self._paths:
+                with open(path, mode='r') as f:
+                    header = None
+                    field_name_to_index = None
+                    if self._with_header:
+                        line = f.readline()
+                        header = next(csv.reader([line]))
+                        field_name_to_index = {}
+                        for i in range(len(header)):
+                            field_name_to_index[header[i]] = i
+                    for line in f:
+                        parsed_line = next(csv.reader([line]))
+                        element = parsed_line
+                        key = None
+                        if header:
+                            if len(parsed_line) != len(header):
+                                raise ValueError(f'CSV line with {len(parsed_line)} fields did not match header with {len(header)} fields')
+                            if self._build_dict:
+                                element = {}
+                                for i in range(len(parsed_line)):
+                                    element[header[i]] = parsed_line[i]
+                        if self._key_field:
+                            key_field = self._key_field
+                            if self._with_header and isinstance(key_field, str):
+                                key_field = field_name_to_index[key_field]
+                            key = parsed_line[key_field]
+                        if self._timestamp_field:
+                            timestamp_field = self._timestamp_field
+                            if self._with_header and isinstance(timestamp_field, str):
+                                timestamp_field = field_name_to_index[timestamp_field]
+                            timestamp_str = parsed_line[timestamp_field]
+                            if self._timestamp_format:
+                                timestamp = datetime.strptime(timestamp_str, self._timestamp_format)
+                            else:
+                                timestamp = datetime.fromisoformat(timestamp_str)
                         else:
-                            timestamp = datetime.fromisoformat(timestamp_str)
-                    else:
-                        timestamp = datetime.now()
-                    self._event_buffer.put(Event(element, key=key, time=timestamp))
+                            timestamp = datetime.now()
+                        self._event_buffer.put(Event(element, key=key, time=timestamp))
+        except BaseException as ex:
+            self._event_buffer.put(ex)
         self._event_buffer.put(_termination_obj)
+
+    def get_event(self):
+        event = self._event_buffer.get()
+        if isinstance(event, BaseException):
+            raise event
+        return event
 
     async def _run_loop(self):
         asyncio.get_running_loop().run_in_executor(None, self._blocking_io_loop)
 
         def get_multiple():
-            events = [self._event_buffer.get()]
+            events = [self.get_event()]
             while not self._event_buffer.empty() and len(events) < 128:
-                events.append(self._event_buffer.get())
+                events.append(self.get_event())
             return events
 
         while True:
