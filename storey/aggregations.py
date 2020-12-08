@@ -601,7 +601,7 @@ class AggregationBuckets:
 
         return result
 
-    def initialize_from_data(self, start_time):
+    def initialize_from_data(self):
         self.buckets = [None] * self.total_number_of_buckets
         aggregation_bucket_initial_data = {}
 
@@ -682,15 +682,16 @@ class VirtualAggregationBuckets:
         result = {}
 
         args_results = [bucket.get_features(timestamp, get_hidden=True) for bucket in self.args]
-        for j in range(len(self.window.windows)):
-            window_string = self.window.windows[j][1]
-            current_args = []
-            for i in range(len(args_results)):
-                for key, value in args_results[i].items():
-                    if key.endswith('_' + window_string):
-                        current_args.append(value)
-                        break
-            result[f'{self.name}_{self.aggregation}_{window_string}'] = self.aggregation_func(current_args)
+        if args_results[0]:
+            for j in range(len(self.window.windows)):
+                window_string = self.window.windows[j][1]
+                current_args = []
+                for i in range(len(args_results)):
+                    for key, value in args_results[i].items():
+                        if key.endswith('_' + window_string):
+                            current_args.append(value)
+                            break
+                result[f'{self.name}_{self.aggregation}_{window_string}'] = self.aggregation_func(current_args)
         return result
 
 
