@@ -565,6 +565,8 @@ class AggregationBuckets:
         start_index = int((base_time - last_time) / self.window.period_millis)
         if start_index >= len(aggregation_bucket_initial_data[last_time]):
             for _ in range(start_index, len(aggregation_bucket_initial_data[last_time]) - 1, -1):
+                if bucket_index < 0:
+                    return
                 self.buckets[bucket_index] = self.new_aggregation_value()
                 bucket_index = bucket_index - 1
             start_index = len(aggregation_bucket_initial_data[last_time]) - 1
