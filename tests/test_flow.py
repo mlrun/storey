@@ -97,10 +97,10 @@ def test_csv_reader_as_dict_with_key_and_timestamp():
     assert len(termination_result) == 2
     assert termination_result[0].key == 'm1'
     assert termination_result[0].time == datetime(2020, 2, 15, 2, 0)
-    assert termination_result[0].body == {'k': 'm1', 't': datetime(2020, 2, 15, 2, 0), 'v': 8}
+    assert termination_result[0].body == {'k': 'm1', 't': datetime(2020, 2, 15, 2, 0), 'v': 8, 'b': True}
     assert termination_result[1].key == 'm2'
     assert termination_result[1].time == datetime(2020, 2, 16, 2, 0)
-    assert termination_result[1].body == {'k': 'm2', 't': datetime(2020, 2, 16, 2, 0), 'v': 14}
+    assert termination_result[1].body == {'k': 'm2', 't': datetime(2020, 2, 16, 2, 0), 'v': 14, 'b': False}
 
 
 def test_csv_reader_with_key_and_timestamp():
@@ -115,10 +115,10 @@ def test_csv_reader_with_key_and_timestamp():
     assert len(termination_result) == 2
     assert termination_result[0].key == 'm1'
     assert termination_result[0].time == datetime(2020, 2, 15, 2, 0)
-    assert termination_result[0].body == ['m1', datetime(2020, 2, 15, 2, 0), 8]
+    assert termination_result[0].body == ['m1', datetime(2020, 2, 15, 2, 0), 8, True]
     assert termination_result[1].key == 'm2'
     assert termination_result[1].time == datetime(2020, 2, 16, 2, 0)
-    assert termination_result[1].body == ['m2', datetime(2020, 2, 16, 2, 0), 14]
+    assert termination_result[1].body == ['m2', datetime(2020, 2, 16, 2, 0), 14, False]
 
 
 def test_csv_reader_as_dict_no_header():

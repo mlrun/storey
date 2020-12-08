@@ -359,6 +359,10 @@ class ReadCSV(_IterableSource):
             raise ValueError('timestamp_field can only be set to an integer when with_header is false')
 
     def _infer_type(self, value):
+        lowercase = value.lower()
+        if lowercase == 'true' or lowercase == 'false':
+            return 'b'
+
         try:
             int(value)
             return 'i'
@@ -387,6 +391,13 @@ class ReadCSV(_IterableSource):
             return float(field)
         if typ == 'i':
             return int(field)
+        if typ == 'b':
+            lowercase = field.lower()
+            if lowercase == 'true':
+                return True
+            if lowercase == 'false':
+                return False
+            raise TypeError(f'Expected boolean, got {field}')
         if typ == 't':
             return self._datetime_from_timestamp(field)
         raise TypeError(f'Unknown type: {typ}')
