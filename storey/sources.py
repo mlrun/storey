@@ -333,11 +333,13 @@ class ReadCSV(_IterableSource):
     :param timestamp_field: the CSV field to be parsed as the timestamp for events. May be an int (field index) or string (field name) if
     with_header is True. Defaults to None (no timestamp field).
     :param timestamp_format: timestamp format as defined in datetime.strptime(). Default to ISO-8601 as defined in datetime.fromisoformat().
+    :param type_inference: Whether to infer data types from the data (when True), or read all fields in as strings (when False).
+    Defaults to True.
     """
 
     def __init__(self, paths: Union[List[str], str], header: bool = False, build_dict: bool = False,
                  key_field: Union[int, str, None] = None, timestamp_field: Union[int, str, None] = None,
-                 timestamp_format: Optional[str] = None, type_inference=True, **kwargs):
+                 timestamp_format: Optional[str] = None, type_inference: bool = True, **kwargs):
         super().__init__(**kwargs)
         if isinstance(paths, str):
             paths = [paths]
