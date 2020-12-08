@@ -101,6 +101,35 @@ def test_write_to_v3io_stream(setup_stream_teardown_test):
     assert shard1_data == [b'1', b'3', b'5', b'7', b'9']
 
 
+def test_write_to_v3io_stream_with_column_inference(setup_stream_teardown_test):
+    stream_path = setup_stream_teardown_test
+    controller = build_flow([
+        Source(),
+        WriteToV3IOStream(V3ioDriver(), stream_path, sharding_func=lambda event: event.body['x'], infer_columns_from_data=True)
+    ]).run()
+    for i in range(10):
+        controller.emit({'x': i, 'y': f'{i}+{i}={i * 2}'})
+
+    controller.terminate()
+    controller.await_termination()
+    shard0_data = asyncio.run(GetShardData().get_shard_data(f'{stream_path}/0'))
+    assert shard0_data == [
+        b'{"x": 0, "y": "0+0=0"}',
+        b'{"x": 2, "y": "2+2=4"}',
+        b'{"x": 4, "y": "4+4=8"}',
+        b'{"x": 6, "y": "6+6=12"}',
+        b'{"x": 8, "y": "8+8=16"}'
+    ]
+    shard1_data = asyncio.run(GetShardData().get_shard_data(f'{stream_path}/1'))
+    assert shard1_data == [
+        b'{"x": 1, "y": "1+1=2"}',
+        b'{"x": 3, "y": "3+3=6"}',
+        b'{"x": 5, "y": "5+5=10"}',
+        b'{"x": 7, "y": "7+7=14"}',
+        b'{"x": 9, "y": "9+9=18"}'
+    ]
+
+
 def test_write_dict_to_v3io_stream(setup_stream_teardown_test):
     stream_path = setup_stream_teardown_test
     controller = build_flow([
