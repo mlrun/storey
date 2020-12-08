@@ -407,3 +407,66 @@ def test_aggregate_dict_fixed_window():
 
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
+
+
+def test_sliding_window_old_event():
+    controller = build_flow([
+        Source(),
+        AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg", "min", "max"],
+                                        SlidingWindows(['1h', '2h', '24h'], '10m'))],
+                       Table("test", NoopDriver())),
+        Reduce([], lambda acc, x: append_return(acc, x)),
+    ]).run()
+
+    for i in range(3):
+        data = {'col1': i}
+        controller.emit(data, 'tal', test_base_time + timedelta(minutes=25 * i))
+
+    controller.emit({'col1': 3}, 'tal', test_base_time - timedelta(hours=25))
+
+    controller.terminate()
+    actual = controller.await_termination()
+    expected_results = [
+        {'col1': 0, 'number_of_stuff_sum_1h': 0, 'number_of_stuff_sum_2h': 0, 'number_of_stuff_sum_24h': 0, 'number_of_stuff_min_1h': 0,
+         'number_of_stuff_min_2h': 0, 'number_of_stuff_min_24h': 0, 'number_of_stuff_max_1h': 0, 'number_of_stuff_max_2h': 0,
+         'number_of_stuff_max_24h': 0, 'number_of_stuff_avg_1h': 0.0, 'number_of_stuff_avg_2h': 0.0, 'number_of_stuff_avg_24h': 0.0},
+        {'col1': 1, 'number_of_stuff_sum_1h': 1, 'number_of_stuff_sum_2h': 1, 'number_of_stuff_sum_24h': 1, 'number_of_stuff_min_1h': 0,
+         'number_of_stuff_min_2h': 0, 'number_of_stuff_min_24h': 0, 'number_of_stuff_max_1h': 1, 'number_of_stuff_max_2h': 1,
+         'number_of_stuff_max_24h': 1, 'number_of_stuff_avg_1h': 0.5, 'number_of_stuff_avg_2h': 0.5, 'number_of_stuff_avg_24h': 0.5},
+        {'col1': 2, 'number_of_stuff_sum_1h': 3, 'number_of_stuff_sum_2h': 3, 'number_of_stuff_sum_24h': 3, 'number_of_stuff_min_1h': 0,
+         'number_of_stuff_min_2h': 0, 'number_of_stuff_min_24h': 0, 'number_of_stuff_max_1h': 2, 'number_of_stuff_max_2h': 2,
+         'number_of_stuff_max_24h': 2, 'number_of_stuff_avg_1h': 1.0, 'number_of_stuff_avg_2h': 1.0, 'number_of_stuff_avg_24h': 1.0},
+        {'col1': 3}
+    ]
+
+    assert actual == expected_results, \
+        f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
+
+
+def test_fixed_window_old_event():
+    controller = build_flow([
+        Source(),
+        AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["count"],
+                                        FixedWindows(['1h', '2h', '3h', '24h']))],
+                       Table("test", NoopDriver())),
+        Reduce([], lambda acc, x: append_return(acc, x)),
+    ]).run()
+
+    for i in range(3):
+        data = {'col1': i}
+        controller.emit(data, 'tal', test_base_time + timedelta(minutes=25 * i))
+
+    controller.emit({'col1': 3}, 'tal', test_base_time - timedelta(hours=25))
+
+    controller.terminate()
+    actual = controller.await_termination()
+    expected_results = [{'col1': 0, 'number_of_stuff_count_1h': 1, 'number_of_stuff_count_2h': 1, 'number_of_stuff_count_3h': 1,
+                         'number_of_stuff_count_24h': 1},
+                        {'col1': 1, 'number_of_stuff_count_1h': 1, 'number_of_stuff_count_2h': 2, 'number_of_stuff_count_3h': 2,
+                         'number_of_stuff_count_24h': 2},
+                        {'col1': 2, 'number_of_stuff_count_1h': 2, 'number_of_stuff_count_2h': 3, 'number_of_stuff_count_3h': 3,
+                         'number_of_stuff_count_24h': 3},
+                        {'col1': 3}]
+
+    assert actual == expected_results, \
+        f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'

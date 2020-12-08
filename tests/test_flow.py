@@ -56,6 +56,18 @@ def test_csv_reader():
     assert termination_result == 21
 
 
+def test_csv_reader_error_on_file_not_found():
+    controller = build_flow([
+        ReadCSV('tests/idontexist.csv', header=True),
+    ]).run()
+
+    try:
+        controller.await_termination()
+        assert False
+    except FlowError as ex:
+        assert isinstance(ex.__cause__, FileNotFoundError)
+
+
 def test_csv_reader_as_dict():
     controller = build_flow([
         ReadCSV('tests/test.csv', header=True, build_dict=True),
