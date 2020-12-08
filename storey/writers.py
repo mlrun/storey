@@ -17,7 +17,7 @@ from .table import Table
 
 class _Writer:
     def __init__(self, columns: Union[str, List[str], None], infer_columns_from_data: Optional[bool],
-                 index_cols: Union[str, List[str], None] = None):
+                 index_cols: Union[str, List[str], None] = None, retain_dict: bool = False):
         if infer_columns_from_data is None:
             infer_columns_from_data = not bool(columns)
         self._infer_columns_from_data = infer_columns_from_data
@@ -28,6 +28,7 @@ class _Writer:
         self._rename_index_columns = {}
         columns = [columns] if isinstance(columns, str) else columns
         index_cols = [index_cols] if isinstance(index_cols, str) else index_cols
+        self._retain_dict = retain_dict
 
         def parse_notation(columns, metadata_columns, rename_columns):
             result = []
@@ -59,7 +60,10 @@ class _Writer:
                     new_value = event.body[rename_columns[column]]
                 else:
                     new_value = event.body[column]
-                new_data.append(new_value)
+                if isinstance(new_data, list):
+                    new_data.append(new_value)
+                else:
+                    new_data[column] = new_value
 
     @staticmethod
     def _get_column_data_from_list(new_data, event, original_data, columns, metadata_columns):
@@ -81,7 +85,7 @@ class _Writer:
                 self._columns.extend(data.keys())
                 self._columns.sort()
                 self._infer_columns_from_data = False
-            data = []
+            data = {} if self._retain_dict else []
             self._get_column_data_from_dict(data, event, self._columns, self._metadata_columns, self._rename_columns)
             self._get_column_data_from_dict(data, event, self._index_cols, self._metadata_index_columns, self._rename_index_columns)
         elif isinstance(data, list):
@@ -93,7 +97,7 @@ class _Writer:
                 data = []
                 cursor = self._get_column_data_from_list(data, event, event.body, self._index_cols, self._metadata_index_columns)
                 self._get_column_data_from_list(data, event, event.body[cursor:], self._columns, self._metadata_columns)
-        else:
+        elif self._columns:
             raise TypeError('Writer supports only events of type dict or list.')
         return data
 
@@ -154,7 +158,10 @@ class WriteToCSV(_Batching, _Writer):
             raise ex
 
     def _event_to_batch_entry(self, event):
-        return self._event_to_writer_entry(event)
+        writer_entry = self._event_to_writer_entry(event)
+        if not isinstance(writer_entry, list):
+            raise TypeError(f'CSV writer does not support event body of type {type(event.body)}.')
+        return writer_entry
 
     async def _terminate(self):
         asyncio.get_running_loop().run_in_executor(None, lambda: self._data_buffer.put(_termination_obj))
@@ -277,18 +284,25 @@ class WriteToTSDB(_Batching, _Writer):
         self._frames_client.write("tsdb", self._path, df)
 
 
-class WriteToV3IOStream(Flow):
+class WriteToV3IOStream(Flow, _Writer):
     """Writes all incoming events into a V3IO stream.
 
     :param storage: V3IO driver.
     :param stream_path: Path to the V3IO stream.
     :param sharding_func: Function for determining the shard ID to which to write each event.
     :param batch_size: Batch size for each write request.
+    :param columns: Fields to be written to stream. Will be extracted from events when an event is a dictionary (other types will be written
+    as is). Use = notation for renaming fields (e.g. write_this=event_field). Use $ notation to refer to metadata ($key, event_time=$time).
+    Optional. Defaults to None (will be inferred if event is dictionary).
+    :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries. If True, columns will be
+    inferred from data and used in place of explicit columns list if none was provided, or appended to the provided list. If header is True
+    and columns is not provided, infer_columns_from_data=True is implied. Optional. Default to False if columns is provided, True otherwise.
     """
 
     def __init__(self, storage: V3ioDriver, stream_path: str, sharding_func: Optional[Callable[[Event], int]] = None, batch_size: int = 8,
-                 **kwargs):
+                 columns: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None, **kwargs):
         Flow.__init__(self, **kwargs)
+        _Writer.__init__(self, columns, infer_columns_from_data, retain_dict=True)
 
         self._storage = storage
 
@@ -298,7 +312,6 @@ class WriteToV3IOStream(Flow):
         self._container, self._stream_path = _split_path(stream_path)
 
         self._sharding_func = sharding_func
-
         self._batch_size = batch_size
 
         self._shard_count = None
@@ -311,10 +324,9 @@ class WriteToV3IOStream(Flow):
                 return
             raise V3ioError(f'Failed to put records to V3IO. Got {response.status_code} response: {response.body}')
 
-    def _build_request_put_records(self, shard_id, events):
+    def _build_request_put_records(self, shard_id, records):
         record_list_for_json = []
-        for event in events:
-            record = event.body
+        for record in records:
             if isinstance(record, dict):
                 record = json.dumps(record).encode("utf-8")
             record_list_for_json.append({'shard_id': shard_id, 'data': record})
@@ -354,7 +366,8 @@ class WriteToV3IOStream(Flow):
                         await self._handle_response(req)
                     break
                 shard_id = self._sharding_func(event) % self._shard_count
-                buffers[shard_id].append(event)
+                record = self._event_to_writer_entry(event)
+                buffers[shard_id].append(record)
                 if len(buffers[shard_id]) >= self._batch_size:
                     if in_flight_reqs[shard_id]:
                         req = in_flight_reqs[shard_id]
@@ -415,7 +428,7 @@ class WriteToTable(_ConcurrentByKeyJobExecution, _Writer):
     def __init__(self, table: Union[Table, str], columns: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None,
                  **kwargs):
         _ConcurrentByKeyJobExecution.__init__(self, **kwargs)
-        _Writer.__init__(self, columns, infer_columns_from_data)
+        _Writer.__init__(self, columns, infer_columns_from_data, retain_dict=True)
         self._table = table
         if isinstance(table, str):
             if not self.context:
@@ -424,10 +437,7 @@ class WriteToTable(_ConcurrentByKeyJobExecution, _Writer):
         self._closeables = [self._table]
 
     async def _process_event(self, events):
-        data_to_persist = {}
-        data = self._event_to_writer_entry(events[-1])
-        for i, col_name in enumerate(self._columns):
-            data_to_persist[col_name] = data[i]
+        data_to_persist = self._event_to_writer_entry(events[-1])
         return await self._table.persist_key(events[0].key, data_to_persist)
 
     async def _handle_completed(self, event, response):
