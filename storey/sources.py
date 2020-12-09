@@ -333,11 +333,13 @@ class ReadCSV(_IterableSource):
     :param timestamp_field: the CSV field to be parsed as the timestamp for events. May be an int (field index) or string (field name) if
     with_header is True. Defaults to None (no timestamp field).
     :param timestamp_format: timestamp format as defined in datetime.strptime(). Default to ISO-8601 as defined in datetime.fromisoformat().
+    :param type_inference: Whether to infer data types from the data (when True), or read all fields in as strings (when False).
+    Defaults to True.
     """
 
     def __init__(self, paths: Union[List[str], str], header: bool = False, build_dict: bool = False,
                  key_field: Union[int, str, None] = None, timestamp_field: Union[int, str, None] = None,
-                 timestamp_format: Optional[str] = None, **kwargs):
+                 timestamp_format: Optional[str] = None, type_inference: bool = True, **kwargs):
         super().__init__(**kwargs)
         if isinstance(paths, str):
             paths = [paths]
@@ -348,11 +350,63 @@ class ReadCSV(_IterableSource):
         self._timestamp_field = timestamp_field
         self._timestamp_format = timestamp_format
         self._event_buffer = queue.Queue(1024)
+        self._type_inference = type_inference
+        self._types = []
 
         if not header and isinstance(key_field, str):
             raise ValueError('key_field can only be set to an integer when with_header is false')
         if not header and isinstance(timestamp_field, str):
             raise ValueError('timestamp_field can only be set to an integer when with_header is false')
+
+    def _infer_type(self, value):
+        lowercase = value.lower()
+        if lowercase == 'true' or lowercase == 'false':
+            return 'b'
+
+        try:
+            int(value)
+            return 'i'
+        except ValueError:
+            pass
+
+        try:
+            float(value)
+            return 'f'
+        except ValueError:
+            pass
+
+        try:
+            self._datetime_from_timestamp(value)
+            return 't'
+        except ValueError:
+            pass
+
+        return 's'
+
+    def _parse_field(self, field, index):
+        typ = self._types[index]
+        if typ == 's':
+            return field
+        if typ == 'f':
+            return float(field)
+        if typ == 'i':
+            return int(field)
+        if typ == 'b':
+            lowercase = field.lower()
+            if lowercase == 'true':
+                return True
+            if lowercase == 'false':
+                return False
+            raise TypeError(f'Expected boolean, got {field}')
+        if typ == 't':
+            return self._datetime_from_timestamp(field)
+        raise TypeError(f'Unknown type: {typ}')
+
+    def _datetime_from_timestamp(self, timestamp):
+        if self._timestamp_format:
+            return datetime.strptime(timestamp, self._timestamp_format)
+        else:
+            return datetime.fromisoformat(timestamp)
 
     def _blocking_io_loop(self):
         try:
@@ -368,6 +422,12 @@ class ReadCSV(_IterableSource):
                             field_name_to_index[header[i]] = i
                     for line in f:
                         parsed_line = next(csv.reader([line]))
+                        if self._type_inference:
+                            if not self._types:
+                                for field in parsed_line:
+                                    self._types.append(self._infer_type(field))
+                            for i in range(len(parsed_line)):
+                                parsed_line[i] = self._parse_field(parsed_line[i], i)
                         element = parsed_line
                         key = None
                         if header:
@@ -386,14 +446,10 @@ class ReadCSV(_IterableSource):
                             timestamp_field = self._timestamp_field
                             if self._with_header and isinstance(timestamp_field, str):
                                 timestamp_field = field_name_to_index[timestamp_field]
-                            timestamp_str = parsed_line[timestamp_field]
-                            if self._timestamp_format:
-                                timestamp = datetime.strptime(timestamp_str, self._timestamp_format)
-                            else:
-                                timestamp = datetime.fromisoformat(timestamp_str)
+                            time_as_datetime = parsed_line[timestamp_field]
                         else:
-                            timestamp = datetime.now()
-                        self._event_buffer.put(Event(element, key=key, time=timestamp))
+                            time_as_datetime = datetime.now()
+                        self._event_buffer.put(Event(element, key=key, time=time_as_datetime))
         except BaseException as ex:
             self._event_buffer.put(ex)
         self._event_buffer.put(_termination_obj)
