@@ -596,9 +596,8 @@ class AggregationBuckets:
                     return
 
         # Initialize every remaining buckets
-        if bucket_index >= 0:
-            for i in range(bucket_index + 1):
-                self.buckets[i] = self.new_aggregation_value()
+        for i in range(bucket_index + 1):
+            self.buckets[i] = self.new_aggregation_value()
 
     def get_and_flush_pending(self):
         pending = self.pending_aggr
