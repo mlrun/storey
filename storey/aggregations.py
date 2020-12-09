@@ -563,7 +563,13 @@ class AggregationBuckets:
             self.last_bucket_start_time - (self.window.total_number_of_buckets - 1) * self.window.period_millis
 
         start_index = int((base_time - last_time) / self.window.period_millis)
+
+        # In case base_time is newer than what is stored in the storage initialize the buckets until reaching the stored data
         if start_index >= len(aggregation_bucket_initial_data[last_time]):
+            # If the requested data is so new that the stored data is obsolete just initialize the buckets regardless of the stored data.
+            if start_index >= len(aggregation_bucket_initial_data[last_time]) + self.window.total_number_of_buckets:
+                self.initialize_column()
+                return
             for _ in range(start_index, len(aggregation_bucket_initial_data[last_time]) - 1, -1):
                 if bucket_index < 0:
                     return
@@ -571,23 +577,23 @@ class AggregationBuckets:
                 bucket_index = bucket_index - 1
             start_index = len(aggregation_bucket_initial_data[last_time]) - 1
 
-        if start_index < len(aggregation_bucket_initial_data[last_time]):
-            # Starting with the latest bucket
-            for i in range(start_index, -1, -1):
-                if bucket_index < 0:
-                    return
-                curr_value = aggregation_bucket_initial_data[last_time][i]
+        # Initializing the buckets based in the stored data starting with the latest bucket
+        for i in range(start_index, -1, -1):
+            if bucket_index < 0:
+                return
+            curr_value = aggregation_bucket_initial_data[last_time][i]
+            self.buckets[bucket_index] = AggregationValue(self.aggregation, self.max_value, curr_value)
+            bucket_index = bucket_index - 1
+
+        # In case we still haven't finished initializing all buckets and there is another stored bucket, initialize from there
+        if first_time and bucket_index >= 0 and base_time > first_time:
+            for i in range(len(aggregation_bucket_initial_data[first_time]) - 1, -1, -1):
+                curr_value = aggregation_bucket_initial_data[first_time][i]
                 self.buckets[bucket_index] = AggregationValue(self.aggregation, self.max_value, curr_value)
                 bucket_index = bucket_index - 1
 
-            if first_time and bucket_index >= 0 and base_time > first_time:
-                for i in range(len(aggregation_bucket_initial_data[first_time]) - 1, -1, -1):
-                    curr_value = aggregation_bucket_initial_data[first_time][i]
-                    self.buckets[bucket_index] = AggregationValue(self.aggregation, self.max_value, curr_value)
-                    bucket_index = bucket_index - 1
-
-                    if bucket_index == -1:
-                        break
+                if bucket_index < 0:
+                    return
 
         # Initialize every remaining buckets
         if bucket_index >= 0:
