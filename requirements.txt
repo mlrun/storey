@@ -1,5 +1,7 @@
 aiohttp~=3.7.3
-v3io~=0.5.3
+v3io~=0.5.5
 pandas~=1.1.4
 pyarrow~=1.0.1
+grpcio-tools==1.30.0
+grpcio==1.30.0
 v3io-frames~=0.8.6

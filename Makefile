@@ -29,3 +29,7 @@ env:
 .PHONY: dev-env
 dev-env: env
 	pipenv install -r dev-requirements.txt
+
+.PHONY: dist
+dist: dev-env
+	pipenv run python -m build --sdist --wheel --outdir dist/ .
