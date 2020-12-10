@@ -426,6 +426,7 @@ class AggregationBuckets:
         self.should_persist = True
         self.pending_aggr = {}
         self.storage_specific_cache = {}
+        self.is_fixed_window = isinstance(self.window, FixedWindows)
 
         self._need_to_recalculate_pre_aggregates = False
         self._last_data_point_timestamp = base_time
@@ -519,7 +520,7 @@ class AggregationBuckets:
                 self.last_bucket_start_time + buckets_to_advance * self.window.period_millis
 
     def get_window_range(self, timestamp, windows_millis):
-        if isinstance(self.window, FixedWindows):
+        if self.is_fixed_window:
             end_bucket = self.get_bucket_index_by_timestamp(self.window.round_up_time_to_window(timestamp) - 1)
         else:
             end_bucket = self.get_bucket_index_by_timestamp(timestamp)
@@ -583,7 +584,7 @@ class AggregationBuckets:
         if current_time_bucket_index < 0:
             return result
 
-        if isinstance(self.window, FixedWindows):
+        if self.is_fixed_window:
             current_time_bucket_index = self.get_bucket_index_by_timestamp(self.window.round_up_time_to_window(timestamp) - 1)
 
         aggregated_value = AggregationValue(self.get_aggregation_for_aggregation())
