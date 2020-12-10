@@ -155,35 +155,35 @@ def test_sliding_window_aggregations_with_filters_flow():
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
 
-# def test_sliding_window_aggregations_with_max_values_flow():
-#     controller = build_flow([
-#         Source(),
-#         AggregateByKey([FieldAggregator("num_hours_with_stuff_in_the_last_24h", "col1", ["count"],
-#                                         SlidingWindows(['24h'], '1h'),
-#                                         max_value=1)],
-#                        Table("test", NoopDriver())),
-#         Reduce([], lambda acc, x: append_return(acc, x)),
-#     ]).run()
-#
-#     for i in range(10):
-#         data = {'col1': i}
-#         controller.emit(data, 'tal', test_base_time + timedelta(minutes=10 * i))
-#
-#     controller.terminate()
-#     actual = controller.await_termination()
-#     expected_results = [{'col1': 0, 'num_hours_with_stuff_in_the_last_24h_count_24h': 1},
-#                         {'col1': 1, 'num_hours_with_stuff_in_the_last_24h_count_24h': 1},
-#                         {'col1': 2, 'num_hours_with_stuff_in_the_last_24h_count_24h': 1},
-#                         {'col1': 3, 'num_hours_with_stuff_in_the_last_24h_count_24h': 1},
-#                         {'col1': 4, 'num_hours_with_stuff_in_the_last_24h_count_24h': 1},
-#                         {'col1': 5, 'num_hours_with_stuff_in_the_last_24h_count_24h': 1},
-#                         {'col1': 6, 'num_hours_with_stuff_in_the_last_24h_count_24h': 2},
-#                         {'col1': 7, 'num_hours_with_stuff_in_the_last_24h_count_24h': 2},
-#                         {'col1': 8, 'num_hours_with_stuff_in_the_last_24h_count_24h': 2},
-#                         {'col1': 9, 'num_hours_with_stuff_in_the_last_24h_count_24h': 2}]
-#
-#     assert actual == expected_results, \
-#         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
+def test_sliding_window_aggregations_with_max_values_flow():
+    controller = build_flow([
+        Source(),
+        AggregateByKey([FieldAggregator("num_hours_with_stuff_in_the_last_24h", "col1", ["count"],
+                                        SlidingWindows(['24h'], '1h'),
+                                        max_value=1)],
+                       Table("test", NoopDriver())),
+        Reduce([], lambda acc, x: append_return(acc, x)),
+    ]).run()
+
+    for i in range(10):
+        data = {'col1': i}
+        controller.emit(data, 'tal', test_base_time + timedelta(minutes=10 * i))
+
+    controller.terminate()
+    actual = controller.await_termination()
+    expected_results = [{'col1': 0, 'num_hours_with_stuff_in_the_last_24h_count_24h': 1},
+                        {'col1': 1, 'num_hours_with_stuff_in_the_last_24h_count_24h': 1},
+                        {'col1': 2, 'num_hours_with_stuff_in_the_last_24h_count_24h': 1},
+                        {'col1': 3, 'num_hours_with_stuff_in_the_last_24h_count_24h': 1},
+                        {'col1': 4, 'num_hours_with_stuff_in_the_last_24h_count_24h': 1},
+                        {'col1': 5, 'num_hours_with_stuff_in_the_last_24h_count_24h': 1},
+                        {'col1': 6, 'num_hours_with_stuff_in_the_last_24h_count_24h': 2},
+                        {'col1': 7, 'num_hours_with_stuff_in_the_last_24h_count_24h': 2},
+                        {'col1': 8, 'num_hours_with_stuff_in_the_last_24h_count_24h': 2},
+                        {'col1': 9, 'num_hours_with_stuff_in_the_last_24h_count_24h': 2}]
+
+    assert actual == expected_results, \
+        f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
 
 def test_sliding_window_simple_aggregation_flow_multiple_fields():
