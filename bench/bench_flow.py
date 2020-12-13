@@ -102,7 +102,7 @@ def test_batch_n_events(benchmark, n):
     benchmark(inner)
 
 
-def test_aggregate_df_n_events(benchmark):
+def test_aggregate_df_86420_events(benchmark):
     df = pd.read_csv('bench/early_sense.csv')
     df['timestamp'] = pd.to_datetime(df['timestamp'])
 
