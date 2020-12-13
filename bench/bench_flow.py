@@ -2,8 +2,9 @@ import asyncio
 from datetime import datetime, timedelta
 
 import pytest
-
-from storey import Source, Map, Reduce, build_flow, Complete, NoopDriver, FieldAggregator, AggregateByKey, Table, Batch, AsyncSource
+import pandas as pd
+from storey import Source, Map, Reduce, build_flow, Complete, NoopDriver, FieldAggregator, AggregateByKey, Table, Batch, AsyncSource, \
+    DataframeSource
 from storey.dtypes import SlidingWindows
 
 test_base_time = datetime.fromisoformat("2020-07-21T21:40:00+00:00")
@@ -96,6 +97,30 @@ def test_batch_n_events(benchmark, n):
             controller.emit(i)
 
         controller.terminate()
+        controller.await_termination()
+
+    benchmark(inner)
+
+
+def test_aggregate_df_86420_events(benchmark):
+    df = pd.read_csv('bench/early_sense.csv')
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+
+    def inner():
+        driver = NoopDriver()
+        table = Table(f'test', driver)
+
+        controller = build_flow([
+            DataframeSource(df, key_column='patient_id', time_column='timestamp'),
+            AggregateByKey([FieldAggregator("hr", "hr", ["avg", "min", "max"],
+                                            SlidingWindows(['1h', '2h'], '10m')),
+                            FieldAggregator("rr", "rr", ["avg", "min", "max"],
+                                            SlidingWindows(['1h', '2h'], '10m')),
+                            FieldAggregator("spo2", "spo2", ["avg", "min", "max"],
+                                            SlidingWindows(['1h', '2h'], '10m'))],
+                           table)
+        ]).run()
+
         controller.await_termination()
 
     benchmark(inner)
