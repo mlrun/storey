@@ -380,6 +380,46 @@ def test_awaitable_result():
     assert termination_result == 55
 
 
+def test_awaitable_result_error():
+    def boom(_):
+        raise ValueError('boom')
+
+    controller = build_flow([
+        Source(),
+        Map(boom),
+        Complete()
+    ]).run()
+
+    awaitable_result = controller.emit(0, return_awaitable_result=True)
+    try:
+        awaitable_result.await_result()
+        assert False
+    except ValueError:
+        pass
+
+
+async def async_test_async_awaitable_result_error():
+    def boom(_):
+        raise ValueError('boom')
+
+    controller = await build_flow([
+        AsyncSource(),
+        Map(boom),
+        Complete()
+    ]).run()
+
+    awaitable_result = controller.emit(0, await_result=True)
+    try:
+        await awaitable_result
+        assert False
+    except ValueError:
+        pass
+
+
+def test_async_awaitable_result_error():
+    asyncio.run(async_test_async_awaitable_result_error())
+
+
 async def async_test_async_source():
     controller = await build_flow([
         AsyncSource(),

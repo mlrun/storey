@@ -18,13 +18,16 @@ class AwaitableResult:
         self._q = queue.Queue(1)
 
     def await_result(self):
-        return self._q.get()
+        result = self._q.get()
+        if isinstance(result, BaseException):
+            raise result
+        return result
 
     def _set_result(self, element):
         self._q.put(element)
 
-    def _set_error(self, element):
-        pass
+    def _set_error(self, ex):
+        self._set_result(ex)
 
 
 class FlowController:
@@ -114,6 +117,8 @@ class Source(Flow):
                 if event is _termination_obj:
                     self._termination_future.set_result(termination_result)
             except BaseException as ex:
+                if event._awaitable_result:
+                    event._awaitable_result._set_error(ex)
                 self._ex = ex
                 if not self._q.empty():
                     self._q.get()
