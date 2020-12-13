@@ -592,11 +592,12 @@ class AggregationBuckets:
         for i in range(len(self.window.windows)):
             window_string = self.window.windows[i][1]
             window_millis = self.window.windows[i][0]
+            current_aggregations_value = aggregated_value.get_value()[1]
 
             # In case the current bucket is outside our time range just create a feature with the current aggregated
             # value
             if current_time_bucket_index < 0:
-                result[f'{self.name}_{self.aggregation}_{window_string}'] = aggregated_value.get_value()[1]
+                result[f'{self.name}_{self.aggregation}_{window_string}'] = current_aggregations_value
 
             number_of_buckets_backwards = int((window_millis - prev_windows_millis) / self.window.period_millis)
             last_bucket_to_aggregate = current_time_bucket_index - number_of_buckets_backwards + 1
@@ -613,12 +614,12 @@ class AggregationBuckets:
             current_time_bucket_index = last_bucket_to_aggregate - 1
 
             # create a feature for the current time window
-            result[f'{self.name}_{self.aggregation}_{window_string}'] = aggregated_value.get_value()[1]
+            result[f'{self.name}_{self.aggregation}_{window_string}'] = current_aggregations_value
             prev_windows_millis = window_millis
 
             # Update the corresponding pre aggregate
             if self._precalculated_aggregations:
-                self._current_aggregate_values[i] = AggregationValue(self.aggregation, set_data=aggregated_value.get_value()[1])
+                self._current_aggregate_values[i] = AggregationValue(self.aggregation, set_data=current_aggregations_value)
 
         return result
 
