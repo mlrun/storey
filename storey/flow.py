@@ -391,6 +391,7 @@ class _ConcurrentJobExecution(Flow):
         try:
             while True:
                 job = await self._q.get()
+                print(f'got job {job}')
                 if job is _termination_obj:
                     break
                 event = job[0]
@@ -415,6 +416,18 @@ class _ConcurrentJobExecution(Flow):
     async def _lazy_init(self):
         pass
 
+    async def _safe_process_event(self, event):
+        if event._awaitable_result:
+            try:
+                return await self._process_event(event)
+            except BaseException as ex:
+                none_or_coroutine = event._awaitable_result._set_result(ex)
+                if none_or_coroutine:
+                    await none_or_coroutine
+                raise ex
+        else:
+            return await self._process_event(event)
+
     async def _do(self, event):
         if not self._q:
             await self._lazy_init()
@@ -430,7 +443,7 @@ class _ConcurrentJobExecution(Flow):
             await self._worker_awaitable
             return await self._do_downstream(_termination_obj)
         else:
-            task = self._process_event(event)
+            task = self._safe_process_event(event)
             await self._q.put((event, asyncio.get_running_loop().create_task(task)))
             if self._worker_awaitable.done():
                 await self._worker_awaitable

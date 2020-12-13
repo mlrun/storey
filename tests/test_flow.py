@@ -4,10 +4,11 @@ import uuid
 from datetime import datetime
 
 import pandas as pd
+from aiohttp import InvalidURL
 
 from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV, Complete, AsyncSource, Choice, \
     Event, Batch, Table, NoopDriver, WriteToCSV, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, WriteToParquet, \
-    WriteToTSDB, Extend
+    WriteToTSDB, Extend, V3ioDriver, SendToHttp, HttpRequest
 
 
 class ATestException(Exception):
@@ -394,8 +395,8 @@ def test_awaitable_result_error():
     try:
         awaitable_result.await_result()
         assert False
-    except ValueError:
-        pass
+    except FlowError as ex:
+        assert isinstance(ex.__cause__, ValueError)
 
 
 async def async_test_async_awaitable_result_error():
@@ -412,8 +413,8 @@ async def async_test_async_awaitable_result_error():
     try:
         await awaitable_result
         assert False
-    except ValueError:
-        pass
+    except FlowError as ex:
+        assert isinstance(ex.__cause__, ValueError)
 
 
 def test_async_awaitable_result_error():
@@ -458,6 +459,36 @@ async def async_test_error_async_flow():
             await controller.emit(i)
     except FlowError as flow_ex:
         assert isinstance(flow_ex.__cause__, ATestException)
+
+
+def test_awaitable_result_error_in_async_downstream():
+    controller = build_flow([
+        Source(),
+        SendToHttp(lambda _: HttpRequest('GET', 'bad_url', ''), lambda _, response: response.status),
+        Complete()
+    ]).run()
+    try:
+        controller.emit(1, return_awaitable_result=True).await_result()
+        assert False
+    except InvalidURL:
+        pass
+
+
+async def async_test_async_awaitable_result_error_in_async_downstream():
+    controller = await build_flow([
+        AsyncSource(),
+        SendToHttp(lambda _: HttpRequest('GET', 'bad_url', ''), lambda _, response: response.status),
+        Complete()
+    ]).run()
+    try:
+        await controller.emit(1, await_result=True)
+        assert False
+    except InvalidURL:
+        pass
+
+
+def test_async_awaitable_result_error_in_async_downstream():
+    asyncio.run(async_test_async_awaitable_result_error_in_async_downstream())
 
 
 def test_error_async_flow():
