@@ -15,6 +15,7 @@ class Flow:
         self._full_event = full_event
         self._termination_result_fn = termination_result_fn
         self.context = context
+        self.verbose = context and getattr(context, 'verbose', False)
         self._closeables = []
         if name:
             self.name = name
@@ -48,8 +49,15 @@ class Flow:
         tasks = []
         for i in range(1, len(self._outlets)):
             tasks.append(asyncio.get_running_loop().create_task(self._outlets[i]._do(event)))
+
+        if self.verbose:
+            step_name = type(self).__name__
+            event_string = event
+            print(f'{step_name} -> {type(self._outlets[0]).__name__} | {event_string}')
         await self._outlets[0]._do(event)  # Optimization - avoids creating a task for the first outlet.
-        for task in tasks:
+        for i, task in enumerate(tasks, start=1):
+            if self.verbose:
+                print(f'{step_name} -> {type(self._outlets[i]).__name__} | {event_string}')
             await task
 
     def _get_safe_event_or_body(self, event):
