@@ -8,7 +8,7 @@ from aiohttp import InvalidURL
 
 from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV, Complete, AsyncSource, Choice, \
     Event, Batch, Table, NoopDriver, WriteToCSV, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, WriteToParquet, \
-    WriteToTSDB, Extend, V3ioDriver, SendToHttp, HttpRequest
+    WriteToTSDB, Extend, V3ioDriver, SendToHttp, HttpRequest, WriteToTable
 
 
 class ATestException(Exception):
@@ -489,6 +489,23 @@ async def async_test_async_awaitable_result_error_in_async_downstream():
 
 def test_async_awaitable_result_error_in_async_downstream():
     asyncio.run(async_test_async_awaitable_result_error_in_async_downstream())
+
+
+def test_awaitable_result_error_in_by_key_async_downstream():
+    class NoopDriverBoom(NoopDriver):
+        async def _save_key(self, container, table_path, key, aggr_item, partitioned_by_key, additional_data):
+            raise ValueError('boom')
+
+    controller = build_flow([
+        Source(),
+        WriteToTable(Table('test', NoopDriverBoom())),
+        Complete()
+    ]).run()
+    try:
+        controller.emit(1, return_awaitable_result=True).await_result()
+        assert False
+    except ValueError:
+        pass
 
 
 def test_error_async_flow():
