@@ -436,7 +436,7 @@ class WriteToTable(_ConcurrentByKeyJobExecution, _Writer):
             self._table = self.context.get_table(table)
         self._closeables = [self._table]
 
-    async def _process_event(self, events):
+    async def _process_events(self, events):
         data_to_persist = self._event_to_writer_entry(events[-1])
         return await self._table.persist_key(events[0].key, data_to_persist)
 
