@@ -415,6 +415,18 @@ class _ConcurrentJobExecution(Flow):
     async def _lazy_init(self):
         pass
 
+    async def _safe_process_event(self, event):
+        if event._awaitable_result:
+            try:
+                return await self._process_event(event)
+            except BaseException as ex:
+                none_or_coroutine = event._awaitable_result._set_result(ex)
+                if none_or_coroutine:
+                    await none_or_coroutine
+                raise ex
+        else:
+            return await self._process_event(event)
+
     async def _do(self, event):
         if not self._q:
             await self._lazy_init()
@@ -430,7 +442,7 @@ class _ConcurrentJobExecution(Flow):
             await self._worker_awaitable
             return await self._do_downstream(_termination_obj)
         else:
-            task = self._process_event(event)
+            task = self._safe_process_event(event)
             await self._q.put((event, asyncio.get_running_loop().create_task(task)))
             if self._worker_awaitable.done():
                 await self._worker_awaitable
@@ -477,11 +489,13 @@ class _ConcurrentByKeyJobExecution(Flow):
                     self._pending_by_key[event.key].in_flight = self._pending_by_key[event.key].pending
                     self._pending_by_key[event.key].pending = []
 
-                    task = self._process_event(self._pending_by_key[event.key].in_flight)
+                    task = self._safe_process_events(self._pending_by_key[event.key].in_flight)
                     await self._q.put((event, asyncio.get_running_loop().create_task(task)))
                 else:
                     del self._pending_by_key[event.key]
         except BaseException as ex:
+            if event is not _termination_obj and event._awaitable_result:
+                event._awaitable_result._set_error(ex)
             if not self._q.empty():
                 await self._q.get()
             raise ex
@@ -513,12 +527,22 @@ class _ConcurrentByKeyJobExecution(Flow):
                 self._pending_by_key[event.key].in_flight = self._pending_by_key[event.key].pending
                 self._pending_by_key[event.key].pending = []
 
-                task = self._process_event(self._pending_by_key[event.key].in_flight)
+                task = self._safe_process_events(self._pending_by_key[event.key].in_flight)
                 await self._q.put((event, asyncio.get_running_loop().create_task(task)))
                 if self._worker_awaitable.done():
                     await self._worker_awaitable
 
-    async def _process_event(self, event):
+    async def _safe_process_events(self, events):
+        try:
+            return await self._process_events(events)
+        except BaseException as ex:
+            for event in events:
+                none_or_coroutine = event._awaitable_result._set_result(ex)
+                if none_or_coroutine:
+                    await none_or_coroutine
+            raise ex
+
+    async def _process_events(self, events):
         raise NotImplementedError()
 
     async def _handle_completed(self, event, response):
