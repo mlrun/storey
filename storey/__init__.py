@@ -1,4 +1,14 @@
-__version__ = '0.2.0'
+import os
+
+
+def get_version():
+    ref = os.getenv('GITHUB_REF')
+    if ref:
+        return ref.rsplit('/', 1)[-1]
+    return 'unknown'
+
+
+__version__ = get_version()
 
 from .aggregations import (  # noqa: F401
     AggregateByKey, QueryByKey
