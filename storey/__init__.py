@@ -1,15 +1,3 @@
-import os
-
-
-def get_version():
-    ref = os.getenv('GITHUB_REF')
-    if ref:
-        return ref.rsplit('/', 1)[-1]
-    return 'unknown'
-
-
-__version__ = get_version()
-
 from .aggregations import (  # noqa: F401
     AggregateByKey, QueryByKey
 )
@@ -35,3 +23,14 @@ from .writers import (  # noqa: F401
 from .table import (  # noqa: F401
     Table
 )
+
+
+def get_version():
+    import os
+    ref = os.getenv('GITHUB_REF')
+    if ref:
+        return ref.rsplit('/', 1)[-1]
+    return 'unknown'
+
+
+__version__ = get_version()
