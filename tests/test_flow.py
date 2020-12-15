@@ -268,6 +268,33 @@ def test_broadcast_complex_no_sugar():
     assert termination_result == 3303
 
 
+def test_nested_branching():
+    controller = build_flow([
+        Source(),
+        [
+            [
+                Reduce(0, lambda acc, x: acc + x)
+            ]
+        ],
+        [
+            [
+                Map(lambda x: x * 100),
+                Reduce(0, lambda acc, x: acc + x)
+            ],
+            [
+                Map(lambda x: x * 1000),
+                Reduce(0, lambda acc, x: acc + x)
+            ]
+        ]
+    ]).run()
+
+    for i in range(10):
+        controller.emit(i)
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == 45
+
+
 def test_map_with_state_flow():
     controller = build_flow([
         Source(),
