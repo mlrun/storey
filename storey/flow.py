@@ -794,14 +794,17 @@ def build_flow(steps):
     """
     if len(steps) == 0:
         raise ValueError('Cannot build an empty flow')
-    cur_step = steps[0]
+    first_step = steps[0]
+    if isinstance(first_step, list):
+        first_step = build_flow(first_step)
+    cur_step = first_step
     for next_step in steps[1:]:
         if isinstance(next_step, list):
             cur_step.to(build_flow(next_step))
         else:
             cur_step.to(next_step)
             cur_step = next_step
-    return steps[0]
+    return first_step
 
 
 class Context:
