@@ -106,6 +106,18 @@ class WindowsBase:
         self.windows = windows  # list of tuples of the form (3600000, '1h')
         self.total_number_of_buckets = int(self.max_window_millis / self.period_millis)
 
+    def add_to_window(self, new):
+        if self.period_millis != new.period_millis:
+            raise ValueError('Cannot use different periods for same aggregation')
+        if self.max_window_millis < new.max_window_millis:
+            self.max_window_millis = new.max_window_millis
+        if self.smallest_window_millis > new.smallest_window_millis:
+            self.smallest_window_millis = new.smallest_window_millis
+        if self.total_number_of_buckets < new.total_number_of_buckets:
+            self.total_number_of_buckets = new.total_number_of_buckets
+        self.windows.extend(new.windows)
+        sorted(set(self.windows), key=lambda tup: tup[0])
+
 
 def sort_windows_and_convert_to_millis(windows):
     if len(windows) == 0:

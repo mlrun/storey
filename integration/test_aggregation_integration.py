@@ -195,6 +195,75 @@ def test_query_aggregate_by_key(setup_teardown_test, partitioned_by_key):
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
 
+@pytest.mark.parametrize('query_aggregations', [["number_of_stuff_sum_1h", "number_of_stuff_avg_2h"],
+                                                ["number_of_stuff_avg_2h", "number_of_stuff_sum_1h"]])
+def test_aggregate_and_query_with_dependent_aggrs_different_windows(setup_teardown_test, query_aggregations):
+    table = Table(setup_teardown_test, V3ioDriver())
+
+    controller = build_flow([
+        Source(),
+        AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg"],
+                                        SlidingWindows(['1h', '2h'], '10m'))],
+                       table),
+        WriteToTable(table),
+        Reduce([], lambda acc, x: append_return(acc, x)),
+    ]).run()
+
+    items_in_ingest_batch = 10
+    for i in range(items_in_ingest_batch):
+        data = {'col1': i}
+        controller.emit(data, 'tal', test_base_time + timedelta(minutes=25 * i))
+
+    controller.terminate()
+    actual = controller.await_termination()
+    expected_results = [
+        {'number_of_stuff_sum_1h': 0, 'number_of_stuff_sum_2h': 0,
+         'number_of_stuff_avg_1h': 0.0, 'number_of_stuff_avg_2h': 0.0, 'col1': 0},
+        {'number_of_stuff_sum_1h': 1, 'number_of_stuff_sum_2h': 1,
+         'number_of_stuff_avg_1h': 0.5, 'number_of_stuff_avg_2h': 0.5, 'col1': 1},
+        {'number_of_stuff_sum_1h': 3, 'number_of_stuff_sum_2h': 3,
+         'number_of_stuff_avg_1h': 1.0, 'number_of_stuff_avg_2h': 1.0,'col1': 2},
+        {'number_of_stuff_sum_1h': 6, 'number_of_stuff_sum_2h': 6,
+         'number_of_stuff_avg_1h': 2.0, 'number_of_stuff_avg_2h': 1.5, 'col1': 3},
+        {'number_of_stuff_sum_1h': 9, 'number_of_stuff_sum_2h': 10,
+         'number_of_stuff_avg_1h': 3.0, 'number_of_stuff_avg_2h': 2.0, 'col1': 4},
+        {'number_of_stuff_sum_1h': 12, 'number_of_stuff_sum_2h': 15,
+         'number_of_stuff_avg_1h': 4.0, 'number_of_stuff_avg_2h': 3.0, 'col1': 5},
+        {'number_of_stuff_sum_1h': 15, 'number_of_stuff_sum_2h': 20,
+         'number_of_stuff_avg_1h': 5.0, 'number_of_stuff_avg_2h': 4.0, 'col1': 6},
+        {'number_of_stuff_sum_1h': 18, 'number_of_stuff_sum_2h': 25,
+         'number_of_stuff_avg_1h': 6.0, 'number_of_stuff_avg_2h': 5.0,  'col1': 7},
+        {'number_of_stuff_sum_1h': 21, 'number_of_stuff_sum_2h': 30,
+         'number_of_stuff_avg_1h': 7.0, 'number_of_stuff_avg_2h': 6.0, 'col1': 8},
+        {'number_of_stuff_sum_1h': 24, 'number_of_stuff_sum_2h': 35,
+         'number_of_stuff_avg_1h': 8.0, 'number_of_stuff_avg_2h': 7.0, 'col1': 9}
+    ]
+
+    assert actual == expected_results, \
+        f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
+
+    other_table = Table(setup_teardown_test, V3ioDriver())
+    controller = build_flow([
+        Source(),
+        QueryByKey(query_aggregations,
+                   other_table),
+        Reduce([], lambda acc, x: append_return(acc, x)),
+    ]).run()
+
+    base_time = test_base_time + timedelta(minutes=25 * items_in_ingest_batch)
+    data = {'col1': items_in_ingest_batch}
+    controller.emit(data, 'tal', base_time)
+
+    controller.terminate()
+    actual = controller.await_termination()
+    expected_results = [
+        {'col1': 10, 'number_of_stuff_sum_1h': 17, 'number_of_stuff_avg_2h': 7.5}
+    ]
+
+    assert actual == expected_results, \
+        f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
+
+
 @pytest.mark.parametrize('partitioned_by_key', [True, False])
 def test_aggregate_by_key_one_underlying_window(setup_teardown_test, partitioned_by_key):
     expected = {1: [{'number_of_stuff_count_1h': 1, 'other_stuff_sum_1h': 0.0, 'col1': 0},

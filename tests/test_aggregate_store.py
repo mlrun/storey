@@ -4,7 +4,7 @@ from datetime import datetime
 
 
 def _assert_buckets(window, base_time, initial_data, expected_data):
-    aggr_buckets = AggregationBuckets("test", "count", window, base_time, None, initial_data=initial_data)
+    aggr_buckets = AggregationBuckets("test", "count", window, None, base_time, None, initial_data=initial_data)
 
     actual = [aggr_value.get_value()[1] for aggr_value in aggr_buckets.buckets]
     assert actual == expected_data
