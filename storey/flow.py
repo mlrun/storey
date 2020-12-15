@@ -52,7 +52,7 @@ class Flow:
 
         if self.verbose:
             step_name = type(self).__name__
-            event_string = event
+            event_string = str(event)
             print(f'{step_name} -> {type(self._outlets[0]).__name__} | {event_string}')
         await self._outlets[0]._do(event)  # Optimization - avoids creating a task for the first outlet.
         for i, task in enumerate(tasks, start=1):
