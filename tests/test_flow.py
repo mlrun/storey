@@ -8,7 +8,7 @@ from aiohttp import InvalidURL
 
 from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV, Complete, AsyncSource, Choice, \
     Event, Batch, Table, NoopDriver, WriteToCSV, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, WriteToParquet, \
-    WriteToTSDB, Extend, SendToHttp, HttpRequest, WriteToTable
+    WriteToTSDB, Extend, SendToHttp, HttpRequest, WriteToTable, Recover
 
 
 class ATestException(Exception):
@@ -43,6 +43,46 @@ def test_functional_flow():
     controller.terminate()
     termination_result = controller.await_termination()
     assert termination_result == 3300
+
+
+def test_multiple_upstreams():
+    source = Source()
+    map1 = Map(lambda x: x + 1)
+    map2 = Map(lambda x: x * 10)
+    reduce = Reduce(0, lambda x, y: x + y)
+    source.to(map1)
+    source.to(map2)
+    map1.to(reduce)
+    map2.to(reduce)
+    controller = source.run()
+
+    for i in range(10):
+        controller.emit(i)
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == 55 + 450
+
+
+def test_recover():
+    def increment_maybe_boom(x):
+        inc = x + 1
+        if inc == 7:
+            raise ValueError('boom')
+        return inc
+
+    reduce = Reduce(0, lambda x, y: x + y)
+    controller = build_flow([
+        Source(),
+        Recover({ValueError: reduce}),
+        Map(increment_maybe_boom),
+        reduce
+    ]).run()
+
+    for i in range(10):
+        controller.emit(i)
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == 54
 
 
 def test_csv_reader():

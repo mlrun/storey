@@ -123,6 +123,26 @@ class Choice(Flow):
             await self._default._do(event)
 
 
+class Recover(Flow):
+    def __init__(self, exception_to_downstream, **kwargs):
+        Flow.__init__(self, **kwargs)
+
+        self._exception_to_downstream = exception_to_downstream
+
+    async def _do(self, event):
+        if not self._outlets or event is _termination_obj:
+            return await super()._do_downstream(event)
+        else:
+            try:
+                await super()._do_downstream(event)
+            except BaseException as ex:
+                typ = type(ex)
+                if typ in self._exception_to_downstream:
+                    await self._exception_to_downstream[typ]._do(event)
+                else:
+                    raise ex
+
+
 class _UnaryFunctionFlow(Flow):
     def __init__(self, fn, **kwargs):
         super().__init__(**kwargs)
