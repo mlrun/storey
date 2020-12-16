@@ -8,7 +8,7 @@ from aiohttp import InvalidURL
 
 from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV, Complete, AsyncSource, Choice, \
     Event, Batch, Table, NoopDriver, WriteToCSV, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, WriteToParquet, \
-    WriteToTSDB, Extend, V3ioDriver, SendToHttp, HttpRequest, WriteToTable
+    WriteToTSDB, Extend, SendToHttp, HttpRequest, WriteToTable
 
 
 class ATestException(Exception):

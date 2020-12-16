@@ -10,7 +10,11 @@ from .dtypes import V3ioError
 from .utils import schema_file_name
 
 
-class NoopDriver:
+class Driver:
+    pass
+
+
+class NoopDriver(Driver):
     async def _save_schema(self, container, table_path, schema):
         pass
 
@@ -48,7 +52,7 @@ class NeedsV3ioAccess:
         self._access_key = access_key
 
 
-class V3ioDriver(NeedsV3ioAccess):
+class V3ioDriver(NeedsV3ioAccess, Driver):
     """
     Database connection to V3IO.
     :param webapi: URL to the web API (https or http). If not set, the V3IO_API environment variable will be used.
@@ -234,21 +238,21 @@ class V3ioDriver(NeedsV3ioAccess):
                     if not initialized_attributes.get(array_attribute_name, 0) == expected_time:
                         initialized_attributes[array_attribute_name] = expected_time
                         init_expression = f'{array_attribute_name}=if_else(({get_array_time_expr}<{expected_time_expr}),' \
-                            f"init_array({bucket.window.total_number_of_buckets},'double'," \
-                            f'{aggregation_value.get_default_value()}),{array_attribute_name})'
+                                          f"init_array({bucket.window.total_number_of_buckets},'double'," \
+                                          f'{aggregation_value.get_default_value()}),{array_attribute_name})'
                         expressions.append(init_expression)
 
                     arr_at_index = f'{array_attribute_name}[{index_to_update}]'
                     update_array_expression = f'{arr_at_index}=if_else(({get_array_time_expr}>{expected_time_expr}),{arr_at_index},' \
-                        f'{self._get_update_expression_by_aggregation(arr_at_index, aggregation_value)})'
+                                              f'{self._get_update_expression_by_aggregation(arr_at_index, aggregation_value)})'
 
                     expressions.append(update_array_expression)
 
                     # Separating time attribute updates, so that they will be executed in the end and only once per feature name.
                     if array_time_attribute_name not in times_update_expressions:
                         times_update_expressions[array_time_attribute_name] = f'{array_time_attribute_name}=' \
-                            f'if_else(({get_array_time_expr}<{expected_time_expr}),' \
-                            f'{expected_time_expr},{array_time_attribute_name})'
+                                                                              f'if_else(({get_array_time_expr}<{expected_time_expr}),' \
+                                                                              f'{expected_time_expr},{array_time_attribute_name})'
 
         expressions.extend(times_update_expressions.values())
 
