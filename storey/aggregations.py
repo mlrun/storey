@@ -478,7 +478,7 @@ class AggregationBuckets:
             self.last_bucket_start_time = \
                 self.first_bucket_start_time + (self.get_total_number_of_buckets() - 1) * self.get_period_millis()
 
-        self.initialize_column()
+            self.initialize_column()
 
     def initialize_column(self):
         self.buckets = []
@@ -634,7 +634,7 @@ class AggregationBuckets:
             all_windows.extend(self.explicit_windows.windows)
         if self.hidden_windows:
             some_window = self.hidden_windows
-            for win in self.hidden_windows:
+            for win in self.hidden_windows.windows:
                 if win not in all_windows:
                     all_windows.append(win)
         if self.is_fixed_window:
@@ -788,17 +788,15 @@ class VirtualAggregationBuckets:
     def get_features(self, timestamp):
         result = {}
 
-        args_results = [bucket.get_features(timestamp, get_hidden=True) for bucket in self.args]
-        if args_results[0]:
-            for j in range(len(self.window.windows)):
-                window_string = self.window.windows[j][1]
-                current_args = []
-                for i in range(len(args_results)):
-                    for key, value in args_results[i].items():
-                        if key.endswith('_' + window_string):
-                            current_args.append(value)
-                            break
-                result[f'{self.name}_{self.aggregation}_{window_string}'] = self.aggregation_func(current_args)
+        args_results = [list(bucket.get_features(timestamp, get_hidden=True).values()) for bucket in self.args]
+
+        for i in range(len(args_results[0])):
+            window_string = self.window.windows[i][1]
+            current_args = []
+            for window_result in args_results:
+                current_args.append(window_result[i])
+
+            result[f'{self.name}_{self.aggregation}_{window_string}'] = self.aggregation_func(current_args)
         return result
 
 
