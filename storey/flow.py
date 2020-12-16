@@ -685,8 +685,8 @@ class Batch(_Batching):
 class JoinWithV3IOTable(_ConcurrentJobExecution):
     """Joins each event with a V3IO table. Used for event augmentation.
 
-    :param storage: V3IO driver.
-    :type storage: V3ioDriver
+    :param storage: Database driver.
+    :type storage: Driver
     :param key_extractor: Function for extracting the key for table access from an event.
     :type key_extractor: Function (Event=>string)
     :param join_function: Joins the original event with relevant data received from V3IO.

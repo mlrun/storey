@@ -9,7 +9,7 @@ from typing import Optional, Union, List, Callable
 import pandas as pd
 import v3io_frames as frames
 
-from . import V3ioDriver
+from . import Driver
 from .dtypes import V3ioError, Event
 from .flow import Flow, _termination_obj, _split_path, _Batching, _ConcurrentByKeyJobExecution
 from .table import Table
@@ -287,7 +287,7 @@ class WriteToTSDB(_Batching, _Writer):
 class WriteToV3IOStream(Flow, _Writer):
     """Writes all incoming events into a V3IO stream.
 
-    :param storage: V3IO driver.
+    :param storage: Database driver.
     :param stream_path: Path to the V3IO stream.
     :param sharding_func: Function for determining the shard ID to which to write each event.
     :param batch_size: Batch size for each write request.
@@ -299,7 +299,7 @@ class WriteToV3IOStream(Flow, _Writer):
     and columns is not provided, infer_columns_from_data=True is implied. Optional. Default to False if columns is provided, True otherwise.
     """
 
-    def __init__(self, storage: V3ioDriver, stream_path: str, sharding_func: Optional[Callable[[Event], int]] = None, batch_size: int = 8,
+    def __init__(self, storage: Driver, stream_path: str, sharding_func: Optional[Callable[[Event], int]] = None, batch_size: int = 8,
                  columns: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None, **kwargs):
         Flow.__init__(self, **kwargs)
         _Writer.__init__(self, columns, infer_columns_from_data, retain_dict=True)
