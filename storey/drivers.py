@@ -11,10 +11,6 @@ from .utils import schema_file_name
 
 
 class Driver:
-    pass
-
-
-class NoopDriver(Driver):
     async def _save_schema(self, container, table_path, schema):
         pass
 

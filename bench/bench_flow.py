@@ -1,9 +1,10 @@
 import asyncio
 from datetime import datetime, timedelta
 
-import pytest
 import pandas as pd
-from storey import Source, Map, Reduce, build_flow, Complete, NoopDriver, FieldAggregator, AggregateByKey, Table, Batch, AsyncSource, \
+import pytest
+
+from storey import Source, Map, Reduce, build_flow, Complete, Driver, FieldAggregator, AggregateByKey, Table, Batch, AsyncSource, \
     DataframeSource
 from storey.dtypes import SlidingWindows
 
@@ -72,7 +73,7 @@ def test_aggregate_by_key_n_events(benchmark, n):
             Source(),
             AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg", "min", "max"],
                                             SlidingWindows(['1h', '2h', '24h'], '10m'))],
-                           Table("test", NoopDriver())),
+                           Table("test", Driver())),
         ]).run()
 
         for i in range(n):
@@ -107,7 +108,7 @@ def test_aggregate_df_86420_events(benchmark):
     df['timestamp'] = pd.to_datetime(df['timestamp'])
 
     def inner():
-        driver = NoopDriver()
+        driver = Driver()
         table = Table(f'test', driver)
 
         controller = build_flow([
