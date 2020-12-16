@@ -25,3 +25,7 @@ from .writers import (  # noqa: F401
 from .table import (  # noqa: F401
     Table
 )
+
+from .steps import (
+    GroupByKey
+)
