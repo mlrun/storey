@@ -263,7 +263,7 @@ class AggregatedStoreElement:
             if False in calculated_windows:
                 explicit_windows = calculated_windows[False]
             if True in calculated_windows:
-                explicit_windows = calculated_windows[True]
+                hidden_windows = calculated_windows[True]
             self.aggregation_buckets[column_name] =\
                 AggregationBuckets(name, aggr, explicit_windows, hidden_windows, base_time, max_value, initial_column_data)
 
@@ -452,13 +452,14 @@ class AggregationBuckets:
 
         # If a user specified a max_value we need to recalculated features on every event
         self._precalculated_aggregations = max_value is None
-        if self._precalculated_aggregations:
-            if explicit_windows:
-                self.is_fixed_window = isinstance(self.explicit_windows, FixedWindows)
+        if explicit_windows:
+            self.is_fixed_window = isinstance(self.explicit_windows, FixedWindows)
+            if self._precalculated_aggregations:
                 for win in explicit_windows.windows:
                     self._current_aggregate_values[win] = AggregationValue(aggregation)
-            if hidden_windows:
-                self.is_fixed_window = isinstance(self.explicit_windows, FixedWindows)
+        if hidden_windows:
+            self.is_fixed_window = isinstance(self.explicit_windows, FixedWindows)
+            if self._precalculated_aggregations:
                 for win in hidden_windows.windows:
                     if win not in self._current_aggregate_values:
                         self._current_aggregate_values[win] = AggregationValue(aggregation)
