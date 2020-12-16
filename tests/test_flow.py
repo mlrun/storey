@@ -7,8 +7,8 @@ import pandas as pd
 from aiohttp import InvalidURL
 
 from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV, Complete, AsyncSource, Choice, \
-    Event, Batch, Table, NoopDriver, WriteToCSV, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, WriteToParquet, \
-    WriteToTSDB, Extend, SendToHttp, HttpRequest, WriteToTable
+    Event, Batch, Table, WriteToCSV, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, WriteToParquet, \
+    WriteToTSDB, Extend, SendToHttp, HttpRequest, WriteToTable, Driver
 
 
 class ATestException(Exception):
@@ -310,7 +310,7 @@ def test_map_with_state_flow():
 
 
 def test_map_with_cache_state_flow():
-    table_object = Table("table", NoopDriver())
+    table_object = Table("table", Driver())
     table_object._cache['tal'] = {'color': 'blue'}
     table_object._cache['dina'] = {'color': 'red'}
 
@@ -350,7 +350,7 @@ def test_map_with_cache_state_flow():
 
 
 def test_map_with_empty_cache_state_flow():
-    table_object = Table("table", NoopDriver())
+    table_object = Table("table", Driver())
 
     def enrich(event, state):
         if 'first_value' not in state:
@@ -519,13 +519,13 @@ def test_async_awaitable_result_error_in_async_downstream():
 
 
 def test_awaitable_result_error_in_by_key_async_downstream():
-    class NoopDriverBoom(NoopDriver):
+    class DriverBoom(Driver):
         async def _save_key(self, container, table_path, key, aggr_item, partitioned_by_key, additional_data):
             raise ValueError('boom')
 
     controller = build_flow([
         Source(),
-        WriteToTable(Table('test', NoopDriverBoom())),
+        WriteToTable(Table('test', DriverBoom())),
         Complete()
     ]).run()
     try:
@@ -1162,7 +1162,7 @@ def test_write_to_parquet_with_inference(tmpdir):
 
 
 def test_join_by_key():
-    table = Table('test', NoopDriver())
+    table = Table('test', Driver())
     table.update_key(9, {'age': 1, 'color': 'blue9'})
     table.update_key(7, {'age': 3, 'color': 'blue7'})
 
@@ -1182,7 +1182,7 @@ def test_join_by_key():
 
 
 def test_join_by_string_key():
-    table = Table('test', NoopDriver())
+    table = Table('test', Driver())
     table.update_key(9, {'age': 1, 'color': 'blue9'})
     table.update_key(7, {'age': 3, 'color': 'blue7'})
 
