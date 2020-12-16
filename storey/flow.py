@@ -47,9 +47,14 @@ class Flow:
             return termination_result
         # If there is more than one outlet, allow concurrent execution.
         tasks = []
-        for i in range(1, len(self._outlets)):
-            tasks.append(asyncio.get_running_loop().create_task(self._outlets[i]._do(event)))
-
+        if len(self._outlets) > 1:
+            awaitable_result = event._awaitable_result
+            event._awaitable_result = None
+            for i in range(1, len(self._outlets)):
+                event_copy = copy.deepcopy(event)
+                event_copy._awaitable_result = awaitable_result
+                tasks.append(asyncio.get_running_loop().create_task(self._outlets[i]._do(event_copy)))
+            event._awaitable_result = awaitable_result
         if self.verbose:
             step_name = type(self).__name__
             event_string = str(event)
@@ -60,10 +65,9 @@ class Flow:
                 print(f'{step_name} -> {type(self._outlets[i]).__name__} | {event_string}')
             await task
 
-    def _get_safe_event_or_body(self, event):
+    def _get_event_or_body(self, event):
         if self._full_event:
-            new_event = copy.copy(event)
-            return new_event
+            return event
         else:
             return event.body
 
@@ -108,7 +112,7 @@ class Choice(Flow):
         if not self._outlets or event is _termination_obj:
             return await super()._do_downstream(event)
         chosen_outlet = None
-        element = self._get_safe_event_or_body(event)
+        element = self._get_event_or_body(event)
         for outlet, condition in self._choice_array:
             if condition(element):
                 chosen_outlet = outlet
@@ -140,7 +144,7 @@ class _UnaryFunctionFlow(Flow):
         if event is _termination_obj:
             return await self._do_downstream(_termination_obj)
         else:
-            element = self._get_safe_event_or_body(event)
+            element = self._get_event_or_body(event)
             fn_result = await self._call(element)
             await self._do_internal(event, fn_result)
 
@@ -217,7 +221,7 @@ class _FunctionWithStateFlow(Flow):
             self._closeables = [initial_state]
 
     async def _call(self, event):
-        element = self._get_safe_event_or_body(event)
+        element = self._get_event_or_body(event)
         if self._group_by_key:
             if isinstance(self._state, Table):
                 key_data = await self._state.get_or_load_key(event.key)
@@ -286,7 +290,7 @@ class MapClass(Flow):
         if event is _termination_obj:
             return await self._do_downstream(_termination_obj)
         else:
-            element = self._get_safe_event_or_body(event)
+            element = self._get_event_or_body(event)
             fn_result = await self._call(element)
             if not self._filter:
                 mapped_event = self._user_fn_output_to_event(event, fn_result)
@@ -307,7 +311,7 @@ class Complete(Flow):
     async def _do(self, event):
         termination_result = await self._do_downstream(event)
         if event is not _termination_obj:
-            result = self._get_safe_event_or_body(event)
+            result = self._get_event_or_body(event)
             res = event._awaitable_result._set_result(result)
             if res:
                 await res
@@ -628,7 +632,7 @@ class _Batching(Flow):
         await self._emit_batch()
 
     def _event_to_batch_entry(self, event):
-        return self._get_safe_event_or_body(event)
+        return self._get_event_or_body(event)
 
     async def _do(self, event):
         if event is _termination_obj:
@@ -710,13 +714,13 @@ class JoinWithV3IOTable(_ConcurrentJobExecution):
         self._attributes = attributes
 
     async def _process_event(self, event):
-        key = str(self._key_extractor(self._get_safe_event_or_body(event)))
+        key = str(self._key_extractor(self._get_event_or_body(event)))
         return await self._storage._get_item(self._container, self._table_path, key, self._attributes)
 
     async def _handle_completed(self, event, response):
         if response.status_code == 200:
             response_object = response.output.item
-            joined = self._join_function(self._get_safe_event_or_body(event), response_object)
+            joined = self._join_function(self._get_event_or_body(event), response_object)
             if joined is not None:
                 new_event = self._user_fn_output_to_event(event, joined)
                 await self._do_downstream(new_event)
@@ -771,11 +775,11 @@ class JoinWithTable(_ConcurrentJobExecution):
         self._attributes = attributes or '*'
 
     async def _process_event(self, event):
-        key = self._key_extractor(self._get_safe_event_or_body(event))
+        key = self._key_extractor(self._get_event_or_body(event))
         return await self._table.get_or_load_key(key, self._attributes)
 
     async def _handle_completed(self, event, response):
-        joined = self._join_function(self._get_safe_event_or_body(event), response)
+        joined = self._join_function(self._get_event_or_body(event), response)
         if joined is not None:
             new_event = self._user_fn_output_to_event(event, joined)
             await self._do_downstream(new_event)
@@ -802,14 +806,17 @@ def build_flow(steps):
     """
     if len(steps) == 0:
         raise ValueError('Cannot build an empty flow')
-    cur_step = steps[0]
+    first_step = steps[0]
+    if isinstance(first_step, list):
+        first_step = build_flow(first_step)
+    cur_step = first_step
     for next_step in steps[1:]:
         if isinstance(next_step, list):
             cur_step.to(build_flow(next_step))
         else:
             cur_step.to(next_step)
             cur_step = next_step
-    return steps[0]
+    return first_step
 
 
 class Context:
