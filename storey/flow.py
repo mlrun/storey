@@ -46,10 +46,14 @@ class Flow:
             return termination_result
         # If there is more than one outlet, allow concurrent execution.
         tasks = []
-        for i in range(1, len(self._outlets)):
-            event_copy = copy.copy(event)
-            event_copy.body = copy.deepcopy(event.body)
-            tasks.append(asyncio.get_running_loop().create_task(self._outlets[i]._do(event_copy)))
+        if len(self._outlets) > 1:
+            awaitable_result = event._awaitable_result
+            event._awaitable_result = None
+            for i in range(1, len(self._outlets)):
+                event_copy = copy.deepcopy(event)
+                event_copy._awaitable_result = awaitable_result
+                tasks.append(asyncio.get_running_loop().create_task(self._outlets[i]._do(event_copy)))
+            event._awaitable_result = awaitable_result
         await self._outlets[0]._do(event)  # Optimization - avoids creating a task for the first outlet.
         for task in tasks:
             await task
