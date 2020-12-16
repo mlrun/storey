@@ -1,6 +1,9 @@
 import asyncio
 import copy
-from typing import Optional, Union, Callable, List, Dict
+from asyncio import Task
+from collections import defaultdict
+from datetime import datetime, timezone
+from typing import Optional, Union, Callable, List, Dict, Any
 
 import aiohttp
 
@@ -634,18 +637,34 @@ class SendToHttp(_ConcurrentJobExecution):
 
 
 class _Batching(Flow):
-    def __init__(self, max_events: Optional[int] = None, timeout_secs=None, **kwargs):
+    def __init__(
+        self,
+        max_events: Optional[int] = None,
+        timeout_secs: Optional[int] = None,
+        group_events: bool = False,
+        key: Optional[Union[str, callable]] = None,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
 
-        self._max_events = max_events
-        self._event_count = 0
-        self._batch = []
-        self._batch_time = None
-        self._timeout_task = None
-
+        self._max_events: int = max_events
         self._timeout_secs = timeout_secs
+        self._group_events = group_events
+
         if self._timeout_secs is not None and self._timeout_secs <= 0:
             raise ValueError("Batch timeout cannot be 0 or negative")
+
+        self._event_count: Dict[Optional[str], int] = defaultdict(int)
+        self._batch: Dict[Optional[str], List[Any]] = defaultdict(list)
+        self._batch_time: Dict[Optional[str], datetime] = {}
+        self._timeout_task: Optional[Task] = None
+
+        self.key_extractor = None
+        if key and group_events:
+            if callable(key):
+                self.key_extractor = key
+            elif isinstance(key, str):
+                self.key_extractor = lambda element: element[key]
 
     async def _emit(self, batch, batch_time):
         raise NotImplementedError
@@ -653,50 +672,67 @@ class _Batching(Flow):
     async def _terminate(self):
         pass
 
-    async def _sleep_and_emit(self):
-        await asyncio.sleep(self._timeout_secs)
-        await self._emit_batch()
+    async def _sleep_and_emit(self, key: Optional[str] = None):
+        time_delta = (
+            datetime.now(timezone.utc) - self._batch_time[key]
+        ).total_seconds()
+        if time_delta < self._timeout_secs:
+            await asyncio.sleep(self._timeout_secs - time_delta)
+        await self._emit_batch(key)
+        self._timeout_task = None
 
     def _event_to_batch_entry(self, event):
         return self._get_event_or_body(event)
 
     async def _do(self, event):
         if event is _termination_obj:
-            if self._timeout_task and not self._timeout_task.cancelled():
+            if self._timeout_task is not None and not self._timeout_task.cancelled():
                 self._timeout_task.cancel()
-            await self._emit_batch()
+            await self._emit_all()
             await self._terminate()
             return await self._do_downstream(_termination_obj)
-        else:
-            if len(self._batch) == 0:
-                self._batch_time = event.time
-                if self._timeout_secs:
-                    self._timeout_task = asyncio.get_running_loop().create_task(
-                        self._sleep_and_emit()
-                    )
 
-            self._event_count = self._event_count + 1
-            self._batch.append(self._event_to_batch_entry(event))
+        key = None
+        if self._group_events:
+            key = self.key_extractor(event.body) if self.key_extractor else event.key
 
-            if self._event_count == self._max_events:
-                if self._timeout_task and not self._timeout_task.cancelled():
-                    self._timeout_task.cancel()
-                await self._emit_batch()
+        if len(self._batch[key]) == 0:
+            self._batch_time[key] = event.time
 
-    async def _emit_batch(self):
-        if len(self._batch) > 0:
-            batch_to_emit = self._batch
-            batch_time = self._batch_time
-            self._batch = []
-            self._batch_time = None
-            self._event_count = 0
+        if self._timeout_secs and self._timeout_task is None:
+            self._init_timeout_task()
 
+        self._event_count[key] = self._event_count[key] + 1
+        self._batch[key].append(self._event_to_batch_entry(event))
+
+        if self._event_count[key] == self._max_events:
+            if self._timeout_task is not None and not self._timeout_task.cancelled():
+                self._timeout_task.cancel()
+            await self._emit_batch(key)
+
+    def _init_timeout_task(self):
+        for key in self._batch.keys():
+            self._timeout_task = asyncio.get_running_loop().create_task(
+                self._sleep_and_emit(key)
+            )
+            break
+
+    async def _emit_batch(self, batch_key: Optional[str] = None):
+        batch_to_emit = self._batch.pop(batch_key)
+        if len(batch_to_emit) > 0:
+            batch_time = self._batch_time.pop(batch_key)
+            del self._event_count[batch_key]
             await self._emit(batch_to_emit, batch_time)
+
+    async def _emit_all(self):
+        batch_keys = list(self._batch.keys())
+        for batch_key in batch_keys:
+            await self._emit_batch(batch_key)
 
 
 class Batch(_Batching):
     """
-    Batches events into lists of up to max_events events. Each emitted list contained max_events events, unless timeout_secs seconds
+    Batches events into a list of up to max_events events. Each emitted list contained max_events events, unless timeout_secs seconds
     have passed since the first event in the batch was received, at which the batch is emitted with potentially fewer than max_events
     event.
     :param max_events: Maximum number of events per emitted batch. Set to None to emit all events in one batch on flow termination.
