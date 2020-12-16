@@ -30,6 +30,10 @@ class Driver:
         pass
 
 
+class NoopDriver(Driver):
+    pass
+
+
 class NeedsV3ioAccess:
     def __init__(self, webapi=None, access_key=None):
         webapi = webapi or os.getenv('V3IO_API')
