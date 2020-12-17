@@ -7,7 +7,7 @@ from .dataframe import (  # noqa: F401
     ToDataFrame, ReduceToDataFrame
 )
 from .drivers import (  # noqa: F401
-    Driver, V3ioDriver
+    Driver, NoopDriver, V3ioDriver
 )
 from .dtypes import (  # noqa: F401
     Event, FieldAggregator

@@ -7,8 +7,8 @@ import pandas as pd
 from aiohttp import InvalidURL
 
 from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV, Complete, AsyncSource, Choice, \
-    Event, Batch, Table, Driver, WriteToCSV, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, WriteToParquet, \
-    WriteToTSDB, Extend, SendToHttp, HttpRequest, WriteToTable, Recover
+    Event, Batch, Table, WriteToCSV, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, WriteToParquet, \
+    WriteToTSDB, Extend, SendToHttp, HttpRequest, WriteToTable, NoopDriver, Driver, Recover
 
 
 class ATestException(Exception):
@@ -350,7 +350,7 @@ def test_map_with_state_flow():
 
 
 def test_map_with_cache_state_flow():
-    table_object = Table("table", Driver())
+    table_object = Table("table", NoopDriver())
     table_object._cache['tal'] = {'color': 'blue'}
     table_object._cache['dina'] = {'color': 'red'}
 
@@ -390,7 +390,7 @@ def test_map_with_cache_state_flow():
 
 
 def test_map_with_empty_cache_state_flow():
-    table_object = Table("table", Driver())
+    table_object = Table("table", NoopDriver())
 
     def enrich(event, state):
         if 'first_value' not in state:
@@ -1202,7 +1202,7 @@ def test_write_to_parquet_with_inference(tmpdir):
 
 
 def test_join_by_key():
-    table = Table('test', Driver())
+    table = Table('test', NoopDriver())
     table.update_key(9, {'age': 1, 'color': 'blue9'})
     table.update_key(7, {'age': 3, 'color': 'blue7'})
 
@@ -1222,7 +1222,7 @@ def test_join_by_key():
 
 
 def test_join_by_string_key():
-    table = Table('test', Driver())
+    table = Table('test', NoopDriver())
     table.update_key(9, {'age': 1, 'color': 'blue9'})
     table.update_key(7, {'age': 3, 'color': 'blue7'})
 
