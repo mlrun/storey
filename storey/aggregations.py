@@ -457,12 +457,15 @@ class AggregationBuckets:
         if explicit_windows:
             self.is_fixed_window = isinstance(self.explicit_windows, FixedWindows)
             self.period_millis = explicit_windows.period_millis
+            self._window_start_time = explicit_windows.get_window_start_time_by_time(base_time)
             if self._precalculated_aggregations:
                 for win in explicit_windows.windows:
                     self._current_aggregate_values[win] = AggregationValue(aggregation)
         if hidden_windows:
-            self.is_fixed_window = isinstance(self.explicit_windows, FixedWindows)
-            self.period_millis = hidden_windows.period_millis
+            if not explicit_windows:
+                self.is_fixed_window = isinstance(self.explicit_windows, FixedWindows)
+                self.period_millis = hidden_windows.period_millis
+                self._window_start_time = hidden_windows.get_window_start_time_by_time(base_time)
             if self._precalculated_aggregations:
                 for win in hidden_windows.windows:
                     if win not in self._current_aggregate_values:
@@ -475,10 +478,7 @@ class AggregationBuckets:
             self.initialize_from_data(initial_data, base_time)
             self.calculate_features(base_time)
         else:
-            if self.explicit_windows:
-                self.first_bucket_start_time = self.explicit_windows.get_window_start_time_by_time(base_time)
-            else:
-                self.first_bucket_start_time = self.hidden_windows.get_window_start_time_by_time(base_time)
+            self.first_bucket_start_time = self._window_start_time
             self.last_bucket_start_time = \
                 self.first_bucket_start_time + (self.total_number_of_buckets - 1) * self.period_millis
 
@@ -692,10 +692,7 @@ class AggregationBuckets:
             first_time, last_time = min(timestamp1, timestamp2), max(timestamp1, timestamp2)
 
         bucket_index = self.total_number_of_buckets - 1
-        if self.explicit_windows:
-            self.last_bucket_start_time = self.explicit_windows.get_window_start_time_by_time(base_time)
-        else:
-            self.last_bucket_start_time = self.hidden_windows.get_window_start_time_by_time(base_time)
+        self.last_bucket_start_time = self._window_start_time
         self.first_bucket_start_time = \
             self.last_bucket_start_time - (self.total_number_of_buckets - 1) * period
 
