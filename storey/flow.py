@@ -632,6 +632,7 @@ class _Batching(Flow):
         self._batch: Dict[Optional[str], List[Any]] = defaultdict(list)
         self._batch_time: Dict[Optional[str], datetime] = {}
         self._timeout_task: Optional[Task] = None
+        self._timeout_task_key: Optional[str] = None
 
         self.key_extractor = None
         if key and group_by_key:
@@ -646,18 +647,6 @@ class _Batching(Flow):
     async def _terminate(self):
         pass
 
-    async def _sleep_and_emit(self, key: Optional[str] = None):
-        time_delta = (
-            datetime.now(timezone.utc) - self._batch_time[key]
-        ).total_seconds()
-        if time_delta < self._timeout_secs:
-            await asyncio.sleep(self._timeout_secs - time_delta)
-        await self._emit_batch(key)
-        self._timeout_task = None
-
-    def _event_to_batch_entry(self, event):
-        return self._get_event_or_body(event)
-
     async def _do(self, event):
         if event is _termination_obj:
             if self._timeout_task is not None and not self._timeout_task.cancelled():
@@ -666,23 +655,51 @@ class _Batching(Flow):
             await self._terminate()
             return await self._do_downstream(_termination_obj)
 
-        key = None
-        if self._group_by_key:
-            key = self.key_extractor(event.body) if self.key_extractor else event.key
-
+        key = self._get_event_key(event)
+        
         if len(self._batch[key]) == 0:
             self._batch_time[key] = event.time
 
         if self._timeout_secs and self._timeout_task is None:
-            self._timeout_task = asyncio.get_running_loop().create_task(self._sleep_and_emit(key))
+            self._timeout_task = asyncio.get_running_loop().create_task(self._sleep_and_emit())
 
         self._event_count[key] = self._event_count[key] + 1
         self._batch[key].append(self._event_to_batch_entry(event))
 
         if self._event_count[key] == self._max_events:
-            if self._timeout_task is not None and not self._timeout_task.cancelled():
+            if key == self._timeout_task_key and self._timeout_task and not self._timeout_task.cancelled():
                 self._timeout_task.cancel()
+                self._timeout_task_key = None
             await self._emit_batch(key)
+
+    async def _sleep_and_emit(self):
+        while self._batch:
+            key = next(iter(self._batch.keys()))
+            time_delta = datetime.now(timezone.utc) - self._batch_time[key]
+            delta_seconds = time_delta.total_seconds()
+            if delta_seconds < self._timeout_secs:
+                self._timeout_task_key = key
+                await asyncio.sleep(self._timeout_secs - delta_seconds)
+            await self._emit_batch(key)
+
+        self._timeout_task.cancel()
+        self._timeout_task = None
+        self._timeout_task_key = None
+
+    def _event_to_batch_entry(self, event):
+        return self._get_event_or_body(event)
+    
+    def _get_event_key(self, event):
+        key = None
+        if self._group_by_key:
+            if self.key_extractor:
+                if self._full_event:
+                    key = self.key_extractor(event.body)
+                else:
+                    key = self.key_extractor(event)
+            else:
+                key = event.key
+        return key
 
     async def _emit_batch(self, batch_key: Optional[str] = None):
         batch_to_emit = self._batch.pop(batch_key)
