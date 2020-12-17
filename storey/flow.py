@@ -693,10 +693,7 @@ class _Batching(Flow):
         key = None
         if self._group_by_key:
             if self.key_extractor:
-                if self._full_event:
-                    key = self.key_extractor(event.body)
-                else:
-                    key = self.key_extractor(event)
+                key = self.key_extractor(event.body)
             else:
                 key = event.key
         return key
