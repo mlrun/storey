@@ -615,7 +615,7 @@ class _Batching(Flow):
         self,
         max_events: Optional[int] = None,
         timeout_secs: Optional[int] = None,
-        group_events: bool = False,
+        group_by_key: bool = False,
         key: Optional[Union[str, callable]] = None,
         **kwargs,
     ):
@@ -623,7 +623,7 @@ class _Batching(Flow):
 
         self._max_events: int = max_events
         self._timeout_secs = timeout_secs
-        self._group_events = group_events
+        self._group_by_key = group_by_key
 
         if self._timeout_secs is not None and self._timeout_secs <= 0:
             raise ValueError("Batch timeout cannot be 0 or negative")
@@ -634,7 +634,7 @@ class _Batching(Flow):
         self._timeout_task: Optional[Task] = None
 
         self.key_extractor = None
-        if key and group_events:
+        if key and group_by_key:
             if callable(key):
                 self.key_extractor = key
             elif isinstance(key, str):
@@ -667,14 +667,14 @@ class _Batching(Flow):
             return await self._do_downstream(_termination_obj)
 
         key = None
-        if self._group_events:
+        if self._group_by_key:
             key = self.key_extractor(event.body) if self.key_extractor else event.key
 
         if len(self._batch[key]) == 0:
             self._batch_time[key] = event.time
 
         if self._timeout_secs and self._timeout_task is None:
-            self._init_timeout_task()
+            self._timeout_task = asyncio.get_running_loop().create_task(self._sleep_and_emit(key))
 
         self._event_count[key] = self._event_count[key] + 1
         self._batch[key].append(self._event_to_batch_entry(event))
@@ -684,19 +684,11 @@ class _Batching(Flow):
                 self._timeout_task.cancel()
             await self._emit_batch(key)
 
-    def _init_timeout_task(self):
-        for key in self._batch.keys():
-            self._timeout_task = asyncio.get_running_loop().create_task(
-                self._sleep_and_emit(key)
-            )
-            break
-
     async def _emit_batch(self, batch_key: Optional[str] = None):
         batch_to_emit = self._batch.pop(batch_key)
-        if len(batch_to_emit) > 0:
-            batch_time = self._batch_time.pop(batch_key)
-            del self._event_count[batch_key]
-            await self._emit(batch_to_emit, batch_time)
+        batch_time = self._batch_time.pop(batch_key)
+        del self._event_count[batch_key]
+        await self._emit(batch_to_emit, batch_time)
 
     async def _emit_all(self):
         batch_keys = list(self._batch.keys())
@@ -706,14 +698,28 @@ class _Batching(Flow):
 
 class Batch(_Batching):
     """
-    Batches events into lists of up to max_events events. Each emitted list contained max_events events, unless timeout_secs seconds
+    Batches events into lists of up to max_events events. Each emitted list  contained max_events events, unless timeout_secs seconds
     have passed since the first event in the batch was received, at which the batch is emitted with potentially fewer than max_events
     event.
     :param max_events: Maximum number of events per emitted batch. Set to None to emit all events in one batch on flow termination.
     :type max_events: int or None
     :param timeout_secs: Maximum number of seconds to wait before a batch is emitted.
     :type timeout_secs: int
+    :param group_by_key: If true, Batch will will group events by given key
+    :type group_by_key: bool
+    :param key: The key by which events are grouped, when None will use Event.key for grouping.
+    :type key: str or callable or None
     """
+
+    def __init__(
+            self,
+            max_events: Optional[int] = None,
+            timeout_secs: Optional[int] = None,
+            group_by_key: bool = False,
+            key: Optional[Union[str, callable]] = None,
+            **kwargs
+    ):
+        super().__init__(max_events, timeout_secs, group_by_key, key, **kwargs)
 
     async def _emit(self, batch, batch_time):
         event = Event(batch, time=batch_time)

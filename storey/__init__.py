@@ -25,7 +25,3 @@ from .table import (  # noqa: F401
 from .writers import (  # noqa: F401
     WriteToV3IOStream, WriteToCSV, WriteToParquet, WriteToTSDB, WriteToTable
 )
-
-from .steps import (  # noqa: F401
-    GroupByKey
-)
