@@ -25,7 +25,7 @@ class Flow:
         self._full_event = full_event
         self._termination_result_fn = termination_result_fn
         self.context = context
-        self.verbose = context and getattr(context, 'verbose', False)
+        self.verbose = context and getattr(context, "verbose", False)
         self._closeables = []
         if name:
             self.name = name
@@ -74,11 +74,15 @@ class Flow:
         if self.verbose:
             step_name = type(self).__name__
             event_string = str(event)
-            print(f'{step_name} -> {type(self._outlets[0]).__name__} | {event_string}')
-        await self._outlets[0]._do(event)  # Optimization - avoids creating a task for the first outlet.
+            print(f"{step_name} -> {type(self._outlets[0]).__name__} | {event_string}")
+        await self._outlets[0]._do(
+            event
+        )  # Optimization - avoids creating a task for the first outlet.
         for i, task in enumerate(tasks, start=1):
             if self.verbose:
-                print(f'{step_name} -> {type(self._outlets[i]).__name__} | {event_string}')
+                print(
+                    f"{step_name} -> {type(self._outlets[i]).__name__} | {event_string}"
+                )
             await task
 
     def _get_event_or_body(self, event):
@@ -228,12 +232,12 @@ class _FunctionWithStateFlow(Flow):
     def __init__(self, initial_state, fn, group_by_key=False, **kwargs):
         super().__init__(**kwargs)
         if not callable(fn):
-            raise TypeError(f'Expected a callable, got {type(fn)}')
+            raise TypeError(f"Expected a callable, got {type(fn)}")
         self._is_async = asyncio.iscoroutinefunction(fn)
         self._state = initial_state
         self._fn = fn
         self._group_by_key = group_by_key
-        if hasattr(initial_state, 'close'):
+        if hasattr(initial_state, "close"):
             self._closeables = [initial_state]
 
     async def _call(self, event):
