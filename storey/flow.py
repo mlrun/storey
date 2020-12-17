@@ -626,7 +626,7 @@ class _Batching(Flow):
         self._group_by_key = group_by_key
 
         if self._timeout_secs is not None and self._timeout_secs <= 0:
-            raise ValueError("Batch timeout cannot be 0 or negative")
+            raise ValueError('Batch timeout cannot be 0 or negative')
 
         self._event_count: Dict[Optional[str], int] = defaultdict(int)
         self._batch: Dict[Optional[str], List[Any]] = defaultdict(list)
@@ -705,24 +705,19 @@ class _Batching(Flow):
         await self._emit(batch_to_emit, batch_time)
 
     async def _emit_all(self):
-        batch_keys = list(self._batch.keys())
-        for batch_key in batch_keys:
+        for batch_key in self._batch:
             await self._emit_batch(batch_key)
 
 
 class Batch(_Batching):
     """
-    Batches events into lists of up to max_events events. Each emitted list  contained max_events events, unless timeout_secs seconds
+    Batches events into lists of up to max_events events. Each emitted list contained max_events events, unless timeout_secs seconds
     have passed since the first event in the batch was received, at which the batch is emitted with potentially fewer than max_events
     event.
     :param max_events: Maximum number of events per emitted batch. Set to None to emit all events in one batch on flow termination.
-    :type max_events: int or None
     :param timeout_secs: Maximum number of seconds to wait before a batch is emitted.
-    :type timeout_secs: int
-    :param group_by_key: If true, Batch will will group events by given key
-    :type group_by_key: bool
+    :param group_by_key: If true, Batch will group events by given key
     :param key: The key by which events are grouped, when None will use Event.key for grouping.
-    :type key: str or callable or None
     """
 
     async def _emit(self, batch, batch_time):
