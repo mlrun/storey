@@ -711,16 +711,6 @@ class Batch(_Batching):
     :type key: str or callable or None
     """
 
-    def __init__(
-            self,
-            max_events: Optional[int] = None,
-            timeout_secs: Optional[int] = None,
-            group_by_key: bool = False,
-            key: Optional[Union[str, callable]] = None,
-            **kwargs
-    ):
-        super().__init__(max_events, timeout_secs, group_by_key, key, **kwargs)
-
     async def _emit(self, batch, batch_time):
         event = Event(batch, time=batch_time)
         return await self._do_downstream(event)
