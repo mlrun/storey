@@ -11,11 +11,8 @@ class GroupByKey(_Batching):
     received, at which the group is emitted with potentially fewer than max_events
     event.
     :param key: The key on which events are grouped by.
-    :type key: str or callable
     :param max_events: Maximum number of events per emitted batch. Set to None to emit all events in one batch on flow termination.
-    :type max_events: int or None
     :param timeout_secs: Maximum number of seconds to wait before a batch is emitted.
-    :type timeout_secs: int
     """
 
     def __init__(
