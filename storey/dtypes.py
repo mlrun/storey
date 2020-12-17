@@ -49,6 +49,9 @@ class Event:
         return self.body == other.body and self.time == other.time and self.id == other.id and self.headers == other.headers and \
                self.method == other.method and self.path == other.path and self.content_type == other.content_type  # noqa: E127
 
+    def __str__(self):
+        return f'Event(id={self.id}, key={self.key}, time={self.time}, body={self.body})'
+
 
 class V3ioError(Exception):
     pass

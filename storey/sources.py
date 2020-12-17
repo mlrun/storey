@@ -3,7 +3,7 @@ import csv
 import queue
 import threading
 from datetime import datetime, timezone
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Callable, Coroutine
 
 import pandas
 
@@ -14,17 +14,23 @@ from .flow import Flow
 class AwaitableResult:
     """Future result of a computation. Calling await_result() will return with the result once the computation is completed."""
 
-    def __init__(self):
+    def __init__(self, on_error: Optional[Callable[[], None]] = None):
+        self._on_error = on_error
         self._q = queue.Queue(1)
 
     def await_result(self):
-        return self._q.get()
+        result = self._q.get()
+        if isinstance(result, BaseException):
+            if self._on_error:
+                self._on_error()
+            raise result
+        return result
 
     def _set_result(self, element):
         self._q.put(element)
 
-    def _set_error(self, element):
-        pass
+    def _set_error(self, ex):
+        self._set_result(ex)
 
 
 class FlowController:
@@ -60,7 +66,7 @@ class FlowController:
             event = Event(element, key=key, time=event_time)
         awaitable_result = None
         if return_awaitable_result:
-            awaitable_result = AwaitableResult()
+            awaitable_result = AwaitableResult(self.terminate)
         event._awaitable_result = awaitable_result
         self._emit_fn(event)
         return awaitable_result
@@ -114,6 +120,8 @@ class Source(Flow):
                 if event is _termination_obj:
                     self._termination_future.set_result(termination_result)
             except BaseException as ex:
+                if event is not _termination_obj and event._awaitable_result:
+                    event._awaitable_result._set_error(ex)
                 self._ex = ex
                 if not self._q.empty():
                     self._q.get()
@@ -155,11 +163,17 @@ class AsyncAwaitableResult:
     """Future result of a computation. Calling await_result() will return with the result once the computation is completed.
     Same as AwaitableResult but for an async context."""
 
-    def __init__(self):
+    def __init__(self, on_error: Optional[Callable[[BaseException], Coroutine]] = None):
+        self._on_error = on_error
         self._q = asyncio.Queue(1)
 
     async def await_result(self):
-        return await self._q.get()
+        result = await self._q.get()
+        if isinstance(result, BaseException):
+            if self._on_error:
+                await self._on_error()
+            raise result
+        return result
 
     async def _set_result(self, element):
         await self._q.put(element)
@@ -200,7 +214,7 @@ class AsyncFlowController:
             event = Event(element, key=key, time=event_time)
         awaitable = None
         if await_result:
-            awaitable = AsyncAwaitableResult()
+            awaitable = AsyncAwaitableResult(self.terminate)
         event._awaitable_result = awaitable
         await self._emit_fn(event)
         if await_result:

@@ -15,6 +15,7 @@ class Flow:
         self._full_event = full_event
         self._termination_result_fn = termination_result_fn
         self.context = context
+        self.verbose = context and getattr(context, 'verbose', False)
         self._closeables = []
         if name:
             self.name = name
@@ -46,16 +47,27 @@ class Flow:
             return termination_result
         # If there is more than one outlet, allow concurrent execution.
         tasks = []
-        for i in range(1, len(self._outlets)):
-            tasks.append(asyncio.get_running_loop().create_task(self._outlets[i]._do(event)))
+        if len(self._outlets) > 1:
+            awaitable_result = event._awaitable_result
+            event._awaitable_result = None
+            for i in range(1, len(self._outlets)):
+                event_copy = copy.deepcopy(event)
+                event_copy._awaitable_result = awaitable_result
+                tasks.append(asyncio.get_running_loop().create_task(self._outlets[i]._do(event_copy)))
+            event._awaitable_result = awaitable_result
+        if self.verbose:
+            step_name = type(self).__name__
+            event_string = str(event)
+            print(f'{step_name} -> {type(self._outlets[0]).__name__} | {event_string}')
         await self._outlets[0]._do(event)  # Optimization - avoids creating a task for the first outlet.
-        for task in tasks:
+        for i, task in enumerate(tasks, start=1):
+            if self.verbose:
+                print(f'{step_name} -> {type(self._outlets[i]).__name__} | {event_string}')
             await task
 
-    def _get_safe_event_or_body(self, event):
+    def _get_event_or_body(self, event):
         if self._full_event:
-            new_event = copy.copy(event)
-            return new_event
+            return event
         else:
             return event.body
 
@@ -100,7 +112,7 @@ class Choice(Flow):
         if not self._outlets or event is _termination_obj:
             return await super()._do_downstream(event)
         chosen_outlet = None
-        element = self._get_safe_event_or_body(event)
+        element = self._get_event_or_body(event)
         for outlet, condition in self._choice_array:
             if condition(element):
                 chosen_outlet = outlet
@@ -132,7 +144,7 @@ class _UnaryFunctionFlow(Flow):
         if event is _termination_obj:
             return await self._do_downstream(_termination_obj)
         else:
-            element = self._get_safe_event_or_body(event)
+            element = self._get_event_or_body(event)
             fn_result = await self._call(element)
             await self._do_internal(event, fn_result)
 
@@ -209,7 +221,7 @@ class _FunctionWithStateFlow(Flow):
             self._closeables = [initial_state]
 
     async def _call(self, event):
-        element = self._get_safe_event_or_body(event)
+        element = self._get_event_or_body(event)
         if self._group_by_key:
             if isinstance(self._state, Table):
                 key_data = await self._state.get_or_load_key(event.key)
@@ -278,7 +290,7 @@ class MapClass(Flow):
         if event is _termination_obj:
             return await self._do_downstream(_termination_obj)
         else:
-            element = self._get_safe_event_or_body(event)
+            element = self._get_event_or_body(event)
             fn_result = await self._call(element)
             if not self._filter:
                 mapped_event = self._user_fn_output_to_event(event, fn_result)
@@ -299,7 +311,7 @@ class Complete(Flow):
     async def _do(self, event):
         termination_result = await self._do_downstream(event)
         if event is not _termination_obj:
-            result = self._get_safe_event_or_body(event)
+            result = self._get_event_or_body(event)
             res = event._awaitable_result._set_result(result)
             if res:
                 await res
@@ -415,6 +427,18 @@ class _ConcurrentJobExecution(Flow):
     async def _lazy_init(self):
         pass
 
+    async def _safe_process_event(self, event):
+        if event._awaitable_result:
+            try:
+                return await self._process_event(event)
+            except BaseException as ex:
+                none_or_coroutine = event._awaitable_result._set_result(ex)
+                if none_or_coroutine:
+                    await none_or_coroutine
+                raise ex
+        else:
+            return await self._process_event(event)
+
     async def _do(self, event):
         if not self._q:
             await self._lazy_init()
@@ -430,7 +454,7 @@ class _ConcurrentJobExecution(Flow):
             await self._worker_awaitable
             return await self._do_downstream(_termination_obj)
         else:
-            task = self._process_event(event)
+            task = self._safe_process_event(event)
             await self._q.put((event, asyncio.get_running_loop().create_task(task)))
             if self._worker_awaitable.done():
                 await self._worker_awaitable
@@ -477,11 +501,13 @@ class _ConcurrentByKeyJobExecution(Flow):
                     self._pending_by_key[event.key].in_flight = self._pending_by_key[event.key].pending
                     self._pending_by_key[event.key].pending = []
 
-                    task = self._process_event(self._pending_by_key[event.key].in_flight)
+                    task = self._safe_process_events(self._pending_by_key[event.key].in_flight)
                     await self._q.put((event, asyncio.get_running_loop().create_task(task)))
                 else:
                     del self._pending_by_key[event.key]
         except BaseException as ex:
+            if event is not _termination_obj and event._awaitable_result:
+                event._awaitable_result._set_error(ex)
             if not self._q.empty():
                 await self._q.get()
             raise ex
@@ -513,12 +539,22 @@ class _ConcurrentByKeyJobExecution(Flow):
                 self._pending_by_key[event.key].in_flight = self._pending_by_key[event.key].pending
                 self._pending_by_key[event.key].pending = []
 
-                task = self._process_event(self._pending_by_key[event.key].in_flight)
+                task = self._safe_process_events(self._pending_by_key[event.key].in_flight)
                 await self._q.put((event, asyncio.get_running_loop().create_task(task)))
                 if self._worker_awaitable.done():
                     await self._worker_awaitable
 
-    async def _process_event(self, event):
+    async def _safe_process_events(self, events):
+        try:
+            return await self._process_events(events)
+        except BaseException as ex:
+            for event in events:
+                none_or_coroutine = event._awaitable_result._set_result(ex)
+                if none_or_coroutine:
+                    await none_or_coroutine
+            raise ex
+
+    async def _process_events(self, events):
         raise NotImplementedError()
 
     async def _handle_completed(self, event, response):
@@ -596,7 +632,7 @@ class _Batching(Flow):
         await self._emit_batch()
 
     def _event_to_batch_entry(self, event):
-        return self._get_safe_event_or_body(event)
+        return self._get_event_or_body(event)
 
     async def _do(self, event):
         if event is _termination_obj:
@@ -649,8 +685,8 @@ class Batch(_Batching):
 class JoinWithV3IOTable(_ConcurrentJobExecution):
     """Joins each event with a V3IO table. Used for event augmentation.
 
-    :param storage: V3IO driver.
-    :type storage: V3ioDriver
+    :param storage: Database driver.
+    :type storage: Driver
     :param key_extractor: Function for extracting the key for table access from an event.
     :type key_extractor: Function (Event=>string)
     :param join_function: Joins the original event with relevant data received from V3IO.
@@ -678,13 +714,13 @@ class JoinWithV3IOTable(_ConcurrentJobExecution):
         self._attributes = attributes
 
     async def _process_event(self, event):
-        key = str(self._key_extractor(self._get_safe_event_or_body(event)))
+        key = str(self._key_extractor(self._get_event_or_body(event)))
         return await self._storage._get_item(self._container, self._table_path, key, self._attributes)
 
     async def _handle_completed(self, event, response):
         if response.status_code == 200:
             response_object = response.output.item
-            joined = self._join_function(self._get_safe_event_or_body(event), response_object)
+            joined = self._join_function(self._get_event_or_body(event), response_object)
             if joined is not None:
                 new_event = self._user_fn_output_to_event(event, joined)
                 await self._do_downstream(new_event)
@@ -739,11 +775,11 @@ class JoinWithTable(_ConcurrentJobExecution):
         self._attributes = attributes or '*'
 
     async def _process_event(self, event):
-        key = self._key_extractor(self._get_safe_event_or_body(event))
+        key = self._key_extractor(self._get_event_or_body(event))
         return await self._table.get_or_load_key(key, self._attributes)
 
     async def _handle_completed(self, event, response):
-        joined = self._join_function(self._get_safe_event_or_body(event), response)
+        joined = self._join_function(self._get_event_or_body(event), response)
         if joined is not None:
             new_event = self._user_fn_output_to_event(event, joined)
             await self._do_downstream(new_event)
@@ -770,14 +806,17 @@ def build_flow(steps):
     """
     if len(steps) == 0:
         raise ValueError('Cannot build an empty flow')
-    cur_step = steps[0]
+    first_step = steps[0]
+    if isinstance(first_step, list):
+        first_step = build_flow(first_step)
+    cur_step = first_step
     for next_step in steps[1:]:
         if isinstance(next_step, list):
             cur_step.to(build_flow(next_step))
         else:
             cur_step.to(next_step)
             cur_step = next_step
-    return steps[0]
+    return first_step
 
 
 class Context:
