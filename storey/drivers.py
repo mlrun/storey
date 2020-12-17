@@ -213,7 +213,7 @@ class V3ioDriver(NeedsV3ioAccess):
         for name, bucket in aggregation_element.aggregation_buckets.items():
             # Only save raw aggregates, not virtual
             if bucket.should_persist:
-                max_window_millis = bucket.get_max_window_millis()
+                max_window_millis = bucket.max_window_millis
                 if pending:
                     items_to_update = pending[name]
                 else:
@@ -228,13 +228,13 @@ class V3ioDriver(NeedsV3ioAccess):
 
                     expected_time = int(bucket_start_time / max_window_millis) * max_window_millis
                     expected_time_expr = self._convert_python_obj_to_expression_value(datetime.fromtimestamp(expected_time / 1000))
-                    index_to_update = int((bucket_start_time - expected_time) / bucket.get_period_millis())
+                    index_to_update = int((bucket_start_time - expected_time) / bucket.period_millis)
 
                     get_array_time_expr = f'if_not_exists({array_time_attribute_name},0:0)'
                     if not initialized_attributes.get(array_attribute_name, 0) == expected_time:
                         initialized_attributes[array_attribute_name] = expected_time
                         init_expression = f'{array_attribute_name}=if_else(({get_array_time_expr}<{expected_time_expr}),' \
-                            f"init_array({bucket.get_total_number_of_buckets()},'double'," \
+                            f"init_array({bucket.total_number_of_buckets},'double'," \
                             f'{aggregation_value.get_default_value()}),{array_attribute_name})'
                         expressions.append(init_expression)
 
@@ -264,7 +264,7 @@ class V3ioDriver(NeedsV3ioAccess):
         for name, bucket in aggregation_element.aggregation_buckets.items():
             # Only save raw aggregates, not virtual
             if bucket.should_persist:
-                max_window_millis = bucket.get_max_window_millis()
+                max_window_millis = bucket.max_window_millis
                 # In case we have pending data that spreads over more then 2 windows discard the old ones.
                 pending_updates[name] = self._discard_old_pending_items(bucket.get_and_flush_pending(), max_window_millis)
                 for bucket_start_time, aggregation_value in pending_updates[name].items():
@@ -277,13 +277,13 @@ class V3ioDriver(NeedsV3ioAccess):
 
                     expected_time = int(bucket_start_time / max_window_millis) * max_window_millis
                     expected_time_expr = self._convert_python_obj_to_expression_value(datetime.fromtimestamp(expected_time / 1000))
-                    index_to_update = int((bucket_start_time - expected_time) / bucket.get_period_millis())
+                    index_to_update = int((bucket_start_time - expected_time) / bucket.period_millis)
 
                     # Possibly initiating the array
                     if cached_time < expected_time:
                         if not initialized_attributes.get(array_attribute_name, 0) == expected_time:
                             initialized_attributes[array_attribute_name] = expected_time
-                            expressions.append(f"{array_attribute_name}=init_array({bucket.get_total_number_of_buckets()},'double',"
+                            expressions.append(f"{array_attribute_name}=init_array({bucket.total_number_of_buckets},'double',"
                                                f'{aggregation_value.get_default_value()})')
                         if array_time_attribute_name not in times_update_expressions:
                             times_update_expressions[array_time_attribute_name] = \
