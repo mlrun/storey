@@ -25,6 +25,7 @@ class Flow:
         self._full_event = full_event
         self._termination_result_fn = termination_result_fn
         self.context = context
+        self.verbose = context and getattr(context, 'verbose', False)
         self._closeables = []
         if name:
             self.name = name
@@ -70,10 +71,14 @@ class Flow:
                     )
                 )
             event._awaitable_result = awaitable_result
-        await self._outlets[0]._do(
-            event
-        )  # Optimization - avoids creating a task for the first outlet.
-        for task in tasks:
+        if self.verbose:
+            step_name = type(self).__name__
+            event_string = str(event)
+            print(f'{step_name} -> {type(self._outlets[0]).__name__} | {event_string}')
+        await self._outlets[0]._do(event)  # Optimization - avoids creating a task for the first outlet.
+        for i, task in enumerate(tasks, start=1):
+            if self.verbose:
+                print(f'{step_name} -> {type(self._outlets[i]).__name__} | {event_string}')
             await task
 
     def _get_event_or_body(self, event):
@@ -223,12 +228,12 @@ class _FunctionWithStateFlow(Flow):
     def __init__(self, initial_state, fn, group_by_key=False, **kwargs):
         super().__init__(**kwargs)
         if not callable(fn):
-            raise TypeError(f"Expected a callable, got {type(fn)}")
+            raise TypeError(f'Expected a callable, got {type(fn)}')
         self._is_async = asyncio.iscoroutinefunction(fn)
         self._state = initial_state
         self._fn = fn
         self._group_by_key = group_by_key
-        if hasattr(initial_state, "close"):
+        if hasattr(initial_state, 'close'):
             self._closeables = [initial_state]
 
     async def _call(self, event):
@@ -749,8 +754,8 @@ class Batch(_Batching):
 class JoinWithV3IOTable(_ConcurrentJobExecution):
     """Joins each event with a V3IO table. Used for event augmentation.
 
-    :param storage: V3IO driver.
-    :type storage: V3ioDriver
+    :param storage: Database driver.
+    :type storage: Driver
     :param key_extractor: Function for extracting the key for table access from an event.
     :type key_extractor: Function (Event=>string)
     :param join_function: Joins the original event with relevant data received from V3IO.
