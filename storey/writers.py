@@ -133,7 +133,9 @@ class WriteToCSV(_Batching, _Writer):
     def _blocking_io_loop(self):
         try:
             got_first_event = False
-            os.makedirs(os.path.dirname(self._path), exist_ok=True)
+            dirname = os.path.dirname(self._path)
+            if dirname:
+                os.makedirs(dirname, exist_ok=True)
             with open(self._path, mode='w') as f:
                 csv_writer = csv.writer(f)
                 line_number = 0
@@ -214,9 +216,14 @@ class WriteToParquet(_Batching, _Writer):
     def _event_to_batch_entry(self, event):
         return self._event_to_writer_entry(event)
 
+    def _makedirs(self):
+        dirname = os.path.dirname(self._path)
+        if dirname:
+            os.makedirs(dirname, exist_ok=True)
+
     async def _emit(self, batch, batch_time):
         if self._first_event:
-            await asyncio.get_running_loop().run_in_executor(None, lambda: os.makedirs(os.path.dirname(self._path), exist_ok=True))
+            await asyncio.get_running_loop().run_in_executor(None, self._makedirs)
             self._first_event = False
         df_columns = []
         df_columns.extend(self._columns)
