@@ -612,12 +612,12 @@ class SendToHttp(_ConcurrentJobExecution):
 
 class _Batching(Flow):
     def __init__(
-        self,
-        max_events: Optional[int] = None,
-        timeout_secs: Optional[int] = None,
-        group_by_key: bool = False,
-        key: Optional[Union[str, callable]] = None,
-        **kwargs,
+            self,
+            max_events: Optional[int] = None,
+            timeout_secs: Optional[int] = None,
+            group_by_key: bool = False,
+            key: Optional[Union[str, callable]] = None,
+            **kwargs,
     ):
         super().__init__(**kwargs)
 
@@ -656,7 +656,7 @@ class _Batching(Flow):
             return await self._do_downstream(_termination_obj)
 
         key = self._get_event_key(event)
-        
+
         if len(self._batch[key]) == 0:
             self._batch_time[key] = event.time
 
@@ -688,7 +688,7 @@ class _Batching(Flow):
 
     def _event_to_batch_entry(self, event):
         return self._get_event_or_body(event)
-    
+
     def _get_event_key(self, event):
         key = None
         if self._group_by_key:
