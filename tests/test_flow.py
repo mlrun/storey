@@ -645,7 +645,7 @@ def test_batch_full_event():
     assert termination_result == [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9]]
 
 
-def test_batch_by_key():
+def test_batch_by_user_key():
     def append_and_return(lst, x):
         lst.append(x)
         return lst
@@ -653,7 +653,7 @@ def test_batch_by_key():
     controller = build_flow(
         [
             Source(),
-            Batch(2, 100, True, "value"),
+            Batch(2, 100, "value"),
             Reduce([], lambda acc, x: append_and_return(acc, x)),
         ]
     ).run()
@@ -678,6 +678,51 @@ def test_batch_by_key():
         controller.emit({"value": rand_val_2})
         controller.emit({"value": rand_val_3})
         controller.emit({"value": rand_val_4})
+
+    controller.terminate()
+    termination_result = controller.await_termination()
+
+    assert len(termination_result) == 8
+
+    for element in termination_result:
+        assert len(element) == 2
+        numbers = [e["value"] for e in element]
+        assert numbers[0] == numbers[1]
+
+
+def test_batch_by_event_key():
+    def append_and_return(lst, x):
+        lst.append(x)
+        return lst
+
+    controller = build_flow(
+        [
+            Source(),
+            Batch(2, 100, "$key"),
+            Reduce([], lambda acc, x: append_and_return(acc, x)),
+        ]
+    ).run()
+
+    values_1 = [i for i in range(4)]
+    values_2 = [i for i in range(4)]
+    values_3 = [i for i in range(4)]
+    values_4 = [i for i in range(4)]
+
+    for _ in range(4):
+        rand_val_1 = choice(values_1)
+        rand_val_2 = choice(values_2)
+        rand_val_3 = choice(values_3)
+        rand_val_4 = choice(values_4)
+
+        values_1.remove(rand_val_1)
+        values_2.remove(rand_val_2)
+        values_3.remove(rand_val_3)
+        values_4.remove(rand_val_4)
+
+        controller.emit({"value": rand_val_1}, key=rand_val_1)
+        controller.emit({"value": rand_val_2}, key=rand_val_2)
+        controller.emit({"value": rand_val_3}, key=rand_val_3)
+        controller.emit({"value": rand_val_4}, key=rand_val_4)
 
     controller.terminate()
     termination_result = controller.await_termination()
