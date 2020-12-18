@@ -2,13 +2,14 @@ import asyncio
 import queue
 import uuid
 from datetime import datetime
+from random import choice
 
 import pandas as pd
 from aiohttp import InvalidURL
 
 from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV, Complete, AsyncSource, Choice, \
     Event, Batch, Table, WriteToCSV, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, WriteToParquet, \
-    WriteToTSDB, Extend, SendToHttp, HttpRequest, WriteToTable, Driver
+    WriteToTSDB, Extend, SendToHttp, HttpRequest, WriteToTable, NoopDriver, Driver
 
 
 class ATestException(Exception):
@@ -310,7 +311,7 @@ def test_map_with_state_flow():
 
 
 def test_map_with_cache_state_flow():
-    table_object = Table("table", Driver())
+    table_object = Table("table", NoopDriver())
     table_object._cache['tal'] = {'color': 'blue'}
     table_object._cache['dina'] = {'color': 'red'}
 
@@ -350,7 +351,7 @@ def test_map_with_cache_state_flow():
 
 
 def test_map_with_empty_cache_state_flow():
-    table_object = Table("table", Driver())
+    table_object = Table("table", NoopDriver())
 
     def enrich(event, state):
         if 'first_value' not in state:
@@ -642,6 +643,96 @@ def test_batch_full_event():
     controller.terminate()
     termination_result = controller.await_termination()
     assert termination_result == [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9]]
+
+
+def test_batch_by_user_key():
+    def append_and_return(lst, x):
+        lst.append(x)
+        return lst
+
+    controller = build_flow(
+        [
+            Source(),
+            Batch(2, 100, "value"),
+            Reduce([], lambda acc, x: append_and_return(acc, x)),
+        ]
+    ).run()
+
+    values_1 = [i for i in range(4)]
+    values_2 = [i for i in range(4)]
+    values_3 = [i for i in range(4)]
+    values_4 = [i for i in range(4)]
+
+    for _ in range(4):
+        rand_val_1 = choice(values_1)
+        rand_val_2 = choice(values_2)
+        rand_val_3 = choice(values_3)
+        rand_val_4 = choice(values_4)
+
+        values_1.remove(rand_val_1)
+        values_2.remove(rand_val_2)
+        values_3.remove(rand_val_3)
+        values_4.remove(rand_val_4)
+
+        controller.emit({"value": rand_val_1})
+        controller.emit({"value": rand_val_2})
+        controller.emit({"value": rand_val_3})
+        controller.emit({"value": rand_val_4})
+
+    controller.terminate()
+    termination_result = controller.await_termination()
+
+    assert len(termination_result) == 8
+
+    for element in termination_result:
+        assert len(element) == 2
+        numbers = [e["value"] for e in element]
+        assert numbers[0] == numbers[1]
+
+
+def test_batch_by_event_key():
+    def append_and_return(lst, x):
+        lst.append(x)
+        return lst
+
+    controller = build_flow(
+        [
+            Source(),
+            Batch(2, 100, "$key"),
+            Reduce([], lambda acc, x: append_and_return(acc, x)),
+        ]
+    ).run()
+
+    values_1 = [i for i in range(4)]
+    values_2 = [i for i in range(4)]
+    values_3 = [i for i in range(4)]
+    values_4 = [i for i in range(4)]
+
+    for _ in range(4):
+        rand_val_1 = choice(values_1)
+        rand_val_2 = choice(values_2)
+        rand_val_3 = choice(values_3)
+        rand_val_4 = choice(values_4)
+
+        values_1.remove(rand_val_1)
+        values_2.remove(rand_val_2)
+        values_3.remove(rand_val_3)
+        values_4.remove(rand_val_4)
+
+        controller.emit({"value": rand_val_1}, key=rand_val_1)
+        controller.emit({"value": rand_val_2}, key=rand_val_2)
+        controller.emit({"value": rand_val_3}, key=rand_val_3)
+        controller.emit({"value": rand_val_4}, key=rand_val_4)
+
+    controller.terminate()
+    termination_result = controller.await_termination()
+
+    assert len(termination_result) == 8
+
+    for element in termination_result:
+        assert len(element) == 2
+        numbers = [e["value"] for e in element]
+        assert numbers[0] == numbers[1]
 
 
 def test_batch_with_timeout():
@@ -1162,7 +1253,7 @@ def test_write_to_parquet_with_inference(tmpdir):
 
 
 def test_join_by_key():
-    table = Table('test', Driver())
+    table = Table('test', NoopDriver())
     table.update_key(9, {'age': 1, 'color': 'blue9'})
     table.update_key(7, {'age': 3, 'color': 'blue7'})
 
@@ -1182,7 +1273,7 @@ def test_join_by_key():
 
 
 def test_join_by_string_key():
-    table = Table('test', Driver())
+    table = Table('test', NoopDriver())
     table.update_key(9, {'age': 1, 'color': 'blue9'})
     table.update_key(7, {'age': 3, 'color': 'blue7'})
 

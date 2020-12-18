@@ -612,51 +612,47 @@ class SendToHttp(_ConcurrentJobExecution):
 
 class _Batching(Flow):
     def __init__(
-        self,
-        max_events: Optional[int] = None,
-        timeout_secs: Optional[int] = None,
-        group_events: bool = False,
-        key: Optional[Union[str, callable]] = None,
-        **kwargs,
+            self,
+            max_events: Optional[int] = None,
+            timeout_secs: Optional[int] = None,
+            key: Optional[Union[str, Callable[[Event], str]]] = None,
+            **kwargs,
     ):
         super().__init__(**kwargs)
 
         self._max_events: int = max_events
         self._timeout_secs = timeout_secs
-        self._group_events = group_events
 
         if self._timeout_secs is not None and self._timeout_secs <= 0:
-            raise ValueError("Batch timeout cannot be 0 or negative")
+            raise ValueError('Batch timeout cannot be 0 or negative')
+
+        self._extract_key: Optional[Callable[[Event], str]] = None
+        self._init_extract_key(key)
 
         self._event_count: Dict[Optional[str], int] = defaultdict(int)
         self._batch: Dict[Optional[str], List[Any]] = defaultdict(list)
         self._batch_time: Dict[Optional[str], datetime] = {}
         self._timeout_task: Optional[Task] = None
+        self._timeout_task_key: Optional[str] = None
 
-        self.key_extractor = None
-        if key and group_events:
-            if callable(key):
-                self.key_extractor = key
-            elif isinstance(key, str):
-                self.key_extractor = lambda element: element[key]
+    def _init_extract_key(self, key):
+        if key is None:
+            self._extract_key = lambda event: None
+        elif callable(key):
+            self._extract_key = key
+        elif isinstance(key, str):
+            if key == "$key":
+                self._extract_key = lambda event: event.key
+            else:
+                self._extract_key = lambda event: event.body[key]
+        else:
+            raise ValueError(f'Unsupported key type {type(key)}')
 
     async def _emit(self, batch, batch_time):
         raise NotImplementedError
 
     async def _terminate(self):
         pass
-
-    async def _sleep_and_emit(self, key: Optional[str] = None):
-        time_delta = (
-            datetime.now(timezone.utc) - self._batch_time[key]
-        ).total_seconds()
-        if time_delta < self._timeout_secs:
-            await asyncio.sleep(self._timeout_secs - time_delta)
-        await self._emit_batch(key)
-        self._timeout_task = None
-
-    def _event_to_batch_entry(self, event):
-        return self._get_event_or_body(event)
 
     async def _do(self, event):
         if event is _termination_obj:
@@ -666,42 +662,49 @@ class _Batching(Flow):
             await self._terminate()
             return await self._do_downstream(_termination_obj)
 
-        key = None
-        if self._group_events:
-            key = self.key_extractor(event.body) if self.key_extractor else event.key
+        key = self._extract_key(event)
 
         if len(self._batch[key]) == 0:
             self._batch_time[key] = event.time
 
         if self._timeout_secs and self._timeout_task is None:
-            self._init_timeout_task()
+            self._timeout_task = asyncio.get_running_loop().create_task(self._sleep_and_emit())
 
         self._event_count[key] = self._event_count[key] + 1
         self._batch[key].append(self._event_to_batch_entry(event))
 
         if self._event_count[key] == self._max_events:
-            if self._timeout_task is not None and not self._timeout_task.cancelled():
+            if key == self._timeout_task_key and self._timeout_task and not self._timeout_task.cancelled():
                 self._timeout_task.cancel()
+                self._timeout_task = None
+                self._timeout_task_key = None
             await self._emit_batch(key)
 
-    def _init_timeout_task(self):
-        for key in self._batch.keys():
-            self._timeout_task = asyncio.get_running_loop().create_task(
-                self._sleep_and_emit(key)
-            )
-            break
+    async def _sleep_and_emit(self):
+        while self._batch:
+            key = next(iter(self._batch.keys()))
+            time_delta = datetime.now(timezone.utc) - self._batch_time[key]
+            delta_seconds = time_delta.total_seconds()
+            if delta_seconds < self._timeout_secs:
+                self._timeout_task_key = key
+                await asyncio.sleep(self._timeout_secs - delta_seconds)
+            await self._emit_batch(key)
+
+        self._timeout_task = None
+        self._timeout_task_key = None
+
+    def _event_to_batch_entry(self, event):
+        return self._get_event_or_body(event)
 
     async def _emit_batch(self, batch_key: Optional[str] = None):
         batch_to_emit = self._batch.pop(batch_key)
-        if len(batch_to_emit) > 0:
-            batch_time = self._batch_time.pop(batch_key)
-            del self._event_count[batch_key]
-            await self._emit(batch_to_emit, batch_time)
+        batch_time = self._batch_time.pop(batch_key)
+        del self._event_count[batch_key]
+        await self._emit(batch_to_emit, batch_time)
 
     async def _emit_all(self):
-        batch_keys = list(self._batch.keys())
-        for batch_key in batch_keys:
-            await self._emit_batch(batch_key)
+        for key in list(self._batch.keys()):
+            await self._emit_batch(key)
 
 
 class Batch(_Batching):
@@ -710,9 +713,8 @@ class Batch(_Batching):
     have passed since the first event in the batch was received, at which the batch is emitted with potentially fewer than max_events
     event.
     :param max_events: Maximum number of events per emitted batch. Set to None to emit all events in one batch on flow termination.
-    :type max_events: int or None
     :param timeout_secs: Maximum number of seconds to wait before a batch is emitted.
-    :type timeout_secs: int
+    :param key: The key by which events are grouped, use '$key' to group events by the Event.key property.
     """
 
     async def _emit(self, batch, batch_time):
