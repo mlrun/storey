@@ -626,8 +626,7 @@ class _Batching(Flow):
         if self._timeout_secs is not None and self._timeout_secs <= 0:
             raise ValueError('Batch timeout cannot be 0 or negative')
 
-        self._extract_key: Optional[Callable[[Event], str]] = None
-        self._init_extract_key(key)
+        self._extract_key: Optional[Callable[[Event], str]] = self._create_key_extractor(key)
 
         self._event_count: Dict[Optional[str], int] = defaultdict(int)
         self._batch: Dict[Optional[str], List[Any]] = defaultdict(list)
@@ -635,16 +634,17 @@ class _Batching(Flow):
         self._timeout_task: Optional[Task] = None
         self._timeout_task_key: Optional[str] = None
 
-    def _init_extract_key(self, key):
+    @staticmethod
+    def _create_key_extractor(key) -> Callable:
         if key is None:
-            self._extract_key = lambda event: None
+            return lambda event: None
         elif callable(key):
-            self._extract_key = key
+            return key
         elif isinstance(key, str):
             if key == "$key":
-                self._extract_key = lambda event: event.key
+                return lambda event: event.key
             else:
-                self._extract_key = lambda event: event.body[key]
+                return lambda event: event.body[key]
         else:
             raise ValueError(f'Unsupported key type {type(key)}')
 
