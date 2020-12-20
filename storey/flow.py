@@ -641,7 +641,7 @@ class _Batching(Flow):
         elif callable(key):
             return key
         elif isinstance(key, str):
-            if key == "$key":
+            if key == '$key':
                 return lambda event: event.key
             else:
                 return lambda event: event.body[key]
