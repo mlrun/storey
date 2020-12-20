@@ -626,8 +626,7 @@ class _Batching(Flow):
         if self._timeout_secs is not None and self._timeout_secs <= 0:
             raise ValueError('Batch timeout cannot be 0 or negative')
 
-        self._extract_key: Optional[Callable[[Event], str]] = None
-        self._init_extract_key(key)
+        self._extract_key: Optional[Callable[[Event], str]] = self._create_key_extractor(key)
 
         self._event_count: Dict[Optional[str], int] = defaultdict(int)
         self._batch: Dict[Optional[str], List[Any]] = defaultdict(list)
@@ -635,16 +634,17 @@ class _Batching(Flow):
         self._timeout_task: Optional[Task] = None
         self._timeout_task_key: Optional[str] = None
 
-    def _init_extract_key(self, key):
+    @staticmethod
+    def _create_key_extractor(key) -> Callable:
         if key is None:
-            self._extract_key = lambda event: None
+            return lambda event: None
         elif callable(key):
-            self._extract_key = key
+            return key
         elif isinstance(key, str):
-            if key == "$key":
-                self._extract_key = lambda event: event.key
+            if key == '$key':
+                return lambda event: event.key
             else:
-                self._extract_key = lambda event: event.body[key]
+                return lambda event: event.body[key]
         else:
             raise ValueError(f'Unsupported key type {type(key)}')
 
@@ -709,12 +709,17 @@ class _Batching(Flow):
 
 class Batch(_Batching):
     """
-    Batches events into lists of up to max_events events. Each emitted list contained max_events events, unless timeout_secs seconds
-    have passed since the first event in the batch was received, at which the batch is emitted with potentially fewer than max_events
-    event.
-    :param max_events: Maximum number of events per emitted batch. Set to None to emit all events in one batch on flow termination.
+    Batches events into lists of up to max_events events. Each emitted list contained max_events events, unless
+    timeout_secs seconds have passed since the first event in the batch was received, at which the batch is emitted with
+    potentially fewer than max_events event.
+    :param max_events: Maximum number of events per emitted batch. Set to None to emit all events in one batch on flow
+    termination.
     :param timeout_secs: Maximum number of seconds to wait before a batch is emitted.
-    :param key: The key by which events are grouped, use '$key' to group events by the Event.key property.
+    :param key: The key by which events are grouped. By default (None), events are not grouped.
+    Other options may be:
+    Set a '$key' to group events by the Event.key property.
+    set a 'str' key to group events by Event.body[str].
+    set a Callable[Any, Any] to group events by a a custom key extractor.
     """
 
     async def _emit(self, batch, batch_time):
