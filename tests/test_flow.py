@@ -2,6 +2,7 @@ import asyncio
 import queue
 import uuid
 from datetime import datetime
+from random import choice
 
 import pandas as pd
 from aiohttp import InvalidURL
@@ -682,6 +683,185 @@ def test_batch_full_event():
     controller.terminate()
     termination_result = controller.await_termination()
     assert termination_result == [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9]]
+
+
+def test_batch_by_user_key():
+    def append_and_return(lst, x):
+        lst.append(x)
+        return lst
+
+    controller = build_flow(
+        [
+            Source(),
+            Batch(2, 100, "value"),
+            Reduce([], lambda acc, x: append_and_return(acc, x)),
+        ]
+    ).run()
+
+    values_1 = [i for i in range(4)]
+    values_2 = [i for i in range(4)]
+    values_3 = [i for i in range(4)]
+    values_4 = [i for i in range(4)]
+
+    for _ in range(4):
+        rand_val_1 = choice(values_1)
+        rand_val_2 = choice(values_2)
+        rand_val_3 = choice(values_3)
+        rand_val_4 = choice(values_4)
+
+        values_1.remove(rand_val_1)
+        values_2.remove(rand_val_2)
+        values_3.remove(rand_val_3)
+        values_4.remove(rand_val_4)
+
+        controller.emit({"value": rand_val_1})
+        controller.emit({"value": rand_val_2})
+        controller.emit({"value": rand_val_3})
+        controller.emit({"value": rand_val_4})
+
+    controller.terminate()
+    termination_result = controller.await_termination()
+
+    assert len(termination_result) == 8
+
+    for element in termination_result:
+        assert len(element) == 2
+        numbers = [e["value"] for e in element]
+        assert numbers[0] == numbers[1]
+
+
+def test_batch_by_event_key():
+    def append_and_return(lst, x):
+        lst.append(x)
+        return lst
+
+    controller = build_flow(
+        [
+            Source(),
+            Batch(5, 100, "$key"),
+            Reduce([], lambda acc, x: append_and_return(acc, x)),
+        ]
+    ).run()
+
+    controller.emit(1, key="key1")
+    controller.emit(2, key="key1")
+    controller.emit(3, key="key1")
+    controller.emit(4, key="key1")
+
+    controller.emit(8, key="key2")
+    controller.emit(9, key="key2")
+    controller.emit(10, key="key2")
+
+    controller.emit(5, key="key1")
+    controller.emit(6, key="key1")
+    controller.emit(7, key="key1")
+
+
+    controller.terminate()
+    termination_result = controller.await_termination()
+
+    assert termination_result[0] == [1, 2, 3, 4, 5]  # Emitted first due to max_events
+    assert termination_result[1] == [8, 9, 10]
+    assert termination_result[2] == [6, 7]
+
+
+def test_batch_by_field_value_key_extractor():
+    def append_and_return(lst, x):
+        lst.append(x)
+        return lst
+
+    controller = build_flow(
+        [
+            Source(),
+            Batch(3, 100, "field"),
+            Reduce([], lambda acc, x: append_and_return(acc, x)),
+        ]
+    ).run()
+
+    controller.emit({"field": "name_1", "field_data": 10})
+    controller.emit({"field": "name_2", "field_data": 9})
+    controller.emit({"field": "name_1", "field_data": 8})
+    controller.emit({"field": "name_2", "field_data": 7})
+    controller.emit({"field": "name_1", "field_data": 6})
+    controller.emit({"field": "name_2", "field_data": 5})
+    controller.emit({"field": "name_1", "field_data": 4})
+    controller.emit({"field": "name_2", "field_data": 3})
+    controller.emit({"field": "name_1", "field_data": 2})
+    controller.emit({"field": "name_2", "field_data": 1})
+    controller.emit({"field": "name_1", "field_data": 0})
+
+    controller.terminate()
+    termination_result = controller.await_termination()
+
+    # Grouped with same field value, emitted after 3 events due to configuration
+    assert termination_result[0] == [{'field': 'name_1', 'field_data': 10}, {'field': 'name_1', 'field_data': 8}, {'field': 'name_1', 'field_data': 6}]
+    assert termination_result[1] == [{'field': 'name_2', 'field_data': 9}, {'field': 'name_2', 'field_data': 7}, {'field': 'name_2', 'field_data': 5}]
+    assert termination_result[2] == [{'field': 'name_1', 'field_data': 4}, {'field': 'name_1', 'field_data': 2}, {'field': 'name_1', 'field_data': 0}]
+    assert termination_result[3] == [{'field': 'name_2', 'field_data': 3}, {'field': 'name_2', 'field_data': 1}]
+
+
+def test_batch_by_function_key_extractor():
+    def append_and_return(lst, x):
+        lst.append(x)
+        return lst
+
+    controller = build_flow(
+        [
+            Source(),
+            Batch(10, 100, lambda event: event.body % 3 == 0),
+            Reduce([], lambda acc, x: append_and_return(acc, x)),
+        ]
+    ).run()
+
+    controller.emit(1)
+    controller.emit(2)
+    controller.emit(3)
+    controller.emit(4)
+    controller.emit(5)
+    controller.emit(6)
+    controller.emit(7)
+    controller.emit(8)
+    controller.emit(9)
+
+    controller.terminate()
+    termination_result = controller.await_termination()
+
+    assert termination_result[0] == [1, 2, 4, 5, 7, 8]
+    assert termination_result[1] == [3, 6, 9]  # Group all numbers that return true on Event.body % 3 == 0
+
+
+def test_batch_grouping_with_timeout():
+    q = queue.Queue(1)
+
+    def reduce_fn(acc, event):
+        if event == [1]:
+            q.put(None)
+        acc.append(event)
+        return acc
+
+    controller = build_flow(
+        [
+            Source(),
+            Batch(3, 1, "$key"),
+            Reduce([], lambda acc, x: reduce_fn(acc, x)),
+        ]
+    ).run()
+
+    controller.emit(1, key=1)
+    q.get()
+    controller.emit(2, key=2)
+    controller.emit(2, key=2)
+    controller.emit(2, key=2)
+    controller.emit(3, key=2)
+    controller.emit(3, key=2)
+    controller.emit(3, key=2)
+
+    controller.terminate()
+    termination_result = controller.await_termination()
+
+    assert termination_result[0] == [1]  # Emitted first due to timeout
+    assert termination_result[1] == [2, 2, 2]  # Emitted second due to max_events configuration
+    assert termination_result[2] == [3, 3, 3]
 
 
 def test_batch_with_timeout():
