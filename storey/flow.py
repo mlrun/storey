@@ -709,12 +709,17 @@ class _Batching(Flow):
 
 class Batch(_Batching):
     """
-    Batches events into lists of up to max_events events. Each emitted list contained max_events events, unless timeout_secs seconds
-    have passed since the first event in the batch was received, at which the batch is emitted with potentially fewer than max_events
-    event.
-    :param max_events: Maximum number of events per emitted batch. Set to None to emit all events in one batch on flow termination.
+    Batches events into lists of up to max_events events. Each emitted list contained max_events events, unless
+    timeout_secs seconds have passed since the first event in the batch was received, at which the batch is emitted with
+    potentially fewer than max_events event.
+    :param max_events: Maximum number of events per emitted batch. Set to None to emit all events in one batch on flow
+    termination.
     :param timeout_secs: Maximum number of seconds to wait before a batch is emitted.
-    :param key: The key by which events are grouped, use '$key' to group events by the Event.key property.
+    :param key: The key by which events are grouped. By default (None), events are not grouped.
+    Other options may be:
+    Set a '$key' to group events by the Event.key property.
+    set a 'str' key to group events by Event.body[str].
+    set a Callable[Union[Event, Any], Any] to group events by a a custom key extractor.
     """
 
     async def _emit(self, batch, batch_time):
