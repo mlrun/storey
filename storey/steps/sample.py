@@ -17,7 +17,7 @@ class Sample(Filter):
 
         if rate_count is None and rate_seconds is None:
             raise ValueError(
-                f"Either rate_count or rate_seconds (or both) must be initialized"
+                "Either rate_count or rate_seconds (or both) must be initialized"
             )
 
         if rate_count is not None and rate_count <= 0:
