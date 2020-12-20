@@ -11,8 +11,7 @@ class Flatten(MapClass):
 
     def __init__(self, to_set: bool = False, **kwargs):
         super().__init__(**kwargs)
-        self.to_set = to_set
+        self.cast_to = set if to_set else list
 
     def do(self, event):
-        type_cast = set if self.to_set else list
-        return type_cast(chain.from_iterable(event))
+        return self.cast_to(chain.from_iterable(event))
