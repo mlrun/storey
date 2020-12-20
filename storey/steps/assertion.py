@@ -5,6 +5,7 @@ from storey.flow import _UnaryFunctionFlow
 
 
 class Assert(_UnaryFunctionFlow):
+    """Asserts the boolean result of a custom function"""
     def __init__(self, fn: Callable, **kwargs):
         super().__init__(fn, **kwargs)
 
