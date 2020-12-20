@@ -719,7 +719,7 @@ class Batch(_Batching):
     Other options may be:
     Set a '$key' to group events by the Event.key property.
     set a 'str' key to group events by Event.body[str].
-    set a Callable[Union[Event, Any], Any] to group events by a a custom key extractor.
+    set a Callable[Any, Any] to group events by a a custom key extractor.
     """
 
     async def _emit(self, batch, batch_time):
