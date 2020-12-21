@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Callable, List, Any, Collection, Union
+from typing import Callable, List, Any, Collection
 
 from storey.dtypes import _termination_obj
 from storey.flow import Flow
