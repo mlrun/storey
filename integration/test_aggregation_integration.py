@@ -1,6 +1,7 @@
 import asyncio
 from datetime import datetime, timedelta
 import pytest
+import math
 
 from storey import build_flow, Source, Reduce, Table, V3ioDriver, FlowError, MapWithState, AggregateByKey, FieldAggregator, \
     QueryByKey, WriteToTable, Context
@@ -95,6 +96,64 @@ def test_aggregate_and_query_with_different_windows(setup_teardown_test, partiti
     expected_results = [
         {'col1': 10, 'number_of_stuff_sum_1h': 17, 'number_of_stuff_min_1h': 8, 'number_of_stuff_max_1h': 9, 'number_of_stuff_avg_1h': 8.5},
         {'col1': 10, 'number_of_stuff_sum_1h': 9.0, 'number_of_stuff_min_1h': 9.0, 'number_of_stuff_max_1h': 9.0,'number_of_stuff_avg_1h': 9.0},
+    ]
+
+    assert actual == expected_results, \
+        f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
+
+
+def test_query_virtual_aggregations_flow(setup_teardown_test):
+    table = Table(setup_teardown_test, V3ioDriver())
+    controller = build_flow([
+        Source(),
+        AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["avg", "stddev", "stdvar"],
+                                        SlidingWindows(['24h'], '10m'))],
+                       table),
+        WriteToTable(table),
+        Reduce([], lambda acc, x: append_return(acc, x)),
+    ]).run()
+
+    items_in_ingest_batch = 10
+    for i in range(items_in_ingest_batch):
+        data = {'col1': i}
+        controller.emit(data, 'dina', test_base_time + timedelta(minutes=25 * i))
+
+    controller.terminate()
+    actual = controller.await_termination()
+    expected_results = [
+        {'col1': 0, 'number_of_stuff_avg_24h': 0.0, 'number_of_stuff_stddev_24h': 0, 'number_of_stuff_stdvar_24h': 0},
+        {'col1': 1, 'number_of_stuff_avg_24h': 0.5, 'number_of_stuff_stddev_24h': math.sqrt(0.5), 'number_of_stuff_stdvar_24h': 0.5},
+        {'col1': 2, 'number_of_stuff_avg_24h': 1.0, 'number_of_stuff_stddev_24h': 1.0, 'number_of_stuff_stdvar_24h': 1.0},
+        {'col1': 3, 'number_of_stuff_avg_24h': 1.5, 'number_of_stuff_stddev_24h': math.sqrt(1.6666666666666667), 'number_of_stuff_stdvar_24h': 1.6666666666666667},
+        {'col1': 4, 'number_of_stuff_avg_24h': 2.0, 'number_of_stuff_stddev_24h': math.sqrt(2.5), 'number_of_stuff_stdvar_24h': 2.5},
+        {'col1': 5, 'number_of_stuff_avg_24h': 2.5, 'number_of_stuff_stddev_24h': math.sqrt(3.5), 'number_of_stuff_stdvar_24h': 3.5},
+        {'col1': 6, 'number_of_stuff_avg_24h': 3.0, 'number_of_stuff_stddev_24h': math.sqrt(4.666666666666667), 'number_of_stuff_stdvar_24h': 4.666666666666667},
+        {'col1': 7, 'number_of_stuff_avg_24h': 3.5, 'number_of_stuff_stddev_24h': math.sqrt(6.0), 'number_of_stuff_stdvar_24h': 6.0},
+        {'col1': 8, 'number_of_stuff_avg_24h': 4.0, 'number_of_stuff_stddev_24h': math.sqrt(7.5), 'number_of_stuff_stdvar_24h': 7.5},
+        {'col1': 9, 'number_of_stuff_avg_24h': 4.5, 'number_of_stuff_stddev_24h': math.sqrt(9.166666666666666), 'number_of_stuff_stdvar_24h': 9.166666666666666}
+    ]
+
+    assert actual == expected_results, \
+        f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
+
+    other_table = Table(setup_teardown_test, V3ioDriver())
+    controller = build_flow([
+        Source(),
+        QueryByKey(["number_of_stuff_avg_1h", "number_of_stuff_stdvar_2h", "number_of_stuff_stddev_3h"],
+                   other_table),
+        Reduce([], lambda acc, x: append_return(acc, x)),
+    ]).run()
+
+    base_time = test_base_time + timedelta(minutes=25 * items_in_ingest_batch)
+    data = {'col1': items_in_ingest_batch}
+    controller.emit(data, 'dina', base_time)
+    controller.emit(data, 'dina', base_time + timedelta(minutes=25))
+
+    controller.terminate()
+    actual = controller.await_termination()
+    expected_results = [
+        {'col1': 10, 'number_of_stuff_avg_1h': 8.5, 'number_of_stuff_stdvar_2h': 1.6666666666666667, 'number_of_stuff_stddev_3h': 1.8708286933869707},
+        {'col1': 10, 'number_of_stuff_avg_1h': 9.0, 'number_of_stuff_stdvar_2h': 1.0, 'number_of_stuff_stddev_3h': 1.8708286933869707},
     ]
 
     assert actual == expected_results, \

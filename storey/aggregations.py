@@ -246,7 +246,7 @@ class AggregatedStoreElement:
                     if (aggregation_metadata.name, aggr, aggregation_metadata.max_value) in windows:
                         aggr_windows = windows[(aggregation_metadata.name, aggr, aggregation_metadata.max_value)]
                         if is_hidden in aggr_windows:
-                            aggr_windows[is_hidden].merge(is_hidden, aggregation_metadata.windows)
+                            aggr_windows[is_hidden].merge(aggregation_metadata.windows)
                         else:
                             aggr_windows[is_hidden] = copy.deepcopy(aggregation_metadata.windows)
                     else:
@@ -604,9 +604,8 @@ class AggregationBuckets:
         # Either a) we were signaled b) the requested timestamp is prior to our pre aggregates
         if self._need_to_recalculate_pre_aggregates or \
                 self.get_bucket_index_by_timestamp(timestamp) < self.get_bucket_index_by_timestamp(self._last_data_point_timestamp) or \
-                self.max_value:
-            self._need_to_recalculate_pre_aggregates = False
-            return self.calculate_features(timestamp)
+                not self._precalculated_aggregations:
+            return self.calculate_features(timestamp, windows)
 
         # In case our pre aggregates already have the answer
         if not windows:
@@ -620,22 +619,26 @@ class AggregationBuckets:
 
         return result
 
-    def calculate_features(self, timestamp):
+    def calculate_features(self, timestamp, windows=None):
         result = {}
 
         current_time_bucket_index = self.get_bucket_index_by_timestamp(timestamp)
         if current_time_bucket_index < 0:
             return result
 
-        all_windows = []
-        if self.explicit_windows:
-            some_window = self.explicit_windows
-            all_windows.extend(self.explicit_windows.windows)
-        if self.hidden_windows:
+        if windows:
+            all_windows = windows
             some_window = self.hidden_windows
-            for win in self.hidden_windows.windows:
-                if win not in all_windows:
-                    all_windows.append(win)
+        else:
+            all_windows = []
+            if self.explicit_windows:
+                some_window = self.explicit_windows
+                all_windows.extend(self.explicit_windows.windows)
+            if self.hidden_windows:
+                some_window = self.hidden_windows
+                for win in self.hidden_windows.windows:
+                    if win not in all_windows:
+                        all_windows.append(win)
         if self.is_fixed_window:
             current_time_bucket_index = self.get_bucket_index_by_timestamp(some_window.round_up_time_to_window(timestamp) - 1)
 
@@ -672,7 +675,6 @@ class AggregationBuckets:
             # Update the corresponding pre aggregate
             if self._precalculated_aggregations:
                 self._current_aggregate_values[win] = AggregationValue(self.aggregation, set_data=current_aggregations_value)
-
         return result
 
     def initialize_from_data(self, data, base_time):

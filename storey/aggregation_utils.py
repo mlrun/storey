@@ -56,6 +56,8 @@ def _avg(args):
 
 def _stddev(args):
     count = args[0]
+    if count == 0 or count == 1:
+        return 0
     sum = args[1]
     sqr = args[2]
 
@@ -64,6 +66,8 @@ def _stddev(args):
 
 def _stdvar(args):
     count = args[0]
+    if count == 0 or count == 1:
+        return 0
     sum = args[1]
     sqr = args[2]
     return (count * sqr - sum * sum) / (count * (count - 1))
