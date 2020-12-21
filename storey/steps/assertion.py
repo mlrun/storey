@@ -86,6 +86,7 @@ class _AssertPredicate(_Assertable):
 
 
 class Assert(Flow):
+    """Exposes an API for testing the flow between steps."""
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.termination_assertions: List[_Assertable] = []
