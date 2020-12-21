@@ -34,10 +34,10 @@ _NOTHING = _Operator("do nothing", lambda x, y: False)
 
 class _Assertable:
     def __call__(self, event: Any):
-        raise NotImplemented
+        raise NotImplementedError
 
     def check(self):
-        raise NotImplemented
+        raise NotImplementedError
 
 
 class _AssertEventCount(_Assertable):
