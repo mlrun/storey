@@ -13,11 +13,9 @@ class Flatten(Flow):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-    async def _do(self, event):
+    async def _do(self, event: Event):
         if event is _termination_obj:
             return await self._do_downstream(_termination_obj)
         else:
             for flattened in chain.from_iterable(event.body):
-                await self._do_downstream(
-                    Event(body=flattened, key=event.key, time=event.time, id=event.id)
-                )
+                await self._do_downstream(event.copy(body=flattened))
