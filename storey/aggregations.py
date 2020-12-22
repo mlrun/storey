@@ -600,6 +600,11 @@ class AggregationBuckets:
 
     def get_features(self, timestamp, windows=None):
         result = {}
+        if not windows:
+            if self.explicit_windows:
+                windows = self.explicit_windows.windows
+            else:
+                return result
         # In case we need to completely recalculate the aggregations
         # Either a) we were signaled b) the requested timestamp is prior to our pre aggregates
         if self._need_to_recalculate_pre_aggregates or \
@@ -609,12 +614,6 @@ class AggregationBuckets:
             return self.calculate_features(timestamp, windows)
 
         # In case our pre aggregates already have the answer
-        if not windows:
-            if self.explicit_windows:
-                windows = self.explicit_windows.windows
-            else:
-                return result
-
         for win in windows:
             result[f'{self.name}_{self.aggregation}_{win[1]}'] = self._current_aggregate_values[win].get_value()[1]
 
