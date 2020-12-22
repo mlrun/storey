@@ -605,6 +605,7 @@ class AggregationBuckets:
         if self._need_to_recalculate_pre_aggregates or \
                 self.get_bucket_index_by_timestamp(timestamp) < self.get_bucket_index_by_timestamp(self._last_data_point_timestamp) or \
                 not self._precalculated_aggregations:
+            self._need_to_recalculate_pre_aggregates = False
             return self.calculate_features(timestamp, windows)
 
         # In case our pre aggregates already have the answer
