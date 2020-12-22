@@ -1,3 +1,4 @@
+import queue
 from time import sleep
 
 from pytest import fail
@@ -301,24 +302,31 @@ def test_sample_by_count():
 
 
 def test_sample_by_seconds():
+    q = queue.Queue(1)
+
+    def release_on_first(event):
+        if event == 3:
+            q.put(None)
+
     controller = build_flow(
         [
             Source(),
             Assert().exactly(6),
-            Sample(rate_count=2),
+            Sample(rate_seconds=2, emit_policy=Sample.EmitPolicy.EMIT_LAST),
+            ForEach(release_on_first),
             Assert().exactly(2)
         ]
     ).run()
 
     controller.emit(1)
-    controller.emit(1)
-    controller.emit(1)
+    controller.emit(2)
+    controller.emit(3)
 
-    sleep(2)
+    q.get()
 
-    controller.emit(1)
-    controller.emit(1)
-    controller.emit(1)
+    controller.emit(4)
+    controller.emit(5)
+    controller.emit(6)
 
     controller.terminate()
     controller.await_termination()
