@@ -1,11 +1,8 @@
-import queue
-from time import sleep
-
 from pytest import fail
 
 from storey import build_flow, Source, Map
 from storey.dtypes import FlowError, Event
-from storey.steps import Flatten, Sample, Assert, ForEach
+from storey.steps import Flatten, Sample, Assert, ForEach, Partition
 
 
 def test_assert_each_event():
@@ -301,37 +298,6 @@ def test_sample_by_count():
     controller.await_termination()
 
 
-def test_sample_by_seconds():
-    q = queue.Queue(1)
-
-    def release_on_first(event):
-        if event == 3:
-            q.put(None)
-
-    controller = build_flow(
-        [
-            Source(),
-            Assert().exactly(6),
-            Sample(rate_seconds=2, emit_policy=Sample.EmitPolicy.EMIT_LAST),
-            ForEach(release_on_first),
-            Assert().exactly(2)
-        ]
-    ).run()
-
-    controller.emit(1)
-    controller.emit(2)
-    controller.emit(3)
-
-    q.get()
-
-    controller.emit(4)
-    controller.emit(5)
-    controller.emit(6)
-
-    controller.terminate()
-    controller.await_termination()
-
-
 def test_flatten():
     controller = build_flow(
         [
@@ -371,6 +337,40 @@ def test_foreach():
     controller.emit(1)
     controller.emit(1)
     controller.emit(1)
+
+    controller.terminate()
+    controller.await_termination()
+
+
+def test_partition():
+    dividable_by_two = {2, 4, 6}
+    not_dividable_by_two = {1, 3, 5}
+
+    def check_partition(event: Event):
+        first = event.body.left
+        second = event.body.right
+
+        if first is not None:
+            return first in dividable_by_two and first not in not_dividable_by_two and second is None
+        else:
+            return second in not_dividable_by_two and second not in dividable_by_two
+
+    controller = build_flow(
+        [
+            Source(),
+            Assert().exactly(6),
+            Partition(lambda event: event.body % 2 == 0),
+            Assert().exactly(6),
+            Assert(full_event=True).each_event(lambda event: check_partition(event))
+        ]
+    ).run()
+
+    controller.emit(1)
+    controller.emit(2)
+    controller.emit(3)
+    controller.emit(4)
+    controller.emit(5)
+    controller.emit(6)
 
     controller.terminate()
     controller.await_termination()
