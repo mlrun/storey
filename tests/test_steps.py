@@ -338,21 +338,6 @@ def test_flatten():
     controller.await_termination()
 
 
-def test_flatten_to_other_type():
-    controller = build_flow(
-        [
-            Source(),
-            Assert().exactly(1).match_exactly([[[1, 1], [1, 1], [1, 1]]]),
-            Flatten(to_set=True),
-            Assert().exactly(1).match_exactly([1]),
-        ]
-    ).run()
-
-    controller.emit([[1, 1], [1, 1], [1, 1]])
-    controller.terminate()
-    controller.await_termination()
-
-
 def test_foreach():
     class EventRegistry:
         def __init__(self):
