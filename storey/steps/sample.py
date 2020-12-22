@@ -4,7 +4,12 @@ from storey import Filter
 
 
 class Sample(Filter):
-    """Samples stream events, passes a single event downstream after either reaching 'rate_count' or 'rate_seconds'"""
+    """
+    Samples stream events, passes a single event downstream accordingly to emit_policy. By default emit_policy is set to
+    EMIT_FIRST, meaning that for Sample(rate_count=n) - first event will be passed downstream, while the n-1 next events
+    are filtered out. Other wise if emit_policy is set to EMIT_LAST - the first n-1 events are filtered out, but event
+    n is passed downstream.
+    """
 
     class EmitPolicy(Enum):
         EMIT_FIRST = 1
@@ -22,23 +27,24 @@ class Sample(Filter):
             raise ValueError(f"Expected rate_count > 0, found {rate_count}")
 
         self._rate_count = rate_count
-        self.emit_policy = emit_policy
+        self._emit_policy = emit_policy
+        self._count = 0
 
     def _sample(self):
         if self._count is None:
             self._count = 1
-            if self.emit_policy == self.EmitPolicy.EMIT_FIRST:
+            if self._emit_policy == self.EmitPolicy.EMIT_FIRST:
                 return True
-            elif self.emit_policy == self.EmitPolicy.EMIT_LAST:
+            elif self._emit_policy == self.EmitPolicy.EMIT_LAST:
                 return False
 
         self._count += 1
 
         if self._count == self._rate_count:
             self._count = None
-            if self.emit_policy == self.EmitPolicy.EMIT_FIRST:
+            if self._emit_policy == self.EmitPolicy.EMIT_FIRST:
                 return False
-            elif self.emit_policy == self.EmitPolicy.EMIT_LAST:
+            elif self._emit_policy == self.EmitPolicy.EMIT_LAST:
                 return True
 
         return False
