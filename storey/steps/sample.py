@@ -28,7 +28,7 @@ class Sample(Filter):
 
         self._rate_count = rate_count
         self._emit_policy = emit_policy
-        self._count = 0
+        self._count = None
 
     def _sample(self):
         if self._count is None:

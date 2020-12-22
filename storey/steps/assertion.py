@@ -14,7 +14,7 @@ class _Operator:
         return self.fn(x, y)
 
     def __str__(self):
-        return str
+        return self.str
 
 
 _EQUALS = _Operator("==", lambda x, y: x == y)
