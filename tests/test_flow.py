@@ -23,9 +23,9 @@ class RaiseEx:
         self._raise_after = raise_after
 
     def raise_ex(self, element):
+        self._counter += 1
         if self._counter == self._raise_after:
             raise ATestException("test")
-        self._counter += 1
         return element
 
 
@@ -203,6 +203,81 @@ def test_error_flow():
     try:
         for i in range(1000):
             controller.emit(i)
+        controller.terminate()
+        controller.await_termination()
+        assert False
+    except FlowError as flow_ex:
+        assert isinstance(flow_ex.__cause__, ATestException)
+
+
+def test_error_recovery():
+    reduce = Reduce(0, lambda acc, x: acc + x)
+    controller = build_flow([
+        Source(),
+        Map(lambda x: x + 1),
+        Map(RaiseEx(5).raise_ex, recover=reduce),
+        reduce,
+    ]).run()
+
+    for i in range(10):
+        controller.emit(i)
+
+    controller.terminate()
+    result = controller.await_termination()
+    assert result == 55
+
+
+def test_error_specific_recovery():
+    reduce = Reduce(0, lambda acc, x: acc + x)
+    controller = build_flow([
+        Source(),
+        Map(lambda x: x + 1),
+        Map(RaiseEx(5).raise_ex, recover={ATestException: reduce}),
+        reduce,
+    ]).run()
+
+    for i in range(10):
+        controller.emit(i)
+
+    controller.terminate()
+    result = controller.await_termination()
+    assert result == 55
+
+
+def test_error_nonrecovery():
+    reduce = Reduce(0, lambda acc, x: acc + x)
+    controller = build_flow([
+        Source(),
+        Map(lambda x: x + 1),
+        Map(RaiseEx(5).raise_ex, recover={ValueError: reduce}),
+        reduce,
+    ]).run()
+
+    try:
+        for i in range(10):
+            controller.emit(i)
+        controller.terminate()
+        controller.await_termination()
+        assert False
+    except FlowError as flow_ex:
+        assert isinstance(flow_ex.__cause__, ATestException)
+
+
+def test_error_recovery_containment():
+    reduce = Reduce(0, lambda acc, x: acc + x)
+    controller = build_flow([
+        Source(),
+        Map(lambda x: x + 1, recover=reduce),
+        Map(RaiseEx(5).raise_ex),
+        reduce,
+    ]).run()
+
+    try:
+        for i in range(10):
+            controller.emit(i)
+        controller.terminate()
+        controller.await_termination()
+        assert False
     except FlowError as flow_ex:
         assert isinstance(flow_ex.__cause__, ATestException)
 
@@ -478,12 +553,12 @@ async def async_test_error_async_flow():
     controller = await build_flow([
         AsyncSource(),
         Map(lambda x: x + 1),
-        Map(RaiseEx(500).raise_ex),
+        Map(RaiseEx(5).raise_ex),
         Reduce(0, lambda acc, x: acc + x),
     ]).run()
 
     try:
-        for i in range(1000):
+        for i in range(10):
             await controller.emit(i)
     except FlowError as flow_ex:
         assert isinstance(flow_ex.__cause__, ATestException)
@@ -716,7 +791,6 @@ def test_batch_by_event_key():
     controller.emit(6, key="key1")
     controller.emit(7, key="key1")
 
-
     controller.terminate()
     termination_result = controller.await_termination()
 
@@ -754,9 +828,12 @@ def test_batch_by_field_value_key_extractor():
     termination_result = controller.await_termination()
 
     # Grouped with same field value, emitted after 3 events due to configuration
-    assert termination_result[0] == [{'field': 'name_1', 'field_data': 10}, {'field': 'name_1', 'field_data': 8}, {'field': 'name_1', 'field_data': 6}]
-    assert termination_result[1] == [{'field': 'name_2', 'field_data': 9}, {'field': 'name_2', 'field_data': 7}, {'field': 'name_2', 'field_data': 5}]
-    assert termination_result[2] == [{'field': 'name_1', 'field_data': 4}, {'field': 'name_1', 'field_data': 2}, {'field': 'name_1', 'field_data': 0}]
+    assert termination_result[0] == [{'field': 'name_1', 'field_data': 10}, {'field': 'name_1', 'field_data': 8},
+                                     {'field': 'name_1', 'field_data': 6}]
+    assert termination_result[1] == [{'field': 'name_2', 'field_data': 9}, {'field': 'name_2', 'field_data': 7},
+                                     {'field': 'name_2', 'field_data': 5}]
+    assert termination_result[2] == [{'field': 'name_1', 'field_data': 4}, {'field': 'name_1', 'field_data': 2},
+                                     {'field': 'name_1', 'field_data': 0}]
     assert termination_result[3] == [{'field': 'name_2', 'field_data': 3}, {'field': 'name_2', 'field_data': 1}]
 
 
