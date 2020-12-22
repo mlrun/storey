@@ -51,7 +51,7 @@ class _AssertEventCount(_Assertable):
 
     def check(self):
         op = self.operator(self.actual, self.expected)
-        assert op, f"Expected event count {self.operator} {self.expected}"
+        assert op, f"Expected event count {self.operator} {self.expected}, got {self.actual} instead"
 
 
 class _AssertCollection(_Assertable):
