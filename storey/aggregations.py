@@ -456,6 +456,8 @@ class AggregationBuckets:
         self._precalculated_aggregations = max_value is None
         if explicit_windows:
             self.is_fixed_window = isinstance(self.explicit_windows, FixedWindows)
+            if self.is_fixed_window:
+                self._round_time_func = self.explicit_windows.round_up_time_to_window
             self.period_millis = explicit_windows.period_millis
             self._window_start_time = explicit_windows.get_window_start_time_by_time(base_time)
             if self._precalculated_aggregations:
@@ -464,6 +466,8 @@ class AggregationBuckets:
         if hidden_windows:
             if not explicit_windows:
                 self.is_fixed_window = isinstance(self.explicit_windows, FixedWindows)
+                if self.is_fixed_window:
+                    self._round_time_func = self.explicit_windows.round_up_time_to_window
                 self.period_millis = hidden_windows.period_millis
                 self._window_start_time = hidden_windows.get_window_start_time_by_time(base_time)
             if self._precalculated_aggregations:
@@ -476,7 +480,14 @@ class AggregationBuckets:
 
             # Initializing the buckets from the stored data and calculating the initial pre aggregates
             self.initialize_from_data(initial_data, base_time)
-            self.calculate_features(base_time)
+            all_windows = []
+            if self.explicit_windows:
+                all_windows.extend(self.explicit_windows.windows)
+            if self.hidden_windows:
+                for win in self.hidden_windows.windows:
+                    if win not in all_windows:
+                        all_windows.append(win)
+            self.calculate_features(base_time, all_windows)
         else:
             self.first_bucket_start_time = self._window_start_time
             self.last_bucket_start_time = \
@@ -555,10 +566,7 @@ class AggregationBuckets:
 
     def get_window_range(self, timestamp, windows_millis):
         if self.is_fixed_window:
-            if self.explicit_windows:
-                end_bucket = self.get_bucket_index_by_timestamp(self.explicit_windows.round_up_time_to_window(timestamp) - 1)
-            else:
-                end_bucket = self.get_bucket_index_by_timestamp(self.hidden_windows.round_up_time_to_window(timestamp) - 1)
+            end_bucket = self.get_bucket_index_by_timestamp(self._round_time_func(timestamp) - 1)
         else:
             end_bucket = self.get_bucket_index_by_timestamp(timestamp)
 
@@ -619,32 +627,19 @@ class AggregationBuckets:
 
         return result
 
-    def calculate_features(self, timestamp, windows=None):
+    def calculate_features(self, timestamp, windows):
         result = {}
 
         current_time_bucket_index = self.get_bucket_index_by_timestamp(timestamp)
         if current_time_bucket_index < 0:
             return result
 
-        if windows:
-            all_windows = windows
-            some_window = self.hidden_windows
-        else:
-            all_windows = []
-            if self.explicit_windows:
-                some_window = self.explicit_windows
-                all_windows.extend(self.explicit_windows.windows)
-            if self.hidden_windows:
-                some_window = self.hidden_windows
-                for win in self.hidden_windows.windows:
-                    if win not in all_windows:
-                        all_windows.append(win)
         if self.is_fixed_window:
-            current_time_bucket_index = self.get_bucket_index_by_timestamp(some_window.round_up_time_to_window(timestamp) - 1)
+            current_time_bucket_index = self.get_bucket_index_by_timestamp(self._round_time_func(timestamp) - 1)
 
         aggregated_value = AggregationValue(self.get_aggregation_for_aggregation())
         prev_windows_millis = 0
-        for win in all_windows:
+        for win in windows:
             window_string = win[1]
             window_millis = win[0]
 
