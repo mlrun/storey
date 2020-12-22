@@ -50,9 +50,8 @@ class _AssertEventCount(_Assertable):
         self.actual += 1
 
     def check(self):
-        assert self.operator(
-            self.actual, self.expected
-        ), f"Expected event count {self.operator} {self.expected}"
+        op = self.operator(self.actual, self.expected)
+        assert op, f"Expected event count {self.operator} {self.expected}"
 
 
 class _AssertCollection(_Assertable):
@@ -69,9 +68,8 @@ class _AssertCollection(_Assertable):
         self.actual.append(event)
 
     def check(self):
-        assert self.operator(
-            self.expected, self.actual
-        ), f"Expected {self.operator} {self.actual} in {self.expected}"
+        op = self.operator(self.expected, self.actual)
+        assert op, f"Expected {self.operator} {self.actual} in {self.expected}"
 
 
 class _AssertPredicate(_Assertable):
@@ -79,7 +77,8 @@ class _AssertPredicate(_Assertable):
         self.predicate = predicate
 
     def __call__(self, event):
-        assert self.predicate(event)
+        predicate = self.predicate(event)
+        assert predicate, f"Predicate results in False for Event {event}"
 
     def check(self):
         pass
@@ -87,6 +86,7 @@ class _AssertPredicate(_Assertable):
 
 class Assert(Flow):
     """Exposes an API for testing the flow between steps."""
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.termination_assertions: List[_Assertable] = []

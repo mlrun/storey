@@ -10,7 +10,10 @@ from storey.steps import Flatten, Sample, Assert, ForEach
 def test_assert_each_event():
     try:
         controller = build_flow(
-            [Source(), Assert().each_event(lambda event: event > 10)]
+            [
+                Source(),
+                Assert().each_event(lambda event: event > 10)
+            ]
         ).run()
         controller.emit(1)
         controller.terminate()
@@ -23,7 +26,12 @@ def test_assert_each_event():
 
 def test_assert_at_least():
     try:
-        controller = build_flow([Source(), Assert().at_least(2)]).run()
+        controller = build_flow(
+            [
+                Source(),
+                Assert().at_least(2)
+            ]
+        ).run()
         controller.emit(1)
         controller.terminate()
         controller.await_termination()
@@ -32,7 +40,12 @@ def test_assert_at_least():
         pass
 
     try:
-        controller = build_flow([Source(), Assert().at_least(2)]).run()
+        controller = build_flow(
+            [
+                Source(),
+                Assert().at_least(2)
+            ]
+        ).run()
         controller.emit(1)
         controller.emit(1)
         controller.terminate()
@@ -43,7 +56,11 @@ def test_assert_at_least():
 
 def test_assert_above():
     try:
-        controller = build_flow([Source(), Assert().above(1)]).run()
+        controller = build_flow(
+            [
+                Source(),
+                Assert().above(1)]
+        ).run()
         controller.emit(1)
         controller.terminate()
         controller.await_termination()
@@ -52,7 +69,12 @@ def test_assert_above():
         pass
 
     try:
-        controller = build_flow([Source(), Assert().above(1)]).run()
+        controller = build_flow(
+            [
+                Source(),
+                Assert().above(1)
+            ]
+        ).run()
         controller.emit(1)
         controller.emit(1)
         controller.terminate()
@@ -63,7 +85,12 @@ def test_assert_above():
 
 def test_assert_at_most():
     try:
-        controller = build_flow([Source(), Assert().at_most(2)]).run()
+        controller = build_flow(
+            [
+                Source(),
+                Assert().at_most(2)
+            ]
+        ).run()
         controller.emit(1)
         controller.emit(2)
         controller.emit(3)
@@ -74,7 +101,12 @@ def test_assert_at_most():
         pass
 
     try:
-        controller = build_flow([Source(), Assert().at_most(2)]).run()
+        controller = build_flow(
+            [
+                Source(),
+                Assert().at_most(2)
+            ]
+        ).run()
         controller.emit(1)
         controller.emit(1)
         controller.terminate()
@@ -85,7 +117,12 @@ def test_assert_at_most():
 
 def test_assert_exactly():
     try:
-        controller = build_flow([Source(), Assert().exactly(2)]).run()
+        controller = build_flow(
+            [
+                Source(),
+                Assert().exactly(2)
+            ]
+        ).run()
         controller.emit(1)
         controller.terminate()
         controller.await_termination()
@@ -94,7 +131,12 @@ def test_assert_exactly():
         pass
 
     try:
-        controller = build_flow([Source(), Assert().exactly(2)]).run()
+        controller = build_flow(
+            [
+                Source(),
+                Assert().exactly(2)
+            ]
+        ).run()
         controller.emit(1)
         controller.emit(1)
         controller.emit(1)
@@ -105,7 +147,12 @@ def test_assert_exactly():
         pass
 
     try:
-        controller = build_flow([Source(), Assert().exactly(2)]).run()
+        controller = build_flow(
+            [
+                Source(),
+                Assert().exactly(2)
+            ]
+        ).run()
         controller.emit(1)
         controller.emit(1)
         controller.terminate()
@@ -114,7 +161,12 @@ def test_assert_exactly():
         fail("Assert failed unexpectedly", False)
 
     try:
-        controller = build_flow([Source(), Assert().match_exactly([1, 1, 1])]).run()
+        controller = build_flow(
+            [
+                Source(),
+                Assert().match_exactly([1, 1, 1])
+            ]
+        ).run()
         controller.emit(1)
         controller.emit(1)
         controller.terminate()
@@ -124,7 +176,12 @@ def test_assert_exactly():
         pass
 
     try:
-        controller = build_flow([Source(), Assert().match_exactly([1, 1, 1])]).run()
+        controller = build_flow(
+            [
+                Source(),
+                Assert().match_exactly([1, 1, 1])
+            ]
+        ).run()
         controller.emit(1)
         controller.emit(1)
         controller.emit(1)
@@ -137,7 +194,10 @@ def test_assert_exactly():
 def test_assert_all_of():
     try:
         controller = build_flow(
-            [Source(), Assert().match_all_of([[1, 2, 3], [4, 5, 6], [7, 8, 9]])]
+            [
+                Source(),
+                Assert().match_all_of([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+            ]
         ).run()
         controller.emit([1, 2, 3])
         controller.emit([4, 5, 6])
@@ -149,7 +209,10 @@ def test_assert_all_of():
 
     try:
         controller = build_flow(
-            [Source(), Assert().match_all_of([[1, 2, 3], [4, 5, 6], [7, 8, 9]])]
+            [
+                Source(),
+                Assert().match_all_of([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+            ]
         ).run()
         controller.emit([1, 2, 3])
         controller.emit([4, 5, 6])
@@ -163,7 +226,10 @@ def test_assert_all_of():
 def test_assert_any_of():
     try:
         controller = build_flow(
-            [Source(), Assert().match_any_of([[1, 2, 3], [4, 5, 6], [7, 8, 9]])]
+            [
+                Source(),
+                Assert().match_any_of([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+            ]
         ).run()
         controller.emit([10, 11, 12])
         controller.terminate()
@@ -174,7 +240,10 @@ def test_assert_any_of():
 
     try:
         controller = build_flow(
-            [Source(), Assert().match_any_of([[1, 2, 3], [4, 5, 6], [7, 8, 9]])]
+            [
+                Source(),
+                Assert().match_any_of([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+            ]
         ).run()
         controller.emit([1, 2, 3])
         controller.terminate()
@@ -186,7 +255,10 @@ def test_assert_any_of():
 def test_assert_none_of():
     try:
         controller = build_flow(
-            [Source(), Assert().match_none_of([[1, 2, 3], [4, 5, 6], [7, 8, 9]])]
+            [
+                Source(),
+                Assert().match_none_of([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+            ]
         ).run()
         controller.emit([10, 11, 12])
         controller.terminate()
@@ -196,7 +268,10 @@ def test_assert_none_of():
 
     try:
         controller = build_flow(
-            [Source(), Assert().match_none_of([[1, 2, 3], [4, 5, 6], [7, 8, 9]])]
+            [
+                Source(),
+                Assert().match_none_of([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+            ]
         ).run()
         controller.emit([1, 2, 3])
         controller.terminate()
@@ -227,7 +302,12 @@ def test_sample_by_count():
 
 def test_sample_by_seconds():
     controller = build_flow(
-        [Source(), Assert().exactly(6), Sample(rate_count=2), Assert().exactly(2)]
+        [
+            Source(),
+            Assert().exactly(6),
+            Sample(rate_count=2),
+            Assert().exactly(2)
+        ]
     ).run()
 
     controller.emit(1)
@@ -246,7 +326,11 @@ def test_sample_by_seconds():
 
 def test_flatten():
     controller = build_flow(
-        [Source(), Flatten(), Assert().match_exactly([1, 2, 3, 4, 5, 6])]
+        [
+            Source(),
+            Flatten(),
+            Assert().match_exactly([1, 2, 3, 4, 5, 6])
+        ]
     ).run()
 
     controller.emit([[1, 2], [3, 4], [5, 6]])
