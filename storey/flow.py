@@ -32,14 +32,8 @@ class Flow:
         return outlet
 
     def _get_recovery_step(self, exception):
-        if self._recover is None:
-            raise exception
-        elif isinstance(self._recover, dict):
-            typ = type(exception)
-            if typ in self._recover:
-                return self._recover[typ]
-            else:
-                raise exception
+        if isinstance(self._recover, dict):
+            return self._recover.get(type(exception), None)
         else:
             return self._recover
 
