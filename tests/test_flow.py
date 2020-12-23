@@ -1310,7 +1310,7 @@ def test_write_to_parquet_with_indices(tmpdir):
     expected = []
     for i in range(10):
         controller.emit([i, f'this is {i}'], key=f'key{i}')
-        expected.append([f'this is {i}', f'key{i}', i])
+        expected.append([f'key{i}', i, f'this is {i}'])
     columns = ['event_key', 'my_int', 'my_string']
     expected = pd.DataFrame(expected, columns=columns, dtype='int64')
     expected.set_index(['event_key'], inplace=True)
