@@ -12,7 +12,7 @@ class Partition(Flow):
     Partitions events by calling a predicate function on each event. Each processed event results in a `Partitioned`
     namedtuple of (left=Optional[Event], right=Optional[Event]).
 
-    For a given event, if the predicate function results is `True`, the event is assigned to `left`. Otherwise, the
+    For a given event, if the predicate function results in `True`, the event is assigned to `left`. Otherwise, the
     event is assigned to `right`.
 
     :param predicate: A predicate function that results in a boolean.
