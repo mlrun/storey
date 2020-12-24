@@ -388,17 +388,17 @@ def test_foreach():
 
 
 def test_partition():
-    dividable_by_two = {2, 4, 6}
-    not_dividable_by_two = {1, 3, 5}
+    divisible_by_two = {2, 4, 6}
+    not_divisible_by_two = {1, 3, 5}
 
     def check_partition(event: Event):
         first = event.body.left
         second = event.body.right
 
         if first is not None:
-            return first in dividable_by_two and first not in not_dividable_by_two and second is None
+            return first in divisible_by_two and first not in not_divisible_by_two and second is None
         else:
-            return second in not_dividable_by_two and second not in dividable_by_two
+            return second in not_divisible_by_two and second not in divisible_by_two
 
     controller = build_flow(
         [

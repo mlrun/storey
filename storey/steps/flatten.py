@@ -6,12 +6,11 @@ from storey.dtypes import _termination_obj
 
 class Flatten(Flow):
     """
-    Flattens sequences of sequences (i.e lists of lists, sets of sets, etc...) into a single sequence, by default
-    casts sequence to list. When setting to_set=True, casts sequence to set.
+    Splits an event with an iterable body into multiple events.
     """
 
     def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+        super().__init__(full_event=True, **kwargs)
 
     async def _do(self, event):
         if event is _termination_obj:
