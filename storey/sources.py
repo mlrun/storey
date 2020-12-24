@@ -17,6 +17,7 @@ class AwaitableResult:
     def __init__(self, on_error: Optional[Callable[[], None]] = None):
         self._on_error = on_error
         self._q = queue.Queue(1)
+        self._completed = False
 
     def await_result(self):
         result = self._q.get()
@@ -27,7 +28,9 @@ class AwaitableResult:
         return result
 
     def _set_result(self, element):
-        self._q.put(element)
+        if not self._completed:
+            self._completed = True
+            self._q.put(element)
 
     def _set_error(self, ex):
         self._set_result(ex)
@@ -166,6 +169,7 @@ class AsyncAwaitableResult:
     def __init__(self, on_error: Optional[Callable[[BaseException], Coroutine]] = None):
         self._on_error = on_error
         self._q = asyncio.Queue(1)
+        self._completed = False
 
     async def await_result(self):
         result = await self._q.get()
@@ -176,6 +180,9 @@ class AsyncAwaitableResult:
         return result
 
     async def _set_result(self, element):
+        if self._completed:
+            raise ValueError('AsyncAwaitableResult cannot be completed more than once')
+        self._completed = True
         await self._q.put(element)
 
     async def _set_error(self, ex):

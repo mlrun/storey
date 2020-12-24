@@ -500,6 +500,22 @@ def test_awaitable_result():
     assert termination_result == 55
 
 
+def test_double_completion():
+    controller = build_flow([
+        Source(),
+        Complete(),
+        Complete(),
+        Reduce(0, lambda acc, x: acc + x)
+    ]).run()
+
+    for i in range(10):
+        awaitable_result = controller.emit(i, return_awaitable_result=True)
+        assert awaitable_result.await_result() == i
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == 45
+
+
 def test_awaitable_result_error():
     def boom(_):
         raise ValueError('boom')
