@@ -28,7 +28,6 @@ class Partition(Flow):
         else:
             if self.predicate(event):
                 event.body = Partitioned(left=event.body, right=None)
-                await self._do_downstream(event)
             else:
                 event.body = Partitioned(left=None, right=event.body)
-                await self._do_downstream(event)
+            await self._do_downstream(event)
