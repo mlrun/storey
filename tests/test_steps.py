@@ -27,7 +27,7 @@ def test_assert_at_least():
         controller = build_flow(
             [
                 Source(),
-                Assert().at_least(2)
+                Assert().greater_or_equal_to(2)
             ]
         ).run()
         controller.emit(1)
@@ -41,7 +41,7 @@ def test_assert_at_least():
         controller = build_flow(
             [
                 Source(),
-                Assert().at_least(2)
+                Assert().greater_or_equal_to(2)
             ]
         ).run()
         controller.emit(1)
@@ -57,7 +57,7 @@ def test_assert_above():
         controller = build_flow(
             [
                 Source(),
-                Assert().above(1)]
+                Assert().greater_than(1)]
         ).run()
         controller.emit(1)
         controller.terminate()
@@ -70,7 +70,7 @@ def test_assert_above():
         controller = build_flow(
             [
                 Source(),
-                Assert().above(1)
+                Assert().greater_than(1)
             ]
         ).run()
         controller.emit(1)
@@ -86,7 +86,7 @@ def test_assert_at_most():
         controller = build_flow(
             [
                 Source(),
-                Assert().at_most(2)
+                Assert().less_or_equal_to(2)
             ]
         ).run()
         controller.emit(1)
@@ -102,7 +102,7 @@ def test_assert_at_most():
         controller = build_flow(
             [
                 Source(),
-                Assert().at_most(2)
+                Assert().less_or_equal_to(2)
             ]
         ).run()
         controller.emit(1)

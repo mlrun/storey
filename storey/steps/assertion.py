@@ -18,11 +18,11 @@ class _Operator:
 
 
 _EQUALS = _Operator("==", lambda x, y: x == y)
-_NOT_EQUALS = _Operator("!=", lambda x, y: x != y)
-_ABOVE = _Operator(">", lambda x, y: x > y)
-_BELOW = _Operator("<", lambda x, y: x < y)
-_ABOVE_OR_EQUAL = _Operator(">=", lambda x, y: x >= y)
-_BELOW_OR_EQUAL = _Operator("<=", lambda x, y: x <= y)
+_NOT_EQUAL = _Operator("!=", lambda x, y: x != y)
+_GREATER_THAN = _Operator(">", lambda x, y: x > y)
+_LESS_THEN = _Operator("<", lambda x, y: x < y)
+_GREATER_OR_EQUAL = _Operator(">=", lambda x, y: x >= y)
+_LESS_OR_EQUAL = _Operator("<=", lambda x, y: x <= y)
 
 _ANY = _Operator("any of", lambda x, y: any([i for i in x if i in y]))
 _ALL = _Operator("all of", lambda x, y: len([i for i in x if i in x]) == len(y))
@@ -96,20 +96,20 @@ class Assert(Flow):
         self.execution_assertions.append(_AssertPredicate(predicate))
         return self
 
-    def at_least(self, expected: int):
-        self.termination_assertions.append(_AssertEventCount(expected, _ABOVE_OR_EQUAL))
+    def greater_or_equal_to(self, expected: int):
+        self.termination_assertions.append(_AssertEventCount(expected, _GREATER_OR_EQUAL))
         return self
 
-    def above(self, expected: int):
-        self.termination_assertions.append(_AssertEventCount(expected, _ABOVE))
+    def greater_than(self, expected: int):
+        self.termination_assertions.append(_AssertEventCount(expected, _GREATER_THAN))
         return self
 
-    def below(self, expected: int):
-        self.termination_assertions.append(_AssertEventCount(expected, _BELOW))
+    def less_than(self, expected: int):
+        self.termination_assertions.append(_AssertEventCount(expected, _LESS_THEN))
         return self
 
-    def at_most(self, expected: int):
-        self.termination_assertions.append(_AssertEventCount(expected, _BELOW_OR_EQUAL))
+    def less_or_equal_to(self, expected: int):
+        self.termination_assertions.append(_AssertEventCount(expected, _LESS_OR_EQUAL))
         return self
 
     def exactly(self, expected: int):
