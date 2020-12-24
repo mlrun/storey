@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Callable, List, Any, Collection
+from typing import Callable, List, Any, Iterable
 
 from storey.dtypes import _termination_obj
 from storey.flow import Flow
@@ -24,10 +24,24 @@ _LESS_THEN = _Operator("<", lambda x, y: x < y)
 _GREATER_OR_EQUAL = _Operator(">=", lambda x, y: x >= y)
 _LESS_OR_EQUAL = _Operator("<=", lambda x, y: x <= y)
 
-_ANY = _Operator("any of", lambda x, y: any([i for i in x if i in y]))
-_ALL = _Operator("all of", lambda x, y: len([i for i in x if i in x]) == len(y))
-_EXACTLY = _Operator("exactly", lambda x, y: _ALL(x, y) and _ALL(y, x))
-_NONE = _Operator("none of", lambda x, y: not _ANY(x, y))
+
+def _intersect(first_iterable: Iterable, second_iterable: Iterable):
+    return any(set(first_iterable).intersection(second_iterable))
+
+
+def _subset(first_iterable: Iterable, second_iterable: Iterable):
+    return set(first_iterable).issubset(second_iterable)
+
+
+def _disjoint(first_iterable: Iterable, second_iterable: Iterable):
+    return set(first_iterable).isdisjoint(second_iterable)
+
+
+_INTERSECT = _Operator("any of", _intersect)
+_SUBSET = _Operator("all of", _subset)
+_IDENTICAL = _Operator("exactly", lambda x, y: _SUBSET(x, y) and _SUBSET(y, x))
+_DISJOINT = _Operator("none of", _disjoint)
+_NONE = _Operator("none of", lambda x, y: not _INTERSECT(x, y))
 
 _NOTHING = _Operator("do nothing", lambda x, y: False)
 
@@ -51,13 +65,15 @@ class _AssertEventCount(_Assertable):
 
     def check(self):
         op = self.operator(self.actual, self.expected)
-        assert op, f"Expected event count {self.operator} {self.expected}, got {self.actual} instead"
+        assert (
+            op
+        ), f"Expected event count {self.operator} {self.expected}, got {self.actual} instead"
 
 
 class _AssertCollection(_Assertable):
     def __init__(
         self,
-        expected: Collection[Any],
+        expected: Iterable[Any],
         operator: _Operator = _NOTHING,
     ):
         self.expected = expected
@@ -97,7 +113,9 @@ class Assert(Flow):
         return self
 
     def greater_or_equal_to(self, expected: int):
-        self.termination_assertions.append(_AssertEventCount(expected, _GREATER_OR_EQUAL))
+        self.termination_assertions.append(
+            _AssertEventCount(expected, _GREATER_OR_EQUAL)
+        )
         return self
 
     def greater_than(self, expected: int):
@@ -116,19 +134,19 @@ class Assert(Flow):
         self.termination_assertions.append(_AssertEventCount(expected, _EQUALS))
         return self
 
-    def match_exactly(self, expected: Collection[Any]):
-        self.termination_assertions.append(_AssertCollection(expected, _EXACTLY))
+    def match_exactly(self, expected: Iterable[Any]):
+        self.termination_assertions.append(_AssertCollection(expected, _IDENTICAL))
         return self
 
-    def match_all_of(self, expected: Collection[Any]):
-        self.termination_assertions.append(_AssertCollection(expected, _ALL))
+    def match_all_of(self, expected: Iterable[Any]):
+        self.termination_assertions.append(_AssertCollection(expected, _SUBSET))
         return self
 
-    def match_any_of(self, expected: Collection[Any]):
-        self.termination_assertions.append(_AssertCollection(expected, _ANY))
+    def match_any_of(self, expected: Iterable[Any]):
+        self.termination_assertions.append(_AssertCollection(expected, _INTERSECT))
         return self
 
-    def match_none_of(self, expected: Collection[Any]):
+    def match_none_of(self, expected: Iterable[Any]):
         self.termination_assertions.append(_AssertCollection(expected, _NONE))
         return self
 
