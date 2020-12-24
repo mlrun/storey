@@ -215,7 +215,24 @@ def test_error_recovery():
     controller = build_flow([
         Source(),
         Map(lambda x: x + 1),
-        Map(RaiseEx(5).raise_ex, recover=reduce),
+        Map(RaiseEx(5).raise_ex, recovery_step=reduce),
+        reduce,
+    ]).run()
+
+    for i in range(10):
+        controller.emit(i)
+
+    controller.terminate()
+    result = controller.await_termination()
+    assert result == 55
+
+
+def test_set_recovery_step():
+    reduce = Reduce(0, lambda acc, x: acc + x)
+    controller = build_flow([
+        Source(),
+        Map(lambda x: x + 1),
+        Map(RaiseEx(5).raise_ex).set_recovery_step(reduce),
         reduce,
     ]).run()
 
@@ -232,7 +249,7 @@ def test_error_specific_recovery():
     controller = build_flow([
         Source(),
         Map(lambda x: x + 1),
-        Map(RaiseEx(5).raise_ex, recover={ATestException: reduce}),
+        Map(RaiseEx(5).raise_ex, recovery_step={ATestException: reduce}),
         reduce,
     ]).run()
 
@@ -248,7 +265,7 @@ def test_error_specific_recovery_check_exception():
     reduce = Reduce([], lambda acc, event: append_and_return(acc, type(event.ex)), full_event=True)
     controller = build_flow([
         Source(),
-        Map(RaiseEx(2).raise_ex, recover={ATestException: reduce}),
+        Map(RaiseEx(2).raise_ex, recovery_step={ATestException: reduce}),
         reduce
     ]).run()
 
@@ -265,7 +282,7 @@ def test_error_nonrecovery():
     controller = build_flow([
         Source(),
         Map(lambda x: x + 1),
-        Map(RaiseEx(5).raise_ex, recover={ValueError: reduce}),
+        Map(RaiseEx(5).raise_ex, recovery_step={ValueError: reduce}),
         reduce,
     ]).run()
 
@@ -283,7 +300,7 @@ def test_error_recovery_containment():
     reduce = Reduce(0, lambda acc, x: acc + x)
     controller = build_flow([
         Source(),
-        Map(lambda x: x + 1, recover=reduce),
+        Map(lambda x: x + 1, recovery_step=reduce),
         Map(RaiseEx(5).raise_ex),
         reduce,
     ]).run()
