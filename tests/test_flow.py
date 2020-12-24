@@ -19,13 +19,13 @@ class ATestException(Exception):
 class RaiseEx:
     _counter = 0
 
-    def __init__(self, raise_after):
-        self._raise_after = raise_after
+    def __init__(self, raise_on_nth):
+        self._raise_after = raise_on_nth
 
     def raise_ex(self, element):
+        self._counter += 1
         if self._counter == self._raise_after:
             raise ATestException("test")
-        self._counter += 1
         return element
 
 
@@ -243,6 +243,97 @@ def test_error_flow():
     try:
         for i in range(1000):
             controller.emit(i)
+        controller.terminate()
+        controller.await_termination()
+        assert False
+    except FlowError as flow_ex:
+        assert isinstance(flow_ex.__cause__, ATestException)
+
+
+def test_error_recovery():
+    reduce = Reduce(0, lambda acc, x: acc + x)
+    controller = build_flow([
+        Source(),
+        Map(lambda x: x + 1),
+        Map(RaiseEx(5).raise_ex, recover=reduce),
+        reduce,
+    ]).run()
+
+    for i in range(10):
+        controller.emit(i)
+
+    controller.terminate()
+    result = controller.await_termination()
+    assert result == 55
+
+
+def test_error_specific_recovery():
+    reduce = Reduce(0, lambda acc, x: acc + x)
+    controller = build_flow([
+        Source(),
+        Map(lambda x: x + 1),
+        Map(RaiseEx(5).raise_ex, recover={ATestException: reduce}),
+        reduce,
+    ]).run()
+
+    for i in range(10):
+        controller.emit(i)
+
+    controller.terminate()
+    result = controller.await_termination()
+    assert result == 55
+
+
+def test_error_specific_recovery_check_exception():
+    reduce = Reduce([], lambda acc, event: append_and_return(acc, type(event.ex)), full_event=True)
+    controller = build_flow([
+        Source(),
+        Map(RaiseEx(2).raise_ex, recover={ATestException: reduce}),
+        reduce
+    ]).run()
+
+    for i in range(3):
+        controller.emit(i)
+
+    controller.terminate()
+    result = controller.await_termination()
+    assert result == [type(None), ATestException, type(None)]
+
+
+def test_error_nonrecovery():
+    reduce = Reduce(0, lambda acc, x: acc + x)
+    controller = build_flow([
+        Source(),
+        Map(lambda x: x + 1),
+        Map(RaiseEx(5).raise_ex, recover={ValueError: reduce}),
+        reduce,
+    ]).run()
+
+    try:
+        for i in range(10):
+            controller.emit(i)
+        controller.terminate()
+        controller.await_termination()
+        assert False
+    except FlowError as flow_ex:
+        assert isinstance(flow_ex.__cause__, ATestException)
+
+
+def test_error_recovery_containment():
+    reduce = Reduce(0, lambda acc, x: acc + x)
+    controller = build_flow([
+        Source(),
+        Map(lambda x: x + 1, recover=reduce),
+        Map(RaiseEx(5).raise_ex),
+        reduce,
+    ]).run()
+
+    try:
+        for i in range(10):
+            controller.emit(i)
+        controller.terminate()
+        controller.await_termination()
+        assert False
     except FlowError as flow_ex:
         assert isinstance(flow_ex.__cause__, ATestException)
 
@@ -518,12 +609,12 @@ async def async_test_error_async_flow():
     controller = await build_flow([
         AsyncSource(),
         Map(lambda x: x + 1),
-        Map(RaiseEx(500).raise_ex),
+        Map(RaiseEx(5).raise_ex),
         Reduce(0, lambda acc, x: acc + x),
     ]).run()
 
     try:
-        for i in range(1000):
+        for i in range(10):
             await controller.emit(i)
     except FlowError as flow_ex:
         assert isinstance(flow_ex.__cause__, ATestException)
@@ -756,7 +847,6 @@ def test_batch_by_event_key():
     controller.emit(6, key="key1")
     controller.emit(7, key="key1")
 
-
     controller.terminate()
     termination_result = controller.await_termination()
 
@@ -794,9 +884,12 @@ def test_batch_by_field_value_key_extractor():
     termination_result = controller.await_termination()
 
     # Grouped with same field value, emitted after 3 events due to configuration
-    assert termination_result[0] == [{'field': 'name_1', 'field_data': 10}, {'field': 'name_1', 'field_data': 8}, {'field': 'name_1', 'field_data': 6}]
-    assert termination_result[1] == [{'field': 'name_2', 'field_data': 9}, {'field': 'name_2', 'field_data': 7}, {'field': 'name_2', 'field_data': 5}]
-    assert termination_result[2] == [{'field': 'name_1', 'field_data': 4}, {'field': 'name_1', 'field_data': 2}, {'field': 'name_1', 'field_data': 0}]
+    assert termination_result[0] == [{'field': 'name_1', 'field_data': 10}, {'field': 'name_1', 'field_data': 8},
+                                     {'field': 'name_1', 'field_data': 6}]
+    assert termination_result[1] == [{'field': 'name_2', 'field_data': 9}, {'field': 'name_2', 'field_data': 7},
+                                     {'field': 'name_2', 'field_data': 5}]
+    assert termination_result[2] == [{'field': 'name_1', 'field_data': 4}, {'field': 'name_1', 'field_data': 2},
+                                     {'field': 'name_1', 'field_data': 0}]
     assert termination_result[3] == [{'field': 'name_2', 'field_data': 3}, {'field': 'name_2', 'field_data': 1}]
 
 
@@ -1350,7 +1443,7 @@ def test_write_to_parquet_with_indices(tmpdir):
     expected = []
     for i in range(10):
         controller.emit([i, f'this is {i}'], key=f'key{i}')
-        expected.append([f'this is {i}', f'key{i}', i])
+        expected.append([f'key{i}', i, f'this is {i}'])
     columns = ['event_key', 'my_int', 'my_string']
     expected = pd.DataFrame(expected, columns=columns, dtype='int64')
     expected.set_index(['event_key'], inplace=True)
@@ -1561,3 +1654,20 @@ def test_write_to_tsdb_with_key_index_and_default_time():
         del write_call[1]['dfs']
         assert write_call[1] == {'backend': 'tsdb', 'table': 'some/path'}
         i += 1
+
+
+def test_csv_reader_parquet_write_ns(tmpdir):
+    out_file = f'{tmpdir}/test_csv_reader_parquet_write_ns_{uuid.uuid4().hex}/out.parquet'
+    columns = ['k', 't']
+
+    controller = build_flow([
+        ReadCSV('tests/test-with-timestamp-ns.csv', header=True, key_field='k',
+                timestamp_field='t', timestamp_format='%d/%m/%Y %H:%M:%S.%f'),
+        WriteToParquet(out_file, columns=columns, max_events=2)
+    ]).run()
+
+    expected = pd.DataFrame([['m1', "15/02/2020 02:03:04.12345678"], ['m2', "16/02/2020 02:03:04.12345678"]], columns=columns)
+    controller.await_termination()
+    read_back_df = pd.read_parquet(out_file, columns=columns)
+
+    assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"

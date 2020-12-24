@@ -239,18 +239,33 @@ class AggregatedStoreElement:
         self.storage_specific_cache = {}
 
         # Add all raw aggregates, including aggregates not explicitly requested.
+        windows = {}
         for aggregation_metadata in aggregates:
-            for aggr, is_hidden in get_all_raw_aggregates_with_hidden(aggregation_metadata.aggregations).items():
-                column_name = f'{aggregation_metadata.name}_{aggr}'
-                if column_name in self.aggregation_buckets:
-                    self.aggregation_buckets[column_name].is_hidden &= is_hidden
-                else:
-                    initial_column_data = None
-                    if initial_data and column_name in initial_data:
-                        initial_column_data = initial_data[column_name]
-                    self.aggregation_buckets[column_name] = \
-                        AggregationBuckets(aggregation_metadata.name, aggr, aggregation_metadata.windows, base_time,
-                                           aggregation_metadata.max_value, is_hidden, initial_column_data)
+            for meta in aggregation_metadata.aggregations:
+                for aggr, is_hidden in get_all_raw_aggregates_with_hidden([meta]).items():
+                    if (aggregation_metadata.name, aggr, aggregation_metadata.max_value) in windows:
+                        aggr_windows = windows[(aggregation_metadata.name, aggr, aggregation_metadata.max_value)]
+                        if is_hidden in aggr_windows:
+                            aggr_windows[is_hidden].merge(aggregation_metadata.windows)
+                        else:
+                            aggr_windows[is_hidden] = copy.deepcopy(aggregation_metadata.windows)
+                    else:
+                        windows[(aggregation_metadata.name, aggr, aggregation_metadata.max_value)] =\
+                            {is_hidden: copy.deepcopy(aggregation_metadata.windows)}
+
+        for (name, aggr, max_value), calculated_windows in windows.items():
+            column_name = f'{name}_{aggr}'
+            initial_column_data = None
+            if initial_data and column_name in initial_data:
+                initial_column_data = initial_data[column_name]
+            explicit_windows = None
+            hidden_windows = None
+            if False in calculated_windows:
+                explicit_windows = calculated_windows[False]
+            if True in calculated_windows:
+                hidden_windows = calculated_windows[True]
+            self.aggregation_buckets[column_name] =\
+                AggregationBuckets(name, aggr, explicit_windows, hidden_windows, base_time, max_value, initial_column_data)
 
         # Add all virtual aggregates
         for aggregation_metadata in aggregates:
@@ -275,7 +290,7 @@ class AggregatedStoreElement:
     def get_features(self, timestamp):
         result = {}
         for aggregation_bucket in self.aggregation_buckets.values():
-            if not aggregation_bucket.is_hidden:
+            if isinstance(aggregation_bucket, VirtualAggregationBuckets) or aggregation_bucket.explicit_windows:
                 result.update(aggregation_bucket.get_features(timestamp))
 
         return result
@@ -416,61 +431,91 @@ class AggregateStore:
 
 
 class AggregationBuckets:
-    def __init__(self, name, aggregation, window, base_time, max_value, is_hidden=False, initial_data=None):
+    def __init__(self, name, aggregation, explicit_windows, hidden_windows, base_time, max_value, initial_data=None):
         self.name = name
         self.aggregation = aggregation
-        self.window = window
+        self.explicit_windows = explicit_windows
+        self.hidden_windows = hidden_windows
         self.max_value = max_value
         self.buckets = []
-        self.is_hidden = is_hidden
         self.should_persist = True
         self.pending_aggr = {}
         self.storage_specific_cache = {}
-        self.is_fixed_window = isinstance(self.window, FixedWindows)
+        self.max_window_millis = self.get_max_window_millis()
+        self.total_number_of_buckets = self.get_total_number_of_buckets()
 
         self._need_to_recalculate_pre_aggregates = False
         self._last_data_point_timestamp = base_time
+        self._current_aggregate_values = {}
+
+        if explicit_windows and hidden_windows:
+            if type(explicit_windows) != type(hidden_windows):
+                raise TypeError("explicit_windows type must match hidden_windows type")
 
         # If a user specified a max_value we need to recalculated features on every event
         self._precalculated_aggregations = max_value is None
-        if self._precalculated_aggregations:
-            self._current_aggregate_values = [AggregationValue(aggregation) for _ in range(len(self.window.windows))]
+        if explicit_windows:
+            self.is_fixed_window = isinstance(self.explicit_windows, FixedWindows)
+            if self.is_fixed_window:
+                self._round_time_func = self.explicit_windows.round_up_time_to_window
+            self.period_millis = explicit_windows.period_millis
+            self._window_start_time = explicit_windows.get_window_start_time_by_time(base_time)
+            if self._precalculated_aggregations:
+                for win in explicit_windows.windows:
+                    self._current_aggregate_values[win] = AggregationValue(aggregation)
+        if hidden_windows:
+            if not explicit_windows:
+                self.is_fixed_window = isinstance(self.explicit_windows, FixedWindows)
+                if self.is_fixed_window:
+                    self._round_time_func = self.explicit_windows.round_up_time_to_window
+                self.period_millis = hidden_windows.period_millis
+                self._window_start_time = hidden_windows.get_window_start_time_by_time(base_time)
+            if self._precalculated_aggregations:
+                for win in hidden_windows.windows:
+                    if win not in self._current_aggregate_values:
+                        self._current_aggregate_values[win] = AggregationValue(aggregation)
 
         if initial_data:
             self.last_bucket_start_time = None
 
             # Initializing the buckets from the stored data and calculating the initial pre aggregates
             self.initialize_from_data(initial_data, base_time)
-            self.calculate_features(base_time)
+            all_windows = []
+            if self.explicit_windows:
+                all_windows.extend(self.explicit_windows.windows)
+            if self.hidden_windows:
+                for win in self.hidden_windows.windows:
+                    if win not in all_windows:
+                        all_windows.append(win)
+            self.calculate_features(base_time, all_windows)
         else:
-            self.first_bucket_start_time = self.window.get_window_start_time_by_time(base_time)
+            self.first_bucket_start_time = self._window_start_time
             self.last_bucket_start_time = \
-                self.first_bucket_start_time + (window.total_number_of_buckets - 1) * window.period_millis
+                self.first_bucket_start_time + (self.total_number_of_buckets - 1) * self.period_millis
 
             self.initialize_column()
 
     def initialize_column(self):
         self.buckets = []
 
-        for _ in range(self.window.total_number_of_buckets):
+        for _ in range(self.total_number_of_buckets):
             self.buckets.append(self.new_aggregation_value())
 
     def get_or_advance_bucket_index_by_timestamp(self, timestamp):
-
-        if timestamp < self.last_bucket_start_time + self.window.period_millis:
-            bucket_index = int((timestamp - self.first_bucket_start_time) / self.window.period_millis)
+        if timestamp < self.last_bucket_start_time + self.period_millis:
+            bucket_index = int((timestamp - self.first_bucket_start_time) / self.period_millis)
 
             if bucket_index > self.get_bucket_index_by_timestamp(self._last_data_point_timestamp):
                 self.remove_old_values_from_pre_aggregations(timestamp)
             return bucket_index
         else:
             self.advance_window_period(timestamp)
-            return self.window.total_number_of_buckets - 1  # return last index
+            return self.total_number_of_buckets - 1  # return last index
 
     #  Get the index of the bucket corresponding to the requested timestamp
     #  Note: This method can return indexes outside the 'buckets' array
     def get_bucket_index_by_timestamp(self, timestamp):
-        bucket_index = int((timestamp - self.first_bucket_start_time) / self.window.period_millis)
+        bucket_index = int((timestamp - self.first_bucket_start_time) / self.period_millis)
         return bucket_index
 
     def get_nearest_window_index_by_timestamp(self, timestamp, window_millis):
@@ -479,8 +524,8 @@ class AggregationBuckets:
 
     def remove_old_values_from_pre_aggregations(self, timestamp):
         if self._precalculated_aggregations:
-            for i, aggr in enumerate(self._current_aggregate_values):
-                current_window_millis, _ = self.window.windows[i]
+            for win, aggr in self._current_aggregate_values.items():
+                current_window_millis = win[0]
                 previous_window_start, _ = self.get_window_range(self._last_data_point_timestamp, current_window_millis)
                 current_window_start, _ = self.get_window_range(timestamp, current_window_millis)
 
@@ -500,11 +545,11 @@ class AggregationBuckets:
                         aggr._set_value(current_pre_aggregated_value - bucket_aggregated_value)
 
     def advance_window_period(self, advance_to):
-        desired_bucket_index = int((advance_to - self.first_bucket_start_time) / self.window.period_millis)
-        buckets_to_advance = desired_bucket_index - (self.window.total_number_of_buckets - 1)
+        desired_bucket_index = int((advance_to - self.first_bucket_start_time) / self.period_millis)
+        buckets_to_advance = desired_bucket_index - (self.total_number_of_buckets - 1)
 
         if buckets_to_advance > 0:
-            if buckets_to_advance > self.window.total_number_of_buckets:
+            if buckets_to_advance > self.total_number_of_buckets:
                 self.initialize_column()
                 self._need_to_recalculate_pre_aggregates = True
             else:
@@ -515,17 +560,17 @@ class AggregationBuckets:
                     self.buckets.append(self.new_aggregation_value())
 
             self.first_bucket_start_time = \
-                self.first_bucket_start_time + buckets_to_advance * self.window.period_millis
+                self.first_bucket_start_time + buckets_to_advance * self.period_millis
             self.last_bucket_start_time = \
-                self.last_bucket_start_time + buckets_to_advance * self.window.period_millis
+                self.last_bucket_start_time + buckets_to_advance * self.period_millis
 
     def get_window_range(self, timestamp, windows_millis):
         if self.is_fixed_window:
-            end_bucket = self.get_bucket_index_by_timestamp(self.window.round_up_time_to_window(timestamp) - 1)
+            end_bucket = self.get_bucket_index_by_timestamp(self._round_time_func(timestamp) - 1)
         else:
             end_bucket = self.get_bucket_index_by_timestamp(timestamp)
 
-        num_of_buckets_in_window = int(windows_millis / self.window.period_millis)
+        num_of_buckets_in_window = int(windows_millis / self.period_millis)
         return end_bucket - num_of_buckets_in_window + 1, end_bucket
 
     def aggregate(self, timestamp, value):
@@ -537,8 +582,8 @@ class AggregationBuckets:
             self.add_to_pending(timestamp, value)
 
             if self._precalculated_aggregations:
-                for i, aggr in enumerate(self._current_aggregate_values):
-                    current_window_millis, _ = self.window.windows[i]
+                for win, aggr in self._current_aggregate_values.items():
+                    current_window_millis = win[0]
                     start, _ = self.get_window_range(self._last_data_point_timestamp, current_window_millis)
 
                     if timestamp > self._last_data_point_timestamp or index >= start:
@@ -547,7 +592,7 @@ class AggregationBuckets:
                     self._last_data_point_timestamp = timestamp
 
     def add_to_pending(self, timestamp, value):
-        bucket_start_time = int(timestamp / self.window.period_millis) * self.window.period_millis
+        bucket_start_time = int(timestamp / self.period_millis) * self.period_millis
         if bucket_start_time not in self.pending_aggr:
             self.pending_aggr[bucket_start_time] = self.new_aggregation_value()
 
@@ -561,23 +606,28 @@ class AggregationBuckets:
             return 'sum'
         return self.aggregation
 
-    def get_features(self, timestamp):
+    def get_features(self, timestamp, windows=None):
+        result = {}
+        if not windows:
+            if self.explicit_windows:
+                windows = self.explicit_windows.windows
+            else:
+                return result
         # In case we need to completely recalculate the aggregations
         # Either a) we were signaled b) the requested timestamp is prior to our pre aggregates
         if self._need_to_recalculate_pre_aggregates or \
                 self.get_bucket_index_by_timestamp(timestamp) < self.get_bucket_index_by_timestamp(self._last_data_point_timestamp) or \
-                self.max_value:
+                not self._precalculated_aggregations:
             self._need_to_recalculate_pre_aggregates = False
-            return self.calculate_features(timestamp)
+            return self.calculate_features(timestamp, windows)
 
         # In case our pre aggregates already have the answer
-        result = {}
-        for i, win in enumerate(self.window.windows):
-            result[f'{self.name}_{self.aggregation}_{win[1]}'] = self._current_aggregate_values[i].get_value()[1]
+        for win in windows:
+            result[f'{self.name}_{self.aggregation}_{win[1]}'] = self._current_aggregate_values[win].get_value()[1]
 
         return result
 
-    def calculate_features(self, timestamp):
+    def calculate_features(self, timestamp, windows):
         result = {}
 
         current_time_bucket_index = self.get_bucket_index_by_timestamp(timestamp)
@@ -585,20 +635,20 @@ class AggregationBuckets:
             return result
 
         if self.is_fixed_window:
-            current_time_bucket_index = self.get_bucket_index_by_timestamp(self.window.round_up_time_to_window(timestamp) - 1)
+            current_time_bucket_index = self.get_bucket_index_by_timestamp(self._round_time_func(timestamp) - 1)
 
         aggregated_value = AggregationValue(self.get_aggregation_for_aggregation())
         prev_windows_millis = 0
-        for i in range(len(self.window.windows)):
-            window_string = self.window.windows[i][1]
-            window_millis = self.window.windows[i][0]
+        for win in windows:
+            window_string = win[1]
+            window_millis = win[0]
 
             # In case the current bucket is outside our time range just create a feature with the current aggregated
             # value
             if current_time_bucket_index < 0:
                 result[f'{self.name}_{self.aggregation}_{window_string}'] = aggregated_value.get_value()[1]
 
-            number_of_buckets_backwards = int((window_millis - prev_windows_millis) / self.window.period_millis)
+            number_of_buckets_backwards = int((window_millis - prev_windows_millis) / self.period_millis)
             last_bucket_to_aggregate = current_time_bucket_index - number_of_buckets_backwards + 1
 
             if last_bucket_to_aggregate < 0:
@@ -619,12 +669,12 @@ class AggregationBuckets:
 
             # Update the corresponding pre aggregate
             if self._precalculated_aggregations:
-                self._current_aggregate_values[i] = AggregationValue(self.aggregation, set_data=current_aggregations_value)
-
+                self._current_aggregate_values[win] = AggregationValue(self.aggregation, set_data=current_aggregations_value)
         return result
 
     def initialize_from_data(self, data, base_time):
-        self.buckets = [None] * self.window.total_number_of_buckets
+        period = self.period_millis
+        self.buckets = [None] * self.total_number_of_buckets
         aggregation_bucket_initial_data = {}
 
         for key, value in data.items():
@@ -638,17 +688,17 @@ class AggregationBuckets:
             timestamp1, timestamp2 = aggregation_bucket_initial_data.keys()
             first_time, last_time = min(timestamp1, timestamp2), max(timestamp1, timestamp2)
 
-        bucket_index = self.window.total_number_of_buckets - 1
-        self.last_bucket_start_time = self.window.get_window_start_time_by_time(base_time)
+        bucket_index = self.total_number_of_buckets - 1
+        self.last_bucket_start_time = self._window_start_time
         self.first_bucket_start_time = \
-            self.last_bucket_start_time - (self.window.total_number_of_buckets - 1) * self.window.period_millis
+            self.last_bucket_start_time - (self.total_number_of_buckets - 1) * period
 
-        start_index = int((base_time - last_time) / self.window.period_millis)
+        start_index = int((base_time - last_time) / period)
 
         # In case base_time is newer than what is stored in the storage initialize the buckets until reaching the stored data
         if start_index >= len(aggregation_bucket_initial_data[last_time]):
             # If the requested data is so new that the stored data is obsolete just initialize the buckets regardless of the stored data.
-            if start_index >= len(aggregation_bucket_initial_data[last_time]) + self.window.total_number_of_buckets:
+            if start_index >= len(aggregation_bucket_initial_data[last_time]) + self.total_number_of_buckets:
                 self.initialize_column()
                 return
             for _ in range(start_index, len(aggregation_bucket_initial_data[last_time]) - 1, -1):
@@ -685,6 +735,22 @@ class AggregationBuckets:
         self.pending_aggr = {}
         return pending
 
+    def get_max_window_millis(self):
+        max_window = 0
+        if self.explicit_windows:
+            max_window = self.explicit_windows.max_window_millis
+        if self.hidden_windows:
+            max_window = max(max_window, self.hidden_windows.max_window_millis)
+        return max_window
+
+    def get_total_number_of_buckets(self):
+        number_of_buckets = 0
+        if self.explicit_windows:
+            number_of_buckets = self.explicit_windows.total_number_of_buckets
+        if self.hidden_windows:
+            number_of_buckets = max(number_of_buckets, self.hidden_windows.total_number_of_buckets)
+        return number_of_buckets
+
 
 class VirtualAggregationBuckets:
     def __init__(self, name, aggregation, window, base_time, args):
@@ -706,7 +772,7 @@ class VirtualAggregationBuckets:
     def get_features(self, timestamp):
         result = {}
 
-        args_results = [list(bucket.get_features(timestamp).values()) for bucket in self.args]
+        args_results = [list(bucket.get_features(timestamp, self.window.windows).values()) for bucket in self.args]
 
         for i in range(len(args_results[0])):
             window_string = self.window.windows[i][1]
