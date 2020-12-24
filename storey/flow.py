@@ -13,10 +13,10 @@ from .utils import _split_path
 
 
 class Flow:
-    def __init__(self, recover=None, name=None, full_event=False, termination_result_fn=lambda x, y: x if x is not None else y,
+    def __init__(self, recovery_step=None, name=None, full_event=False, termination_result_fn=lambda x, y: x if x is not None else y,
                  context=None, **kwargs):
         self._outlets = []
-        self._recover = recover
+        self._recovery_step = recovery_step
         self._full_event = full_event
         self._termination_result_fn = termination_result_fn
         self.context = context
@@ -31,11 +31,15 @@ class Flow:
         self._outlets.append(outlet)
         return outlet
 
+    def set_recovery_step(self, outlet):
+        self._recovery_step = outlet
+        return self
+
     def _get_recovery_step(self, exception):
-        if isinstance(self._recover, dict):
-            return self._recover.get(type(exception), None)
+        if isinstance(self._recovery_step, dict):
+            return self._recovery_step.get(type(exception), None)
         else:
-            return self._recover
+            return self._recovery_step
 
     def run(self):
         for outlet in self._outlets:
