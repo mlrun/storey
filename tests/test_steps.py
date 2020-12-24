@@ -2,7 +2,7 @@ from pytest import fail
 
 from storey import build_flow, Source, Map
 from storey.dtypes import FlowError, Event
-from storey.steps import Flatten, Sample, Assert, ForEach, Partition
+from storey.steps import Flatten, SampleWindow, EmitPeriod, Assert, ForEach, Partition
 
 
 def test_assert_each_event():
@@ -279,21 +279,66 @@ def test_assert_none_of():
         pass
 
 
-def test_sample_by_count():
+def test_sample_emit_first():
     controller = build_flow(
         [
             Source(),
             Assert().exactly(5),
-            Sample(5),
-            Assert().exactly(1).match_exactly([1]),
+            SampleWindow(5),
+            Assert().exactly(1).match_exactly([0]),
         ]
     ).run()
 
-    controller.emit(1)
-    controller.emit(2)
-    controller.emit(3)
-    controller.emit(4)
-    controller.emit(5)
+    for i in range(0, 5):
+        controller.emit(i)
+    controller.terminate()
+    controller.await_termination()
+
+
+def test_sample_emit_first_with_emit_before_termination():
+    controller = build_flow(
+        [
+            Source(),
+            Assert().exactly(5),
+            SampleWindow(5, emit_before_termination=True),
+            Assert().exactly(2).match_exactly([0, 4]),
+        ]
+    ).run()
+
+    for i in range(0, 5):
+        controller.emit(i)
+    controller.terminate()
+    controller.await_termination()
+
+
+def test_sample_emit_last():
+    controller = build_flow(
+        [
+            Source(),
+            Assert().exactly(5),
+            SampleWindow(5, emit_period=EmitPeriod.LAST),
+            Assert().exactly(1).match_exactly([5]),
+        ]
+    ).run()
+
+    for i in range(0, 5):
+        controller.emit(i)
+    controller.terminate()
+    controller.await_termination()
+
+
+def test_sample_emit_last_with_emit_before_termination():
+    controller = build_flow(
+        [
+            Source(),
+            Assert().exactly(5),
+            SampleWindow(5, emit_period=EmitPeriod.LAST, emit_before_termination=True),
+            Assert().exactly(1).match_exactly([5]),
+        ]
+    ).run()
+
+    for i in range(0, 5):
+        controller.emit(i)
     controller.terminate()
     controller.await_termination()
 

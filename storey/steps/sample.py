@@ -1,50 +1,72 @@
 from enum import Enum
 
-from storey import Filter
+from storey import Flow
+from storey.dtypes import _termination_obj
 
 
-class Sample(Filter):
+class EmitPeriod(Enum):
+    FIRST = 1
+    LAST = 2
+
+
+class SampleWindow(Flow):
     """
-    Samples stream events, passes a single event downstream accordingly to emit_policy. By default emit_policy is set to
-    EMIT_FIRST, meaning that for Sample(rate_count=n) - first event will be passed downstream, while the n-1 next events
-    are filtered out. Other wise if emit_policy is set to EMIT_LAST - the first n-1 events are filtered out, but event
-    n is passed downstream.
-    """
+    Emits a single event in a window of `window_size` events, in accordance with `emit_period` and `emit_before_termination`.
 
-    class EmitPolicy(Enum):
-        EMIT_FIRST = 1
-        EMIT_LAST = 2
+    :param window_size: The size of the window we want to sample a single event from.
+    :param emit_period: What event should this step emit for each `window_size` (default: EmitPeriod.First).
+    Available options:
+        1.1) EmitPeriod.FIRST - will emit the first event in a window `window_size` events.
+        1.2) EmitPeriod.LAST - will emit the last event in a window of `window_size` events.
+    :param emit_before_termination: On termination signal, should the step emit the last event it seen (default: False).
+    Available options:
+        2.1) True - The last event seen will be emitted downstream.
+        2.2) False - The last event seen will NOT be emitted downstream.
+    """
 
     def __init__(
         self,
-        rate_count: int = 0,
-        emit_policy: EmitPolicy = EmitPolicy.EMIT_FIRST,
+        window_size: int,
+        emit_period: EmitPeriod = EmitPeriod.FIRST,
+        emit_before_termination: bool = False,
         **kwargs,
     ):
-        super().__init__(lambda event: self._sample(), full_event=True, **kwargs)
+        super().__init__(full_event=True, **kwargs)
 
-        if rate_count <= 0:
-            raise ValueError(f"Expected rate_count > 0, found {rate_count}")
+        if window_size <= 1:
+            raise ValueError(f"Expected window_size > 1, found {window_size}")
 
-        self._rate_count = rate_count
-        self._emit_policy = emit_policy
-        self._count = None
+        if not isinstance(emit_period, EmitPeriod):
+            raise ValueError(f"Expected emit_period of type `EmitPeriod`, got {type(emit_period)}")
 
-    def _sample(self):
-        if self._count is None:
-            self._count = 1
-            if self._emit_policy == self.EmitPolicy.EMIT_FIRST:
-                return True
-            elif self._emit_policy == self.EmitPolicy.EMIT_LAST:
-                return False
+        self._window_size = window_size
+        self._emit_period = emit_period
+        self._emit_before_termination = emit_before_termination
 
-        self._count += 1
+        self._count = 0
+        self._last_event = None
 
-        if self._count == self._rate_count:
-            self._count = None
-            if self._emit_policy == self.EmitPolicy.EMIT_FIRST:
-                return False
-            elif self._emit_policy == self.EmitPolicy.EMIT_LAST:
-                return True
+    async def _do(self, event):
+        if event is _termination_obj:
+            if self._last_event is not None:
+                await self._do_downstream(self._last_event)
+            return await self._do_downstream(_termination_obj)
+        else:
+            self._count += 1
 
+            if self._emit_before_termination:
+                self._last_event = event
+
+            if self._should_emit():
+                self._last_event = None
+                await self._do_downstream(event)
+
+            if self._count == self._window_size:
+                self._count = 0
+
+    def _should_emit(self):
+        if self._emit_period == EmitPeriod.FIRST and self._count == 1:
+            return True
+        elif self._emit_period == EmitPeriod.LAST and self._count == self._window_size:
+            return True
         return False
