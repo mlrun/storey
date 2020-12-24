@@ -53,7 +53,7 @@ class Event:
     def __str__(self):
         return f'Event(id={self.id}, key={self.key}, time={self.time}, body={self.body})'
 
-    def copy(self, body=None, key=None, time=None, id=None, headers=None, method=None, path='/', content_type=None, awaitable_result=None,
+    def copy(self, body=None, key=None, time=None, id=None, headers=None, method=None, path=None, content_type=None, awaitable_result=None,
              deep_copy=False) -> 'Event':
         if deep_copy and body is None and self.body is not None:
             body = deepcopy(self.body)
