@@ -195,7 +195,7 @@ def test_assert_all_of():
         controller = build_flow(
             [
                 Source(),
-                Assert().match_all_of([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+                Assert().contains_all_of([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
             ]
         ).run()
         controller.emit([1, 2, 3])
@@ -210,7 +210,7 @@ def test_assert_all_of():
         controller = build_flow(
             [
                 Source(),
-                Assert().match_all_of([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+                Assert().contains_all_of([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
             ]
         ).run()
         controller.emit([1, 2, 3])
@@ -227,7 +227,7 @@ def test_assert_any_of():
         controller = build_flow(
             [
                 Source(),
-                Assert().match_any_of([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+                Assert().contains_any_of([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
             ]
         ).run()
         controller.emit([10, 11, 12])
@@ -241,7 +241,7 @@ def test_assert_any_of():
         controller = build_flow(
             [
                 Source(),
-                Assert().match_any_of([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+                Assert().contains_any_of([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
             ]
         ).run()
         controller.emit([1, 2, 3])
@@ -256,7 +256,7 @@ def test_assert_none_of():
         controller = build_flow(
             [
                 Source(),
-                Assert().match_none_of([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+                Assert().contains_none_of([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
             ]
         ).run()
         controller.emit([10, 11, 12])
@@ -269,7 +269,7 @@ def test_assert_none_of():
         controller = build_flow(
             [
                 Source(),
-                Assert().match_none_of([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+                Assert().contains_none_of([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
             ]
         ).run()
         controller.emit([1, 2, 3])

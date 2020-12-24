@@ -120,15 +120,15 @@ class Assert(Flow):
         self.termination_assertions.append(_AssertCollection(expected, _IS_IDENTITY))
         return self
 
-    def match_all_of(self, expected: Collection[Any]):
+    def contains_all_of(self, expected: Collection[Any]):
         self.termination_assertions.append(_AssertCollection(expected, _IS_SUBSET))
         return self
 
-    def match_any_of(self, expected: Collection[Any]):
+    def contains_any_of(self, expected: Collection[Any]):
         self.termination_assertions.append(_AssertCollection(expected, _IS_INTERSECT))
         return self
 
-    def match_none_of(self, expected: Collection[Any]):
+    def contains_none_of(self, expected: Collection[Any]):
         self.termination_assertions.append(_AssertCollection(expected, _IS_DISJOINT))
         return self
 
