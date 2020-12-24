@@ -26,7 +26,9 @@ _LESS_OR_EQUAL = _Operator("<=", lambda x, y: x <= y)
 
 _CONTAINS_ANY_OF = _Operator("any of", lambda col1, col2: any((c in col2 for c in col1)))
 _CONTAINS_ALL_OF = _Operator("all of", lambda col1, col2: all((c in col2 for c in col1)))
-_EXACTLY = _Operator("exactly", lambda col1, col2: len(col1)==len(col2) and _CONTAINS_ALL_OF(col1, col2) and _CONTAINS_ALL_OF(col2, col1))
+_EXACTLY = _Operator("exactly",
+                     lambda col1, col2: len(col1) == len(col2) and _CONTAINS_ALL_OF(col1, col2) and _CONTAINS_ALL_OF(
+                         col2, col1))
 _NONE = _Operator("none of", lambda col1, col2: not _CONTAINS_ANY_OF(col1, col2))
 
 _NOTHING = _Operator("do nothing", lambda x, y: False)
@@ -56,9 +58,9 @@ class _AssertEventCount(_Assertable):
 
 class _AssertCollection(_Assertable):
     def __init__(
-        self,
-        expected: Collection[Any],
-        operator: _Operator = _NOTHING,
+            self,
+            expected: Collection[Any],
+            operator: _Operator = _NOTHING,
     ):
         self.expected = expected
         self.operator: _Operator = operator
