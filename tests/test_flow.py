@@ -1598,3 +1598,20 @@ def test_write_to_tsdb_with_key_index_and_default_time():
         del write_call[1]['dfs']
         assert write_call[1] == {'backend': 'tsdb', 'table': 'some/path'}
         i += 1
+
+def test_csv_reader_parquet_write_ns(tmpdir):
+    out_file = f'{tmpdir}/test_csv_reader_parquet_write_ns_{uuid.uuid4().hex}/out.parquet'
+    columns = ['k', 't']
+
+    controller = build_flow([
+        ReadCSV('tests/test-with-timestamp-ns.csv', header=True, key_field='k',
+                timestamp_field='t', timestamp_format='%d/%m/%Y %H:%M:%S.%f'),
+        WriteToParquet(out_file, columns=columns, max_events=2)
+    ]).run()
+
+    expected = pd.DataFrame([['m1', "15/02/2020 02:03:04.12345678"], ['m2', "16/02/2020 02:03:04.12345678"]], columns=columns)
+    controller.await_termination()
+    read_back_df = pd.read_parquet(out_file, columns=columns)
+
+    assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+
