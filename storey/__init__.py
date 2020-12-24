@@ -1,6 +1,6 @@
 __version__ = '0.2.0'
 
-import v3iofs
+import v3iofs  # noqa: F401
 from .aggregations import (  # noqa: F401
     AggregateByKey, QueryByKey
 )

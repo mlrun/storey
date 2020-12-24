@@ -6,10 +6,8 @@ import queue
 import random
 from typing import Optional, Union, List, Callable
 
-import fsspec
 import pandas as pd
 import v3io_frames as frames
-from mlrun.datastore.datastore import parse_url
 
 from . import Driver
 from .dtypes import V3ioError, Event

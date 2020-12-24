@@ -5,3 +5,4 @@ pyarrow==1.0.1
 grpcio-tools==1.30.0
 grpcio==1.30.0
 v3io-frames~=0.8.6
+v3iofs~=0.1.2
