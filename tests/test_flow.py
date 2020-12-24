@@ -2,13 +2,14 @@ import asyncio
 import queue
 import uuid
 from datetime import datetime
+from random import choice
 
 import pandas as pd
 from aiohttp import InvalidURL
 
 from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV, Complete, AsyncSource, Choice, \
-    Event, Batch, Table, NoopDriver, WriteToCSV, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, WriteToParquet, \
-    WriteToTSDB, Extend, V3ioDriver, SendToHttp, HttpRequest, WriteToTable
+    Event, Batch, Table, WriteToCSV, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, WriteToParquet, \
+    WriteToTSDB, Extend, SendToHttp, HttpRequest, WriteToTable, NoopDriver, Driver
 
 
 class ATestException(Exception):
@@ -18,13 +19,13 @@ class ATestException(Exception):
 class RaiseEx:
     _counter = 0
 
-    def __init__(self, raise_after):
-        self._raise_after = raise_after
+    def __init__(self, raise_on_nth):
+        self._raise_after = raise_on_nth
 
     def raise_ex(self, element):
+        self._counter += 1
         if self._counter == self._raise_after:
             raise ATestException("test")
-        self._counter += 1
         return element
 
 
@@ -202,6 +203,97 @@ def test_error_flow():
     try:
         for i in range(1000):
             controller.emit(i)
+        controller.terminate()
+        controller.await_termination()
+        assert False
+    except FlowError as flow_ex:
+        assert isinstance(flow_ex.__cause__, ATestException)
+
+
+def test_error_recovery():
+    reduce = Reduce(0, lambda acc, x: acc + x)
+    controller = build_flow([
+        Source(),
+        Map(lambda x: x + 1),
+        Map(RaiseEx(5).raise_ex, recover=reduce),
+        reduce,
+    ]).run()
+
+    for i in range(10):
+        controller.emit(i)
+
+    controller.terminate()
+    result = controller.await_termination()
+    assert result == 55
+
+
+def test_error_specific_recovery():
+    reduce = Reduce(0, lambda acc, x: acc + x)
+    controller = build_flow([
+        Source(),
+        Map(lambda x: x + 1),
+        Map(RaiseEx(5).raise_ex, recover={ATestException: reduce}),
+        reduce,
+    ]).run()
+
+    for i in range(10):
+        controller.emit(i)
+
+    controller.terminate()
+    result = controller.await_termination()
+    assert result == 55
+
+
+def test_error_specific_recovery_check_exception():
+    reduce = Reduce([], lambda acc, event: append_and_return(acc, type(event.ex)), full_event=True)
+    controller = build_flow([
+        Source(),
+        Map(RaiseEx(2).raise_ex, recover={ATestException: reduce}),
+        reduce
+    ]).run()
+
+    for i in range(3):
+        controller.emit(i)
+
+    controller.terminate()
+    result = controller.await_termination()
+    assert result == [type(None), ATestException, type(None)]
+
+
+def test_error_nonrecovery():
+    reduce = Reduce(0, lambda acc, x: acc + x)
+    controller = build_flow([
+        Source(),
+        Map(lambda x: x + 1),
+        Map(RaiseEx(5).raise_ex, recover={ValueError: reduce}),
+        reduce,
+    ]).run()
+
+    try:
+        for i in range(10):
+            controller.emit(i)
+        controller.terminate()
+        controller.await_termination()
+        assert False
+    except FlowError as flow_ex:
+        assert isinstance(flow_ex.__cause__, ATestException)
+
+
+def test_error_recovery_containment():
+    reduce = Reduce(0, lambda acc, x: acc + x)
+    controller = build_flow([
+        Source(),
+        Map(lambda x: x + 1, recover=reduce),
+        Map(RaiseEx(5).raise_ex),
+        reduce,
+    ]).run()
+
+    try:
+        for i in range(10):
+            controller.emit(i)
+        controller.terminate()
+        controller.await_termination()
+        assert False
     except FlowError as flow_ex:
         assert isinstance(flow_ex.__cause__, ATestException)
 
@@ -266,6 +358,33 @@ def test_broadcast_complex_no_sugar():
     controller.terminate()
     termination_result = controller.await_termination()
     assert termination_result == 3303
+
+
+def test_nested_branching():
+    controller = build_flow([
+        Source(),
+        [
+            [
+                Reduce(0, lambda acc, x: acc + x)
+            ]
+        ],
+        [
+            [
+                Map(lambda x: x * 100),
+                Reduce(0, lambda acc, x: acc + x)
+            ],
+            [
+                Map(lambda x: x * 1000),
+                Reduce(0, lambda acc, x: acc + x)
+            ]
+        ]
+    ]).run()
+
+    for i in range(10):
+        controller.emit(i)
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == 45
 
 
 def test_map_with_state_flow():
@@ -450,12 +569,12 @@ async def async_test_error_async_flow():
     controller = await build_flow([
         AsyncSource(),
         Map(lambda x: x + 1),
-        Map(RaiseEx(500).raise_ex),
+        Map(RaiseEx(5).raise_ex),
         Reduce(0, lambda acc, x: acc + x),
     ]).run()
 
     try:
-        for i in range(1000):
+        for i in range(10):
             await controller.emit(i)
     except FlowError as flow_ex:
         assert isinstance(flow_ex.__cause__, ATestException)
@@ -492,13 +611,13 @@ def test_async_awaitable_result_error_in_async_downstream():
 
 
 def test_awaitable_result_error_in_by_key_async_downstream():
-    class NoopDriverBoom(NoopDriver):
+    class DriverBoom(Driver):
         async def _save_key(self, container, table_path, key, aggr_item, partitioned_by_key, additional_data):
             raise ValueError('boom')
 
     controller = build_flow([
         Source(),
-        WriteToTable(Table('test', NoopDriverBoom())),
+        WriteToTable(Table('test', DriverBoom())),
         Complete()
     ]).run()
     try:
@@ -615,6 +734,187 @@ def test_batch_full_event():
     controller.terminate()
     termination_result = controller.await_termination()
     assert termination_result == [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9]]
+
+
+def test_batch_by_user_key():
+    def append_and_return(lst, x):
+        lst.append(x)
+        return lst
+
+    controller = build_flow(
+        [
+            Source(),
+            Batch(2, 100, "value"),
+            Reduce([], lambda acc, x: append_and_return(acc, x)),
+        ]
+    ).run()
+
+    values_1 = [i for i in range(4)]
+    values_2 = [i for i in range(4)]
+    values_3 = [i for i in range(4)]
+    values_4 = [i for i in range(4)]
+
+    for _ in range(4):
+        rand_val_1 = choice(values_1)
+        rand_val_2 = choice(values_2)
+        rand_val_3 = choice(values_3)
+        rand_val_4 = choice(values_4)
+
+        values_1.remove(rand_val_1)
+        values_2.remove(rand_val_2)
+        values_3.remove(rand_val_3)
+        values_4.remove(rand_val_4)
+
+        controller.emit({"value": rand_val_1})
+        controller.emit({"value": rand_val_2})
+        controller.emit({"value": rand_val_3})
+        controller.emit({"value": rand_val_4})
+
+    controller.terminate()
+    termination_result = controller.await_termination()
+
+    assert len(termination_result) == 8
+
+    for element in termination_result:
+        assert len(element) == 2
+        numbers = [e["value"] for e in element]
+        assert numbers[0] == numbers[1]
+
+
+def test_batch_by_event_key():
+    def append_and_return(lst, x):
+        lst.append(x)
+        return lst
+
+    controller = build_flow(
+        [
+            Source(),
+            Batch(5, 100, "$key"),
+            Reduce([], lambda acc, x: append_and_return(acc, x)),
+        ]
+    ).run()
+
+    controller.emit(1, key="key1")
+    controller.emit(2, key="key1")
+    controller.emit(3, key="key1")
+    controller.emit(4, key="key1")
+
+    controller.emit(8, key="key2")
+    controller.emit(9, key="key2")
+    controller.emit(10, key="key2")
+
+    controller.emit(5, key="key1")
+    controller.emit(6, key="key1")
+    controller.emit(7, key="key1")
+
+    controller.terminate()
+    termination_result = controller.await_termination()
+
+    assert termination_result[0] == [1, 2, 3, 4, 5]  # Emitted first due to max_events
+    assert termination_result[1] == [8, 9, 10]
+    assert termination_result[2] == [6, 7]
+
+
+def test_batch_by_field_value_key_extractor():
+    def append_and_return(lst, x):
+        lst.append(x)
+        return lst
+
+    controller = build_flow(
+        [
+            Source(),
+            Batch(3, 100, "field"),
+            Reduce([], lambda acc, x: append_and_return(acc, x)),
+        ]
+    ).run()
+
+    controller.emit({"field": "name_1", "field_data": 10})
+    controller.emit({"field": "name_2", "field_data": 9})
+    controller.emit({"field": "name_1", "field_data": 8})
+    controller.emit({"field": "name_2", "field_data": 7})
+    controller.emit({"field": "name_1", "field_data": 6})
+    controller.emit({"field": "name_2", "field_data": 5})
+    controller.emit({"field": "name_1", "field_data": 4})
+    controller.emit({"field": "name_2", "field_data": 3})
+    controller.emit({"field": "name_1", "field_data": 2})
+    controller.emit({"field": "name_2", "field_data": 1})
+    controller.emit({"field": "name_1", "field_data": 0})
+
+    controller.terminate()
+    termination_result = controller.await_termination()
+
+    # Grouped with same field value, emitted after 3 events due to configuration
+    assert termination_result[0] == [{'field': 'name_1', 'field_data': 10}, {'field': 'name_1', 'field_data': 8},
+                                     {'field': 'name_1', 'field_data': 6}]
+    assert termination_result[1] == [{'field': 'name_2', 'field_data': 9}, {'field': 'name_2', 'field_data': 7},
+                                     {'field': 'name_2', 'field_data': 5}]
+    assert termination_result[2] == [{'field': 'name_1', 'field_data': 4}, {'field': 'name_1', 'field_data': 2},
+                                     {'field': 'name_1', 'field_data': 0}]
+    assert termination_result[3] == [{'field': 'name_2', 'field_data': 3}, {'field': 'name_2', 'field_data': 1}]
+
+
+def test_batch_by_function_key_extractor():
+    def append_and_return(lst, x):
+        lst.append(x)
+        return lst
+
+    controller = build_flow(
+        [
+            Source(),
+            Batch(10, 100, lambda event: event.body % 3 == 0),
+            Reduce([], lambda acc, x: append_and_return(acc, x)),
+        ]
+    ).run()
+
+    controller.emit(1)
+    controller.emit(2)
+    controller.emit(3)
+    controller.emit(4)
+    controller.emit(5)
+    controller.emit(6)
+    controller.emit(7)
+    controller.emit(8)
+    controller.emit(9)
+
+    controller.terminate()
+    termination_result = controller.await_termination()
+
+    assert termination_result[0] == [1, 2, 4, 5, 7, 8]
+    assert termination_result[1] == [3, 6, 9]  # Group all numbers that return true on Event.body % 3 == 0
+
+
+def test_batch_grouping_with_timeout():
+    q = queue.Queue(1)
+
+    def reduce_fn(acc, event):
+        if event == [1]:
+            q.put(None)
+        acc.append(event)
+        return acc
+
+    controller = build_flow(
+        [
+            Source(),
+            Batch(3, 1, "$key"),
+            Reduce([], lambda acc, x: reduce_fn(acc, x)),
+        ]
+    ).run()
+
+    controller.emit(1, key=1)
+    q.get()
+    controller.emit(2, key=2)
+    controller.emit(2, key=2)
+    controller.emit(2, key=2)
+    controller.emit(3, key=2)
+    controller.emit(3, key=2)
+    controller.emit(3, key=2)
+
+    controller.terminate()
+    termination_result = controller.await_termination()
+
+    assert termination_result[0] == [1]  # Emitted first due to timeout
+    assert termination_result[1] == [2, 2, 2]  # Emitted second due to max_events configuration
+    assert termination_result[2] == [3, 3, 3]
 
 
 def test_batch_with_timeout():
@@ -1103,7 +1403,7 @@ def test_write_to_parquet_with_indices(tmpdir):
     expected = []
     for i in range(10):
         controller.emit([i, f'this is {i}'], key=f'key{i}')
-        expected.append([f'this is {i}', f'key{i}', i])
+        expected.append([f'key{i}', i, f'this is {i}'])
     columns = ['event_key', 'my_int', 'my_string']
     expected = pd.DataFrame(expected, columns=columns, dtype='int64')
     expected.set_index(['event_key'], inplace=True)
@@ -1314,3 +1614,20 @@ def test_write_to_tsdb_with_key_index_and_default_time():
         del write_call[1]['dfs']
         assert write_call[1] == {'backend': 'tsdb', 'table': 'some/path'}
         i += 1
+
+
+def test_csv_reader_parquet_write_ns(tmpdir):
+    out_file = f'{tmpdir}/test_csv_reader_parquet_write_ns_{uuid.uuid4().hex}/out.parquet'
+    columns = ['k', 't']
+
+    controller = build_flow([
+        ReadCSV('tests/test-with-timestamp-ns.csv', header=True, key_field='k',
+                timestamp_field='t', timestamp_format='%d/%m/%Y %H:%M:%S.%f'),
+        WriteToParquet(out_file, columns=columns, max_events=2)
+    ]).run()
+
+    expected = pd.DataFrame([['m1', "15/02/2020 02:03:04.12345678"], ['m2', "16/02/2020 02:03:04.12345678"]], columns=columns)
+    controller.await_termination()
+    read_back_df = pd.read_parquet(out_file, columns=columns)
+
+    assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"

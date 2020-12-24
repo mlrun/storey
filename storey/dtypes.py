@@ -41,6 +41,7 @@ class Event:
         self.path = path
         self.content_type = content_type
         self._awaitable_result = awaitable_result
+        self.ex = None
 
     def __eq__(self, other):
         if not isinstance(other, Event):
@@ -48,6 +49,9 @@ class Event:
 
         return self.body == other.body and self.time == other.time and self.id == other.id and self.headers == other.headers and \
                self.method == other.method and self.path == other.path and self.content_type == other.content_type  # noqa: E127
+
+    def __str__(self):
+        return f'Event(id={self.id}, key={self.key}, time={self.time}, body={self.body})'
 
 
 class V3ioError(Exception):
@@ -105,6 +109,23 @@ class WindowsBase:
         self.period_millis = period
         self.windows = windows  # list of tuples of the form (3600000, '1h')
         self.total_number_of_buckets = int(self.max_window_millis / self.period_millis)
+
+    def merge(self, new):
+        if self.period_millis != new.period_millis:
+            raise ValueError('Cannot use different periods for same aggregation')
+        found_new_window = False
+        for window in new.windows:
+            if window not in self.windows:
+                self.windows.append(window)
+                found_new_window = True
+        if found_new_window:
+            if self.max_window_millis < new.max_window_millis:
+                self.max_window_millis = new.max_window_millis
+            if self.smallest_window_millis > new.smallest_window_millis:
+                self.smallest_window_millis = new.smallest_window_millis
+            if self.total_number_of_buckets < new.total_number_of_buckets:
+                self.total_number_of_buckets = new.total_number_of_buckets
+            sorted(set(self.windows), key=lambda tup: tup[0])
 
 
 def sort_windows_and_convert_to_millis(windows):

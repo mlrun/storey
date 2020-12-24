@@ -10,7 +10,7 @@ from .dtypes import V3ioError
 from .utils import schema_file_name
 
 
-class NoopDriver:
+class Driver:
     async def _save_schema(self, container, table_path, schema):
         pass
 
@@ -28,6 +28,10 @@ class NoopDriver:
 
     async def close(self):
         pass
+
+
+class NoopDriver(Driver):
+    pass
 
 
 class NeedsV3ioAccess:
@@ -48,7 +52,7 @@ class NeedsV3ioAccess:
         self._access_key = access_key
 
 
-class V3ioDriver(NeedsV3ioAccess):
+class V3ioDriver(NeedsV3ioAccess, Driver):
     """
     Database connection to V3IO.
     :param webapi: URL to the web API (https or http). If not set, the V3IO_API environment variable will be used.
@@ -218,37 +222,37 @@ class V3ioDriver(NeedsV3ioAccess):
                     items_to_update = pending[name]
                 else:
                     # In case we have pending data that spreads over more then 2 windows discard the old ones.
-                    pending_updates[name] = self._discard_old_pending_items(bucket.get_and_flush_pending(), bucket.window.max_window_millis)
+                    pending_updates[name] = self._discard_old_pending_items(bucket.get_and_flush_pending(), bucket.max_window_millis)
                     items_to_update = pending_updates[name]
                 for bucket_start_time, aggregation_value in items_to_update.items():
                     # the relevant attribute out of the 2 feature attributes
-                    feature_attr = 'a' if int(bucket_start_time / bucket.window.max_window_millis) % 2 == 0 else 'b'
+                    feature_attr = 'a' if int(bucket_start_time / bucket.max_window_millis) % 2 == 0 else 'b'
                     array_attribute_name = f'{self._aggregation_attribute_prefix}{name}_{feature_attr}'
                     array_time_attribute_name = f'{self._aggregation_time_attribute_prefix}{bucket.name}_{feature_attr}'
 
-                    expected_time = int(bucket_start_time / bucket.window.max_window_millis) * bucket.window.max_window_millis
+                    expected_time = int(bucket_start_time / bucket.max_window_millis) * bucket.max_window_millis
                     expected_time_expr = self._convert_python_obj_to_expression_value(datetime.fromtimestamp(expected_time / 1000))
-                    index_to_update = int((bucket_start_time - expected_time) / bucket.window.period_millis)
+                    index_to_update = int((bucket_start_time - expected_time) / bucket.period_millis)
 
                     get_array_time_expr = f'if_not_exists({array_time_attribute_name},0:0)'
                     if not initialized_attributes.get(array_attribute_name, 0) == expected_time:
                         initialized_attributes[array_attribute_name] = expected_time
                         init_expression = f'{array_attribute_name}=if_else(({get_array_time_expr}<{expected_time_expr}),' \
-                            f"init_array({bucket.window.total_number_of_buckets},'double'," \
-                            f'{aggregation_value.get_default_value()}),{array_attribute_name})'
+                                          f"init_array({bucket.total_number_of_buckets},'double'," \
+                                          f'{aggregation_value.get_default_value()}),{array_attribute_name})'
                         expressions.append(init_expression)
 
                     arr_at_index = f'{array_attribute_name}[{index_to_update}]'
                     update_array_expression = f'{arr_at_index}=if_else(({get_array_time_expr}>{expected_time_expr}),{arr_at_index},' \
-                        f'{self._get_update_expression_by_aggregation(arr_at_index, aggregation_value)})'
+                                              f'{self._get_update_expression_by_aggregation(arr_at_index, aggregation_value)})'
 
                     expressions.append(update_array_expression)
 
                     # Separating time attribute updates, so that they will be executed in the end and only once per feature name.
                     if array_time_attribute_name not in times_update_expressions:
                         times_update_expressions[array_time_attribute_name] = f'{array_time_attribute_name}=' \
-                            f'if_else(({get_array_time_expr}<{expected_time_expr}),' \
-                            f'{expected_time_expr},{array_time_attribute_name})'
+                                                                              f'if_else(({get_array_time_expr}<{expected_time_expr}),' \
+                                                                              f'{expected_time_expr},{array_time_attribute_name})'
 
         expressions.extend(times_update_expressions.values())
 
@@ -266,24 +270,24 @@ class V3ioDriver(NeedsV3ioAccess):
             if bucket.should_persist:
 
                 # In case we have pending data that spreads over more then 2 windows discard the old ones.
-                pending_updates[name] = self._discard_old_pending_items(bucket.get_and_flush_pending(), bucket.window.max_window_millis)
+                pending_updates[name] = self._discard_old_pending_items(bucket.get_and_flush_pending(), bucket.max_window_millis)
                 for bucket_start_time, aggregation_value in pending_updates[name].items():
                     # the relevant attribute out of the 2 feature attributes
-                    feature_attr = 'a' if int(bucket_start_time / bucket.window.max_window_millis) % 2 == 0 else 'b'
+                    feature_attr = 'a' if int(bucket_start_time / bucket.max_window_millis) % 2 == 0 else 'b'
                     array_attribute_name = f'{self._aggregation_attribute_prefix}{name}_{feature_attr}'
                     array_time_attribute_name = f'{self._aggregation_time_attribute_prefix}{bucket.name}_{feature_attr}'
 
                     cached_time = bucket.storage_specific_cache.get(array_time_attribute_name, 0)
 
-                    expected_time = int(bucket_start_time / bucket.window.max_window_millis) * bucket.window.max_window_millis
+                    expected_time = int(bucket_start_time / bucket.max_window_millis) * bucket.max_window_millis
                     expected_time_expr = self._convert_python_obj_to_expression_value(datetime.fromtimestamp(expected_time / 1000))
-                    index_to_update = int((bucket_start_time - expected_time) / bucket.window.period_millis)
+                    index_to_update = int((bucket_start_time - expected_time) / bucket.period_millis)
 
                     # Possibly initiating the array
                     if cached_time < expected_time:
                         if not initialized_attributes.get(array_attribute_name, 0) == expected_time:
                             initialized_attributes[array_attribute_name] = expected_time
-                            expressions.append(f"{array_attribute_name}=init_array({bucket.window.total_number_of_buckets},'double',"
+                            expressions.append(f"{array_attribute_name}=init_array({bucket.total_number_of_buckets},'double',"
                                                f'{aggregation_value.get_default_value()})')
                         if array_time_attribute_name not in times_update_expressions:
                             times_update_expressions[array_time_attribute_name] = \

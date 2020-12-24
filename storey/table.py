@@ -1,4 +1,4 @@
-from .drivers import V3ioDriver
+from .drivers import Driver
 from .utils import _split_path
 
 
@@ -12,7 +12,7 @@ class Table:
          can optimize writes. Defaults to True.
         """
 
-    def __init__(self, table_path: str, storage: V3ioDriver, partitioned_by_key: bool = True):
+    def __init__(self, table_path: str, storage: Driver, partitioned_by_key: bool = True):
         self._container, self._table_path = _split_path(table_path)
         self._storage = storage
         self._cache = {}

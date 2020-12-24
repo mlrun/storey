@@ -9,7 +9,7 @@ from typing import Optional, Union, List, Callable
 import pandas as pd
 import v3io_frames as frames
 
-from . import V3ioDriver
+from . import Driver
 from .dtypes import V3ioError, Event
 from .flow import Flow, _termination_obj, _split_path, _Batching, _ConcurrentByKeyJobExecution
 from .table import Table
@@ -82,12 +82,12 @@ class _Writer:
         data = event.body
         if isinstance(data, dict):
             if self._infer_columns_from_data:
-                self._columns.extend(data.keys())
+                self._columns.extend(data.keys() - self._index_cols)
                 self._columns.sort()
                 self._infer_columns_from_data = False
             data = {} if self._retain_dict else []
-            self._get_column_data_from_dict(data, event, self._columns, self._metadata_columns, self._rename_columns)
             self._get_column_data_from_dict(data, event, self._index_cols, self._metadata_index_columns, self._rename_index_columns)
+            self._get_column_data_from_dict(data, event, self._columns, self._metadata_columns, self._rename_columns)
         elif isinstance(data, list):
             if self._infer_columns_from_data:
                 raise TypeError('Cannot infer_columns_from_data when event type is list. Inference is only possible from dict.')
@@ -133,7 +133,9 @@ class WriteToCSV(_Batching, _Writer):
     def _blocking_io_loop(self):
         try:
             got_first_event = False
-            os.makedirs(os.path.dirname(self._path), exist_ok=True)
+            dirname = os.path.dirname(self._path)
+            if dirname:
+                os.makedirs(dirname, exist_ok=True)
             with open(self._path, mode='w') as f:
                 csv_writer = csv.writer(f)
                 line_number = 0
@@ -214,14 +216,19 @@ class WriteToParquet(_Batching, _Writer):
     def _event_to_batch_entry(self, event):
         return self._event_to_writer_entry(event)
 
+    def _makedirs(self):
+        dirname = os.path.dirname(self._path)
+        if dirname:
+            os.makedirs(dirname, exist_ok=True)
+
     async def _emit(self, batch, batch_time):
         if self._first_event:
-            await asyncio.get_running_loop().run_in_executor(None, lambda: os.makedirs(os.path.dirname(self._path), exist_ok=True))
+            await asyncio.get_running_loop().run_in_executor(None, self._makedirs)
             self._first_event = False
         df_columns = []
-        df_columns.extend(self._columns)
         if self._index_cols:
             df_columns.extend(self._index_cols)
+        df_columns.extend(self._columns)
         df = pd.DataFrame(batch, columns=df_columns)
         if self._index_cols:
             df.set_index(self._index_cols, inplace=True)
@@ -287,7 +294,7 @@ class WriteToTSDB(_Batching, _Writer):
 class WriteToV3IOStream(Flow, _Writer):
     """Writes all incoming events into a V3IO stream.
 
-    :param storage: V3IO driver.
+    :param storage: Database driver.
     :param stream_path: Path to the V3IO stream.
     :param sharding_func: Function for determining the shard ID to which to write each event.
     :param batch_size: Batch size for each write request.
@@ -299,7 +306,7 @@ class WriteToV3IOStream(Flow, _Writer):
     and columns is not provided, infer_columns_from_data=True is implied. Optional. Default to False if columns is provided, True otherwise.
     """
 
-    def __init__(self, storage: V3ioDriver, stream_path: str, sharding_func: Optional[Callable[[Event], int]] = None, batch_size: int = 8,
+    def __init__(self, storage: Driver, stream_path: str, sharding_func: Optional[Callable[[Event], int]] = None, batch_size: int = 8,
                  columns: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None, **kwargs):
         Flow.__init__(self, **kwargs)
         _Writer.__init__(self, columns, infer_columns_from_data, retain_dict=True)
