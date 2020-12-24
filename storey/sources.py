@@ -9,6 +9,7 @@ import pandas
 
 from .dtypes import _termination_obj, Event, FlowError
 from .flow import Flow
+from .utils import url_to_file_system
 
 
 class AwaitableResult:
@@ -425,7 +426,8 @@ class ReadCSV(_IterableSource):
     def _blocking_io_loop(self):
         try:
             for path in self._paths:
-                with open(path, mode='r') as f:
+                fs, file_path = url_to_file_system(path)
+                with fs.open(file_path, mode='r') as f:
                     header = None
                     field_name_to_index = None
                     if self._with_header:

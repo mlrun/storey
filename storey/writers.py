@@ -6,13 +6,16 @@ import queue
 import random
 from typing import Optional, Union, List, Callable
 
+import fsspec
 import pandas as pd
 import v3io_frames as frames
+from mlrun.datastore.datastore import parse_url
 
 from . import Driver
 from .dtypes import V3ioError, Event
 from .flow import Flow, _termination_obj, _split_path, _Batching, _ConcurrentByKeyJobExecution
 from .table import Table
+from .utils import url_to_file_system
 
 
 class _Writer:
@@ -102,6 +105,16 @@ class _Writer:
         return data
 
 
+class V3ioCSVDialect(csv.Dialect):
+    """Describe a dialect based on excel dialect but with '\n' line terminator"""
+    delimiter = ','
+    quotechar = '"'
+    doublequote = True
+    skipinitialspace = False
+    lineterminator = '\n'
+    quoting = csv.QUOTE_MINIMAL
+
+
 class WriteToCSV(_Batching, _Writer):
     """Writes events to a CSV file.
 
@@ -133,11 +146,12 @@ class WriteToCSV(_Batching, _Writer):
     def _blocking_io_loop(self):
         try:
             got_first_event = False
+            fs, file_path = url_to_file_system(self._path)
             dirname = os.path.dirname(self._path)
             if dirname:
-                os.makedirs(dirname, exist_ok=True)
-            with open(self._path, mode='w') as f:
-                csv_writer = csv.writer(f)
+                fs.makedirs(dirname, exist_ok=True)
+            with fs.open(file_path, mode='w') as f:
+                csv_writer = csv.writer(f, V3ioCSVDialect())
                 line_number = 0
                 while True:
                     batch = self._data_buffer.get()
@@ -217,9 +231,10 @@ class WriteToParquet(_Batching, _Writer):
         return self._event_to_writer_entry(event)
 
     def _makedirs(self):
+        fs, file_path = url_to_file_system(self._path)
         dirname = os.path.dirname(self._path)
         if dirname:
-            os.makedirs(dirname, exist_ok=True)
+            fs.makedirs(dirname, exist_ok=True)
 
     async def _emit(self, batch, batch_time):
         if self._first_event:
