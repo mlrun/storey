@@ -205,7 +205,7 @@ def test_write_to_parquet_to_v3io(setup_teardown_test):
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
 
 
-def test_write_to_parquet_single_file_on_termination(setup_teardown_test):
+def test_write_to_parquet_to_v3io_single_file_on_termination(setup_teardown_test):
     out_file = f'v3io:///{setup_teardown_test}/out.parquet'
     columns = ['my_int', 'my_string']
     controller = build_flow([
@@ -225,7 +225,7 @@ def test_write_to_parquet_single_file_on_termination(setup_teardown_test):
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
 
 
-def test_write_to_parquet_with_indices(setup_teardown_test):
+def test_write_to_parquet_to_v3io_with_indices(setup_teardown_test):
     out_file = f'v3io:///{setup_teardown_test}/test_write_to_parquet_with_indices{uuid.uuid4().hex}.parquet'
     controller = build_flow([
         Source(),
@@ -235,7 +235,7 @@ def test_write_to_parquet_with_indices(setup_teardown_test):
     expected = []
     for i in range(10):
         controller.emit([i, f'this is {i}'], key=f'key{i}')
-        expected.append([f'this is {i}', f'key{i}', i])
+        expected.append([f'key{i}', i, f'this is {i}'])
     columns = ['event_key', 'my_int', 'my_string']
     expected = pd.DataFrame(expected, columns=columns, dtype='int64')
     expected.set_index(['event_key'], inplace=True)
