@@ -1,6 +1,6 @@
 from itertools import chain
 
-from storey import Flow, Event
+from storey import Flow
 from storey.dtypes import _termination_obj
 
 
@@ -13,7 +13,7 @@ class Flatten(Flow):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-    async def _do(self, event: Event):
+    async def _do(self, event):
         if event is _termination_obj:
             return await self._do_downstream(_termination_obj)
         else:

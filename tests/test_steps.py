@@ -17,7 +17,7 @@ def test_assert_each_event():
         controller.terminate()
         controller.await_termination()
     except FlowError:
-        return True
+        pass
 
     fail("User defined assert not failing", False)
 
