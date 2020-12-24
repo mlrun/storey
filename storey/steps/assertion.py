@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Callable, List, Any, Iterable
+from typing import Callable, List, Any, Collection
 
 from storey.dtypes import _termination_obj
 from storey.flow import Flow
@@ -24,24 +24,10 @@ _LESS_THEN = _Operator("<", lambda x, y: x < y)
 _GREATER_OR_EQUAL = _Operator(">=", lambda x, y: x >= y)
 _LESS_OR_EQUAL = _Operator("<=", lambda x, y: x <= y)
 
-
-def _intersect(first_iterable: Iterable, second_iterable: Iterable):
-    return any(set(first_iterable).intersection(second_iterable))
-
-
-def _subset(first_iterable: Iterable, second_iterable: Iterable):
-    return set(first_iterable).issubset(second_iterable)
-
-
-def _disjoint(first_iterable: Iterable, second_iterable: Iterable):
-    return set(first_iterable).isdisjoint(second_iterable)
-
-
-_INTERSECT = _Operator("any of", _intersect)
-_SUBSET = _Operator("all of", _subset)
-_IDENTICAL = _Operator("exactly", lambda x, y: _SUBSET(x, y) and _SUBSET(y, x))
-_DISJOINT = _Operator("none of", _disjoint)
-_NONE = _Operator("none of", lambda x, y: not _INTERSECT(x, y))
+_CONTAINS_ANY_OF = _Operator("any of", lambda col1, col2: any((c in col2 for c in col1)))
+_CONTAINS_ALL_OF = _Operator("all of", lambda col1, col2: all((c in col2 for c in col1)))
+_EXACTLY = _Operator("exactly", lambda col1, col2: len(col1)==len(col2) and _CONTAINS_ALL_OF(col1, col2) and _CONTAINS_ALL_OF(col2, col1))
+_NONE = _Operator("none of", lambda col1, col2: not _CONTAINS_ANY_OF(col1, col2))
 
 _NOTHING = _Operator("do nothing", lambda x, y: False)
 
@@ -65,15 +51,13 @@ class _AssertEventCount(_Assertable):
 
     def check(self):
         op = self.operator(self.actual, self.expected)
-        assert (
-            op
-        ), f"Expected event count {self.operator} {self.expected}, got {self.actual} instead"
+        assert op, f"Expected event count {self.operator} {self.expected}, got {self.actual} instead"
 
 
 class _AssertCollection(_Assertable):
     def __init__(
         self,
-        expected: Iterable[Any],
+        expected: Collection[Any],
         operator: _Operator = _NOTHING,
     ):
         self.expected = expected
@@ -113,9 +97,7 @@ class Assert(Flow):
         return self
 
     def greater_or_equal_to(self, expected: int):
-        self.termination_assertions.append(
-            _AssertEventCount(expected, _GREATER_OR_EQUAL)
-        )
+        self.termination_assertions.append(_AssertEventCount(expected, _GREATER_OR_EQUAL))
         return self
 
     def greater_than(self, expected: int):
@@ -134,19 +116,19 @@ class Assert(Flow):
         self.termination_assertions.append(_AssertEventCount(expected, _EQUALS))
         return self
 
-    def match_exactly(self, expected: Iterable[Any]):
-        self.termination_assertions.append(_AssertCollection(expected, _IDENTICAL))
+    def match_exactly(self, expected: Collection[Any]):
+        self.termination_assertions.append(_AssertCollection(expected, _EXACTLY))
         return self
 
-    def match_all_of(self, expected: Iterable[Any]):
-        self.termination_assertions.append(_AssertCollection(expected, _SUBSET))
+    def match_all_of(self, expected: Collection[Any]):
+        self.termination_assertions.append(_AssertCollection(expected, _CONTAINS_ALL_OF))
         return self
 
-    def match_any_of(self, expected: Iterable[Any]):
-        self.termination_assertions.append(_AssertCollection(expected, _INTERSECT))
+    def match_any_of(self, expected: Collection[Any]):
+        self.termination_assertions.append(_AssertCollection(expected, _CONTAINS_ANY_OF))
         return self
 
-    def match_none_of(self, expected: Iterable[Any]):
+    def match_none_of(self, expected: Collection[Any]):
         self.termination_assertions.append(_AssertCollection(expected, _NONE))
         return self
 
@@ -156,7 +138,7 @@ class Assert(Flow):
                 assertion.check()
             return await self._do_downstream(_termination_obj)
 
-        element = self._get_event_or_body(event)
+        element = event if self._full_event else event.body
 
         for assertion in self.execution_assertions:
             assertion(element)

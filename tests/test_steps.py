@@ -16,13 +16,12 @@ def test_assert_each_event():
         controller.emit(1)
         controller.terminate()
         controller.await_termination()
+        fail("Assert not failing", False)
     except FlowError:
         pass
 
-    fail("User defined assert not failing", False)
 
-
-def test_assert_at_least():
+def test_assert_greater_or_equal_to():
     try:
         controller = build_flow(
             [
@@ -52,7 +51,7 @@ def test_assert_at_least():
         fail("Assert failed unexpectedly", False)
 
 
-def test_assert_above():
+def test_assert_greater_than():
     try:
         controller = build_flow(
             [
@@ -81,7 +80,7 @@ def test_assert_above():
         fail("Assert failed unexpectedly", False)
 
 
-def test_assert_at_most():
+def test_assert_less_or_equal():
     try:
         controller = build_flow(
             [
@@ -158,11 +157,13 @@ def test_assert_exactly():
     except FlowError:
         fail("Assert failed unexpectedly", False)
 
+
+def test_assert_match_exactly():
     try:
         controller = build_flow(
             [
                 Source(),
-                Assert().match_exactly([1, 1, 1])
+                Assert(full_event=False).match_exactly([1, 1, 1])
             ]
         ).run()
         controller.emit(1)
@@ -317,7 +318,7 @@ def test_sample_emit_last():
             Source(),
             Assert().exactly(5),
             SampleWindow(5, emit_period=EmitPeriod.LAST),
-            Assert().exactly(1).match_exactly([5]),
+            Assert().exactly(1).match_exactly([4]),
         ]
     ).run()
 
@@ -333,7 +334,7 @@ def test_sample_emit_last_with_emit_before_termination():
             Source(),
             Assert().exactly(5),
             SampleWindow(5, emit_period=EmitPeriod.LAST, emit_before_termination=True),
-            Assert().exactly(1).match_exactly([5]),
+            Assert().exactly(1).match_exactly([4]),
         ]
     ).run()
 
@@ -358,30 +359,17 @@ def test_flatten():
 
 
 def test_foreach():
-    class EventRegistry:
-        def __init__(self):
-            self.events = set()
-
-        def __call__(self, event: Event):
-            self.events.add(event.id)
-            return event
-
-    er = EventRegistry()
+    event_ids = set()
     controller = build_flow(
         [
             Source(),
-            Map(er, full_event=True),
-            ForEach(lambda x: None),
-            Assert(full_event=True).each_event(lambda event: event.id in er.events),
+            ForEach(lambda e: event_ids.add(e.id), full_event=True),
+            Assert(full_event=True).each_event(lambda event: event.id in event_ids),
         ]
     ).run()
 
-    controller.emit(1)
-    controller.emit(1)
-    controller.emit(1)
-    controller.emit(1)
-    controller.emit(1)
-    controller.emit(1)
+    for i in range(0, 5):
+        controller.emit(i)
 
     controller.terminate()
     controller.await_termination()
