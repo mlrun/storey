@@ -1,7 +1,7 @@
 from collections import namedtuple
 from typing import Callable, Any
 
-from storey import Flow, Event
+from storey import Flow
 from storey.dtypes import _termination_obj
 
 Partitioned = namedtuple("Partitioned", ["left", "right"], defaults=[None, None])
