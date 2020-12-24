@@ -10,15 +10,19 @@ Partitioned = namedtuple("Partitioned", ["left", "right"], defaults=[None, None]
 class Partition(Flow):
     """
     Partitions events by calling a predicate function on each event. Each processed event results in a `Partitioned`
-    namedtuple of either (left=Event, right=None) or (left=None, right=Event), where True results are assigned to 'left`
-    and False values assigned to 'right'.
+    namedtuple of (left=Optional[Event], right=Optional[Event]).
+
+    For a given event, if the predicate function results is `True`, the event is assigned to `left`. Otherwise, the
+    event is assigned to `right`.
+
+    :param predicate: A predicate function that results in a boolean.
     """
 
     def __init__(self, predicate: Callable[[Any], bool], **kwargs):
         super().__init__(**kwargs)
         self.predicate = predicate
 
-    async def _do(self, event: Event):
+    async def _do(self, event):
         if event is _termination_obj:
             return await self._do_downstream(_termination_obj)
         else:
