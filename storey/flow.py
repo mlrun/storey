@@ -58,6 +58,7 @@ class Flow:
             recovery_step = self._get_recovery_step(ex)
             if recovery_step is None:
                 raise ex
+            event.ex = ex
             return await recovery_step._do(event)
 
     async def _do_downstream(self, event):

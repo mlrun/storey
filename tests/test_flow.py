@@ -19,8 +19,8 @@ class ATestException(Exception):
 class RaiseEx:
     _counter = 0
 
-    def __init__(self, raise_after):
-        self._raise_after = raise_after
+    def __init__(self, raise_on_nth):
+        self._raise_after = raise_on_nth
 
     def raise_ex(self, element):
         self._counter += 1
@@ -242,6 +242,22 @@ def test_error_specific_recovery():
     controller.terminate()
     result = controller.await_termination()
     assert result == 55
+
+
+def test_error_specific_recovery_check_exception():
+    reduce = Reduce([], lambda acc, event: append_and_return(acc, type(event.ex)), full_event=True)
+    controller = build_flow([
+        Source(),
+        Map(RaiseEx(2).raise_ex, recover={ATestException: reduce}),
+        reduce
+    ]).run()
+
+    for i in range(3):
+        controller.emit(i)
+
+    controller.terminate()
+    result = controller.await_termination()
+    assert result == [type(None), ATestException, type(None)]
 
 
 def test_error_nonrecovery():
@@ -1599,6 +1615,7 @@ def test_write_to_tsdb_with_key_index_and_default_time():
         assert write_call[1] == {'backend': 'tsdb', 'table': 'some/path'}
         i += 1
 
+
 def test_csv_reader_parquet_write_ns(tmpdir):
     out_file = f'{tmpdir}/test_csv_reader_parquet_write_ns_{uuid.uuid4().hex}/out.parquet'
     columns = ['k', 't']
@@ -1614,4 +1631,3 @@ def test_csv_reader_parquet_write_ns(tmpdir):
     read_back_df = pd.read_parquet(out_file, columns=columns)
 
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
-
