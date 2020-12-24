@@ -85,12 +85,12 @@ class _Writer:
         data = event.body
         if isinstance(data, dict):
             if self._infer_columns_from_data:
-                self._columns.extend(data.keys())
+                self._columns.extend(data.keys() - self._index_cols)
                 self._columns.sort()
                 self._infer_columns_from_data = False
             data = {} if self._retain_dict else []
-            self._get_column_data_from_dict(data, event, self._columns, self._metadata_columns, self._rename_columns)
             self._get_column_data_from_dict(data, event, self._index_cols, self._metadata_index_columns, self._rename_index_columns)
+            self._get_column_data_from_dict(data, event, self._columns, self._metadata_columns, self._rename_columns)
         elif isinstance(data, list):
             if self._infer_columns_from_data:
                 raise TypeError('Cannot infer_columns_from_data when event type is list. Inference is only possible from dict.')
@@ -241,9 +241,9 @@ class WriteToParquet(_Batching, _Writer):
             await asyncio.get_running_loop().run_in_executor(None, self._makedirs)
             self._first_event = False
         df_columns = []
-        df_columns.extend(self._columns)
         if self._index_cols:
             df_columns.extend(self._index_cols)
+        df_columns.extend(self._columns)
         df = pd.DataFrame(batch, columns=df_columns)
         if self._index_cols:
             df.set_index(self._index_cols, inplace=True)

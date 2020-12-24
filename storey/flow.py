@@ -13,8 +13,10 @@ from .utils import _split_path
 
 
 class Flow:
-    def __init__(self, name=None, full_event=False, termination_result_fn=lambda x, y: x if x is not None else y, context=None, **kwargs):
+    def __init__(self, recover=None, name=None, full_event=False, termination_result_fn=lambda x, y: x if x is not None else y,
+                 context=None, **kwargs):
         self._outlets = []
+        self._recover = recover
         self._full_event = full_event
         self._termination_result_fn = termination_result_fn
         self.context = context
@@ -29,6 +31,12 @@ class Flow:
         self._outlets.append(outlet)
         return outlet
 
+    def _get_recovery_step(self, exception):
+        if isinstance(self._recover, dict):
+            return self._recover.get(type(exception), None)
+        else:
+            return self._recover
+
     def run(self):
         for outlet in self._outlets:
             self._closeables.extend(outlet.run())
@@ -39,6 +47,18 @@ class Flow:
 
     async def _do(self, event):
         raise NotImplementedError
+
+    async def _do_and_recover(self, event):
+        try:
+            return await self._do(event)
+        except BaseException as ex:
+            if getattr(ex, '_raised_by_storey_step', None) is not None:
+                raise ex
+            ex._raised_by_storey_step = self
+            recovery_step = self._get_recovery_step(ex)
+            if recovery_step is None:
+                raise ex
+            return await recovery_step._do(event)
 
     async def _do_downstream(self, event):
         if not self._outlets:
@@ -56,13 +76,14 @@ class Flow:
             for i in range(1, len(self._outlets)):
                 event_copy = copy.deepcopy(event)
                 event_copy._awaitable_result = awaitable_result
-                tasks.append(asyncio.get_running_loop().create_task(self._outlets[i]._do(event_copy)))
+                tasks.append(asyncio.get_running_loop().create_task(self._outlets[i]._do_and_recover(event_copy)))
             event._awaitable_result = awaitable_result
         if self.verbose:
             step_name = type(self).__name__
             event_string = str(event)
+
             print(f'{step_name} -> {type(self._outlets[0]).__name__} | {event_string}')
-        await self._outlets[0]._do(event)  # Optimization - avoids creating a task for the first outlet.
+        await self._outlets[0]._do_and_recover(event)  # Optimization - avoids creating a task for the first outlet.
         for i, task in enumerate(tasks, start=1):
             if self.verbose:
                 print(f'{step_name} -> {type(self._outlets[i]).__name__} | {event_string}')
