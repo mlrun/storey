@@ -179,6 +179,14 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
         condition_expression = None
         expressions = []
         pending_updates = {}
+        saved_engine_words = {'min': True, 'max': True, 'sqrt': True, 'avg': True, 'stddev': True, 'sum': True,
+                              'length': True, 'init_array': True, 'set': True, 'remove': True,
+                              'regexp_replace': True, 'find': True, 'find_all_indices': True,
+                              'extract_by_indices': True, 'sort_array': True, 'blob': True, 'if_else': True,
+                              'in': True, 'true': True, 'false': True, 'and': True, 'or': True, 'not': True,
+                              'contains': True, 'ends': True, 'starts': True, 'exists': True, 'select': True,
+                              'str': True, 'to_int': True, 'if_not_exists': True, 'regexp_instr': True, 'delete': True,
+                              'as': True, 'maxdbl': True, 'inf': True, 'nan': True, 'isnan': True, 'nanaszero': True}
 
         if aggregation_element:
             # Generating aggregation related expressions
@@ -193,6 +201,8 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
         # Generating additional cache expressions
         if additional_data:
             for name, value in additional_data.items():
+                if name.casefold() in saved_engine_words.keys():
+                    name = f'`{name}`'
                 expressions.append(f'{name}={self._convert_python_obj_to_expression_value(value)}')
 
         update_expression = ';'.join(expressions)

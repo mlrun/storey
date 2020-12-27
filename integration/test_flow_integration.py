@@ -269,7 +269,7 @@ def test_join_by_key_specific_attributes(setup_kv_teardown_test):
 def test_write_table_specific_columns(setup_teardown_test):
     table = Table(setup_teardown_test, V3ioDriver())
 
-    table._cache['tal'] = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': test_base_time}
+    table._cache['tal'] = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': test_base_time, 'min': 1, 'Avg': 3}
 
     def enrich(event, state):
         if 'first_activity' not in state:
@@ -316,7 +316,7 @@ def test_write_table_specific_columns(setup_teardown_test):
     assert response.status_code == 200
     expected_cache = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': test_base_time, 'first_activity': test_base_time,
                       'last_event': test_base_time + timedelta(minutes=25 * (items_in_ingest_batch - 1)), 'total_activities': 10,
-                      'twice_total_activities': 20}
+                      'twice_total_activities': 20, 'min': 1, 'Avg': 3}
 
     assert expected_cache == response.output.item
 
