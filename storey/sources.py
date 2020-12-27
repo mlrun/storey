@@ -180,10 +180,9 @@ class AsyncAwaitableResult:
         return result
 
     async def _set_result(self, element):
-        if self._completed:
-            raise ValueError('AsyncAwaitableResult cannot be completed more than once')
-        self._completed = True
-        await self._q.put(element)
+        if not self._completed:
+            self._completed = True
+            await self._q.put(element)
 
     async def _set_error(self, ex):
         await self._set_result(ex)

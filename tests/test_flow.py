@@ -516,6 +516,26 @@ def test_double_completion():
     assert termination_result == 45
 
 
+async def async_test_async_double_completion():
+    controller = await build_flow([
+        AsyncSource(),
+        Complete(),
+        Complete(),
+        Reduce(0, lambda acc, x: acc + x)
+    ]).run()
+
+    for i in range(10):
+        result = await controller.emit(i, await_result=True)
+        assert result == i
+    await controller.terminate()
+    termination_result = await controller.await_termination()
+    assert termination_result == 45
+
+
+def test_async_double_completion():
+    asyncio.run(async_test_async_double_completion())
+
+
 def test_awaitable_result_error():
     def boom(_):
         raise ValueError('boom')
