@@ -29,6 +29,8 @@ jobs:
           V3IO_ACCESS_KEY: ${{ secrets.V3IO_ACCESS_KEY }}
           V3IO_FRAMESD: ${{ secrets.V3IO_FRAMESD }}
         run: make integration
+      - name: Set version
+        run: make set-version
       - name: Build binary wheel and source tarball
         run: make dist
       - name: Publish package
