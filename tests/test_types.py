@@ -1,6 +1,6 @@
 import pytest
 
-from storey.dtypes import EmitEveryEvent, EmitAfterPeriod, EmitAfterWindow, _dict_to_emit_policy, EmitAfterDelay, EmitAfterMaxEvent
+from storey.dtypes import Event, EmitEveryEvent, EmitAfterPeriod, EmitAfterWindow, _dict_to_emit_policy, EmitAfterDelay, EmitAfterMaxEvent
 
 
 @pytest.mark.parametrize('emit_policy', [EmitEveryEvent, EmitAfterPeriod, EmitAfterWindow])
@@ -64,3 +64,17 @@ def test_emit_policy_period():
     policy = _dict_to_emit_policy(policy_dict)
     assert type(policy) == EmitAfterPeriod
     assert policy.delay_in_seconds == 8
+
+
+def test_event_copy():
+    origin = Event(1, "a", id="asd")
+    copy = origin.copy({1: "a"}, "b")
+    second_copy = copy.copy(deep_copy=True)
+
+    assert id(origin.id) == id(copy.id)
+    assert copy.id == "asd"
+
+    copy.body[2] = "b"
+
+    assert len(copy.body) == 2
+    assert len(second_copy.body) == 1
