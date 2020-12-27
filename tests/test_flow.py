@@ -1741,3 +1741,28 @@ def test_error_in_concurrent_by_key_task():
         controller.await_termination()
     except FlowError as ex:
         assert isinstance(ex.__cause__, KeyError)
+
+
+def test_async_task_error_and_complete():
+    table = Table('table', NoopDriver())
+
+    controller = build_flow([
+        Source(),
+        WriteToTable(table),
+        Map(RaiseEx(1).raise_ex),
+        Complete()
+    ]).run()
+
+    awaitable_result = controller.emit({'col1': 0}, 'tal', return_awaitable_result=True)
+    try:
+        awaitable_result.await_result()
+        assert False
+    except ATestException:
+        pass
+
+    controller.terminate()
+    try:
+        controller.await_termination()
+        assert False
+    except FlowError as ex:
+        assert isinstance(ex.__cause__, ATestException)
