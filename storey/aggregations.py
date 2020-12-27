@@ -487,6 +487,7 @@ class AggregationBuckets:
                 for win in self.hidden_windows.windows:
                     if win not in all_windows:
                         all_windows.append(win)
+            self._need_to_recalculate_pre_aggregates = True
             self.calculate_features(base_time, all_windows)
         else:
             self.first_bucket_start_time = self._window_start_time
@@ -618,7 +619,6 @@ class AggregationBuckets:
         if self._need_to_recalculate_pre_aggregates or \
                 self.get_bucket_index_by_timestamp(timestamp) < self.get_bucket_index_by_timestamp(self._last_data_point_timestamp) or \
                 not self._precalculated_aggregations:
-            self._need_to_recalculate_pre_aggregates = False
             return self.calculate_features(timestamp, windows)
 
         # In case our pre aggregates already have the answer
@@ -632,6 +632,7 @@ class AggregationBuckets:
 
         current_time_bucket_index = self.get_bucket_index_by_timestamp(timestamp)
         if current_time_bucket_index < 0:
+            self._need_to_recalculate_pre_aggregates = False
             return result
 
         if self.is_fixed_window:
@@ -668,8 +669,9 @@ class AggregationBuckets:
             prev_windows_millis = window_millis
 
             # Update the corresponding pre aggregate
-            if self._precalculated_aggregations:
+            if self._precalculated_aggregations and self._need_to_recalculate_pre_aggregates:
                 self._current_aggregate_values[win] = AggregationValue(self.aggregation, set_data=current_aggregations_value)
+        self._need_to_recalculate_pre_aggregates = False
         return result
 
     def initialize_from_data(self, data, base_time):

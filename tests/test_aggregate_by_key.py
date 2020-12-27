@@ -472,6 +472,34 @@ def test_fixed_window_old_event():
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
 
+def test_fixed_window_out_of_order_event():
+    controller = build_flow([
+        Source(),
+        AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["count"],
+                                        FixedWindows(['1h', '2h']))],
+                       Table("test", NoopDriver())),
+        Reduce([], lambda acc, x: append_return(acc, x)),
+    ]).run()
+
+    for i in range(3):
+        data = {'col1': i}
+        controller.emit(data, 'tal', test_base_time + timedelta(minutes=25 * i))
+
+    controller.emit({'col1': 3}, 'tal', test_base_time + timedelta(minutes=15))
+    controller.emit({'col1': 4}, 'tal', test_base_time + timedelta(minutes=25 * 3))
+
+    controller.terminate()
+    actual = controller.await_termination()
+    expected_results = [{'col1': 0, 'number_of_stuff_count_1h': 1, 'number_of_stuff_count_2h': 1},
+                        {'col1': 1, 'number_of_stuff_count_1h': 1, 'number_of_stuff_count_2h': 2},
+                        {'col1': 2, 'number_of_stuff_count_1h': 2, 'number_of_stuff_count_2h': 3},
+                        {'col1': 3, 'number_of_stuff_count_1h': 2, 'number_of_stuff_count_2h': 2},
+                        {'col1': 4, 'number_of_stuff_count_1h': 3, 'number_of_stuff_count_2h': 5}]
+
+    assert actual == expected_results, \
+        f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
+
+
 def test_fixed_window_roll_cached_buckets():
     controller = build_flow([
         Source(),
