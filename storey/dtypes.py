@@ -42,7 +42,7 @@ class Event:
         self.path = path
         self.content_type = content_type
         self._awaitable_result = awaitable_result
-        self.ex = None
+        self.error = None
 
     def __eq__(self, other):
         if not isinstance(other, Event):

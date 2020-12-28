@@ -302,7 +302,7 @@ def test_error_specific_recovery():
 
 
 def test_error_specific_recovery_check_exception():
-    reduce = Reduce([], lambda acc, event: append_and_return(acc, type(event.ex)), full_event=True)
+    reduce = Reduce([], lambda acc, event: append_and_return(acc, type(event.error)), full_event=True)
     controller = build_flow([
         Source(),
         Map(RaiseEx(2).raise_ex, recovery_step={ATestException: reduce}),
