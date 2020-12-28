@@ -202,7 +202,7 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
         # Generating additional cache expressions
         if additional_data:
             for name, value in additional_data.items():
-                if name.casefold() in saved_engine_words.keys():
+                if name.casefold() in self.saved_engine_words.keys():
                     name = f'`{name}`'
                 expressions.append(f'{name}={self._convert_python_obj_to_expression_value(value)}')
 
