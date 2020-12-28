@@ -302,7 +302,7 @@ def test_error_specific_recovery():
 
 
 def test_error_specific_recovery_check_exception():
-    reduce = Reduce([], lambda acc, event: append_and_return(acc, type(event.ex)), full_event=True)
+    reduce = Reduce([], lambda acc, event: append_and_return(acc, type(event.error)), full_event=True)
     controller = build_flow([
         Source(),
         Map(RaiseEx(2).raise_ex, recovery_step={ATestException: reduce}),
@@ -1766,3 +1766,29 @@ def test_async_task_error_and_complete():
         assert False
     except FlowError as ex:
         assert isinstance(ex.__cause__, ATestException)
+
+
+def test_push_error():
+    class PushErrorContext:
+        def push_error(self, event, message, source):
+            self.event = event
+            self.message = message
+            self.source = source
+
+    context = PushErrorContext()
+    controller = build_flow([
+        Source(),
+        Map(RaiseEx(1).raise_ex, context=context),
+        Reduce(0, lambda acc, x: acc + x),
+    ]).run()
+
+    try:
+        controller.emit(0)
+        controller.terminate()
+        controller.await_termination()
+        assert False
+    except FlowError as flow_ex:
+        assert isinstance(flow_ex.__cause__, ATestException)
+        assert context.event.body == 0
+        assert 'raise ATestException' in context.message
+        assert context.source == 'Map'
