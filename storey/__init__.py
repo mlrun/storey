@@ -15,7 +15,7 @@ from .dtypes import (  # noqa: F401
 )
 from .flow import (  # noqa: F401
     Filter, FlatMap, Flow, FlowError, JoinWithV3IOTable, SendToHttp, JoinWithTable, Map, Extend, Reduce, Batch,
-    MapWithState, MapClass, Complete, Choice, HttpRequest, HttpResponse, build_flow, Context
+    MapWithState, MapClass, Complete, Choice, Recover, HttpRequest, HttpResponse, build_flow, Context
 )
 from .sources import (  # noqa: F401
     Source, AsyncSource, DataframeSource, ReadCSV

@@ -1,5 +1,6 @@
 import asyncio
 import copy
+import traceback
 from asyncio import Task
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -13,10 +14,10 @@ from .utils import _split_path
 
 
 class Flow:
-    def __init__(self, recover=None, name=None, full_event=False, termination_result_fn=lambda x, y: x if x is not None else y,
+    def __init__(self, recovery_step=None, name=None, full_event=False, termination_result_fn=lambda x, y: x if x is not None else y,
                  context=None, **kwargs):
         self._outlets = []
-        self._recover = recover
+        self._recovery_step = recovery_step
         self._full_event = full_event
         self._termination_result_fn = termination_result_fn
         self.context = context
@@ -31,11 +32,15 @@ class Flow:
         self._outlets.append(outlet)
         return outlet
 
+    def set_recovery_step(self, outlet):
+        self._recovery_step = outlet
+        return self
+
     def _get_recovery_step(self, exception):
-        if isinstance(self._recover, dict):
-            return self._recover.get(type(exception), None)
+        if isinstance(self._recovery_step, dict):
+            return self._recovery_step.get(type(exception), None)
         else:
-            return self._recover
+            return self._recovery_step
 
     def run(self):
         for outlet in self._outlets:
@@ -56,8 +61,13 @@ class Flow:
                 raise ex
             ex._raised_by_storey_step = self
             recovery_step = self._get_recovery_step(ex)
+            if self.context and hasattr(self.context, 'push_error'):
+                message = traceback.format_exc()
+                self.context.push_error(event, f"{ex}\n{message}", source=self.name)
             if recovery_step is None:
                 raise ex
+            event.origin_state = self.name
+            event.error = ex
             return await recovery_step._do(event)
 
     async def _do_downstream(self, event):
@@ -145,6 +155,26 @@ class Choice(Flow):
             await chosen_outlet._do(event)
         elif self._default:
             await self._default._do(event)
+
+
+class Recover(Flow):
+    def __init__(self, exception_to_downstream, **kwargs):
+        Flow.__init__(self, **kwargs)
+
+        self._exception_to_downstream = exception_to_downstream
+
+    async def _do(self, event):
+        if not self._outlets or event is _termination_obj:
+            return await super()._do_downstream(event)
+        else:
+            try:
+                await super()._do_downstream(event)
+            except BaseException as ex:
+                typ = type(ex)
+                if typ in self._exception_to_downstream:
+                    await self._exception_to_downstream[typ]._do(event)
+                else:
+                    raise ex
 
 
 class _UnaryFunctionFlow(Flow):

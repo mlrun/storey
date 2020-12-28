@@ -9,7 +9,7 @@ from aiohttp import InvalidURL
 
 from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV, Complete, AsyncSource, Choice, \
     Event, Batch, Table, WriteToCSV, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, WriteToParquet, \
-    WriteToTSDB, Extend, SendToHttp, HttpRequest, WriteToTable, NoopDriver, Driver
+    WriteToTSDB, Extend, SendToHttp, HttpRequest, WriteToTable, NoopDriver, Driver, Recover
 
 
 class ATestException(Exception):
@@ -19,8 +19,8 @@ class ATestException(Exception):
 class RaiseEx:
     _counter = 0
 
-    def __init__(self, raise_after):
-        self._raise_after = raise_after
+    def __init__(self, raise_on_nth):
+        self._raise_after = raise_on_nth
 
     def raise_ex(self, element):
         self._counter += 1
@@ -44,6 +44,46 @@ def test_functional_flow():
     controller.terminate()
     termination_result = controller.await_termination()
     assert termination_result == 3300
+
+
+def test_multiple_upstreams():
+    source = Source()
+    map1 = Map(lambda x: x + 1)
+    map2 = Map(lambda x: x * 10)
+    reduce = Reduce(0, lambda x, y: x + y)
+    source.to(map1)
+    source.to(map2)
+    map1.to(reduce)
+    map2.to(reduce)
+    controller = source.run()
+
+    for i in range(10):
+        controller.emit(i)
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == 55 + 450
+
+
+def test_recover():
+    def increment_maybe_boom(x):
+        inc = x + 1
+        if inc == 7:
+            raise ValueError('boom')
+        return inc
+
+    reduce = Reduce(0, lambda x, y: x + y)
+    controller = build_flow([
+        Source(),
+        Recover({ValueError: reduce}),
+        Map(increment_maybe_boom),
+        reduce
+    ]).run()
+
+    for i in range(10):
+        controller.emit(i)
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == 54
 
 
 def test_csv_reader():
@@ -215,7 +255,24 @@ def test_error_recovery():
     controller = build_flow([
         Source(),
         Map(lambda x: x + 1),
-        Map(RaiseEx(5).raise_ex, recover=reduce),
+        Map(RaiseEx(5).raise_ex, recovery_step=reduce),
+        reduce,
+    ]).run()
+
+    for i in range(10):
+        controller.emit(i)
+
+    controller.terminate()
+    result = controller.await_termination()
+    assert result == 55
+
+
+def test_set_recovery_step():
+    reduce = Reduce(0, lambda acc, x: acc + x)
+    controller = build_flow([
+        Source(),
+        Map(lambda x: x + 1),
+        Map(RaiseEx(5).raise_ex).set_recovery_step(reduce),
         reduce,
     ]).run()
 
@@ -232,7 +289,7 @@ def test_error_specific_recovery():
     controller = build_flow([
         Source(),
         Map(lambda x: x + 1),
-        Map(RaiseEx(5).raise_ex, recover={ATestException: reduce}),
+        Map(RaiseEx(5).raise_ex, recovery_step={ATestException: reduce}),
         reduce,
     ]).run()
 
@@ -244,12 +301,28 @@ def test_error_specific_recovery():
     assert result == 55
 
 
+def test_error_specific_recovery_check_exception():
+    reduce = Reduce([], lambda acc, event: append_and_return(acc, type(event.error)), full_event=True)
+    controller = build_flow([
+        Source(),
+        Map(RaiseEx(2).raise_ex, recovery_step={ATestException: reduce}),
+        reduce
+    ]).run()
+
+    for i in range(3):
+        controller.emit(i)
+
+    controller.terminate()
+    result = controller.await_termination()
+    assert result == [type(None), ATestException, type(None)]
+
+
 def test_error_nonrecovery():
     reduce = Reduce(0, lambda acc, x: acc + x)
     controller = build_flow([
         Source(),
         Map(lambda x: x + 1),
-        Map(RaiseEx(5).raise_ex, recover={ValueError: reduce}),
+        Map(RaiseEx(5).raise_ex, recovery_step={ValueError: reduce}),
         reduce,
     ]).run()
 
@@ -267,7 +340,7 @@ def test_error_recovery_containment():
     reduce = Reduce(0, lambda acc, x: acc + x)
     controller = build_flow([
         Source(),
-        Map(lambda x: x + 1, recover=reduce),
+        Map(lambda x: x + 1, recovery_step=reduce),
         Map(RaiseEx(5).raise_ex),
         reduce,
     ]).run()
@@ -482,6 +555,42 @@ def test_awaitable_result():
     controller.terminate()
     termination_result = controller.await_termination()
     assert termination_result == 55
+
+
+def test_double_completion():
+    controller = build_flow([
+        Source(),
+        Complete(),
+        Complete(),
+        Reduce(0, lambda acc, x: acc + x)
+    ]).run()
+
+    for i in range(10):
+        awaitable_result = controller.emit(i, return_awaitable_result=True)
+        assert awaitable_result.await_result() == i
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == 45
+
+
+async def async_test_async_double_completion():
+    controller = await build_flow([
+        AsyncSource(),
+        Complete(),
+        Complete(),
+        Reduce(0, lambda acc, x: acc + x)
+    ]).run()
+
+    for i in range(10):
+        result = await controller.emit(i, await_result=True)
+        assert result == i
+    await controller.terminate()
+    termination_result = await controller.await_termination()
+    assert termination_result == 45
+
+
+def test_async_double_completion():
+    asyncio.run(async_test_async_double_completion())
 
 
 def test_awaitable_result_error():
@@ -1599,6 +1708,7 @@ def test_write_to_tsdb_with_key_index_and_default_time():
         assert write_call[1] == {'backend': 'tsdb', 'table': 'some/path'}
         i += 1
 
+
 def test_csv_reader_parquet_write_ns(tmpdir):
     out_file = f'{tmpdir}/test_csv_reader_parquet_write_ns_{uuid.uuid4().hex}/out.parquet'
     columns = ['k', 't']
@@ -1615,3 +1725,28 @@ def test_csv_reader_parquet_write_ns(tmpdir):
 
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
 
+
+def test_push_error():
+    class PushErrorContext:
+        def push_error(self, event, message, source):
+            self.event = event
+            self.message = message
+            self.source = source
+
+    context = PushErrorContext()
+    controller = build_flow([
+        Source(),
+        Map(RaiseEx(1).raise_ex, context=context),
+        Reduce(0, lambda acc, x: acc + x),
+    ]).run()
+
+    try:
+        controller.emit(0)
+        controller.terminate()
+        controller.await_termination()
+        assert False
+    except FlowError as flow_ex:
+        assert isinstance(flow_ex.__cause__, ATestException)
+        assert context.event.body == 0
+        assert 'raise ATestException' in context.message
+        assert context.source == 'Map'
