@@ -9,7 +9,7 @@ from aiohttp import InvalidURL
 
 from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV, Complete, AsyncSource, Choice, \
     Event, Batch, Table, WriteToCSV, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, WriteToParquet, \
-    WriteToTSDB, Extend, SendToHttp, HttpRequest, WriteToTable, NoopDriver, Driver, Recover
+    WriteToTSDB, Extend, SendToHttp, HttpRequest, WriteToTable, NoopDriver, Driver, Recover, V3ioDriver
 
 
 class ATestException(Exception):
@@ -1724,6 +1724,48 @@ def test_csv_reader_parquet_write_ns(tmpdir):
     read_back_df = pd.read_parquet(out_file, columns=columns)
 
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+
+
+def test_error_in_concurrent_by_key_task():
+    table = Table('table', V3ioDriver(webapi='https://localhost:12345', access_key='abc'))
+
+    controller = build_flow([
+        Source(),
+        WriteToTable(table, columns=['twice_total_activities']),
+    ]).run()
+
+    controller.emit({'col1': 0}, 'tal')
+
+    controller.terminate()
+    try:
+        controller.await_termination()
+    except FlowError as ex:
+        assert isinstance(ex.__cause__, KeyError)
+
+
+def test_async_task_error_and_complete():
+    table = Table('table', NoopDriver())
+
+    controller = build_flow([
+        Source(),
+        WriteToTable(table),
+        Map(RaiseEx(1).raise_ex),
+        Complete()
+    ]).run()
+
+    awaitable_result = controller.emit({'col1': 0}, 'tal', return_awaitable_result=True)
+    try:
+        awaitable_result.await_result()
+        assert False
+    except ATestException:
+        pass
+
+    controller.terminate()
+    try:
+        controller.await_termination()
+        assert False
+    except FlowError as ex:
+        assert isinstance(ex.__cause__, ATestException)
 
 
 def test_push_error():
