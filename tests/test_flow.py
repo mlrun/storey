@@ -607,8 +607,8 @@ def test_awaitable_result_error():
     try:
         awaitable_result.await_result()
         assert False
-    except FlowError as ex:
-        assert isinstance(ex.__cause__, ValueError)
+    except ValueError:
+        pass
 
 
 async def async_test_async_awaitable_result_error():
@@ -625,8 +625,8 @@ async def async_test_async_awaitable_result_error():
     try:
         await awaitable_result
         assert False
-    except FlowError as ex:
-        assert isinstance(ex.__cause__, ValueError)
+    except ValueError:
+        pass
 
 
 def test_async_awaitable_result_error():
@@ -1277,8 +1277,8 @@ def test_write_csv_fail_to_infer_columns(tmpdir):
         controller.terminate()
         controller.await_termination()
         assert False
-    except FlowError as flow_ex:
-        assert isinstance(flow_ex.__cause__, TypeError)
+    except BaseException:
+        pass
 
 
 def test_reduce_to_dataframe():
@@ -1760,6 +1760,33 @@ def test_async_task_error_and_complete():
     except ATestException:
         pass
 
+    controller.terminate()
+    try:
+        controller.await_termination()
+        assert False
+    except FlowError as ex:
+        assert isinstance(ex.__cause__, ATestException)
+
+
+def test_async_task_error_and_complete_repeated_emits():
+    table = Table('table', NoopDriver())
+
+    controller = build_flow([
+        Source(),
+        WriteToTable(table),
+        Map(RaiseEx(1).raise_ex),
+        Complete()
+    ]).run()
+    for i in range(3):
+        try:
+            awaitable_result = controller.emit({'col1': 0}, 'tal', return_awaitable_result=True)
+        except FlowError:
+            continue
+        try:
+            awaitable_result.await_result()
+            assert False
+        except ATestException:
+            pass
     controller.terminate()
     try:
         controller.await_termination()

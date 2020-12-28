@@ -70,7 +70,7 @@ class FlowController:
         awaitable_result = None
         if return_awaitable_result:
             awaitable_result = AwaitableResult(self.terminate)
-        event._awaitable_result = awaitable_result
+        setattr(event, '_awaitable_result', awaitable_result)
         self._emit_fn(event)
         return awaitable_result
 
@@ -127,7 +127,9 @@ class Source(Flow):
                     event._awaitable_result._set_error(ex)
                 self._ex = ex
                 if not self._q.empty():
-                    self._q.get()
+                    event = self._q.get()
+                    if event is not _termination_obj and event._awaitable_result:
+                        event._awaitable_result._set_error(ex)
                 self._termination_future.set_result(None)
                 break
             if event is _termination_obj:
@@ -145,9 +147,11 @@ class Source(Flow):
             raise FlowError('Flow execution terminated due to an error') from self._ex
 
     def _emit(self, event):
-        self._raise_on_error(self._ex)
+        if event is not _termination_obj:
+            self._raise_on_error(self._ex)
         self._q.put(event)
-        self._raise_on_error(self._ex)
+        if event is not _termination_obj:
+            self._raise_on_error(self._ex)
 
     def run(self):
         self._closeables = super().run()
@@ -221,7 +225,7 @@ class AsyncFlowController:
         awaitable = None
         if await_result:
             awaitable = AsyncAwaitableResult(self.terminate)
-        event._awaitable_result = awaitable
+        setattr(event, '_awaitable_result', awaitable)
         await self._emit_fn(event)
         if await_result:
             result = await awaitable.await_result()
@@ -282,9 +286,11 @@ class AsyncSource(Flow):
             raise FlowError('Flow execution terminated due to an error') from self._ex
 
     async def _emit(self, event):
-        self._raise_on_error()
+        if event is not _termination_obj:
+            self._raise_on_error()
         await self._q.put(event)
-        self._raise_on_error()
+        if event is not _termination_obj:
+            self._raise_on_error()
 
     async def run(self):
         self._closeables = super().run()
