@@ -70,7 +70,7 @@ class FlowController:
         awaitable_result = None
         if return_awaitable_result:
             awaitable_result = AwaitableResult(self.terminate)
-        setattr(event, '_awaitable_result', awaitable_result)
+        event._awaitable_result = awaitable_result
         self._emit_fn(event)
         return awaitable_result
 
@@ -225,7 +225,7 @@ class AsyncFlowController:
         awaitable = None
         if await_result:
             awaitable = AsyncAwaitableResult(self.terminate)
-        setattr(event, '_awaitable_result', awaitable)
+        event._awaitable_result = awaitable
         await self._emit_fn(event)
         if await_result:
             result = await awaitable.await_result()
