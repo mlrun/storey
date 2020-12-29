@@ -1,6 +1,8 @@
 import base64
 import struct
 from array import array
+from urllib.parse import urlparse
+import fsspec
 
 bucketPerWindow = 10
 schema_file_name = '.schema'
@@ -98,3 +100,9 @@ def _split_path(path):
         return parts[0], '/'
     else:
         return parts[0], f'/{parts[1]}'
+
+
+def url_to_file_system(url):
+    parsed_url = urlparse(url)
+    schema = parsed_url.scheme.lower()
+    return fsspec.filesystem(schema), parsed_url.path
