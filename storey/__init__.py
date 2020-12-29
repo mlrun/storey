@@ -1,4 +1,4 @@
-__version__ = '0.2.0'
+__version__ = 'unknown'
 
 # Importing v3iofs explicitly so that it will get registered as an fsspec filesystem
 import v3iofs  # noqa: F401
