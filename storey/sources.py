@@ -9,6 +9,7 @@ import pandas
 
 from .dtypes import _termination_obj, Event, FlowError
 from .flow import Flow
+from .utils import url_to_file_system
 
 
 class AwaitableResult:
@@ -127,7 +128,9 @@ class Source(Flow):
                     event._awaitable_result._set_error(ex)
                 self._ex = ex
                 if not self._q.empty():
-                    self._q.get()
+                    event = self._q.get()
+                    if event is not _termination_obj and event._awaitable_result:
+                        event._awaitable_result._set_error(ex)
                 self._termination_future.set_result(None)
                 break
             if event is _termination_obj:
@@ -145,9 +148,11 @@ class Source(Flow):
             raise FlowError('Flow execution terminated due to an error') from self._ex
 
     def _emit(self, event):
-        self._raise_on_error(self._ex)
+        if event is not _termination_obj:
+            self._raise_on_error(self._ex)
         self._q.put(event)
-        self._raise_on_error(self._ex)
+        if event is not _termination_obj:
+            self._raise_on_error(self._ex)
 
     def run(self):
         self._closeables = super().run()
@@ -282,9 +287,11 @@ class AsyncSource(Flow):
             raise FlowError('Flow execution terminated due to an error') from self._ex
 
     async def _emit(self, event):
-        self._raise_on_error()
+        if event is not _termination_obj:
+            self._raise_on_error()
         await self._q.put(event)
-        self._raise_on_error()
+        if event is not _termination_obj:
+            self._raise_on_error()
 
     async def run(self):
         self._closeables = super().run()
@@ -431,7 +438,8 @@ class ReadCSV(_IterableSource):
     def _blocking_io_loop(self):
         try:
             for path in self._paths:
-                with open(path, mode='r') as f:
+                fs, file_path = url_to_file_system(path)
+                with fs.open(file_path, mode='r') as f:
                     header = None
                     field_name_to_index = None
                     if self._with_header:

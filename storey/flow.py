@@ -1,5 +1,6 @@
 import asyncio
 import copy
+import traceback
 from asyncio import Task
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -60,9 +61,13 @@ class Flow:
                 raise ex
             ex._raised_by_storey_step = self
             recovery_step = self._get_recovery_step(ex)
+            if self.context and hasattr(self.context, 'push_error'):
+                message = traceback.format_exc()
+                self.context.push_error(event, f"{ex}\n{message}", source=self.name)
             if recovery_step is None:
                 raise ex
-            event.ex = ex
+            event.origin_state = self.name
+            event.error = ex
             return await recovery_step._do(event)
 
     async def _do_downstream(self, event):
@@ -481,7 +486,7 @@ class _ConcurrentJobExecution(Flow):
             try:
                 return await self._process_event(event)
             except BaseException as ex:
-                none_or_coroutine = event._awaitable_result._set_result(ex)
+                none_or_coroutine = event._awaitable_result._set_error(ex)
                 if none_or_coroutine:
                     await none_or_coroutine
                 raise ex
@@ -598,9 +603,10 @@ class _ConcurrentByKeyJobExecution(Flow):
             return await self._process_events(events)
         except BaseException as ex:
             for event in events:
-                none_or_coroutine = event._awaitable_result._set_result(ex)
-                if none_or_coroutine:
-                    await none_or_coroutine
+                if event._awaitable_result:
+                    none_or_coroutine = event._awaitable_result._set_error(ex)
+                    if none_or_coroutine:
+                        await none_or_coroutine
             raise ex
 
     async def _process_events(self, events):
