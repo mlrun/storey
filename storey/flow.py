@@ -486,7 +486,7 @@ class _ConcurrentJobExecution(Flow):
             try:
                 return await self._process_event(event)
             except BaseException as ex:
-                none_or_coroutine = event._awaitable_result._set_result(ex)
+                none_or_coroutine = event._awaitable_result._set_error(ex)
                 if none_or_coroutine:
                     await none_or_coroutine
                 raise ex
@@ -603,9 +603,10 @@ class _ConcurrentByKeyJobExecution(Flow):
             return await self._process_events(events)
         except BaseException as ex:
             for event in events:
-                none_or_coroutine = event._awaitable_result._set_result(ex)
-                if none_or_coroutine:
-                    await none_or_coroutine
+                if event._awaitable_result:
+                    none_or_coroutine = event._awaitable_result._set_error(ex)
+                    if none_or_coroutine:
+                        await none_or_coroutine
             raise ex
 
     async def _process_events(self, events):
