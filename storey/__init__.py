@@ -2,7 +2,6 @@ __version__ = 'unknown'
 
 # Importing supported filesystems explicitly so that they will get registered as an fsspec filesystem
 import v3iofs  # noqa: F401
-import s3fs  # noqa: F401
 
 from .aggregations import (  # noqa: F401
     AggregateByKey, QueryByKey
@@ -32,4 +31,3 @@ from .writers import (  # noqa: F401
 
 # clear module namespace
 del v3iofs
-del s3fs
