@@ -5,6 +5,8 @@ def set_version():
     version = environ.get('GITHUB_REF')
     assert version, 'GITHUB_REF is not defined'
 
+    version = version.replace('refs-tags-v', '')
+
     lines = []
     init_py = 'storey/__init__.py'
     with open(init_py) as fp:
