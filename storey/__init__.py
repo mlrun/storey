@@ -1,7 +1,8 @@
 __version__ = 'unknown'
 
-# Importing v3iofs explicitly so that it will get registered as an fsspec filesystem
+# Importing supported filesystems explicitly so that they will get registered as an fsspec filesystem
 import v3iofs  # noqa: F401
+import s3fs  # noqa: F401
 
 from .aggregations import (  # noqa: F401
     AggregateByKey, QueryByKey
@@ -29,4 +30,6 @@ from .writers import (  # noqa: F401
     WriteToV3IOStream, WriteToCSV, WriteToParquet, WriteToTSDB, WriteToTable
 )
 
-del v3iofs  # clear the module namespace
+# clear module namespace
+del v3iofs
+del s3fs
