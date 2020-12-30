@@ -4,8 +4,9 @@ from storey import build_flow, ReadCSV, WriteToCSV, Source, Reduce, Map, FlatMap
 import pandas as pd
 import pytest
 import uuid
-import boto3
 import os
+from s3fs import S3FileSystem
+
 
 has_s3_credentials = os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY") and os.getenv("AWS_BUCKET")
 
@@ -14,12 +15,12 @@ has_s3_credentials = os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_AC
 def s3_create_csv():
     # Setup
     aws_bucket = os.getenv("AWS_BUCKET")
-    file_path = _generate_table_name('csv_test')
+    file_path = _generate_table_name(f'{aws_bucket}/s3_storey')
 
     _write_test_csv(file_path)
 
     # Test runs
-    yield f'{aws_bucket}/{file_path}'
+    yield file_path
 
     # Teardown
     _delete_file(file_path)
@@ -29,10 +30,10 @@ def s3_create_csv():
 def s3_teardown_file():
     # Setup
     aws_bucket = os.getenv("AWS_BUCKET")
-    file_path = _generate_table_name('csv_test')
+    file_path = _generate_table_name(f'{aws_bucket}/s3_storey')
 
     # Test runs
-    yield f'{aws_bucket}/{file_path}'
+    yield file_path
 
     # Teardown
     _delete_file(file_path)
@@ -50,62 +51,21 @@ def s3_setup_teardown_test():
     s3_recursive_delete(table_name)
 
 
-def get_s3_file(path):
-    access_key = os.getenv("AWS_ACCESS_KEY_ID")
-    secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
-    aws_bucket, path = path.split("/", 1)
-
-    s3 = boto3.resource(
-        "s3",
-        aws_access_key_id=access_key,
-        aws_secret_access_key=secret_key,
-    )
-    return s3.Object(aws_bucket, path).get()["Body"].read()
-
-
 def _write_test_csv(file_path):
-    access_key = os.getenv("AWS_ACCESS_KEY_ID")
-    secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
-    aws_bucket = os.getenv("AWS_BUCKET")
-
-    s3 = boto3.resource(
-        "s3",
-        aws_access_key_id=access_key,
-        aws_secret_access_key=secret_key,
-    )
-
+    s3_fs = S3FileSystem()
     data = "n,n*10\n0,0\n1,10\n2,20\n3,30\n4,40\n5,50\n6,60\n7,70\n8,80\n9,90\n"
-    s3.Object(aws_bucket, file_path).put(Body=data)
+    with s3_fs.open(file_path, 'w') as f:
+        f.write(data)
 
 
 def _delete_file(path):
-    access_key = os.getenv("AWS_ACCESS_KEY_ID")
-    secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
-    aws_bucket = os.getenv("AWS_BUCKET")
-
-    s3 = boto3.resource(
-        "s3",
-        aws_access_key_id=access_key,
-        aws_secret_access_key=secret_key,
-    )
-
-    s3.Object(aws_bucket, path).delete()
+    s3_fs = S3FileSystem()
+    s3_fs.delete(path)
 
 
 def s3_recursive_delete(path):
-    access_key = os.getenv("AWS_ACCESS_KEY_ID")
-    secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
-    aws_bucket, path = path.split("/", 1)
-
-    s3 = boto3.resource(
-        "s3",
-        aws_access_key_id=access_key,
-        aws_secret_access_key=secret_key,
-    )
-
-    bucket = s3.Bucket(aws_bucket)
-
-    bucket.objects.filter(Prefix=f"{path}/").delete()
+    s3_fs = S3FileSystem()
+    s3_fs.rm(path, True)
 
 
 @pytest.mark.skipif(not has_s3_credentials, reason='No s3 credentials found')
@@ -146,7 +106,7 @@ async def async_test_write_csv_to_s3(s3_teardown_csv):
     await controller.terminate()
     await controller.await_termination()
 
-    actual = get_s3_file(s3_teardown_csv)
+    actual = S3FileSystem().open(s3_teardown_csv).read()
 
     expected = "n,n*10\n0,0\n1,10\n2,20\n3,30\n4,40\n5,50\n6,60\n7,70\n8,80\n9,90\n"
     assert actual.decode("utf-8") == expected
@@ -171,7 +131,7 @@ def test_write_csv_with_dict_to_s3(s3_teardown_file):
     controller.terminate()
     controller.await_termination()
 
-    actual = get_s3_file(s3_teardown_file)
+    actual = S3FileSystem().open(s3_teardown_file).read()
     expected = "n,n*10\n0,0\n1,10\n2,20\n3,30\n4,40\n5,50\n6,60\n7,70\n8,80\n9,90\n"
     assert actual.decode("utf-8") == expected
 
@@ -190,7 +150,7 @@ def test_write_csv_infer_columns_without_header_to_s3(s3_teardown_file):
     controller.terminate()
     controller.await_termination()
 
-    actual = get_s3_file(s3_teardown_file)
+    actual = S3FileSystem().open(s3_teardown_file).read()
     expected = "0,0\n1,10\n2,20\n3,30\n4,40\n5,50\n6,60\n7,70\n8,80\n9,90\n"
     assert actual.decode("utf-8") == expected
 
@@ -209,7 +169,7 @@ def test_write_csv_from_lists_with_metadata_and_column_pruning_to_s3(s3_teardown
     controller.terminate()
     controller.await_termination()
 
-    actual = get_s3_file(s3_teardown_file)
+    actual = S3FileSystem().open(s3_teardown_file).read()
     expected = "event_key,n*10\nkey0,0\nkey1,10\nkey2,20\nkey3,30\nkey4,40\nkey5,50\nkey6,60\nkey7,70\nkey8,80\nkey9,90\n"
     assert actual.decode("utf-8") == expected
 
