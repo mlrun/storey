@@ -112,7 +112,7 @@ def url_to_file_system(url):
 def load_dependencies(schema):
     if schema == "s3":
         try:
-            import s3fs
+            import s3fs  # noqa: F401
         except ImportError:
             raise StoreyMissingDependencyError(
                 "s3 packages are missing, use pip install mlrun[s3]"
