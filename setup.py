@@ -23,6 +23,10 @@ def load_deps(file_name):
 
 install_requires = load_deps('requirements.txt')
 tests_require = load_deps('dev-requirements.txt')
+extras_require = {
+    "s3": ["s3fs~=0.5"],
+}
+
 
 with open('README.md') as fp:
     long_desc = fp.read()
@@ -36,9 +40,10 @@ setup(
     author='Iguazio',
     author_email='yaronh@iguazio.com',
     license='Apache',
-    url='https://github.com/v3io/storey',
+    url='https://github.com/mlrun/storey',
     packages=find_packages(),
     install_requires=install_requires,
+    extras_require=extras_require,
     classifiers=[
         'Development Status :: 4 - Beta',
         'Intended Audience :: Developers',

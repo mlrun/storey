@@ -105,4 +105,19 @@ def _split_path(path):
 def url_to_file_system(url):
     parsed_url = urlparse(url)
     schema = parsed_url.scheme.lower()
+    load_fs_dependencies(schema)
     return fsspec.filesystem(schema), parsed_url.path
+
+
+def load_fs_dependencies(schema):
+    if schema == "s3":
+        try:
+            import s3fs  # noqa: F401
+        except ImportError:
+            raise StoreyMissingDependencyError(
+                "s3 packages are missing, use pip install storey[s3]"
+            )
+
+
+class StoreyMissingDependencyError(Exception):
+    pass

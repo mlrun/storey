@@ -5,10 +5,11 @@ import pandas as pd
 import pytest
 import uuid
 import os
-from s3fs import S3FileSystem
 
 
 has_s3_credentials = os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY") and os.getenv("AWS_BUCKET")
+if has_s3_credentials:
+    from s3fs import S3FileSystem
 
 
 @pytest.fixture()
