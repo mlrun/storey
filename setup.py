@@ -24,7 +24,7 @@ def load_deps(file_name):
 install_requires = load_deps('requirements.txt')
 tests_require = load_deps('dev-requirements.txt')
 extras_require = {
-    "s3": ["s3fs~=0.5.2"],
+    "s3": ["s3fs~=0.5"],
 }
 
 
