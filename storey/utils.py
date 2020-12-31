@@ -115,7 +115,7 @@ def load_dependencies(schema):
             import s3fs  # noqa: F401
         except ImportError:
             raise StoreyMissingDependencyError(
-                "s3 packages are missing, use pip install mlrun[s3]"
+                "s3 packages are missing, use pip install storey[s3]"
             )
 
 
