@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
-
 from storey import build_flow, Source, Reduce, Table, AggregateByKey, FieldAggregator, NoopDriver
-from storey.dtypes import SlidingWindows, FixedWindows, EmitAfterMaxEvent
+from storey.dtypes import SlidingWindows, FixedWindows, EmitAfterMaxEvent, EmitAfterDelay
+import queue
 
 test_base_time = datetime.fromisoformat("2020-07-21T21:40:00+00:00")
 
@@ -311,6 +311,39 @@ def test_emit_max_event_sliding_window_multiple_keys_aggregation_flow():
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
+def test_emit_delay_aggregation_flow():
+    current_time = datetime.now()
+    q = queue.Queue(1)
+
+    def reduce_fn(acc, x):
+        if x['col1'] == 2:
+            q.put(None)
+        acc.append(x)
+        return acc
+
+    controller = build_flow([
+        Source(),
+        AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "count"],
+                                        SlidingWindows(['1h'], '10m'))],
+                       Table("test", NoopDriver()), emit_policy=EmitAfterMaxEvent(4,1)),
+        Reduce([], reduce_fn),
+    ]).run()
+
+    for i in range(11):
+        if i == 3:
+            q.get()
+        data = {'col1': i}
+        controller.emit(data, 'katya', current_time + timedelta(seconds=i))
+
+    controller.terminate()
+    actual = controller.await_termination()
+    expected_results = [
+        {'col1': 2, 'number_of_stuff_sum_1h': 3, 'number_of_stuff_count_1h': 3},
+        {'col1': 6, 'number_of_stuff_sum_1h': 21, 'number_of_stuff_count_1h': 7},
+        {'col1': 10, 'number_of_stuff_sum_1h': 55, 'number_of_stuff_count_1h': 11}]
+
+    assert actual == expected_results, \
+        f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
 def test_aggregate_dict_simple_aggregation_flow():
     aggregations = [{'name': 'number_of_stuff',

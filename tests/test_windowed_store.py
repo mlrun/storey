@@ -31,7 +31,7 @@ def test_windowed_flow():
     controller = build_flow([
         Source(),
         Filter(lambda x: x['col1'] > 3),
-        Window(SlidingWindow('30m', '5m'), EmitAfterMaxEvent(3, EmissionType.Incremental)),
+        Window(SlidingWindow('30m', '5m'), EmitAfterMaxEvent(3, None, EmissionType.Incremental)),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
