@@ -1,11 +1,12 @@
 import asyncio
-from .integration_test_utils import _generate_table_name
-from storey import build_flow, ReadCSV, WriteToCSV, Source, Reduce, Map, FlatMap, FlowError, AsyncSource, WriteToParquet
+import os
+import uuid
+
 import pandas as pd
 import pytest
-import uuid
-import os
 
+from storey import build_flow, ReadCSV, WriteToCSV, Source, Reduce, Map, FlatMap, AsyncSource, WriteToParquet
+from .integration_test_utils import _generate_table_name
 
 has_s3_credentials = os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY") and os.getenv("AWS_BUCKET")
 if has_s3_credentials:
@@ -91,8 +92,8 @@ def test_csv_reader_from_s3_error_on_file_not_found():
     try:
         controller.await_termination()
         assert False
-    except FlowError as ex:
-        assert isinstance(ex.__cause__, FileNotFoundError)
+    except FileNotFoundError:
+        pass
 
 
 async def async_test_write_csv_to_s3(s3_teardown_csv):

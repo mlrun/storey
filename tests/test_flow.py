@@ -7,8 +7,10 @@ from random import choice
 import pandas as pd
 from aiohttp import InvalidURL
 
-from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, FlowError, MapWithState, ReadCSV, Complete, AsyncSource, Choice, \
-    Event, Batch, Table, WriteToCSV, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, WriteToParquet, \
+from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, MapWithState, ReadCSV, Complete, \
+    AsyncSource, Choice, \
+    Event, Batch, Table, WriteToCSV, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, \
+    WriteToParquet, \
     WriteToTSDB, Extend, SendToHttp, HttpRequest, WriteToTable, NoopDriver, Driver, Recover, V3ioDriver
 
 
@@ -106,8 +108,8 @@ def test_csv_reader_error_on_file_not_found():
     try:
         controller.await_termination()
         assert False
-    except FlowError as ex:
-        assert isinstance(ex.__cause__, FileNotFoundError)
+    except FileNotFoundError:
+        pass
 
 
 def test_csv_reader_as_dict():
@@ -211,8 +213,9 @@ def test_dataframe_source_with_metadata():
     ]).run()
 
     termination_result = controller.await_termination()
-    expected = [Event({'my_key': 'key1', 'my_time': t1, 'my_id': 'id1', 'my_value': 1.1}, key='key1', time=t1, id='id1'),
-                Event({'my_key': 'key2', 'my_time': t2, 'my_id': 'id2', 'my_value': 2.2}, key='key2', time=t2, id='id2')]
+    expected = [
+        Event({'my_key': 'key1', 'my_time': t1, 'my_id': 'id1', 'my_value': 1.1}, key='key1', time=t1, id='id1'),
+        Event({'my_key': 'key2', 'my_time': t2, 'my_id': 'id2', 'my_value': 2.2}, key='key2', time=t2, id='id2')]
     assert termination_result == expected
 
 
@@ -246,8 +249,8 @@ def test_error_flow():
         controller.terminate()
         controller.await_termination()
         assert False
-    except FlowError as flow_ex:
-        assert isinstance(flow_ex.__cause__, ATestException)
+    except ATestException:
+        pass
 
 
 def test_error_recovery():
@@ -332,8 +335,8 @@ def test_error_nonrecovery():
         controller.terminate()
         controller.await_termination()
         assert False
-    except FlowError as flow_ex:
-        assert isinstance(flow_ex.__cause__, ATestException)
+    except ATestException:
+        pass
 
 
 def test_error_recovery_containment():
@@ -351,8 +354,8 @@ def test_error_recovery_containment():
         controller.terminate()
         controller.await_termination()
         assert False
-    except FlowError as flow_ex:
-        assert isinstance(flow_ex.__cause__, ATestException)
+    except ATestException:
+        pass
 
 
 def test_broadcast():
@@ -669,8 +672,8 @@ async def async_test_error_async_flow():
     try:
         for i in range(10):
             await controller.emit(i)
-    except FlowError as flow_ex:
-        assert isinstance(flow_ex.__cause__, ATestException)
+    except ATestException:
+        pass
 
 
 def test_awaitable_result_error_in_async_downstream():
@@ -1073,8 +1076,8 @@ async def async_test_write_csv_error(tmpdir):
         await controller.terminate()
         await controller.await_termination()
         assert False
-    except FlowError as ex:
-        assert isinstance(ex.__cause__, TypeError)
+    except TypeError:
+        pass
 
 
 def test_write_csv_error(tmpdir):
@@ -1612,7 +1615,8 @@ def test_write_to_tsdb():
 
     controller = build_flow([
         Source(),
-        WriteToTSDB(path='some/path', time_col='time', index_cols='node', columns=['cpu', 'disk'], rate='1/h', max_events=1,
+        WriteToTSDB(path='some/path', time_col='time', index_cols='node', columns=['cpu', 'disk'], rate='1/h',
+                    max_events=1,
                     frames_client=mock_frames_client)
     ]).run()
 
@@ -1626,8 +1630,9 @@ def test_write_to_tsdb():
     controller.terminate()
     controller.await_termination()
 
-    expected_create = ('create', {'if_exists': 1, 'rate': '1/h', 'aggregates': '', 'aggregation_granularity': '', 'backend': 'tsdb',
-                                  'table': 'some/path'})
+    expected_create = (
+        'create', {'if_exists': 1, 'rate': '1/h', 'aggregates': '', 'aggregation_granularity': '', 'backend': 'tsdb',
+                   'table': 'some/path'})
     assert mock_frames_client.call_log[0] == expected_create
     i = 0
     for write_call in mock_frames_client.call_log[1:]:
@@ -1660,8 +1665,9 @@ def test_write_to_tsdb_with_key_index():
     controller.terminate()
     controller.await_termination()
 
-    expected_create = ('create', {'if_exists': 1, 'rate': '1/h', 'aggregates': '', 'aggregation_granularity': '', 'backend': 'tsdb',
-                                  'table': 'some/path'})
+    expected_create = (
+        'create', {'if_exists': 1, 'rate': '1/h', 'aggregates': '', 'aggregation_granularity': '', 'backend': 'tsdb',
+                   'table': 'some/path'})
     assert mock_frames_client.call_log[0] == expected_create
     i = 0
     for write_call in mock_frames_client.call_log[1:]:
@@ -1694,8 +1700,9 @@ def test_write_to_tsdb_with_key_index_and_default_time():
     controller.terminate()
     controller.await_termination()
 
-    expected_create = ('create', {'if_exists': 1, 'rate': '1/h', 'aggregates': '', 'aggregation_granularity': '', 'backend': 'tsdb',
-                                  'table': 'some/path'})
+    expected_create = (
+        'create', {'if_exists': 1, 'rate': '1/h', 'aggregates': '', 'aggregation_granularity': '', 'backend': 'tsdb',
+                   'table': 'some/path'})
     assert mock_frames_client.call_log[0] == expected_create
     i = 0
     for write_call in mock_frames_client.call_log[1:]:
@@ -1719,7 +1726,8 @@ def test_csv_reader_parquet_write_ns(tmpdir):
         WriteToParquet(out_file, columns=columns, max_events=2)
     ]).run()
 
-    expected = pd.DataFrame([['m1', "15/02/2020 02:03:04.12345678"], ['m2', "16/02/2020 02:03:04.12345678"]], columns=columns)
+    expected = pd.DataFrame([['m1', "15/02/2020 02:03:04.12345678"], ['m2', "16/02/2020 02:03:04.12345678"]],
+                            columns=columns)
     controller.await_termination()
     read_back_df = pd.read_parquet(out_file, columns=columns)
 
@@ -1739,8 +1747,8 @@ def test_error_in_concurrent_by_key_task():
     controller.terminate()
     try:
         controller.await_termination()
-    except FlowError as ex:
-        assert isinstance(ex.__cause__, KeyError)
+    except KeyError:
+        pass
 
 
 def test_async_task_error_and_complete():
@@ -1764,8 +1772,8 @@ def test_async_task_error_and_complete():
     try:
         controller.await_termination()
         assert False
-    except FlowError as ex:
-        assert isinstance(ex.__cause__, ATestException)
+    except ATestException:
+        pass
 
 
 def test_async_task_error_and_complete_repeated_emits():
@@ -1780,7 +1788,7 @@ def test_async_task_error_and_complete_repeated_emits():
     for i in range(3):
         try:
             awaitable_result = controller.emit({'col1': 0}, 'tal', return_awaitable_result=True)
-        except FlowError:
+        except ATestException:
             continue
         try:
             awaitable_result.await_result()
@@ -1791,8 +1799,8 @@ def test_async_task_error_and_complete_repeated_emits():
     try:
         controller.await_termination()
         assert False
-    except FlowError as ex:
-        assert isinstance(ex.__cause__, ATestException)
+    except ATestException:
+        pass
 
 
 def test_push_error():
@@ -1814,8 +1822,7 @@ def test_push_error():
         controller.terminate()
         controller.await_termination()
         assert False
-    except FlowError as flow_ex:
-        assert isinstance(flow_ex.__cause__, ATestException)
+    except ATestException:
         assert context.event.body == 0
         assert 'raise ATestException' in context.message
         assert context.source == 'Map'

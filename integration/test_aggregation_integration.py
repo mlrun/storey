@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 import pytest
 import math
 
-from storey import build_flow, Source, Reduce, Table, V3ioDriver, FlowError, MapWithState, AggregateByKey, FieldAggregator, \
+from storey import build_flow, Source, Reduce, Table, V3ioDriver, MapWithState, AggregateByKey, FieldAggregator, \
     QueryByKey, WriteToTable, Context
 
 from storey.dtypes import SlidingWindows, FixedWindows
@@ -890,8 +890,8 @@ def test_invalid_modify_schema(setup_teardown_test):
 
         controller.terminate()
         controller.await_termination()
-    except FlowError as flow_ex:
-        assert isinstance(flow_ex.__cause__, ValueError)
+    except ValueError:
+        pass
 
 
 def test_query_aggregate_by_key_sliding_window_new_time_exceeds_stored_window(setup_teardown_test):

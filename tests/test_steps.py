@@ -1,7 +1,7 @@
 from pytest import fail
 
-from storey import build_flow, Source, Map
-from storey.dtypes import FlowError, Event
+from storey import build_flow, Source
+from storey.dtypes import Event
 from storey.steps import Flatten, SampleWindow, EmitPeriod, Assert, ForEach, Partition
 
 
@@ -17,7 +17,7 @@ def test_assert_each_event():
         controller.terminate()
         controller.await_termination()
         fail("Assert not failing", False)
-    except FlowError:
+    except AssertionError:
         pass
 
 
@@ -33,7 +33,7 @@ def test_assert_greater_or_equal_to():
         controller.terminate()
         controller.await_termination()
         fail("Assert not failing", False)
-    except FlowError:
+    except AssertionError:
         pass
 
     try:
@@ -47,7 +47,7 @@ def test_assert_greater_or_equal_to():
         controller.emit(1)
         controller.terminate()
         controller.await_termination()
-    except FlowError:
+    except AssertionError:
         fail("Assert failed unexpectedly", False)
 
 
@@ -62,7 +62,7 @@ def test_assert_greater_than():
         controller.terminate()
         controller.await_termination()
         fail("Assert not failing", False)
-    except FlowError:
+    except AssertionError:
         pass
 
     try:
@@ -76,7 +76,7 @@ def test_assert_greater_than():
         controller.emit(1)
         controller.terminate()
         controller.await_termination()
-    except FlowError:
+    except AssertionError:
         fail("Assert failed unexpectedly", False)
 
 
@@ -94,7 +94,7 @@ def test_assert_less_or_equal():
         controller.terminate()
         controller.await_termination()
         fail("Assert not failing", False)
-    except FlowError:
+    except AssertionError:
         pass
 
     try:
@@ -108,7 +108,7 @@ def test_assert_less_or_equal():
         controller.emit(1)
         controller.terminate()
         controller.await_termination()
-    except FlowError:
+    except AssertionError:
         fail("Assert failed unexpectedly", False)
 
 
@@ -124,7 +124,7 @@ def test_assert_exactly():
         controller.terminate()
         controller.await_termination()
         fail("Assert not failing", False)
-    except FlowError:
+    except AssertionError:
         pass
 
     try:
@@ -140,7 +140,7 @@ def test_assert_exactly():
         controller.terminate()
         controller.await_termination()
         fail("Assert not failing", False)
-    except FlowError:
+    except AssertionError:
         pass
 
     try:
@@ -154,7 +154,7 @@ def test_assert_exactly():
         controller.emit(1)
         controller.terminate()
         controller.await_termination()
-    except FlowError:
+    except AssertionError:
         fail("Assert failed unexpectedly", False)
 
 
@@ -171,7 +171,7 @@ def test_assert_match_exactly():
         controller.terminate()
         controller.await_termination()
         fail("Assert not failing", False)
-    except FlowError:
+    except AssertionError:
         pass
 
     try:
@@ -186,7 +186,7 @@ def test_assert_match_exactly():
         controller.emit(1)
         controller.terminate()
         controller.await_termination()
-    except FlowError:
+    except AssertionError:
         fail("Assert failed unexpectedly", False)
 
 
@@ -203,7 +203,7 @@ def test_assert_all_of():
         controller.terminate()
         controller.await_termination()
         fail("Assert not failing", False)
-    except FlowError:
+    except AssertionError:
         pass
 
     try:
@@ -218,7 +218,7 @@ def test_assert_all_of():
         controller.emit([7, 8, 9])
         controller.terminate()
         controller.await_termination()
-    except FlowError:
+    except AssertionError:
         fail("Assert failed unexpectedly", False)
 
 
@@ -234,7 +234,7 @@ def test_assert_any_of():
         controller.terminate()
         controller.await_termination()
         fail("Assert not failing", False)
-    except FlowError:
+    except AssertionError:
         pass
 
     try:
@@ -247,7 +247,7 @@ def test_assert_any_of():
         controller.emit([1, 2, 3])
         controller.terminate()
         controller.await_termination()
-    except FlowError:
+    except AssertionError:
         fail("Assert failed unexpectedly", False)
 
 
@@ -262,7 +262,7 @@ def test_assert_none_of():
         controller.emit([10, 11, 12])
         controller.terminate()
         controller.await_termination()
-    except FlowError:
+    except AssertionError:
         fail("Assert failed unexpectedly", False)
 
     try:
@@ -276,7 +276,7 @@ def test_assert_none_of():
         controller.terminate()
         controller.await_termination()
         fail("Assert not failing", False)
-    except FlowError:
+    except AssertionError:
         pass
 
 

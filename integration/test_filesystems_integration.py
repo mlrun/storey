@@ -1,6 +1,6 @@
 import asyncio
 from .integration_test_utils import setup_teardown_test, _generate_table_name, V3ioHeaders, V3ioError
-from storey import build_flow, ReadCSV, WriteToCSV, Source, Reduce, Map, FlatMap, FlowError, AsyncSource, WriteToParquet
+from storey import build_flow, ReadCSV, WriteToCSV, Source, Reduce, Map, FlatMap, AsyncSource, WriteToParquet
 import pandas as pd
 import aiohttp
 import pytest
@@ -40,7 +40,8 @@ async def _write_test_csv(file_path):
     client_session = aiohttp.ClientSession(connector=connector)
     try:
         data = "n,n*10\n0,0\n1,10\n2,20\n3,30\n4,40\n5,50\n6,60\n7,70\n8,80\n9,90\n"
-        await client_session.put(f'{v3io_access._webapi_url}/{file_path}', data=data, headers=v3io_access._get_put_file_headers, ssl=False)
+        await client_session.put(f'{v3io_access._webapi_url}/{file_path}', data=data,
+                                 headers=v3io_access._get_put_file_headers, ssl=False)
     finally:
         await client_session.close()
 
@@ -50,7 +51,8 @@ async def _delete_file(path):
     v3io_access = V3ioHeaders()
     client_session = aiohttp.ClientSession(connector=connector)
     try:
-        response = await client_session.delete(f'{v3io_access._webapi_url}/{path}', headers=v3io_access._get_put_file_headers, ssl=False)
+        response = await client_session.delete(f'{v3io_access._webapi_url}/{path}',
+                                               headers=v3io_access._get_put_file_headers, ssl=False)
         if response.status >= 300 and response.status != 404 and response.status != 409:
             body = await response.text()
             raise V3ioError(f'Failed to delete item at {path}. Response status code was {response.status}: {body}')
@@ -78,8 +80,8 @@ def test_csv_reader_from_v3io_error_on_file_not_found():
     try:
         controller.await_termination()
         assert False
-    except FlowError as ex:
-        assert isinstance(ex.__cause__, FileNotFoundError)
+    except FileNotFoundError:
+        pass
 
 
 async def async_test_write_csv_to_v3io(v3io_teardown_csv):
