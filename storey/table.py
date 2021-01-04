@@ -18,7 +18,7 @@ class Table:
          can optimize writes. Defaults to True.
         """
 
-    def __init__(self, table_path: str, storage: Driver, partitioned_by_key: bool = True, use_windows_from_schema: bool = False):
+    def __init__(self, table_path: str, storage: Driver, partitioned_by_key: bool = True):
         self._container, self._table_path = _split_path(table_path)
         self._storage = storage
         self._attrs_cache = {}
@@ -26,7 +26,7 @@ class Table:
         self._aggregates = None
         self._schema = None
         self._read_only = False
-        self._use_windows_from_schema = use_windows_from_schema
+        self._use_windows_from_schema = False
 
     def update_static_attrs(self, key, data):
         attrs = self.get_static_attrs(key)
@@ -42,13 +42,13 @@ class Table:
             aggregate_initial_data, additional_data = await self._storage._load_aggregates_by_key(self._container, self._table_path, key)
 
             # Create new aggregation element
-            await self.add_key(key, timestamp, aggregate_initial_data)
+            await self.add_aggregation_by_key(key, timestamp, aggregate_initial_data)
 
             if additional_data:
                 # Add additional data to simple cache
                 self.update_static_attrs(key, additional_data)
 
-    async def get_or_load_key(self, key, attributes='*'):
+    async def get_or_load_static_attributes_by_key(self, key, attributes='*'):
         attrs = self.get_static_attrs(key)
         if not attrs:
             res = await self._storage._load_by_key(self._container, self._table_path, key, attributes)
@@ -88,7 +88,7 @@ class Table:
 
         return self.get_aggregations_attrs(key).get_features(timestamp)
 
-    async def _get_or_load_key(self, key, timestamp=None):
+    async def _get_or_load_aggregations_by_key(self, key, timestamp=None):
         if self._read_only or not self.get_aggregations_attrs(key):
             # Try load from the store, and create a new one only if the key really is new
             initial_data = await self._storage._load_aggregates_by_key(self._container, self._table_path, key)
@@ -96,7 +96,7 @@ class Table:
 
         return self.get_aggregations_attrs(key)
 
-    async def add_key(self, key, base_timestamp, initial_data):
+    async def add_aggregation_by_key(self, key, base_timestamp, initial_data):
         if not self._schema:
             await self.get_or_save_schema()
         self.set_aggregations_attrs(key, AggregatedStoreElement(key, self._aggregates, base_timestamp, initial_data))
