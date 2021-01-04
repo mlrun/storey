@@ -281,7 +281,8 @@ class _FunctionWithStateFlow(Flow):
                 key_data = await self._state.get_or_load_key(event.key)
             else:
                 key_data = self._state[event.key]
-            res, self._state[event.key] = self._fn(element, key_data)
+            res, mapped_event = self._fn(element, key_data)
+            self._state.set_static_attrs(event.key, mapped_event)
         else:
             res, self._state = self._fn(element, self._state)
         if self._is_async:

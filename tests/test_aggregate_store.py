@@ -1,4 +1,4 @@
-from storey.aggregations import AggregationBuckets
+from storey.table import AggregationBuckets
 from storey.dtypes import SlidingWindows
 from datetime import datetime
 
