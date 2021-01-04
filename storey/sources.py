@@ -7,7 +7,7 @@ from typing import List, Optional, Union, Callable, Coroutine
 
 import pandas
 
-from .dtypes import _termination_obj, Event, FlowError
+from .dtypes import _termination_obj, Event
 from .flow import Flow
 from .utils import url_to_file_system
 
@@ -145,7 +145,9 @@ class Source(Flow):
 
     def _raise_on_error(self, ex):
         if ex:
-            raise FlowError('Flow execution terminated due to an error') from self._ex
+            if self.verbose:
+                raise type(self._ex)('Flow execution terminated') from self._ex
+            raise self._ex
 
     def _emit(self, event):
         if event is not _termination_obj:
@@ -284,7 +286,9 @@ class AsyncSource(Flow):
 
     def _raise_on_error(self):
         if self._ex:
-            raise FlowError('Flow execution terminated due to an error') from self._ex
+            if self.verbose:
+                raise type(self._ex)('Flow execution terminated') from self._ex
+            raise self._ex
 
     async def _emit(self, event):
         if event is not _termination_obj:
@@ -329,7 +333,9 @@ class _IterableSource(Flow):
 
     def _raise_on_error(self, ex):
         if ex:
-            raise FlowError('Flow execution terminated due to an error') from self._ex
+            if self.verbose:
+                raise type(self._ex)('Flow execution terminated') from self._ex
+            raise self._ex
 
     def run(self):
         self._closeables = super().run()
@@ -460,7 +466,8 @@ class ReadCSV(_IterableSource):
                         key = None
                         if header:
                             if len(parsed_line) != len(header):
-                                raise ValueError(f'CSV line with {len(parsed_line)} fields did not match header with {len(header)} fields')
+                                raise ValueError(
+                                    f'CSV line with {len(parsed_line)} fields did not match header with {len(header)} fields')
                             if self._build_dict:
                                 element = {}
                                 for i in range(len(parsed_line)):

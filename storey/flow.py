@@ -14,7 +14,8 @@ from .utils import _split_path
 
 
 class Flow:
-    def __init__(self, recovery_step=None, name=None, full_event=False, termination_result_fn=lambda x, y: x if x is not None else y,
+    def __init__(self, recovery_step=None, name=None, full_event=False,
+                 termination_result_fn=lambda x, y: x if x is not None else y,
                  context=None, **kwargs):
         self._outlets = []
         self._recovery_step = recovery_step
@@ -76,7 +77,8 @@ class Flow:
         if event is _termination_obj:
             termination_result = await self._outlets[0]._do(_termination_obj)
             for i in range(1, len(self._outlets)):
-                termination_result = self._termination_result_fn(termination_result, await self._outlets[i]._do(_termination_obj))
+                termination_result = self._termination_result_fn(termination_result,
+                                                                 await self._outlets[i]._do(_termination_obj))
             return termination_result
         # If there is more than one outlet, allow concurrent execution.
         tasks = []
@@ -844,7 +846,8 @@ class JoinWithTable(_ConcurrentJobExecution):
     :param context: Context object that holds global configurations and secrets.
     """
 
-    def __init__(self, table: Union[Table, str], key_extractor: Union[str, Callable[[Event], str]], attributes: Optional[List[str]] = None,
+    def __init__(self, table: Union[Table, str], key_extractor: Union[str, Callable[[Event], str]],
+                 attributes: Optional[List[str]] = None,
                  join_function: Optional[Callable[[Event, Dict[str, object]], Event]] = None, **kwargs):
         super().__init__(**kwargs)
 
@@ -925,7 +928,8 @@ class Context:
     :param initial_tables: Initial dict of tables.
     """
 
-    def __init__(self, initial_secrets: Optional[Dict[str, str]] = None, initial_parameters: Optional[Dict[str, object]] = None,
+    def __init__(self, initial_secrets: Optional[Dict[str, str]] = None,
+                 initial_parameters: Optional[Dict[str, object]] = None,
                  initial_tables: Optional[Dict[str, Table]] = None):
         self._secrets = initial_secrets or {}
         self._parameters = initial_parameters or {}
