@@ -25,19 +25,19 @@ class Table:
         self._partitioned_by_key = partitioned_by_key
         self._aggregates = None
         self._schema = None
-        self._read_only = False
+        self._aggregations_read_only = False
         self._use_windows_from_schema = False
 
-    def update_static_attrs(self, key, data):
-        attrs = self.get_static_attrs(key)
+    def _update_static_attrs(self, key, data):
+        attrs = self._get_static_attrs(key)
         if attrs:
             for name, value in data.items():
                 attrs[name] = value
         else:
-            self.set_static_attrs(key, data)
+            self._set_static_attrs(key, data)
 
-    async def lazy_load_key_with_aggregates(self, key, timestamp=None):
-        if self._read_only or not self.get_aggregations_attrs(key):
+    async def _lazy_load_key_with_aggregates(self, key, timestamp=None):
+        if self._aggregations_read_only or not self._get_aggregations_attrs(key):
             # Try load from the store, and create a new one only if the key really is new
             aggregate_initial_data, additional_data = await self._storage._load_aggregates_by_key(self._container, self._table_path, key)
 
@@ -46,25 +46,25 @@ class Table:
 
             if additional_data:
                 # Add additional data to simple cache
-                self.update_static_attrs(key, additional_data)
+                self._update_static_attrs(key, additional_data)
 
-    async def get_or_load_static_attributes_by_key(self, key, attributes='*'):
-        attrs = self.get_static_attrs(key)
+    async def _get_or_load_static_attributes_by_key(self, key, attributes='*'):
+        attrs = self._get_static_attrs(key)
         if not attrs:
             res = await self._storage._load_by_key(self._container, self._table_path, key, attributes)
             if res:
-                self.set_static_attrs(key, res)
+                self._set_static_attrs(key, res)
             else:
-                self.set_static_attrs(key, {})
-        return self.get_static_attrs(key)
+                self._set_static_attrs(key, {})
+        return self._get_static_attrs(key)
 
     def _set_aggregation_metadata(self, aggregates: List[FieldAggregator], use_windows_from_schema: bool = False):
         self._use_windows_from_schema = use_windows_from_schema
         self._aggregates = aggregates
 
-    async def persist_key(self, key, event_data_to_persist):
-        aggr_by_key = self.get_aggregations_attrs(key)
-        additional_data_persist = self.get_static_attrs(key)
+    async def _persist_key(self, key, event_data_to_persist):
+        aggr_by_key = self._get_aggregations_attrs(key)
+        additional_data_persist = self._get_static_attrs(key)
         if event_data_to_persist:
             if not additional_data_persist:
                 additional_data_persist = event_data_to_persist
@@ -76,32 +76,32 @@ class Table:
     async def close(self):
         await self._storage.close()
 
-    async def aggregate(self, key, data, timestamp):
+    async def _aggregate(self, key, data, timestamp):
         if not self._schema:
-            await self.get_or_save_schema()
+            await self._get_or_save_schema()
 
-        self.get_aggregations_attrs(key).aggregate(data, timestamp)
+        self._get_aggregations_attrs(key).aggregate(data, timestamp)
 
-    async def get_features(self, key, timestamp):
+    async def _get_features(self, key, timestamp):
         if not self._schema:
-            await self.get_or_save_schema()
+            await self._get_or_save_schema()
 
-        return self.get_aggregations_attrs(key).get_features(timestamp)
+        return self._get_aggregations_attrs(key).get_features(timestamp)
 
     async def _get_or_load_aggregations_by_key(self, key, timestamp=None):
-        if self._read_only or not self.get_aggregations_attrs(key):
+        if self._aggregations_read_only or not self._get_aggregations_attrs(key):
             # Try load from the store, and create a new one only if the key really is new
             initial_data = await self._storage._load_aggregates_by_key(self._container, self._table_path, key)
-            self.set_aggregations_attrs(key, AggregatedStoreElement(key, self._aggregates, timestamp, initial_data))
+            self._set_aggregations_attrs(key, AggregatedStoreElement(key, self._aggregates, timestamp, initial_data))
 
-        return self.get_aggregations_attrs(key)
+        return self._get_aggregations_attrs(key)
 
     async def add_aggregation_by_key(self, key, base_timestamp, initial_data):
         if not self._schema:
-            await self.get_or_save_schema()
-        self.set_aggregations_attrs(key, AggregatedStoreElement(key, self._aggregates, base_timestamp, initial_data))
+            await self._get_or_save_schema()
+        self._set_aggregations_attrs(key, AggregatedStoreElement(key, self._aggregates, base_timestamp, initial_data))
 
-    async def get_or_save_schema(self):
+    async def _get_or_save_schema(self):
         self._schema = await self._storage._load_schema(self._container, self._table_path)
 
         should_update = True
@@ -121,7 +121,7 @@ class Table:
                         raise TypeError(f'"{window_type}" unknown window type')
             should_update = self._validate_schema_fit_aggregations(self._schema)
 
-        if should_update and not self._read_only:
+        if should_update and not self._aggregations_read_only:
             self._schema = await self._save_schema()
 
     async def _save_schema(self):
@@ -148,7 +148,7 @@ class Table:
         should_update = False
         for aggr in self._aggregates:
             if aggr.name not in schema:
-                if self._read_only:
+                if self._aggregations_read_only:
                     raise ValueError(f'Requested aggregate {aggr.name}, does not exist in existing feature store at {self._table_path}')
                 else:
                     should_update = True
@@ -160,18 +160,18 @@ class Table:
             requested_raw_aggregates = aggr.get_all_raw_aggregates()
             existing_raw_aggregates = get_all_raw_aggregates(schema_aggr['aggregates'])
             # validate if current feature store contains all aggregates needed for the requested calculations
-            if self._read_only and not requested_raw_aggregates.issubset(existing_raw_aggregates):
+            if self._aggregations_read_only and not requested_raw_aggregates.issubset(existing_raw_aggregates):
                 raise ValueError(
                     f'Requested aggregates for feature {aggr.name} do not match with existing aggregates at {self._table_path}. '
                     f"Requested: {aggr.aggregations}, existing: {schema_aggr['aggregates']}")
             # Check if more raw aggregates are requested, in which case a schema update is required
-            if not self._read_only and requested_raw_aggregates != existing_raw_aggregates:
+            if not self._aggregations_read_only and requested_raw_aggregates != existing_raw_aggregates:
                 should_update = True
 
         return should_update
 
-    async def _save_key(self, key):
-        await self._storage._save_key(self._container, self._table_path, key, self.get_aggregations_attrs(key))
+    async def _save_aggregations_by_key(self, key):
+        await self._storage._save_key(self._container, self._table_path, key, self._get_aggregations_attrs(key))
 
     def _aggregates_to_schema(self):
         schema = {}
@@ -186,32 +186,38 @@ class Table:
 
         return schema
 
-    def get_aggregations_attrs(self, key):
+    def _get_aggregations_attrs(self, key):
         if key in self._attrs_cache:
             return self._attrs_cache[key].aggregations
         else:
             return None
 
-    def set_aggregations_attrs(self, key, element):
+    def _set_aggregations_attrs(self, key, element):
         if key in self._attrs_cache:
             self._attrs_cache[key].aggregations = element
         else:
             self._attrs_cache[key] = _CacheElement({}, element)
 
-    def get_static_attrs(self, key):
+    def _get_static_attrs(self, key):
         if key in self._attrs_cache:
             return self._attrs_cache[key].static_attrs
         else:
             return None
 
-    def set_static_attrs(self, key, value):
+    def _set_static_attrs(self, key, value):
         if key in self._attrs_cache:
             self._attrs_cache[key].static_attrs = value
         else:
             self._attrs_cache[key] = _CacheElement(value, None)
 
-    def get_keys(self):
+    def _get_keys(self):
         return self._attrs_cache.keys()
+
+    def __setitem__(self, key, value):
+        self._set_static_attrs(key, value)
+
+    def __getitem__(self, key):
+        return self._get_static_attrs(key)
 
 
 class _CacheElement:

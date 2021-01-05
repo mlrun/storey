@@ -278,11 +278,11 @@ class _FunctionWithStateFlow(Flow):
         element = self._get_event_or_body(event)
         if self._group_by_key:
             if isinstance(self._state, Table):
-                key_data = await self._state.get_or_load_static_attributes_by_key(event.key)
+                key_data = await self._state._get_or_load_static_attributes_by_key(event.key)
             else:
                 key_data = self._state[event.key]
-            res, mapped_event = self._fn(element, key_data)
-            self._state.set_static_attrs(event.key, mapped_event)
+            res, new_state = self._fn(element, key_data)
+            self._state._set_static_attrs(event.key, new_state)
         else:
             res, self._state = self._fn(element, self._state)
         if self._is_async:
@@ -874,7 +874,7 @@ class JoinWithTable(_ConcurrentJobExecution):
 
     async def _process_event(self, event):
         key = self._key_extractor(self._get_event_or_body(event))
-        return await self._table.get_or_load_static_attributes_by_key(key, self._attributes)
+        return await self._table._get_or_load_static_attributes_by_key(key, self._attributes)
 
     async def _handle_completed(self, event, response):
         joined = self._join_function(self._get_event_or_body(event), response)

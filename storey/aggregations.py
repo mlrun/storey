@@ -117,8 +117,8 @@ class AggregateByKey(Flow):
             if isinstance(event_timestamp, datetime):
                 event_timestamp = event_timestamp.timestamp() * 1000
 
-            await self._table.lazy_load_key_with_aggregates(key, event_timestamp)
-            await self._table.aggregate(key, element, event_timestamp)
+            await self._table._lazy_load_key_with_aggregates(key, event_timestamp)
+            await self._table._aggregate(key, element, event_timestamp)
 
             if isinstance(self._emit_policy, EmitEveryEvent):
                 await self._emit_event(key, event)
@@ -136,14 +136,14 @@ class AggregateByKey(Flow):
         if isinstance(event_timestamp, datetime):
             event_timestamp = event_timestamp.timestamp() * 1000
 
-        await self._table.lazy_load_key_with_aggregates(key, event_timestamp)
-        features = await self._table.get_features(key, event_timestamp)
+        await self._table._lazy_load_key_with_aggregates(key, event_timestamp)
+        features = await self._table._get_features(key, event_timestamp)
         features = self._augmentation_fn(event.body, features)
 
         for col in self._enrich_with:
             emitted_attr_name = self._aliases.get(col, None) or col
-            if col in self._table.get_static_attrs(key):
-                features[emitted_attr_name] = self._table.get_static_attrs(key)[col]
+            if col in self._table._get_static_attrs(key):
+                features[emitted_attr_name] = self._table._get_static_attrs(key)[col]
         new_event = copy.copy(event)
         new_event.key = key
         new_event.body = features
@@ -151,7 +151,7 @@ class AggregateByKey(Flow):
 
     # Emit multiple events for every key in the store with the current time
     async def _emit_all_events(self, timestamp):
-        for key in self._table.get_keys():
+        for key in self._table._get_keys():
             await self._emit_event(key, Event({'key': key, 'time': timestamp}, key, timestamp, None))
 
     async def _emit_worker(self):
@@ -207,7 +207,7 @@ class QueryByKey(AggregateByKey):
             feature, aggr = name.rsplit('_', 1)
             # setting as SlidingWindow temporarily until actual window type will be read from schema
             self._aggrs.append(FieldAggregator(name=feature, field=None, aggr=[aggr], windows=SlidingWindows(windows, '10m')))
-        table._read_only = True
+        table._aggregations_read_only = True
         AggregateByKey.__init__(self, self._aggrs, table, key, augmentation_fn=augmentation_fn,
                                 enrich_with=self._enrich_cols, aliases=aliases, use_windows_from_schema=True, **kwargs)
 
