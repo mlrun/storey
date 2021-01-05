@@ -269,7 +269,7 @@ def test_join_by_key_specific_attributes(setup_kv_teardown_test):
 def test_write_table_specific_columns(setup_teardown_test):
     table = Table(setup_teardown_test, V3ioDriver())
 
-    table._cache['tal'] = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': test_base_time, 'min': 1, 'Avg': 3}
+    table['tal'] = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': test_base_time, 'min': 1, 'Avg': 3}
 
     def enrich(event, state):
         if 'first_activity' not in state:
@@ -324,7 +324,7 @@ def test_write_table_specific_columns(setup_teardown_test):
 def test_write_table_metadata_columns(setup_teardown_test):
     table = Table(setup_teardown_test, V3ioDriver())
 
-    table._cache['tal'] = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': test_base_time}
+    table['tal'] = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': test_base_time}
 
     def enrich(event, state):
         if 'first_activity' not in state:

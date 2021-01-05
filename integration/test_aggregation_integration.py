@@ -407,7 +407,7 @@ def test_aggregate_by_key_two_underlying_windows(setup_teardown_test, partitione
 def test_aggregate_by_key_with_extra_aliases(setup_teardown_test):
     table = Table(setup_teardown_test, V3ioDriver())
 
-    table._cache['tal'] = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': test_base_time}
+    table['tal'] = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': test_base_time}
 
     def enrich(event, state):
         if 'first_activity' not in state:
@@ -487,7 +487,7 @@ def test_aggregate_by_key_with_extra_aliases(setup_teardown_test):
 def test_write_cache_with_aggregations(setup_teardown_test):
     table = Table(setup_teardown_test, V3ioDriver())
 
-    table._cache['tal'] = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': test_base_time}
+    table['tal'] =  {'color': 'blue', 'age': 41, 'iss': True, 'sometime': test_base_time}
 
     def enrich(event, state):
         if 'first_activity' not in state:
@@ -567,7 +567,7 @@ def test_write_cache_with_aggregations(setup_teardown_test):
 def test_write_cache(setup_teardown_test):
     table = Table(setup_teardown_test, V3ioDriver())
 
-    table._cache['tal'] = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': datetime.now()}
+    table['tal'] = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': datetime.now()}
 
     def enrich(event, state):
         if 'first_activity' not in state:

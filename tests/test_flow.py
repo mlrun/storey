@@ -463,8 +463,8 @@ def test_map_with_state_flow():
 
 def test_map_with_cache_state_flow():
     table_object = Table("table", NoopDriver())
-    table_object._cache['tal'] = {'color': 'blue'}
-    table_object._cache['dina'] = {'color': 'red'}
+    table_object['tal'] = {'color': 'blue'}
+    table_object['dina'] = {'color': 'red'}
 
     def enrich(event, state):
         event['color'] = state['color']
@@ -498,7 +498,9 @@ def test_map_with_cache_state_flow():
     expected_cache = {'tal': {'color': 'blue', 'counter': 6}, 'dina': {'color': 'red', 'counter': 4}}
 
     assert termination_result == expected
-    assert table_object._cache == expected_cache
+    assert len(table_object._attrs_cache) == len(expected_cache)
+    assert table_object['tal'] == expected_cache['tal']
+    assert table_object['dina'] == expected_cache['dina']
 
 
 def test_map_with_empty_cache_state_flow():
@@ -536,8 +538,9 @@ def test_map_with_empty_cache_state_flow():
                 {'col1': 8, 'diff_from_first': 7},
                 {'col1': 9, 'diff_from_first': 9}]
     expected_cache = {'dina': {'first_value': 0, 'counter': 4}, 'tal': {'first_value': 1, 'counter': 6}}
-    assert termination_result == expected
-    assert table_object._cache == expected_cache
+    assert len(table_object._attrs_cache) == len(expected_cache)
+    assert table_object['tal'] == expected_cache['tal']
+    assert table_object['dina'] == expected_cache['dina']
 
 
 def test_awaitable_result():
@@ -1532,8 +1535,8 @@ def test_write_to_parquet_with_inference(tmpdir):
 
 def test_join_by_key():
     table = Table('test', NoopDriver())
-    table.update_key(9, {'age': 1, 'color': 'blue9'})
-    table.update_key(7, {'age': 3, 'color': 'blue7'})
+    table._update_static_attrs(9, {'age': 1, 'color': 'blue9'})
+    table._update_static_attrs(7, {'age': 3, 'color': 'blue7'})
 
     controller = build_flow([
         Source(),
@@ -1552,8 +1555,8 @@ def test_join_by_key():
 
 def test_join_by_string_key():
     table = Table('test', NoopDriver())
-    table.update_key(9, {'age': 1, 'color': 'blue9'})
-    table.update_key(7, {'age': 3, 'color': 'blue7'})
+    table._update_static_attrs(9, {'age': 1, 'color': 'blue9'})
+    table._update_static_attrs(7, {'age': 3, 'color': 'blue7'})
 
     controller = build_flow([
         Source(),
