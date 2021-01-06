@@ -531,9 +531,9 @@ class _ConcurrentByKeyJobExecution(Flow):
         self._pending_by_key = {}
 
     async def _worker(self):
+        event = None
         try:
             job = await self._q.get()
-            event = None
             while True:
                 if job is _termination_obj:
                     for pending_event in self._pending_by_key.values():
@@ -541,11 +541,7 @@ class _ConcurrentByKeyJobExecution(Flow):
                             resp = await self._safe_process_events(pending_event.pending)
                             for event in pending_event.pending:
                                 await self._handle_completed(event, resp)
-                    if self._q.empty():
-                        break
-                    else:
-                        job = _termination_obj
-                        continue
+                    break
 
                 event = job[0]
                 completed = await job[1]
