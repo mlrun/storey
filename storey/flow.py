@@ -532,18 +532,19 @@ class _ConcurrentByKeyJobExecution(Flow):
 
     async def _worker(self):
         try:
+            job = await self._q.get()
+            event = None
             while True:
-                job = await self._q.get()
                 if job is _termination_obj:
                     for pending_event in self._pending_by_key.values():
                         if pending_event.pending and not pending_event.in_flight:
-                            resp = await self._process_event(pending_event.pending)
+                            resp = await self._safe_process_events(pending_event.pending)
                             for event in pending_event.pending:
                                 await self._handle_completed(event, resp)
                     if self._q.empty():
                         break
                     else:
-                        await self._q.put(_termination_obj)
+                        job = _termination_obj
                         continue
 
                 event = job[0]
@@ -559,11 +560,12 @@ class _ConcurrentByKeyJobExecution(Flow):
                     self._pending_by_key[event.key].pending = []
 
                     task = self._safe_process_events(self._pending_by_key[event.key].in_flight)
-                    await self._q.put((event, asyncio.get_running_loop().create_task(task)))
+                    job = (event, asyncio.get_running_loop().create_task(task))
                 else:
                     del self._pending_by_key[event.key]
+                    job = await self._q.get()
         except BaseException as ex:
-            if event is not _termination_obj and event._awaitable_result:
+            if event and event is not _termination_obj and event._awaitable_result:
                 event._awaitable_result._set_error(ex)
             if not self._q.empty():
                 await self._q.get()
