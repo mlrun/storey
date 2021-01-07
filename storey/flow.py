@@ -532,16 +532,28 @@ class _ConcurrentByKeyJobExecution(Flow):
 
     async def _worker(self):
         event = None
+        received_job_count = 0
+        self_sent_jobs = {}
         try:
-            job = await self._q.get()
             while True:
-                if job is _termination_obj:
-                    for pending_event in self._pending_by_key.values():
-                        if pending_event.pending and not pending_event.in_flight:
-                            resp = await self._safe_process_events(pending_event.pending)
-                            for event in pending_event.pending:
-                                await self._handle_completed(event, resp)
-                    break
+                jobs = self_sent_jobs.pop(received_job_count, None)
+                if jobs:
+                    job = jobs[0]
+                    if len(jobs) > 1:
+                        self_sent_jobs[received_job_count] = jobs[1:]
+                else:
+                    job = await self._q.get()
+                    received_job_count += 1
+                    if job is _termination_obj:
+                        if received_job_count in self_sent_jobs:
+                            await self._q.put(_termination_obj)
+                            continue
+                        for pending_event in self._pending_by_key.values():
+                            if pending_event.pending and not pending_event.in_flight:
+                                resp = await self._safe_process_events(pending_event.pending)
+                                for event in pending_event.pending:
+                                    await self._handle_completed(event, resp)
+                        break
 
                 event = job[0]
                 completed = await job[1]
@@ -556,10 +568,12 @@ class _ConcurrentByKeyJobExecution(Flow):
                     self._pending_by_key[event.key].pending = []
 
                     task = self._safe_process_events(self._pending_by_key[event.key].in_flight)
-                    job = (event, asyncio.get_running_loop().create_task(task))
+                    tail_position = received_job_count + self._q.qsize()
+                    jobs_at_tail = self_sent_jobs.get(tail_position, [])
+                    jobs_at_tail.append((event, asyncio.get_running_loop().create_task(task)))
+                    self_sent_jobs[tail_position] = jobs_at_tail
                 else:
                     del self._pending_by_key[event.key]
-                    job = await self._q.get()
         except BaseException as ex:
             if event and event is not _termination_obj and event._awaitable_result:
                 event._awaitable_result._set_error(ex)
