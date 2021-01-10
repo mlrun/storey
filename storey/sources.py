@@ -2,6 +2,7 @@ import asyncio
 import csv
 import queue
 import threading
+import uuid
 from datetime import datetime, timezone
 from typing import List, Optional, Union, Callable, Coroutine
 
@@ -67,7 +68,7 @@ class FlowController:
             if event_time:
                 event.time = event_time
         else:
-            event = Event(element, key=key, time=event_time)
+            event = Event(element, id=uuid.uuid4().hex, key=key, time=event_time)
         awaitable_result = None
         if return_awaitable_result:
             awaitable_result = AwaitableResult(self.terminate)
@@ -224,7 +225,7 @@ class AsyncFlowController:
             if event_time:
                 event = event_time
         else:
-            event = Event(element, key=key, time=event_time)
+            event = Event(element, id=uuid.uuid4().hex, key=key, time=event_time)
         awaitable = None
         if await_result:
             awaitable = AsyncAwaitableResult(self.terminate)
