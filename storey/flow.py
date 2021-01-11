@@ -1,9 +1,10 @@
 import asyncio
 import copy
+import datetime
+import time
 import traceback
 from asyncio import Task
 from collections import defaultdict
-from datetime import datetime, timezone
 from typing import Optional, Union, Callable, List, Dict, Any
 
 import aiohttp
@@ -695,9 +696,9 @@ class _Batching(Flow):
 
         self._extract_key: Optional[Callable[[Event], str]] = self._create_key_extractor(key)
 
-        self._event_count: Dict[Optional[str], int] = defaultdict(int)
         self._batch: Dict[Optional[str], List[Any]] = defaultdict(list)
-        self._batch_time: Dict[Optional[str], datetime] = {}
+        self._batch_first_event_time: Dict[Optional[str], datetime.datetime] = {}
+        self._batch_start_time: Dict[Optional[str], float] = {}
         self._timeout_task: Optional[Task] = None
         self._timeout_task_key: Optional[str] = None
 
@@ -732,15 +733,15 @@ class _Batching(Flow):
         key = self._extract_key(event)
 
         if len(self._batch[key]) == 0:
-            self._batch_time[key] = event.time
+            self._batch_first_event_time[key] = event.time
+            self._batch_start_time[key] = time.monotonic()
 
         if self._timeout_secs and self._timeout_task is None:
             self._timeout_task = asyncio.get_running_loop().create_task(self._sleep_and_emit())
 
-        self._event_count[key] = self._event_count[key] + 1
         self._batch[key].append(self._event_to_batch_entry(event))
 
-        if self._event_count[key] == self._max_events:
+        if len(self._batch[key]) == self._max_events:
             if key == self._timeout_task_key and self._timeout_task and not self._timeout_task.cancelled():
                 self._timeout_task.cancel()
                 self._timeout_task = None
@@ -750,8 +751,7 @@ class _Batching(Flow):
     async def _sleep_and_emit(self):
         while self._batch:
             key = next(iter(self._batch.keys()))
-            time_delta = datetime.now(timezone.utc) - self._batch_time[key]
-            delta_seconds = time_delta.total_seconds()
+            delta_seconds = time.monotonic() - self._batch_start_time[key]
             if delta_seconds < self._timeout_secs:
                 self._timeout_task_key = key
                 await asyncio.sleep(self._timeout_secs - delta_seconds)
@@ -765,8 +765,8 @@ class _Batching(Flow):
 
     async def _emit_batch(self, batch_key: Optional[str] = None):
         batch_to_emit = self._batch.pop(batch_key)
-        batch_time = self._batch_time.pop(batch_key)
-        del self._event_count[batch_key]
+        batch_time = self._batch_first_event_time.pop(batch_key)
+        del self._batch_start_time[batch_key]
         await self._emit(batch_to_emit, batch_time)
 
     async def _emit_all(self):

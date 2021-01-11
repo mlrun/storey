@@ -1034,7 +1034,7 @@ def test_batch_with_timeout():
     for i in range(10):
         if i == 3:
             q.get()
-        controller.emit(i)
+        controller.emit(i, event_time=datetime(2020, 2, 15, 2, 0))
     controller.terminate()
     termination_result = controller.await_termination()
     assert termination_result == [[0, 1, 2], [3, 4, 5, 6], [7, 8, 9]]
