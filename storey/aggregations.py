@@ -149,8 +149,6 @@ class AggregateByKey(Flow):
     async def _sleep_and_emit(self):
         while self._events_in_batch:
             key = next(iter(self._events_in_batch.keys()))
-            if self._events_in_batch[key]['event'] is None:
-                continue
             delta_seconds = time.monotonic() - self._events_in_batch[key]['time']
             if delta_seconds < self._emit_policy.timeout_secs:
                 await asyncio.sleep(self._emit_policy.timeout_secs - delta_seconds)
