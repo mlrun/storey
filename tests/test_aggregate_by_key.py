@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from storey import build_flow, Source, Reduce, Table, AggregateByKey, FieldAggregator, NoopDriver
-from storey.dtypes import SlidingWindows, FixedWindows, EmitAfterMaxEvent, EmitAfterDelay
+from storey.dtypes import SlidingWindows, FixedWindows, EmitAfterMaxEvent
 import queue
 
 test_base_time = datetime.fromisoformat("2020-07-21T21:40:00+00:00")
@@ -312,7 +312,6 @@ def test_emit_max_event_sliding_window_multiple_keys_aggregation_flow():
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
 def test_emit_delay_aggregation_flow():
-    current_time = datetime.now()
     q = queue.Queue(1)
 
     def reduce_fn(acc, x):
@@ -333,7 +332,7 @@ def test_emit_delay_aggregation_flow():
         if i == 3:
             q.get()
         data = {'col1': i}
-        controller.emit(data, 'katya', current_time + timedelta(seconds=i))
+        controller.emit(data, 'katya', test_base_time + timedelta(seconds=i))
 
     controller.terminate()
     actual = controller.await_termination()

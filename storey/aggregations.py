@@ -1,6 +1,7 @@
 import asyncio
 import copy
 from datetime import datetime
+import time
 import re
 from typing import Optional, Union, Callable, List, Dict
 
@@ -130,7 +131,7 @@ class AggregateByKey(Flow):
                 else:
                     self._events_in_batch[key] = {}
                     self._events_in_batch[key]['counter'] = 1
-                    self._events_in_batch[key]['time'] = event.time
+                    self._events_in_batch[key]['time'] = time.monotonic()
                 self._events_in_batch[key]['event'] = event
                 if self._emit_policy.timeout_secs and self._timeout_task is None:
                     self._timeout_task = asyncio.get_running_loop().create_task(self._sleep_and_emit())
@@ -150,8 +151,7 @@ class AggregateByKey(Flow):
             key = next(iter(self._events_in_batch.keys()))
             if self._events_in_batch[key]['event'] is None:
                 continue
-            time_delta = datetime.now() - self._events_in_batch[key]['time']
-            delta_seconds = time_delta.total_seconds()
+            delta_seconds = time.monotonic() - self._events_in_batch[key]['time']
             if delta_seconds < self._emit_policy.timeout_secs:
                 await asyncio.sleep(self._emit_policy.timeout_secs - delta_seconds)
                 self._timeout_task_key = key
