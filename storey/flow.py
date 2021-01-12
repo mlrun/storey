@@ -72,6 +72,20 @@ class Flow:
             event.error = ex
             return await recovery_step._do(event)
 
+    @staticmethod
+    def _event_string(event):
+        result = 'Event('
+        if event.id:
+            result += f'id={event.id}, '
+        if getattr(event, 'key', None):
+            result += f'key={event.key}, '
+        if getattr(event, 'time', None):
+            result += f'time={event.time}, '
+        if getattr(event, 'path', None):
+            result += f'path={event.path}, '
+        result += f'body={event.body})'
+        return result
+
     async def _do_downstream(self, event):
         if not self._outlets:
             return
@@ -93,8 +107,7 @@ class Flow:
             event._awaitable_result = awaitable_result
         if self.verbose:
             step_name = type(self).__name__
-            event_string = str(event)
-
+            event_string = self._event_string(event)
             print(f'{step_name} -> {type(self._outlets[0]).__name__} | {event_string}')
         await self._outlets[0]._do_and_recover(event)  # Optimization - avoids creating a task for the first outlet.
         for i, task in enumerate(tasks, start=1):
