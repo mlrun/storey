@@ -74,7 +74,7 @@ class Flow:
     @staticmethod
     def _event_string(event):
         result = 'Event('
-        if event.id:  # `Controller.emit` ensures that id exists
+        if event.id:
             result += f'id={event.id}, '
         if getattr(event, 'key', None):
             result += f'key={event.key}, '
