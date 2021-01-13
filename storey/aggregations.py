@@ -152,7 +152,7 @@ class AggregateByKey(Flow):
                 await asyncio.sleep(self._emit_policy.timeout_secs - delta_seconds)
             e = self._events_in_batch.pop(key, None)
             if e is not None:
-                await self._emit_event(key, e)
+                await self._emit_event(key, e['event'])
 
         self._timeout_task = None
 
