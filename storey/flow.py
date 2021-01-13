@@ -713,7 +713,6 @@ class _Batching(Flow):
         self._batch_first_event_time: Dict[Optional[str], datetime.datetime] = {}
         self._batch_start_time: Dict[Optional[str], float] = {}
         self._timeout_task: Optional[Task] = None
-        self._timeout_task_key: Optional[str] = None
 
     @staticmethod
     def _create_key_extractor(key) -> Callable:
@@ -760,12 +759,10 @@ class _Batching(Flow):
             key = next(iter(self._batch.keys()))
             delta_seconds = time.monotonic() - self._batch_start_time[key]
             if delta_seconds < self._timeout_secs:
-                self._timeout_task_key = key
                 await asyncio.sleep(self._timeout_secs - delta_seconds)
             await self._emit_batch(key)
 
         self._timeout_task = None
-        self._timeout_task_key = None
 
     def _event_to_batch_entry(self, event):
         return self._get_event_or_body(event)
