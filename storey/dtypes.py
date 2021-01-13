@@ -1,4 +1,3 @@
-import uuid
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Union, Optional, Callable, List
@@ -19,7 +18,7 @@ class Event:
     :type key: string
     :param time: Event time. Defaults to the time the event was created, UTC.
     :type time: datetime
-    :param id: Event identifier. Usually a unique identifier. Defaults to random (version 4) UUID.
+    :param id: Event identifier. Usually a unique identifier.
     :type id: string
     :param headers: Request headers (HTTP only)
     :type headers: dict
@@ -32,11 +31,12 @@ class Event:
     :type awaitable_result: AwaitableResult
     """
 
-    def __init__(self, body, key=None, time=None, id=None, headers=None, method=None, path='/', content_type=None, awaitable_result=None):
+    def __init__(self, body, key=None, time=None, id=None, headers=None, method=None, path='/', content_type=None,
+                 awaitable_result=None):
         self.body = body
         self.key = key
         self.time = time or datetime.now(timezone.utc)
-        self.id = id or uuid.uuid4().hex
+        self.id = id
         self.headers = headers
         self.method = method
         self.path = path
@@ -54,7 +54,8 @@ class Event:
     def __str__(self):
         return f'Event(id={self.id}, key={self.key}, time={self.time}, body={self.body})'
 
-    def copy(self, body=None, key=None, time=None, id=None, headers=None, method=None, path=None, content_type=None, awaitable_result=None,
+    def copy(self, body=None, key=None, time=None, id=None, headers=None, method=None, path=None, content_type=None,
+             awaitable_result=None,
              deep_copy=False) -> 'Event':
         if deep_copy and body is None and self.body is not None:
             body = deepcopy(self.body)
@@ -176,7 +177,8 @@ class FixedWindows(WindowsBase):
         WindowsBase.__init__(self, self.smallest_window_unit_millis / bucketPerWindow, windows_tuples)
 
     def round_up_time_to_window(self, timestamp):
-        return int(timestamp / self.smallest_window_unit_millis) * self.smallest_window_unit_millis + self.smallest_window_unit_millis
+        return int(
+            timestamp / self.smallest_window_unit_millis) * self.smallest_window_unit_millis + self.smallest_window_unit_millis
 
     def get_period_by_time(self, timestamp):
         return int(timestamp / self.period_millis) * self.period_millis
