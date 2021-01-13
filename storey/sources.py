@@ -43,9 +43,12 @@ class FlowController:
     To be used from a synchronous context.
     """
 
-    def __init__(self, emit_fn, await_termination_fn):
+    def __init__(self, emit_fn, await_termination_fn, key_field: Optional[str] = None,
+                 time_field: Optional[str] = None):
         self._emit_fn = emit_fn
         self._await_termination_fn = await_termination_fn
+        self._key_field = key_field
+        self._time_field = time_field
 
     def emit(self, element: object, key: Optional[str] = None, event_time: Optional[datetime] = None,
              return_awaitable_result: bool = False):
@@ -59,15 +62,23 @@ class FlowController:
 
         :returns: AsyncAwaitableResult if return_awaitable_result is True. None otherwise.
         """
-        if event_time is None:
+        if event_time is None and self._time_field is None:
             event_time = datetime.now(timezone.utc)
         if hasattr(element, 'id'):
             event = element
             if key:
                 event.key = key
+            elif self._key_field:
+                event.key = event[self._key_field]
             if event_time:
                 event.time = event_time
+            elif self._time_field:
+                event.time = event[self._time_field]
         else:
+            if not key and self._key_field:
+                key = element[self._key_field]
+            if not event_time and self._time_field:
+                event_time = element[self._time_field]
             event = Event(element, id=uuid.uuid4().hex, key=key, time=event_time)
         awaitable_result = None
         if return_awaitable_result:
@@ -101,15 +112,20 @@ class Source(Flow):
     for use from inside an async context.
 
     :param buffer_size: size of the incoming event buffer. Defaults to 1024.
+    :param key_field: Field to extract and use as the key. Optional.
+    :param time_field: Field to extract and use as the time. Optional.
     :param name: Name of this step, as it should appear in logs. Defaults to class name (Source).
     :type name: string
     """
 
-    def __init__(self, buffer_size: int = 1024, **kwargs):
+    def __init__(self, buffer_size: int = 1024, key_field: Optional[str] = None, time_field: Optional[str] = None,
+                 **kwargs):
         super().__init__(**kwargs)
         if buffer_size <= 0:
             raise ValueError('Buffer size must be positive')
         self._q = queue.Queue(buffer_size)
+        self._key_field = key_field
+        self._time_field = time_field
         self._termination_q = queue.Queue(1)
         self._ex = None
         self._closeables = []
@@ -167,7 +183,7 @@ class Source(Flow):
             self._raise_on_error(self._termination_q.get())
             return self._termination_future.result()
 
-        return FlowController(self._emit, raise_error_or_return_termination_result)
+        return FlowController(self._emit, raise_error_or_return_termination_result, self._key_field, self._time_field)
 
 
 class AsyncAwaitableResult:
@@ -201,9 +217,11 @@ class AsyncFlowController:
     Used to emit events into the associated flow, terminate the flow, and await the flow's termination. To be used from inside an async def.
     """
 
-    def __init__(self, emit_fn, loop_task):
+    def __init__(self, emit_fn, loop_task, key_field: Optional[str] = None, time_field: Optional[str] = None, ):
         self._emit_fn = emit_fn
         self._loop_task = loop_task
+        self._key_field = key_field
+        self._time_field = time_field
 
     async def emit(self, element: object, key: Optional[str] = None, event_time: Optional[datetime] = None,
                    await_result: bool = False) -> object:
@@ -216,15 +234,23 @@ class AsyncFlowController:
 
         :returns: The result received from the flow if await_result is True. None otherwise.
         """
-        if event_time is None:
+        if event_time is None and self._time_field is None:
             event_time = datetime.now(timezone.utc)
         if hasattr(element, 'id'):
             event = element
             if key:
                 event.key = key
+            elif self._key_field:
+                event.key = event[self._key_field]
             if event_time:
-                event = event_time
+                event.time = event_time
+            elif self._time_field:
+                event.time = event[self._time_field]
         else:
+            if not key and self._key_field:
+                key = element[self._key_field]
+            if not event_time and self._time_field:
+                event_time = element[self._time_field]
             event = Event(element, id=uuid.uuid4().hex, key=key, time=event_time)
         awaitable = None
         if await_result:
@@ -256,11 +282,14 @@ class AsyncSource(Flow):
     :type name: string
     """
 
-    def __init__(self, buffer_size: int = 1024, **kwargs):
+    def __init__(self, buffer_size: int = 1024, key_field: Optional[str] = None, time_field: Optional[str] = None,
+                 **kwargs):
         super().__init__(**kwargs)
         if buffer_size <= 0:
             raise ValueError('Buffer size must be positive')
         self._q = asyncio.Queue(buffer_size)
+        self._key_field = key_field
+        self._time_field = time_field
         self._ex = None
         self._closeables = []
 
@@ -301,7 +330,7 @@ class AsyncSource(Flow):
     async def run(self):
         self._closeables = super().run()
         loop_task = asyncio.get_running_loop().create_task(self._run_loop())
-        return AsyncFlowController(self._emit, loop_task)
+        return AsyncFlowController(self._emit, loop_task, self._key_field, self._time_field)
 
 
 class _IterableSource(Flow):
