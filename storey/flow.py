@@ -713,7 +713,6 @@ class _Batching(Flow):
         self._batch_first_event_time: Dict[Optional[str], datetime.datetime] = {}
         self._batch_start_time: Dict[Optional[str], float] = {}
         self._timeout_task: Optional[Task] = None
-        self._timeout_task_key: Optional[str] = None
 
     @staticmethod
     def _create_key_extractor(key) -> Callable:
@@ -737,8 +736,6 @@ class _Batching(Flow):
 
     async def _do(self, event):
         if event is _termination_obj:
-            if self._timeout_task is not None and not self._timeout_task.cancelled():
-                self._timeout_task.cancel()
             await self._emit_all()
             await self._terminate()
             return await self._do_downstream(_termination_obj)
@@ -755,10 +752,6 @@ class _Batching(Flow):
         self._batch[key].append(self._event_to_batch_entry(event))
 
         if len(self._batch[key]) == self._max_events:
-            if key == self._timeout_task_key and self._timeout_task and not self._timeout_task.cancelled():
-                self._timeout_task.cancel()
-                self._timeout_task = None
-                self._timeout_task_key = None
             await self._emit_batch(key)
 
     async def _sleep_and_emit(self):
@@ -766,18 +759,18 @@ class _Batching(Flow):
             key = next(iter(self._batch.keys()))
             delta_seconds = time.monotonic() - self._batch_start_time[key]
             if delta_seconds < self._timeout_secs:
-                self._timeout_task_key = key
                 await asyncio.sleep(self._timeout_secs - delta_seconds)
             await self._emit_batch(key)
 
         self._timeout_task = None
-        self._timeout_task_key = None
 
     def _event_to_batch_entry(self, event):
         return self._get_event_or_body(event)
 
     async def _emit_batch(self, batch_key: Optional[str] = None):
-        batch_to_emit = self._batch.pop(batch_key)
+        batch_to_emit = self._batch.pop(batch_key, None)
+        if batch_to_emit is None:
+            return
         batch_time = self._batch_first_event_time.pop(batch_key)
         del self._batch_start_time[batch_key]
         await self._emit(batch_to_emit, batch_time)
