@@ -50,6 +50,28 @@ class FlowController:
         self._key_field = key_field
         self._time_field = time_field
 
+    @staticmethod
+    def build_event(element, key, key_field, event_time, time_field):
+        if event_time is None and time_field is None:
+            event_time = datetime.now(timezone.utc)
+        if hasattr(element, 'id'):
+            event = element
+            if key:
+                event.key = key
+            elif key_field:
+                event.key = event[key_field]
+            if event_time:
+                event.time = event_time
+            elif time_field:
+                event.time = event[time_field]
+        else:
+            if not key and key_field:
+                key = element[key_field]
+            if not event_time and time_field:
+                event_time = element[time_field]
+            event = Event(element, id=uuid.uuid4().hex, key=key, time=event_time)
+        return event
+
     def emit(self, element: object, key: Optional[str] = None, event_time: Optional[datetime] = None,
              return_awaitable_result: bool = False):
         """Emits an event into the associated flow.
@@ -62,24 +84,7 @@ class FlowController:
 
         :returns: AsyncAwaitableResult if return_awaitable_result is True. None otherwise.
         """
-        if event_time is None and self._time_field is None:
-            event_time = datetime.now(timezone.utc)
-        if hasattr(element, 'id'):
-            event = element
-            if key:
-                event.key = key
-            elif self._key_field:
-                event.key = event[self._key_field]
-            if event_time:
-                event.time = event_time
-            elif self._time_field:
-                event.time = event[self._time_field]
-        else:
-            if not key and self._key_field:
-                key = element[self._key_field]
-            if not event_time and self._time_field:
-                event_time = element[self._time_field]
-            event = Event(element, id=uuid.uuid4().hex, key=key, time=event_time)
+        event = FlowController.build_event(element, key, self._key_field, event_time, self._time_field)
         awaitable_result = None
         if return_awaitable_result:
             awaitable_result = AwaitableResult(self.terminate)
@@ -234,24 +239,7 @@ class AsyncFlowController:
 
         :returns: The result received from the flow if await_result is True. None otherwise.
         """
-        if event_time is None and self._time_field is None:
-            event_time = datetime.now(timezone.utc)
-        if hasattr(element, 'id'):
-            event = element
-            if key:
-                event.key = key
-            elif self._key_field:
-                event.key = event[self._key_field]
-            if event_time:
-                event.time = event_time
-            elif self._time_field:
-                event.time = event[self._time_field]
-        else:
-            if not key and self._key_field:
-                key = element[self._key_field]
-            if not event_time and self._time_field:
-                event_time = element[self._time_field]
-            event = Event(element, id=uuid.uuid4().hex, key=key, time=event_time)
+        event = FlowController.build_event(element, key, self._key_field, event_time, self._time_field)
         awaitable = None
         if await_result:
             awaitable = AsyncAwaitableResult(self.terminate)
