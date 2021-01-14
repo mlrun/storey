@@ -125,3 +125,27 @@ def test_aggregate_df_86420_events(benchmark):
         controller.await_termination()
 
     benchmark(inner)
+
+
+def test_aggregate_df_86420_events_basic(benchmark):
+    df = pd.read_csv('bench/early_sense.csv')
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+
+    def inner():
+        driver = Driver()
+        table = Table(f'test', driver)
+
+        controller = build_flow([
+            DataframeSource(df, key_column='patient_id', time_column='timestamp'),
+            AggregateByKey([FieldAggregator("hr", "hr", ["sum", "count"],
+                                            SlidingWindows(['1h', '2h'], '10m')),
+                            FieldAggregator("rr", "rr", ["sum", "count"],
+                                            SlidingWindows(['1h', '2h'], '10m')),
+                            FieldAggregator("spo2", "spo2", ["sum", "count"],
+                                            SlidingWindows(['1h', '2h'], '10m'))],
+                           table),
+        ]).run()
+
+        controller.await_termination()
+
+    benchmark(inner)
