@@ -38,12 +38,7 @@ class AggregateByKey(Flow):
                  aliases: Optional[Dict[str, str]] = None, use_windows_from_schema: bool = False, **kwargs):
         Flow.__init__(self, **kwargs)
         aggregates = self._parse_aggregates(aggregates)
-        if type(self) is AggregateByKey:
-            unique_aggr_names = set()
-            for aggr in aggregates:
-                if aggr.name in unique_aggr_names:
-                    raise TypeError('aggregates should have unique names. ' + aggr.name + ' already exists')
-                unique_aggr_names.add(aggr.name)
+        self._check_unique_names(aggregates)
 
         self._table = table
         if isinstance(table, str):
@@ -81,6 +76,13 @@ class AggregateByKey(Flow):
                 self.key_extractor = lambda element: element[key]
             else:
                 raise TypeError(f'key is expected to be either a callable or string but got {type(key)}')
+
+    def _check_unique_names(self, aggregates):
+        unique_aggr_names = set()
+        for aggr in aggregates:
+            if aggr.name in unique_aggr_names:
+                raise TypeError(f'Aggregates should have unique names. {aggr.name} already exists')
+            unique_aggr_names.add(aggr.name)
 
     @staticmethod
     def _parse_aggregates(aggregates):
@@ -253,3 +255,6 @@ class QueryByKey(AggregateByKey):
 
         except Exception as ex:
             raise ex
+
+    def _check_unique_names(self, aggregates):
+        pass

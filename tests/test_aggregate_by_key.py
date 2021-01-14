@@ -609,13 +609,14 @@ def test_sliding_window_roll_cached_buckets():
 
 def test_aggregation_unique_fields():
     try:
-        build_flow([Source(),
-                    AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg"],
-                                                    SlidingWindows(['1h', '2h', '24h'], '10m')),
-                                    FieldAggregator("number_of_stuff", "col1", ["count"],
-                                                    SlidingWindows(['1h', '2h'], '15m'))],
-                                   Table("test", NoopDriver())),
-                    Reduce([], lambda acc, x: append_return(acc, x)), ]).run()
+        build_flow([
+            Source(),
+            AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg"],
+                                            SlidingWindows(['1h', '2h', '24h'], '10m')),
+                            FieldAggregator("number_of_stuff", "col1", ["count"],
+                                            SlidingWindows(['1h', '2h'], '15m'))],
+                           Table("test", NoopDriver())),
+            Reduce([], lambda acc, x: append_return(acc, x)), ]).run()
         assert False
     except TypeError:
         pass
