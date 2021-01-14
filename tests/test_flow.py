@@ -1901,13 +1901,15 @@ def test_uuid():
         Reduce([], append_and_return)
     ]).run()
 
-    for _ in range(10):
+    for _ in range(1025):
         controller.emit(0)
 
     controller.terminate()
     result = controller.await_termination()
 
-    assert len(result) == 10
+    assert len(result) == 1025
     base_id = result[0][:32]
-    for i, cur_id in enumerate(result):
+    for i, cur_id in enumerate(result[:1024]):
         assert cur_id == f'{base_id}-{i:04}'
+    assert result[1024][:32] != base_id
+    assert result[1024][32:] == '-0000'
