@@ -130,17 +130,15 @@ class AggregateByKey(Flow):
                 if key in self._events_in_batch:
                     self._events_in_batch[key]['counter'] += 1
                 else:
-                    self._events_in_batch[key] = {}
-                    self._events_in_batch[key]['counter'] = 1
-                    self._events_in_batch[key]['time'] = time.monotonic()
+                    event_dict = {'counter': 1, 'time': time.monotonic()}
+                    self._events_in_batch[key] = event_dict
                 self._events_in_batch[key]['event'] = event
                 if self._emit_policy.timeout_secs and self._timeout_task is None:
                     self._timeout_task = asyncio.get_running_loop().create_task(self._sleep_and_emit())
                 if self._events_in_batch[key]['counter'] == self._emit_policy.max_events:
-                    e = self._events_in_batch.pop(key, None)
-                    if e is not None:
-                        await self._emit_event(key, event)
-
+                    event_from_batch = self._events_in_batch.pop(key, None)
+                    if event_from_batch is not None:
+                        await self._emit_event(key, event_from_batch['event'])
         except Exception as ex:
             raise ex
 
@@ -150,9 +148,9 @@ class AggregateByKey(Flow):
             delta_seconds = time.monotonic() - self._events_in_batch[key]['time']
             if delta_seconds < self._emit_policy.timeout_secs:
                 await asyncio.sleep(self._emit_policy.timeout_secs - delta_seconds)
-            e = self._events_in_batch.pop(key, None)
-            if e is not None:
-                await self._emit_event(key, e['event'])
+            event = self._events_in_batch.pop(key, None)
+            if event is not None:
+                await self._emit_event(key, event['event'])
 
         self._timeout_task = None
 
