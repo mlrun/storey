@@ -76,7 +76,7 @@ class AggregateByKey(Flow):
 
     @staticmethod
     def _parse_aggregates(aggregates):
-        unique_aggr_names = {}
+        unique_aggr_names = set()
         if not isinstance(aggregates, list):
             raise TypeError('aggregates should be a list of FieldAggregator/dictionaries')
 
@@ -84,10 +84,10 @@ class AggregateByKey(Flow):
             return aggregates
 
         if isinstance(aggregates[0], FieldAggregator):
-            for a in aggregates:
-                if a.name in unique_aggr_names.keys() and a.aggregations == unique_aggr_names[a.name]:
-                    raise TypeError('aggregates should have unique names. ' + a.name + ' already exists')
-                unique_aggr_names[a.name] = a.aggregations
+            for aggr in aggregates:
+                if aggr.name in unique_aggr_names:
+                    raise TypeError('aggregates should have unique names. ' + aggr.name + ' already exists')
+                unique_aggr_names.add(aggr.name)
             return aggregates
 
         if isinstance(aggregates[0], dict):
@@ -97,9 +97,10 @@ class AggregateByKey(Flow):
                     window = SlidingWindows(aggregate_dict['windows'], aggregate_dict['period'])
                 else:
                     window = FixedWindows(aggregate_dict['windows'])
-                if aggregate_dict['name'] in unique_aggr_names:
-                    raise TypeError('aggregates should have unique names. ' + aggregate_dict['name'] + ' already exists')
-                unique_aggr_names[aggregate_dict['name']] = aggregate_dict['operations']
+                name = aggregate_dict['name']
+                if name in unique_aggr_names:
+                    raise TypeError('aggregates should have unique names. ' + name + ' already exists')
+                unique_aggr_names.add(name)
                 new_aggregates.append(FieldAggregator(aggregate_dict['name'], aggregate_dict['column'], aggregate_dict['operations'],
                                                       window, aggregate_dict.get('aggregation_filter', None),
                                                       aggregate_dict.get('max_value', None)))

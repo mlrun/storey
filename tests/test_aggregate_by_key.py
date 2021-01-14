@@ -570,3 +570,17 @@ def test_sliding_window_roll_cached_buckets():
 
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
+
+
+def test_aggregation_unique_fields():
+    try:
+        build_flow([Source(),
+                    AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg"],
+                                                    SlidingWindows(['1h', '2h', '24h'], '10m')),
+                                    FieldAggregator("number_of_stuff", "col1", ["count"],
+                                                    SlidingWindows(['1h', '2h'], '15m'))],
+                                   Table("test", NoopDriver())),
+                    Reduce([], lambda acc, x: append_return(acc, x)), ]).run()
+        assert False
+    except TypeError:
+        pass
