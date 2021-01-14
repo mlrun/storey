@@ -1034,7 +1034,7 @@ def test_batch_with_timeout():
     for i in range(10):
         if i == 3:
             q.get()
-        controller.emit(i)
+        controller.emit(i, event_time=datetime(2020, 2, 15, 2, 0))
     controller.terminate()
     termination_result = controller.await_termination()
     assert termination_result == [[0, 1, 2], [3, 4, 5, 6], [7, 8, 9]]
@@ -1829,3 +1829,41 @@ def test_push_error():
         assert context.event.body == 0
         assert 'raise ATestException' in context.message
         assert context.source == 'Map'
+
+
+def test_metadata_fields():
+    controller = build_flow([
+        Source(key_field='mykey', time_field='mytime'),
+        Reduce([], append_and_return, full_event=True)
+    ]).run()
+
+    body = {'mykey': 'k1', 'mytime': datetime(2020, 2, 15, 2, 0), 'otherfield': 'x'}
+    controller.emit(body)
+    controller.terminate()
+    result = controller.await_termination()
+    assert len(result) == 1
+    result = result[0]
+    assert result.key == 'k1'
+    assert result.time == datetime(2020, 2, 15, 2, 0)
+    assert result.body == body
+
+
+async def async_test_async_metadata_fields():
+    controller = await build_flow([
+        AsyncSource(key_field='mykey', time_field='mytime'),
+        Reduce([], append_and_return, full_event=True)
+    ]).run()
+
+    body = {'mykey': 'k1', 'mytime': datetime(2020, 2, 15, 2, 0), 'otherfield': 'x'}
+    await controller.emit(body)
+    await controller.terminate()
+    result = await controller.await_termination()
+    assert len(result) == 1
+    result = result[0]
+    assert result.key == 'k1'
+    assert result.time == datetime(2020, 2, 15, 2, 0)
+    assert result.body == body
+
+
+def test_async_metadata_fields():
+    asyncio.run(async_test_async_metadata_fields())
