@@ -1,6 +1,7 @@
 import asyncio
 import copy
 from datetime import datetime
+import time
 import re
 from typing import Optional, Union, Callable, List, Dict
 
@@ -56,6 +57,7 @@ class AggregateByKey(Flow):
         self._events_in_batch = {}
         self._emit_worker_running = False
         self._terminate_worker = False
+        self._timeout_task: Optional[asyncio.Task] = None
 
         self._augmentation_fn = augmentation_fn
         if not augmentation_fn:
@@ -123,12 +125,32 @@ class AggregateByKey(Flow):
             if isinstance(self._emit_policy, EmitEveryEvent):
                 await self._emit_event(key, event)
             elif isinstance(self._emit_policy, EmitAfterMaxEvent):
-                self._events_in_batch[key] = self._events_in_batch.get(key, 0) + 1
-                if self._events_in_batch[key] == self._emit_policy.max_events:
-                    await self._emit_event(key, event)
-                    self._events_in_batch[key] = 0
+                if key in self._events_in_batch:
+                    self._events_in_batch[key]['counter'] += 1
+                else:
+                    event_dict = {'counter': 1, 'time': time.monotonic()}
+                    self._events_in_batch[key] = event_dict
+                self._events_in_batch[key]['event'] = event
+                if self._emit_policy.timeout_secs and self._timeout_task is None:
+                    self._timeout_task = asyncio.get_running_loop().create_task(self._sleep_and_emit())
+                if self._events_in_batch[key]['counter'] == self._emit_policy.max_events:
+                    event_from_batch = self._events_in_batch.pop(key, None)
+                    if event_from_batch is not None:
+                        await self._emit_event(key, event_from_batch['event'])
         except Exception as ex:
             raise ex
+
+    async def _sleep_and_emit(self):
+        while self._events_in_batch:
+            key = next(iter(self._events_in_batch.keys()))
+            delta_seconds = time.monotonic() - self._events_in_batch[key]['time']
+            if delta_seconds < self._emit_policy.timeout_secs:
+                await asyncio.sleep(self._emit_policy.timeout_secs - delta_seconds)
+            event = self._events_in_batch.pop(key, None)
+            if event is not None:
+                await self._emit_event(key, event['event'])
+
+        self._timeout_task = None
 
     # Emit a single event for the requested key
     async def _emit_event(self, key, event):

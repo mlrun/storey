@@ -250,8 +250,9 @@ class EmitAfterWindow(EmitBase):
 
 
 class EmitAfterMaxEvent(EmitBase):
-    def __init__(self, max_events, emission_type=EmissionType.All):
+    def __init__(self, max_events, timeout_secs=None, emission_type=EmissionType.All):
         self.max_events = max_events
+        self.timeout_secs = timeout_secs
         EmitBase.__init__(self, emission_type)
 
     @staticmethod
