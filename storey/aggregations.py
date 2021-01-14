@@ -34,8 +34,7 @@ class AggregateByKey(Flow):
                  key: Union[str, Callable[[Event], object], None] = None,
                  emit_policy: Union[EmitEveryEvent, FixedWindows, SlidingWindows, EmitAfterPeriod, EmitAfterWindow,
                                     EmitAfterMaxEvent, Dict[str, object]] = _default_emit_policy,
-                 augmentation_fn: Optional[Callable[[Event, Dict[str, object]], Event]] = None,
-                 enrich_with: Optional[List[str]] = None,
+                 augmentation_fn: Optional[Callable[[Event, Dict[str, object]], Event]] = None, enrich_with: Optional[List[str]] = None,
                  aliases: Optional[Dict[str, str]] = None, use_windows_from_schema: bool = False, **kwargs):
         Flow.__init__(self, **kwargs)
         aggregates = self._parse_aggregates(aggregates)
@@ -92,10 +91,9 @@ class AggregateByKey(Flow):
                     window = SlidingWindows(aggregate_dict['windows'], aggregate_dict['period'])
                 else:
                     window = FixedWindows(aggregate_dict['windows'])
-                new_aggregates.append(
-                    FieldAggregator(aggregate_dict['name'], aggregate_dict['column'], aggregate_dict['operations'],
-                                    window, aggregate_dict.get('aggregation_filter', None),
-                                    aggregate_dict.get('max_value', None)))
+                new_aggregates.append(FieldAggregator(aggregate_dict['name'], aggregate_dict['column'], aggregate_dict['operations'],
+                                                      window, aggregate_dict.get('aggregation_filter', None),
+                                                      aggregate_dict.get('max_value', None)))
             return new_aggregates
 
         raise TypeError('aggregates should be a list of FieldAggregator/dictionaries')
@@ -212,8 +210,7 @@ class QueryByKey(AggregateByKey):
     :param context: Context object that holds global configurations and secrets.
     """
 
-    def __init__(self, features: List[str], table: Union[Table, str],
-                 key: Union[str, Callable[[Event], object], None] = None,
+    def __init__(self, features: List[str], table: Union[Table, str], key: Union[str, Callable[[Event], object], None] = None,
                  augmentation_fn: Optional[Callable[[Event, Dict[str, object]], Event]] = None,
                  aliases: Optional[Dict[str, str]] = None, **kwargs):
         self._aggrs = []
@@ -231,8 +228,7 @@ class QueryByKey(AggregateByKey):
         for name, windows in resolved_aggrs.items():
             feature, aggr = name.rsplit('_', 1)
             # setting as SlidingWindow temporarily until actual window type will be read from schema
-            self._aggrs.append(
-                FieldAggregator(name=feature, field=None, aggr=[aggr], windows=SlidingWindows(windows, '10m')))
+            self._aggrs.append(FieldAggregator(name=feature, field=None, aggr=[aggr], windows=SlidingWindows(windows, '10m')))
         table._aggregations_read_only = True
         AggregateByKey.__init__(self, self._aggrs, table, key, augmentation_fn=augmentation_fn,
                                 enrich_with=self._enrich_cols, aliases=aliases, use_windows_from_schema=True, **kwargs)
