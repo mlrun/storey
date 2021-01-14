@@ -11,7 +11,7 @@ from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, MapWithStat
     AsyncSource, Choice, \
     Event, Batch, Table, WriteToCSV, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, \
     WriteToParquet, \
-    WriteToTSDB, Extend, SendToHttp, HttpRequest, WriteToTable, NoopDriver, Driver, Recover, V3ioDriver
+    WriteToTSDB, Extend, SendToHttp, HttpRequest, WriteToTable, NoopDriver, Driver, Recover, V3ioDriver, ReadParquet
 
 
 class ATestException(Exception):
@@ -233,6 +233,31 @@ async def async_dataframe_source():
 
 def test_async_dataframe_source():
     asyncio.run(async_test_async_source())
+
+
+def test_read_parquet():
+    controller = build_flow([
+        ReadParquet('tests/test.parquet'),
+        Reduce([], append_and_return),
+    ]).run()
+
+    termination_result = controller.await_termination()
+    expected = [{'string': 'hello', 'int': 1, 'float': 1.5}, {'string': 'world', 'int': 2, 'float': 2.5}]
+    assert termination_result == expected
+
+
+def test_read_parquet_files():
+    controller = build_flow([
+        ReadParquet(['tests/test.parquet', 'tests/test.parquet']),
+        Reduce([], append_and_return),
+    ]).run()
+
+    termination_result = controller.await_termination()
+    expected = [
+        {'string': 'hello', 'int': 1, 'float': 1.5}, {'string': 'world', 'int': 2, 'float': 2.5},
+        {'string': 'hello', 'int': 1, 'float': 1.5}, {'string': 'world', 'int': 2, 'float': 2.5}
+    ]
+    assert termination_result == expected
 
 
 def test_error_flow():

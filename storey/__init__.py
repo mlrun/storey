@@ -20,7 +20,7 @@ from .flow import (  # noqa: F401
     MapWithState, MapClass, Complete, Choice, Recover, HttpRequest, HttpResponse, build_flow, Context
 )
 from .sources import (  # noqa: F401
-    Source, AsyncSource, DataframeSource, ReadCSV
+    Source, AsyncSource, DataframeSource, ReadCSV, ReadParquet
 )
 from .table import (  # noqa: F401
     Table
