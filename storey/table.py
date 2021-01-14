@@ -1086,4 +1086,3 @@ class VirtualAggregation:
         self.aggregation = aggregation
         self.dependant_aggregates = dependant_aggregates
         self.aggregation_func = get_virtual_aggregation_func(aggregation)
-
