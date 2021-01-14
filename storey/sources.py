@@ -38,39 +38,53 @@ class AwaitableResult:
         self._set_result(ex)
 
 
-class FlowController:
+class FlowControllerBase:
+    def __init__(self, key_field: Optional[str], time_field: Optional[str]):
+        self._key_field = key_field
+        self._time_field = time_field
+        self._current_uuid_base = None
+        self._current_uuid_count = 0
+
+    def _get_uuid(self):
+        if not self._current_uuid_base or self._current_uuid_count == 1024:
+            self._current_uuid_base = uuid.uuid4().hex
+            self._current_uuid_count = 0
+        result = f'{self._current_uuid_base}-{self._current_uuid_count:04}'
+        self._current_uuid_count += 1
+        return result
+
+    def _build_event(self, element, key, event_time):
+        if event_time is None and self._time_field is None:
+            event_time = datetime.now(timezone.utc)
+        if hasattr(element, 'id'):
+            event = element
+            if key:
+                event.key = key
+            elif self._key_field:
+                event.key = event[self._key_field]
+            if event_time:
+                event.time = event_time
+            elif self._time_field:
+                event.time = event[self._time_field]
+        else:
+            if not key and self._key_field:
+                key = element[self._key_field]
+            if not event_time and self._time_field:
+                event_time = element[self._time_field]
+            event = Event(element, id=self._get_uuid(), key=key, time=event_time)
+        return event
+
+
+class FlowController(FlowControllerBase):
     """Used to emit events into the associated flow, terminate the flow, and await the flow's termination.
     To be used from a synchronous context.
     """
 
     def __init__(self, emit_fn, await_termination_fn, key_field: Optional[str] = None,
                  time_field: Optional[str] = None):
+        super().__init__(key_field, time_field)
         self._emit_fn = emit_fn
         self._await_termination_fn = await_termination_fn
-        self._key_field = key_field
-        self._time_field = time_field
-
-    @staticmethod
-    def build_event(element, key, key_field, event_time, time_field):
-        if event_time is None and time_field is None:
-            event_time = datetime.now(timezone.utc)
-        if hasattr(element, 'id'):
-            event = element
-            if key:
-                event.key = key
-            elif key_field:
-                event.key = event[key_field]
-            if event_time:
-                event.time = event_time
-            elif time_field:
-                event.time = event[time_field]
-        else:
-            if not key and key_field:
-                key = element[key_field]
-            if not event_time and time_field:
-                event_time = element[time_field]
-            event = Event(element, id=uuid.uuid4().hex, key=key, time=event_time)
-        return event
 
     def emit(self, element: object, key: Optional[str] = None, event_time: Optional[datetime] = None,
              return_awaitable_result: bool = False):
@@ -84,7 +98,7 @@ class FlowController:
 
         :returns: AsyncAwaitableResult if return_awaitable_result is True. None otherwise.
         """
-        event = FlowController.build_event(element, key, self._key_field, event_time, self._time_field)
+        event = self._build_event(element, key, event_time)
         awaitable_result = None
         if return_awaitable_result:
             awaitable_result = AwaitableResult(self.terminate)
@@ -217,12 +231,13 @@ class AsyncAwaitableResult:
         await self._set_result(ex)
 
 
-class AsyncFlowController:
+class AsyncFlowController(FlowControllerBase):
     """
     Used to emit events into the associated flow, terminate the flow, and await the flow's termination. To be used from inside an async def.
     """
 
     def __init__(self, emit_fn, loop_task, key_field: Optional[str] = None, time_field: Optional[str] = None, ):
+        super().__init__(key_field, time_field)
         self._emit_fn = emit_fn
         self._loop_task = loop_task
         self._key_field = key_field
@@ -239,7 +254,7 @@ class AsyncFlowController:
 
         :returns: The result received from the flow if await_result is True. None otherwise.
         """
-        event = FlowController.build_event(element, key, self._key_field, event_time, self._time_field)
+        event = self._build_event(element, key, event_time)
         awaitable = None
         if await_result:
             awaitable = AsyncAwaitableResult(self.terminate)

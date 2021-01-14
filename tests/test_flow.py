@@ -1892,3 +1892,22 @@ async def async_test_async_metadata_fields():
 
 def test_async_metadata_fields():
     asyncio.run(async_test_async_metadata_fields())
+
+
+def test_uuid():
+    controller = build_flow([
+        Source(),
+        Map(lambda event: event.copy(body=event.id), full_event=True),
+        Reduce([], append_and_return)
+    ]).run()
+
+    for _ in range(10):
+        controller.emit(0)
+
+    controller.terminate()
+    result = controller.await_termination()
+
+    assert len(result) == 10
+    base_id = result[0][:32]
+    for i, cur_id in enumerate(result):
+        assert cur_id == f'{base_id}-{i:04}'
