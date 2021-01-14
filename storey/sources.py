@@ -4,7 +4,7 @@ import queue
 import threading
 import uuid
 from datetime import datetime, timezone
-from typing import List, Optional, Union, Callable, Coroutine
+from typing import List, Optional, Union, Callable, Coroutine, Iterable
 
 import pandas
 
@@ -539,10 +539,10 @@ class DataframeSource(_IterableSource):
     :param id_column: column to be used as ID for events.
     """
 
-    def __init__(self, dfs: Union[pandas.DataFrame, List[pandas.DataFrame]], key_column: Optional[str] = None,
+    def __init__(self, dfs: Union[pandas.DataFrame, Iterable[pandas.DataFrame]], key_column: Optional[str] = None,
                  time_column: Optional[str] = None, id_column: Optional[str] = None, **kwargs):
         super().__init__(**kwargs)
-        if not isinstance(dfs, list):
+        if isinstance(dfs, pandas.DataFrame):
             dfs = [dfs]
         self._dfs = dfs
         self._key_field = key_column
@@ -572,3 +572,11 @@ class DataframeSource(_IterableSource):
                 event = Event(body, key=key, time=time, id=id)
                 await self._do_downstream(event)
         return await self._do_downstream(_termination_obj)
+
+
+class ReadParquet(DataframeSource):
+    def __init__(self, paths: Union[str, Iterable[str]], columns=None, **kwargs):
+        if isinstance(paths, str):
+            paths = [paths]
+        dfs = map(lambda path: pandas.read_parquet(path, columns=columns), paths)
+        super().__init__(dfs, **kwargs)
