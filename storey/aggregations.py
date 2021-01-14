@@ -38,6 +38,12 @@ class AggregateByKey(Flow):
                  aliases: Optional[Dict[str, str]] = None, use_windows_from_schema: bool = False, **kwargs):
         Flow.__init__(self, **kwargs)
         aggregates = self._parse_aggregates(aggregates)
+        if type(self) is AggregateByKey:
+            unique_aggr_names = set()
+            for aggr in aggregates:
+                if aggr.name in unique_aggr_names:
+                    raise TypeError('aggregates should have unique names. ' + aggr.name + ' already exists')
+                unique_aggr_names.add(aggr.name)
 
         self._table = table
         if isinstance(table, str):
@@ -78,18 +84,10 @@ class AggregateByKey(Flow):
 
     @staticmethod
     def _parse_aggregates(aggregates):
-        unique_aggr_names = set()
         if not isinstance(aggregates, list):
             raise TypeError('aggregates should be a list of FieldAggregator/dictionaries')
 
-        if not aggregates:
-            return aggregates
-
-        if isinstance(aggregates[0], FieldAggregator):
-            for aggr in aggregates:
-                if aggr.name in unique_aggr_names:
-                    raise TypeError('aggregates should have unique names. ' + aggr.name + ' already exists')
-                unique_aggr_names.add(aggr.name)
+        if not aggregates or isinstance(aggregates[0], FieldAggregator):
             return aggregates
 
         if isinstance(aggregates[0], dict):
@@ -99,10 +97,6 @@ class AggregateByKey(Flow):
                     window = SlidingWindows(aggregate_dict['windows'], aggregate_dict['period'])
                 else:
                     window = FixedWindows(aggregate_dict['windows'])
-                name = aggregate_dict['name']
-                if name in unique_aggr_names:
-                    raise TypeError('aggregates should have unique names. ' + name + ' already exists')
-                unique_aggr_names.add(name)
                 new_aggregates.append(FieldAggregator(aggregate_dict['name'], aggregate_dict['column'], aggregate_dict['operations'],
                                                       window, aggregate_dict.get('aggregation_filter', None),
                                                       aggregate_dict.get('max_value', None)))
