@@ -1,9 +1,10 @@
 import asyncio
 import copy
+import datetime
+import time
 import traceback
 from asyncio import Task
 from collections import defaultdict
-from datetime import datetime, timezone
 from typing import Optional, Union, Callable, List, Dict, Any
 
 import aiohttp
@@ -71,6 +72,20 @@ class Flow:
             event.error = ex
             return await recovery_step._do(event)
 
+    @staticmethod
+    def _event_string(event):
+        result = 'Event('
+        if event.id:
+            result += f'id={event.id}, '
+        if getattr(event, 'key', None):
+            result += f'key={event.key}, '
+        if getattr(event, 'time', None):
+            result += f'time={event.time}, '
+        if getattr(event, 'path', None):
+            result += f'path={event.path}, '
+        result += f'body={event.body})'
+        return result
+
     async def _do_downstream(self, event):
         if not self._outlets:
             return
@@ -92,8 +107,7 @@ class Flow:
             event._awaitable_result = awaitable_result
         if self.verbose:
             step_name = type(self).__name__
-            event_string = str(event)
-
+            event_string = self._event_string(event)
             print(f'{step_name} -> {type(self._outlets[0]).__name__} | {event_string}')
         await self._outlets[0]._do_and_recover(event)  # Optimization - avoids creating a task for the first outlet.
         for i, task in enumerate(tasks, start=1):
@@ -531,20 +545,29 @@ class _ConcurrentByKeyJobExecution(Flow):
         self._pending_by_key = {}
 
     async def _worker(self):
+        event = None
+        received_job_count = 0
+        self_sent_jobs = {}
         try:
             while True:
-                job = await self._q.get()
-                if job is _termination_obj:
-                    for pending_event in self._pending_by_key.values():
-                        if pending_event.pending and not pending_event.in_flight:
-                            resp = await self._process_event(pending_event.pending)
-                            for event in pending_event.pending:
-                                await self._handle_completed(event, resp)
-                    if self._q.empty():
+                jobs = self_sent_jobs.pop(received_job_count, None)
+                if jobs:
+                    job = jobs[0]
+                    if len(jobs) > 1:
+                        self_sent_jobs[received_job_count] = jobs[1:]
+                else:
+                    job = await self._q.get()
+                    received_job_count += 1
+                    if job is _termination_obj:
+                        if received_job_count in self_sent_jobs:
+                            await self._q.put(_termination_obj)
+                            continue
+                        for pending_event in self._pending_by_key.values():
+                            if pending_event.pending and not pending_event.in_flight:
+                                resp = await self._safe_process_events(pending_event.pending)
+                                for event in pending_event.pending:
+                                    await self._handle_completed(event, resp)
                         break
-                    else:
-                        await self._q.put(_termination_obj)
-                        continue
 
                 event = job[0]
                 completed = await job[1]
@@ -559,11 +582,14 @@ class _ConcurrentByKeyJobExecution(Flow):
                     self._pending_by_key[event.key].pending = []
 
                     task = self._safe_process_events(self._pending_by_key[event.key].in_flight)
-                    await self._q.put((event, asyncio.get_running_loop().create_task(task)))
+                    tail_position = received_job_count + self._q.qsize()
+                    jobs_at_tail = self_sent_jobs.get(tail_position, [])
+                    jobs_at_tail.append((event, asyncio.get_running_loop().create_task(task)))
+                    self_sent_jobs[tail_position] = jobs_at_tail
                 else:
                     del self._pending_by_key[event.key]
         except BaseException as ex:
-            if event is not _termination_obj and event._awaitable_result:
+            if event and event is not _termination_obj and event._awaitable_result:
                 event._awaitable_result._set_error(ex)
             if not self._q.empty():
                 await self._q.get()
@@ -683,11 +709,10 @@ class _Batching(Flow):
 
         self._extract_key: Optional[Callable[[Event], str]] = self._create_key_extractor(key)
 
-        self._event_count: Dict[Optional[str], int] = defaultdict(int)
         self._batch: Dict[Optional[str], List[Any]] = defaultdict(list)
-        self._batch_time: Dict[Optional[str], datetime] = {}
+        self._batch_first_event_time: Dict[Optional[str], datetime.datetime] = {}
+        self._batch_start_time: Dict[Optional[str], float] = {}
         self._timeout_task: Optional[Task] = None
-        self._timeout_task_key: Optional[str] = None
 
     @staticmethod
     def _create_key_extractor(key) -> Callable:
@@ -711,8 +736,6 @@ class _Batching(Flow):
 
     async def _do(self, event):
         if event is _termination_obj:
-            if self._timeout_task is not None and not self._timeout_task.cancelled():
-                self._timeout_task.cancel()
             await self._emit_all()
             await self._terminate()
             return await self._do_downstream(_termination_obj)
@@ -720,41 +743,36 @@ class _Batching(Flow):
         key = self._extract_key(event)
 
         if len(self._batch[key]) == 0:
-            self._batch_time[key] = event.time
+            self._batch_first_event_time[key] = event.time
+            self._batch_start_time[key] = time.monotonic()
 
         if self._timeout_secs and self._timeout_task is None:
             self._timeout_task = asyncio.get_running_loop().create_task(self._sleep_and_emit())
 
-        self._event_count[key] = self._event_count[key] + 1
         self._batch[key].append(self._event_to_batch_entry(event))
 
-        if self._event_count[key] == self._max_events:
-            if key == self._timeout_task_key and self._timeout_task and not self._timeout_task.cancelled():
-                self._timeout_task.cancel()
-                self._timeout_task = None
-                self._timeout_task_key = None
+        if len(self._batch[key]) == self._max_events:
             await self._emit_batch(key)
 
     async def _sleep_and_emit(self):
         while self._batch:
             key = next(iter(self._batch.keys()))
-            time_delta = datetime.now(timezone.utc) - self._batch_time[key]
-            delta_seconds = time_delta.total_seconds()
+            delta_seconds = time.monotonic() - self._batch_start_time[key]
             if delta_seconds < self._timeout_secs:
-                self._timeout_task_key = key
                 await asyncio.sleep(self._timeout_secs - delta_seconds)
             await self._emit_batch(key)
 
         self._timeout_task = None
-        self._timeout_task_key = None
 
     def _event_to_batch_entry(self, event):
         return self._get_event_or_body(event)
 
     async def _emit_batch(self, batch_key: Optional[str] = None):
-        batch_to_emit = self._batch.pop(batch_key)
-        batch_time = self._batch_time.pop(batch_key)
-        del self._event_count[batch_key]
+        batch_to_emit = self._batch.pop(batch_key, None)
+        if batch_to_emit is None:
+            return
+        batch_time = self._batch_first_event_time.pop(batch_key)
+        del self._batch_start_time[batch_key]
         await self._emit(batch_to_emit, batch_time)
 
     async def _emit_all(self):
