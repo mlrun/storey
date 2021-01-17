@@ -32,7 +32,7 @@ class AggregateByKey(Flow):
 
     def __init__(self, aggregates: Union[List[FieldAggregator], List[Dict[str, object]]], table: Union[Table, str],
                  key: Union[str, Callable[[Event], object], None] = None,
-                 emit_policy: Union[EmitEveryEvent, FixedWindows, SlidingWindows, EmitAfterPeriod, EmitAfterWindow,
+                 emit_policy: Union[EmitEveryEvent, EmitAfterPeriod, EmitAfterWindow,
                                     EmitAfterMaxEvent, Dict[str, object]] = _default_emit_policy,
                  augmentation_fn: Optional[Callable[[Event, Dict[str, object]], Event]] = None, enrich_with: Optional[List[str]] = None,
                  aliases: Optional[Dict[str, str]] = None, use_windows_from_schema: bool = False, **kwargs):
