@@ -122,7 +122,7 @@ class Flow:
             return event
         elif self._input_path:
             if not hasattr(event.body, '__getitem__'):
-                raise TypeError("input_path parameter is not supported with not dict-like event types")
+                raise TypeError("input_path parameter supports only dict-like event bodies")
             return get_in(event.body, self._input_path)
         else:
             return event.body
@@ -133,6 +133,8 @@ class Flow:
         else:
             mapped_event = copy.copy(event)
             if self._result_path:
+                if not hasattr(event.body, '__getitem__'):
+                    raise TypeError("result_path parameter supports only dict-like event bodies")
                 update_in(mapped_event.body, self._result_path, fn_result)
             else:
                 mapped_event.body = fn_result
