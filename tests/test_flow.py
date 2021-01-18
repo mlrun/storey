@@ -1915,7 +1915,7 @@ def test_uuid():
     assert result[1024][32:] == '-0000'
 
 
-def test_input_path_map():
+def test_input_path():
     controller = build_flow([
         Source(),
         Filter(lambda x: x < 5, input_path="col2.col3"),  # filter emits the full event
@@ -1929,3 +1929,16 @@ def test_input_path_map():
     controller.terminate()
     termination_result = controller.await_termination()
     assert termination_result == 10
+
+
+def test_result_path():
+    controller = build_flow([
+        Source(),
+        Map(lambda x: {"new_field": 5}, result_path="step_result"),
+        Reduce(0, lambda acc, x: x),
+    ]).run()
+
+    controller.emit({'col1': 1})
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == {'col1': 1, 'step_result': {"new_field": 5}}

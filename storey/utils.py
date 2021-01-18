@@ -136,3 +136,28 @@ def get_in(obj, keys, default=None):
             return default
         obj = obj[key]
     return obj
+
+
+def update_in(obj, key, value, append=False, replace=True):
+    parts = key.split(".") if isinstance(key, str) else key
+    for part in parts[:-1]:
+        sub = obj.get(part, None)
+        if sub is None:
+            sub = obj[part] = {}
+        obj = sub
+
+    last_key = parts[-1]
+    if last_key not in obj:
+        if append:
+            obj[last_key] = []
+        else:
+            obj[last_key] = {}
+
+    if append:
+        if isinstance(value, list):
+            obj[last_key] += value
+        else:
+            obj[last_key].append(value)
+    else:
+        if replace or not obj.get(last_key):
+            obj[last_key] = value
