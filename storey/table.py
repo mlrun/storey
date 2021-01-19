@@ -721,9 +721,9 @@ class AggregatedStoreElement:
         initial_data_by_feature = {}
         if initial_data:
             for key, value in initial_data.items():
-                seperator_index = key.rindex('_')
-                feature_name = key[:seperator_index]
-                aggr = key[seperator_index + 1:]
+                separator_index = key.rindex('_')
+                feature_name = key[:separator_index]
+                aggr = key[separator_index + 1:]
                 if feature_name not in initial_data_by_feature:
                     initial_data_by_feature[feature_name] = {}
                 initial_data_by_feature[feature_name][aggr] = value
@@ -938,9 +938,10 @@ class AggregationBuckets:
             result = self.calculate_features(timestamp)
         else:
             # In case our pre aggregates already have the answer
-            for (aggregation_name, _, window_str), aggregation in self._current_aggregate_values.items():
-                if aggregation_name in self._explicit_raw_aggregations:
-                    result[f'{self.name}_{aggregation_name}_{window_str}'] = aggregation.get_value()[1]
+            for aggregation_name in self._explicit_raw_aggregations:
+                for (window_millis, window_str) in self.explicit_windows.windows:
+                    result[f'{self.name}_{aggregation_name}_{window_str}'] =\
+                        self._current_aggregate_values[(aggregation_name, window_millis, window_str)].get_value()[1]
 
         self.augment_virtual_features(result)
         return result
