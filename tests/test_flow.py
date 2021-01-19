@@ -1913,3 +1913,32 @@ def test_uuid():
         assert cur_id == f'{base_id}-{i:04}'
     assert result[1024][:32] != base_id
     assert result[1024][32:] == '-0000'
+
+
+def test_input_path():
+    controller = build_flow([
+        Source(),
+        Filter(lambda x: x < 5, input_path="col2.col3"),  # filter emits the full event
+        Map(lambda x: x + 1, input_path="col2.col3"),
+        Reduce(0, lambda acc, x: acc + x),
+    ]).run()
+
+    for i in range(10):
+        val = 5 if i % 2 == 0 else 1
+        controller.emit({'col1': i, 'col2': {'col3': val}})
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == 10
+
+
+def test_result_path():
+    controller = build_flow([
+        Source(),
+        Map(lambda x: {"new_field": 5}, result_path="step_result"),
+        Reduce(0, lambda acc, x: x),
+    ]).run()
+
+    controller.emit({'col1': 1})
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == {'col1': 1, 'step_result': {"new_field": 5}}

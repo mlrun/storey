@@ -11,13 +11,13 @@ import aiohttp
 
 from .dtypes import _termination_obj, Event, FlowError, V3ioError
 from .table import Table
-from .utils import _split_path
+from .utils import _split_path, get_in, update_in
 
 
 class Flow:
     def __init__(self, recovery_step=None, name=None, full_event=False,
                  termination_result_fn=lambda x, y: x if x is not None else y,
-                 context=None, **kwargs):
+                 context=None, input_path: Optional[str] = None, result_path: Optional[str] = None, **kwargs):
         self._outlets = []
         self._recovery_step = recovery_step
         self._full_event = full_event
@@ -25,6 +25,8 @@ class Flow:
         self.context = context
         self.verbose = context and getattr(context, 'verbose', False)
         self._closeables = []
+        self._input_path = input_path
+        self._result_path = result_path
         if name:
             self.name = name
         else:
@@ -118,6 +120,10 @@ class Flow:
     def _get_event_or_body(self, event):
         if self._full_event:
             return event
+        elif self._input_path:
+            if not hasattr(event.body, '__getitem__'):
+                raise TypeError("input_path parameter supports only dict-like event bodies")
+            return get_in(event.body, self._input_path)
         else:
             return event.body
 
@@ -126,7 +132,12 @@ class Flow:
             return fn_result
         else:
             mapped_event = copy.copy(event)
-            mapped_event.body = fn_result
+            if self._result_path:
+                if not hasattr(event.body, '__getitem__'):
+                    raise TypeError("result_path parameter supports only dict-like event bodies")
+                update_in(mapped_event.body, self._result_path, fn_result)
+            else:
+                mapped_event.body = fn_result
             return mapped_event
 
 
