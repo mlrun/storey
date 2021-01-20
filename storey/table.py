@@ -697,7 +697,9 @@ class MinValue(AggregationValue):
         super().__init__(max_value, set_data)
 
     def aggregate(self, time, value):
-        self._set_value(min(self._value, value))
+        if value > self._value:
+            value = self._value
+        self._set_value(value)
 
 
 class MaxValue(AggregationValue):
@@ -706,7 +708,9 @@ class MaxValue(AggregationValue):
         super().__init__(max_value, set_data)
 
     def aggregate(self, time, value):
-        self._set_value(max(self._value, value))
+        if value < self._value:
+            value = self._value
+        self._set_value(value)
 
 
 class SumValue(AggregationValue):
