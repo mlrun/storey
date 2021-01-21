@@ -420,11 +420,13 @@ class ReadOnlyAggregationBuckets:
                 self.initialize_column()
                 self._need_to_recalculate_pre_aggregates = True
             else:
-                # Updating the pre aggreagted data per window
+                # Updating the pre aggregated data per window
                 self.remove_old_values_from_pre_aggregations(advance_to)
+                buckets_to_reuse = self.buckets[:buckets_to_advance]
                 self.buckets = self.buckets[buckets_to_advance:]
-                for _ in range(buckets_to_advance):
-                    self.buckets.append(self.new_aggregation_value())
+                for bucket_to_reuse in buckets_to_reuse:
+                    bucket_to_reuse.reset()
+                    self.buckets.append(buckets_to_reuse)
 
             self.first_bucket_start_time = \
                 self.first_bucket_start_time + buckets_to_advance * self.period_millis
@@ -693,6 +695,11 @@ class AggregationValue:
     def get_update_expression(self, old):
         return f'{old}+{self._value}'
 
+    def reset(self):
+        self._last_time = datetime.min
+        self._max_value = None
+        self._value = None
+
 
 class MinValue(AggregationValue):
     name = 'min'
@@ -800,6 +807,10 @@ class FirstValue(AggregationValue):
 
     def get_update_expression(self, old):
         return f'if_else(({old} == {self.default_value}), {self._value}, {old})'
+
+    def reset(self):
+        super().reset()
+        self._first_time = datetime.max
 
 
 class AggregatedStoreElement:
