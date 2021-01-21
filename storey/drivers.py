@@ -258,7 +258,7 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
 
                         arr_at_index = f'{array_attribute_name}[{index_to_update}]'
                         update_array_expression = f'{arr_at_index}=if_else(({get_array_time_expr}>{expected_time_expr}),{arr_at_index},' \
-                                                  f'{aggregation_value.get_update_expression_by_aggregation(arr_at_index)})'
+                                                  f'{aggregation_value.get_update_expression(arr_at_index)})'
 
                         expressions.append(update_array_expression)
 
@@ -313,7 +313,7 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
                         # Updating the specific cells
                         if cached_time <= expected_time:
                             arr_at_index = f'{array_attribute_name}[{index_to_update}]'
-                            expressions.append(f'{arr_at_index}={aggregation_value.get_update_expression_by_aggregation(arr_at_index)}')
+                            expressions.append(f'{arr_at_index}={aggregation_value.get_update_expression(arr_at_index)}')
 
         # Separating time attribute updates, so that they will be executed in the end and only once per feature name.
         expressions.extend(times_update_expressions.values())

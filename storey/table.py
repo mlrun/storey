@@ -690,7 +690,7 @@ class AggregationValue:
     def get_value(self):
         return self._last_time, self._value
 
-    def get_update_expression_by_aggregation(self, old):
+    def get_update_expression(self, old):
         return f'{old}+{self._value}'
 
 
@@ -707,7 +707,7 @@ class MinValue(AggregationValue):
             value = self._value
         self._set_value(value)
 
-    def get_update_expression_by_aggregation(self, old):
+    def get_update_expression(self, old):
         return f'min({old}, {self._value})'
 
 
@@ -724,7 +724,7 @@ class MaxValue(AggregationValue):
             value = self._value
         self._set_value(value)
 
-    def get_update_expression_by_aggregation(self, old):
+    def get_update_expression(self, old):
         return f'max({old}, {self._value})'
 
 
@@ -777,7 +777,7 @@ class LastValue(AggregationValue):
             self._set_value(value)
             self._last_time = time
 
-    def get_update_expression_by_aggregation(self, old):
+    def get_update_expression(self, old):
         return f'{self._value}'
 
 
@@ -798,7 +798,7 @@ class FirstValue(AggregationValue):
     def get_value(self):
         return self._first_time, self._value
 
-    def get_update_expression_by_aggregation(self, old):
+    def get_update_expression(self, old):
         return f'if_else(({old} == {self.default_value}), {self._value}, {old})'
 
 
