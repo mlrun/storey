@@ -690,9 +690,12 @@ class AggregationValue:
     def get_value(self):
         return self._last_time, self._value
 
+    def get_update_expression_by_aggregation(self, old):
+        return f'{old}+{self._value}'
+
 
 class MinValue(AggregationValue):
-    aggregation = 'min'
+    name = 'min'
     default_value = float('inf')
 
     def __init__(self, max_value=None, set_data=None):
@@ -704,9 +707,12 @@ class MinValue(AggregationValue):
             value = self._value
         self._set_value(value)
 
+    def get_update_expression_by_aggregation(self, old):
+        return f'min({old}, {self._value})'
+
 
 class MaxValue(AggregationValue):
-    aggregation = 'max'
+    name = 'max'
     default_value = float('-inf')
 
     def __init__(self, max_value=None, set_data=None):
@@ -718,9 +724,12 @@ class MaxValue(AggregationValue):
             value = self._value
         self._set_value(value)
 
+    def get_update_expression_by_aggregation(self, old):
+        return f'max({old}, {self._value})'
+
 
 class SumValue(AggregationValue):
-    aggregation = 'sum'
+    name = 'sum'
     default_value = 0
 
     def __init__(self, max_value=None, set_data=None):
@@ -744,7 +753,7 @@ class CountValue(AggregationValue):
 
 
 class SqrValue(AggregationValue):
-    aggregation = 'sqr'
+    name = 'sqr'
     default_value = 0
 
     def __init__(self, max_value=None, set_data=None):
@@ -756,7 +765,7 @@ class SqrValue(AggregationValue):
 
 
 class LastValue(AggregationValue):
-    aggregation = 'last'
+    name = 'last'
     default_value = None
 
     def __init__(self, max_value=None, set_data=None):
@@ -768,9 +777,12 @@ class LastValue(AggregationValue):
             self._set_value(value)
             self._last_time = time
 
+    def get_update_expression_by_aggregation(self, old):
+        return f'{self._value}'
+
 
 class FirstValue(AggregationValue):
-    aggregation = 'first'
+    name = 'first'
     default_value = None
 
     def __init__(self, max_value=None, set_data=None):
@@ -785,6 +797,9 @@ class FirstValue(AggregationValue):
 
     def get_value(self):
         return self._first_time, self._value
+
+    def get_update_expression_by_aggregation(self, old):
+        return f'if_else(({old} == {self.default_value}), {self._value}, {old})'
 
 
 class AggregatedStoreElement:
@@ -1031,7 +1046,7 @@ class AggregationBuckets:
             for (window_millis, window_str) in self.explicit_windows.windows:
                 args = [self._current_aggregate_values[(aggr, window_millis, window_str)].get_value()[1] for aggr in
                         aggregate.dependant_aggregates]
-                features[f'{self.name}_{aggregate.aggregation}_{window_str}'] = aggregate.aggregation_func(args)
+                features[f'{self.name}_{aggregate.name}_{window_str}'] = aggregate.aggregation_func(args)
 
     def calculate_features(self, timestamp):
         result = {}
@@ -1161,6 +1176,6 @@ class AggregationBuckets:
 
 class VirtualAggregation:
     def __init__(self, aggregation, dependant_aggregates):
-        self.aggregation = aggregation
+        self.name = aggregation
         self.dependant_aggregates = dependant_aggregates
         self.aggregation_func = get_virtual_aggregation_func(aggregation)

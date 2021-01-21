@@ -258,7 +258,7 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
 
                         arr_at_index = f'{array_attribute_name}[{index_to_update}]'
                         update_array_expression = f'{arr_at_index}=if_else(({get_array_time_expr}>{expected_time_expr}),{arr_at_index},' \
-                                                  f'{self._get_update_expression_by_aggregation(arr_at_index, aggregation_value)})'
+                                                  f'{aggregation_value.get_update_expression_by_aggregation(arr_at_index)})'
 
                         expressions.append(update_array_expression)
 
@@ -313,8 +313,7 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
                         # Updating the specific cells
                         if cached_time <= expected_time:
                             arr_at_index = f'{array_attribute_name}[{index_to_update}]'
-                            expressions.append(
-                                f'{arr_at_index}={self._get_update_expression_by_aggregation(arr_at_index, aggregation_value)}')
+                            expressions.append(f'{arr_at_index}={aggregation_value.get_update_expression_by_aggregation(arr_at_index)}')
 
         # Separating time attribute updates, so that they will be executed in the end and only once per feature name.
         expressions.extend(times_update_expressions.values())
@@ -324,20 +323,6 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
             new_time = new_value[1]
             aggregation_element.aggregation_buckets[name].storage_specific_cache[attribute_name] = new_time
         return expressions, pending_updates
-
-    @staticmethod
-    def _get_update_expression_by_aggregation(old, aggregation):
-        value = aggregation.get_value()[1]
-        if aggregation.aggregation == 'max':
-            return f'max({old}, {value})'
-        elif aggregation.aggregation == 'min':
-            return f'min({old}, {value})'
-        elif aggregation.aggregation == 'last':
-            return f'{value}'
-        elif aggregation.aggregation == 'first':
-            return f'if_else(({old} == {aggregation.default_value}), {value}, {old})'
-        else:
-            return f'{old}+{value}'
 
     @staticmethod
     def _convert_python_obj_to_expression_value(value):
