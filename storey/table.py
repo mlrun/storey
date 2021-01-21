@@ -697,10 +697,13 @@ class AggregationValue:
     def get_update_expression(self, old):
         return f'{old}+{self._value}'
 
-    def reset(self):
+    def reset(self, value=None):
         self._last_time = datetime.min
         self._max_value = None
-        self._value = self.default_value
+        if value is None:
+            self._value = self.default_value
+        else:
+            self._value = value
 
 
 class MinValue(AggregationValue):
@@ -1105,15 +1108,14 @@ class AggregationBuckets:
                 result[f'{self.name}_{aggregation_name}_{window_string}'] = current_aggregation_value
 
                 if self._precalculated_aggregations and self._need_to_recalculate_pre_aggregates:
-                    self._current_aggregate_values[(aggregation_name, window_millis, window_string)] = \
-                        AggregationValue.new_from_name(aggregation_name, set_data=current_aggregation_value)
+                    self._current_aggregate_values[(aggregation_name, window_millis, window_string)].reset(value=current_aggregation_value)
 
             # Update the corresponding pre aggregate
             if self._precalculated_aggregations and self._need_to_recalculate_pre_aggregates:
                 for aggregation_name in self._hidden_raw_aggregations:
                     value = self._intermediate_aggregation_values[aggregation_name].get_value()[1]
                     key = (aggregation_name, window_millis, window_string)
-                    self._current_aggregate_values[key] = AggregationValue.new_from_name(aggregation_name, set_data=value)
+                    self._current_aggregate_values[key].reset(value=value)
 
             # advance the time bucket, so that next iteration won't calculate the same buckets again
             current_time_bucket_index = last_bucket_to_aggregate - 1
