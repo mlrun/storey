@@ -1,5 +1,3 @@
-import copy
-
 import pandas as pd
 
 from .flow import _termination_obj, Flow
@@ -78,6 +76,5 @@ class ToDataFrame(Flow):
             df = pd.DataFrame(event.body, columns=self._columns)
             if self._index:
                 df.set_index(self._index, inplace=True)
-            new_event = copy.copy(event)
-            new_event.body = df
-            return await self._do_downstream(new_event)
+            event.body = df
+            return await self._do_downstream(event)
