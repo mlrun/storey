@@ -425,7 +425,7 @@ class ReadOnlyAggregationBuckets:
                 buckets_to_reuse = self.buckets[:buckets_to_advance]
                 self.buckets = self.buckets[buckets_to_advance:]
                 for bucket_to_reuse in buckets_to_reuse:
-                    bucket_to_reuse.reset()
+                    bucket_to_reuse.reset(max_value=self.max_value)
                     self.buckets.append(buckets_to_reuse)
 
             self.first_bucket_start_time = \
@@ -697,9 +697,9 @@ class AggregationValue:
     def get_update_expression(self, old):
         return f'{old}+{self._value}'
 
-    def reset(self, value=None):
+    def reset(self, value=None, max_value=None):
         self._last_time = datetime.min
-        self._max_value = None
+        self._max_value = max_value
         if value is None:
             self._value = self.default_value
         else:
@@ -813,8 +813,8 @@ class FirstValue(AggregationValue):
     def get_update_expression(self, old):
         return f'if_else(({old} == {self.default_value}), {self._value}, {old})'
 
-    def reset(self):
-        super().reset()
+    def reset(self, value=None, max_value=None):
+        super().reset(value, max_value)
         self._first_time = datetime.max
 
 
@@ -982,9 +982,12 @@ class AggregationBuckets:
             else:
                 # Updating the pre aggreagted data per window
                 self.remove_old_values_from_pre_aggregations(advance_to)
+                buckets_to_reuse = self.buckets[:buckets_to_advance]
                 self.buckets = self.buckets[buckets_to_advance:]
-                for _ in range(buckets_to_advance):
-                    self.buckets.append(self.new_aggregation_value())
+                for bucket_to_reuse in buckets_to_reuse:
+                    for _, aggr_value in bucket_to_reuse.items():
+                        aggr_value.reset(max_value=self.max_value)
+                    self.buckets.append(bucket_to_reuse)
 
             self.first_bucket_start_time = \
                 self.first_bucket_start_time + buckets_to_advance * self.period_millis
@@ -1126,7 +1129,7 @@ class AggregationBuckets:
 
     def initialize_from_data(self, data, base_time):
         period = self.period_millis
-        self.buckets = [{} for _ in range(self.total_number_of_buckets)]
+        self.buckets = [self.new_aggregation_value() for _ in range(self.total_number_of_buckets)]
 
         aggregation_bucket_initial_data = {}
 
@@ -1159,7 +1162,7 @@ class AggregationBuckets:
                 if bucket_index < 0:
                     return
                 for aggregation in self._all_raw_aggregates:
-                    self.buckets[bucket_index][aggregation] = AggregationValue.new_from_name(aggregation, self.max_value)
+                    self.buckets[bucket_index][aggregation].reset(max_value=self.max_value)
                 bucket_index = bucket_index - 1
             start_index = len(aggregation_bucket_initial_data[last_time]) - 1
 
