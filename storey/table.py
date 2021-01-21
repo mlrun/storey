@@ -662,7 +662,7 @@ class AggregationValue:
             self._value = set_data
 
     def aggregate(self, time, value):
-        pass
+        raise NotImplementedError()
 
     @staticmethod
     def new_from_name(aggregation, max_value=None, set_data=None):
