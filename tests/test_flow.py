@@ -11,7 +11,7 @@ from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, MapWithStat
     AsyncSource, Choice, \
     Event, Batch, Table, WriteToCSV, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, \
     WriteToParquet, \
-    WriteToTSDB, Extend, SendToHttp, HttpRequest, WriteToTable, NoopDriver, Driver, Recover, V3ioDriver
+    WriteToTSDB, Extend, SendToHttp, HttpRequest, WriteToTable, NoopDriver, Driver, Recover, V3ioDriver, ReadParquet
 
 
 class ATestException(Exception):
@@ -233,6 +233,31 @@ async def async_dataframe_source():
 
 def test_async_dataframe_source():
     asyncio.run(async_test_async_source())
+
+
+def test_read_parquet():
+    controller = build_flow([
+        ReadParquet('tests/test.parquet'),
+        Reduce([], append_and_return),
+    ]).run()
+
+    termination_result = controller.await_termination()
+    expected = [{'string': 'hello', 'int': 1, 'float': 1.5}, {'string': 'world', 'int': 2, 'float': 2.5}]
+    assert termination_result == expected
+
+
+def test_read_parquet_files():
+    controller = build_flow([
+        ReadParquet(['tests/test.parquet', 'tests/test.parquet']),
+        Reduce([], append_and_return),
+    ]).run()
+
+    termination_result = controller.await_termination()
+    expected = [
+        {'string': 'hello', 'int': 1, 'float': 1.5}, {'string': 'world', 'int': 2, 'float': 2.5},
+        {'string': 'hello', 'int': 1, 'float': 1.5}, {'string': 'world', 'int': 2, 'float': 2.5}
+    ]
+    assert termination_result == expected
 
 
 def test_error_flow():
@@ -1867,3 +1892,53 @@ async def async_test_async_metadata_fields():
 
 def test_async_metadata_fields():
     asyncio.run(async_test_async_metadata_fields())
+
+
+def test_uuid():
+    controller = build_flow([
+        Source(),
+        Map(lambda event: event.copy(body=event.id), full_event=True),
+        Reduce([], append_and_return)
+    ]).run()
+
+    for _ in range(1025):
+        controller.emit(0)
+
+    controller.terminate()
+    result = controller.await_termination()
+
+    assert len(result) == 1025
+    base_id = result[0][:32]
+    for i, cur_id in enumerate(result[:1024]):
+        assert cur_id == f'{base_id}-{i:04}'
+    assert result[1024][:32] != base_id
+    assert result[1024][32:] == '-0000'
+
+
+def test_input_path():
+    controller = build_flow([
+        Source(),
+        Filter(lambda x: x < 5, input_path="col2.col3"),  # filter emits the full event
+        Map(lambda x: x + 1, input_path="col2.col3"),
+        Reduce(0, lambda acc, x: acc + x),
+    ]).run()
+
+    for i in range(10):
+        val = 5 if i % 2 == 0 else 1
+        controller.emit({'col1': i, 'col2': {'col3': val}})
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == 10
+
+
+def test_result_path():
+    controller = build_flow([
+        Source(),
+        Map(lambda x: {"new_field": 5}, result_path="step_result"),
+        Reduce(0, lambda acc, x: x),
+    ]).run()
+
+    controller.emit({'col1': 1})
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == {'col1': 1, 'step_result': {"new_field": 5}}

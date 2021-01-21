@@ -37,6 +37,7 @@ class AggregateByKey(Flow):
                  aliases: Optional[Dict[str, str]] = None, use_windows_from_schema: bool = False, **kwargs):
         Flow.__init__(self, **kwargs)
         aggregates = self._parse_aggregates(aggregates)
+        self._check_unique_names(aggregates)
 
         self._table = table
         if isinstance(table, str):
@@ -74,6 +75,13 @@ class AggregateByKey(Flow):
                 self.key_extractor = lambda element: element[key]
             else:
                 raise TypeError(f'key is expected to be either a callable or string but got {type(key)}')
+
+    def _check_unique_names(self, aggregates):
+        unique_aggr_names = set()
+        for aggr in aggregates:
+            if aggr.name in unique_aggr_names:
+                raise TypeError(f'Aggregates should have unique names. {aggr.name} already exists')
+            unique_aggr_names.add(aggr.name)
 
     @staticmethod
     def _parse_aggregates(aggregates):
@@ -227,9 +235,9 @@ class QueryByKey(AggregateByKey):
             feature, aggr = name.rsplit('_', 1)
             # setting as SlidingWindow temporarily until actual window type will be read from schema
             self._aggrs.append(FieldAggregator(name=feature, field=None, aggr=[aggr], windows=SlidingWindows(windows, '10m')))
-        table._aggregations_read_only = True
         AggregateByKey.__init__(self, self._aggrs, table, key, augmentation_fn=augmentation_fn,
                                 enrich_with=self._enrich_cols, aliases=aliases, use_windows_from_schema=True, **kwargs)
+        self._table._aggregations_read_only = True
 
     async def _do(self, event):
         if event == _termination_obj:
@@ -245,3 +253,6 @@ class QueryByKey(AggregateByKey):
 
         except Exception as ex:
             raise ex
+
+    def _check_unique_names(self, aggregates):
+        pass

@@ -121,3 +121,30 @@ def load_fs_dependencies(schema):
 
 class StoreyMissingDependencyError(Exception):
     pass
+
+
+def get_in(obj, keys, default=None):
+    """
+    >>> get_in({'a': {'b': 1}}, 'a.b')
+    1
+    """
+    if isinstance(keys, str):
+        keys = keys.split(".")
+
+    for key in keys:
+        if not obj or key not in obj:
+            return default
+        obj = obj[key]
+    return obj
+
+
+def update_in(obj, key, value):
+    parts = key.split(".") if isinstance(key, str) else key
+    for part in parts[:-1]:
+        sub = obj.get(part, None)
+        if sub is None:
+            sub = obj[part] = {}
+        obj = sub
+
+    last_key = parts[-1]
+    obj[last_key] = value
