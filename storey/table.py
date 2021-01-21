@@ -655,6 +655,8 @@ class VirtualAggregationBuckets:
 
 
 class AggregationValue:
+    default_value = None
+
     def __init__(self, max_value=None, set_data=None):
         self._last_time = datetime.min
         self._max_value = max_value
@@ -698,7 +700,7 @@ class AggregationValue:
     def reset(self):
         self._last_time = datetime.min
         self._max_value = None
-        self._value = None
+        self._value = self.default_value
 
 
 class MinValue(AggregationValue):
@@ -888,6 +890,10 @@ class AggregationBuckets:
         self._need_to_recalculate_pre_aggregates = False
         self._last_data_point_timestamp = base_time
         self._current_aggregate_values = {}
+        self._intermediate_aggregation_values = {}
+        for aggregation_name in self._all_raw_aggregates:
+            aggregation_value = AggregationValue.new_from_name(self.get_aggregation_for_aggregation(aggregation_name))
+            self._intermediate_aggregation_values[aggregation_name] = aggregation_value
 
         # If a user specified a max_value we need to recalculated features on every event
         self._precalculated_aggregations = max_value is None
@@ -1070,16 +1076,16 @@ class AggregationBuckets:
         if self.is_fixed_window:
             current_time_bucket_index = self.get_bucket_index_by_timestamp(self._round_time_func(timestamp) - 1)
 
-        aggregated_values = {}
         for aggregation_name in self._all_raw_aggregates:
-            aggregated_values[aggregation_name] = AggregationValue.new_from_name(self.get_aggregation_for_aggregation(aggregation_name))
+            self._intermediate_aggregation_values[aggregation_name].reset()
         prev_windows_millis = 0
         for (window_millis, window_string) in self.explicit_windows.windows:
             # In case the current bucket is outside our time range just create a feature with the current aggregated
             # value
             if current_time_bucket_index < 0:
                 for aggregation_name in self._explicit_raw_aggregations:
-                    result[f'{self.name}_{aggregation_name}_{window_string}'] = aggregated_values[aggregation_name].get_value()[1]
+                    result[f'{self.name}_{aggregation_name}_{window_string}'] = \
+                        self._intermediate_aggregation_values[aggregation_name].get_value()[1]
 
             number_of_buckets_backwards = int((window_millis - prev_windows_millis) / self.period_millis)
             last_bucket_to_aggregate = current_time_bucket_index - number_of_buckets_backwards + 1
@@ -1091,11 +1097,11 @@ class AggregationBuckets:
                 if bucket_index < len(self.buckets):
                     for aggregation_name in self._all_raw_aggregates:
                         t, v = self.buckets[bucket_index][aggregation_name].get_value()
-                        aggregated_values[aggregation_name].aggregate(t, v)
+                        self._intermediate_aggregation_values[aggregation_name].aggregate(t, v)
 
             # create a feature for the current time window
             for aggregation_name in self._explicit_raw_aggregations:
-                current_aggregation_value = aggregated_values[aggregation_name].get_value()[1]
+                current_aggregation_value = self._intermediate_aggregation_values[aggregation_name].get_value()[1]
                 result[f'{self.name}_{aggregation_name}_{window_string}'] = current_aggregation_value
 
                 if self._precalculated_aggregations and self._need_to_recalculate_pre_aggregates:
@@ -1105,8 +1111,9 @@ class AggregationBuckets:
             # Update the corresponding pre aggregate
             if self._precalculated_aggregations and self._need_to_recalculate_pre_aggregates:
                 for aggregation_name in self._hidden_raw_aggregations:
-                    self._current_aggregate_values[(aggregation_name, window_millis, window_string)] = \
-                        AggregationValue.new_from_name(aggregation_name, set_data=aggregated_values[aggregation_name].get_value()[1])
+                    value = self._intermediate_aggregation_values[aggregation_name].get_value()[1]
+                    key = (aggregation_name, window_millis, window_string)
+                    self._current_aggregate_values[key] = AggregationValue.new_from_name(aggregation_name, set_data=value)
 
             # advance the time bucket, so that next iteration won't calculate the same buckets again
             current_time_bucket_index = last_bucket_to_aggregate - 1
