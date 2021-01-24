@@ -907,9 +907,9 @@ class AggregationBuckets:
         self.period_millis = explicit_windows.period_millis
         self._window_start_time = explicit_windows.get_window_start_time_by_time(base_time)
         if self._precalculated_aggregations:
-            for (window_millis, windows_str) in explicit_windows.windows:
+            for (window_millis, _) in explicit_windows.windows:
                 for aggr in self._all_raw_aggregates:
-                    self._current_aggregate_values[(aggr, window_millis, windows_str)] = AggregationValue.new_from_name(aggr)
+                    self._current_aggregate_values[(aggr, window_millis)] = AggregationValue.new_from_name(aggr)
 
         if initial_data:
             self.last_bucket_start_time = None
@@ -952,7 +952,7 @@ class AggregationBuckets:
 
     def remove_old_values_from_pre_aggregations(self, timestamp):
         if self._precalculated_aggregations:
-            for (aggr_name, current_window_millis, _), aggr in self._current_aggregate_values.items():
+            for (aggr_name, current_window_millis), aggr in self._current_aggregate_values.items():
                 previous_window_start, _ = self.get_window_range(self._last_data_point_timestamp, current_window_millis)
                 current_window_start, _ = self.get_window_range(timestamp, current_window_millis)
 
@@ -1013,7 +1013,7 @@ class AggregationBuckets:
             self.add_to_pending(timestamp, value)
 
             if self._precalculated_aggregations:
-                for (_, current_window_millis, _), aggr in self._current_aggregate_values.items():
+                for (_, current_window_millis), aggr in self._current_aggregate_values.items():
                     start, _ = self.get_window_range(self._last_data_point_timestamp, current_window_millis)
 
                     if timestamp > self._last_data_point_timestamp or index >= start:
@@ -1056,7 +1056,7 @@ class AggregationBuckets:
             for aggregation_name in self._explicit_raw_aggregations:
                 for (window_millis, window_str) in self.explicit_windows.windows:
                     result[f'{self.name}_{aggregation_name}_{window_str}'] = \
-                        self._current_aggregate_values[(aggregation_name, window_millis, window_str)].get_value()[1]
+                        self._current_aggregate_values[(aggregation_name, window_millis)].get_value()[1]
 
         self.augment_virtual_features(result)
         return result
@@ -1067,8 +1067,7 @@ class AggregationBuckets:
 
         for aggregate in self._virtual_aggregations:
             for (window_millis, window_str) in self.explicit_windows.windows:
-                args = [self._current_aggregate_values[(aggr, window_millis, window_str)].get_value()[1] for aggr in
-                        aggregate.dependant_aggregates]
+                args = [self._current_aggregate_values[(aggr, window_millis)].get_value()[1] for aggr in aggregate.dependant_aggregates]
                 features[f'{self.name}_{aggregate.name}_{window_str}'] = aggregate.aggregation_func(args)
 
     def calculate_features(self, timestamp):
@@ -1111,13 +1110,13 @@ class AggregationBuckets:
                 result[f'{self.name}_{aggregation_name}_{window_string}'] = current_aggregation_value
 
                 if self._precalculated_aggregations and self._need_to_recalculate_pre_aggregates:
-                    self._current_aggregate_values[(aggregation_name, window_millis, window_string)].reset(value=current_aggregation_value)
+                    self._current_aggregate_values[(aggregation_name, window_millis)].reset(value=current_aggregation_value)
 
             # Update the corresponding pre aggregate
             if self._precalculated_aggregations and self._need_to_recalculate_pre_aggregates:
                 for aggregation_name in self._hidden_raw_aggregations:
                     value = self._intermediate_aggregation_values[aggregation_name].get_value()[1]
-                    key = (aggregation_name, window_millis, window_string)
+                    key = (aggregation_name, window_millis)
                     self._current_aggregate_values[key].reset(value=value)
 
             # advance the time bucket, so that next iteration won't calculate the same buckets again
