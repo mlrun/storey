@@ -1065,9 +1065,11 @@ class AggregationBuckets:
         if not self._virtual_aggregations:
             return
 
+        args = [None, None, None]  # Avoid in-loop allocation
         for aggregate in self._virtual_aggregations:
             for (window_millis, window_str) in self.explicit_windows.windows:
-                args = [self._current_aggregate_values[(aggr, window_millis)].get_value()[1] for aggr in aggregate.dependant_aggregates]
+                for i, aggr in enumerate(aggregate.dependant_aggregates):
+                    args[i] = self._current_aggregate_values[(aggr, window_millis)].get_value()[1]
                 features[f'{self.name}_{aggregate.name}_{window_str}'] = aggregate.aggregation_func(args)
 
     def calculate_features(self, timestamp):
