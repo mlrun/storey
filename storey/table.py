@@ -660,6 +660,7 @@ class AggregationValue:
     def __init__(self, max_value=None, set_data=None):
         self._last_time = datetime.min
         self._max_value = max_value
+        self._set_value = self._set_value_with_max if max_value else self._set_value_without_max
 
         # In case we initialize the object from v3io data
         if set_data is not None:
@@ -685,11 +686,14 @@ class AggregationValue:
         elif aggregation == 'first':
             return FirstValue(max_value, set_data)
 
-    def _set_value(self, value):
-        if self._max_value and value > self._max_value:
+    def _set_value_with_max(self, value):
+        if value > self._max_value:
             self._value = self._max_value
         else:
             self._value = value
+
+    def _set_value_without_max(self, value):
+        self._value = value
 
     def get_value(self):
         return self._last_time, self._value
@@ -700,6 +704,7 @@ class AggregationValue:
     def reset(self, value=None, max_value=None):
         self._last_time = datetime.min
         self._max_value = max_value
+        self._set_value = self._set_value_with_max if max_value else self._set_value_without_max
         if value is None:
             self._value = self.default_value
         else:
@@ -724,6 +729,7 @@ class MinValue(AggregationValue):
     def reset(self, value=None, max_value=None):
         self._last_time = datetime.min
         self._max_value = max_value
+        self._set_value = self._set_value_with_max if max_value else self._set_value_without_max
         if value is None:
             self._value = max_value or self.default_value
         else:
