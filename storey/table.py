@@ -711,16 +711,23 @@ class MinValue(AggregationValue):
     default_value = float('inf')
 
     def __init__(self, max_value=None, set_data=None):
-        self._value = self.default_value
+        self._value = max_value or self.default_value
         super().__init__(max_value, set_data)
 
     def aggregate(self, time, value):
-        if value > self._value:
-            value = self._value
-        self._set_value(value)
+        if value < self._value:
+            self._value = value  # bypass _set_value because there's no need to check max_value each time
 
     def get_update_expression(self, old):
         return f'min({old}, {self._value})'
+
+    def reset(self, value=None, max_value=None):
+        self._last_time = datetime.min
+        self._max_value = max_value
+        if value is None:
+            self._value = max_value or self.default_value
+        else:
+            self._value = value
 
 
 class MaxValue(AggregationValue):
@@ -732,9 +739,8 @@ class MaxValue(AggregationValue):
         super().__init__(max_value, set_data)
 
     def aggregate(self, time, value):
-        if value < self._value:
-            value = self._value
-        self._set_value(value)
+        if value > self._value:
+            self._set_value(value)
 
     def get_update_expression(self, old):
         return f'max({old}, {self._value})'
