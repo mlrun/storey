@@ -1,5 +1,4 @@
 import asyncio
-import copy
 from datetime import datetime
 import time
 import re
@@ -174,10 +173,9 @@ class AggregateByKey(Flow):
             emitted_attr_name = self._aliases.get(col, None) or col
             if col in self._table._get_static_attrs(key):
                 features[emitted_attr_name] = self._table._get_static_attrs(key)[col]
-        new_event = copy.copy(event)
-        new_event.key = key
-        new_event.body = features
-        await self._do_downstream(new_event)
+        event.key = key
+        event.body = features
+        await self._do_downstream(event)
 
     # Emit multiple events for every key in the store with the current time
     async def _emit_all_events(self, timestamp):
