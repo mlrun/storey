@@ -1942,3 +1942,22 @@ def test_result_path():
     controller.terminate()
     termination_result = controller.await_termination()
     assert termination_result == {'col1': 1, 'step_result': {"new_field": 5}}
+
+
+def test_to_dict():
+    source = Source(name='my_source')
+    identity = Map(lambda x: x, full_event=False)
+    assert source.to_dict() == {'class_name': 'Source', 'parameters': {'name': 'my_source'}}
+    assert identity.to_dict() == {'class_name': 'Map', 'parameters': {'full_event': False}}
+
+
+def test_reuse_flow():
+    flow = build_flow([Source(), Map(lambda x: x + 1), Reduce(0, lambda acc, x: acc + x)])
+
+    for _ in range(3):
+        controller = flow.run()
+        for i in range(10):
+            controller.emit(i)
+        controller.terminate()
+        result = controller.await_termination()
+        assert result == 55

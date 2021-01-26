@@ -21,8 +21,8 @@ class Table:
     def __init__(self, table_path: str, storage: Driver, partitioned_by_key: bool = True):
         self._container, self._table_path = _split_path(table_path)
         self._storage = storage
-        self._attrs_cache = {}
         self._partitioned_by_key = partitioned_by_key
+        self._attrs_cache = {}
         self._aggregates = None
         self._schema = None
         self._aggregations_read_only = False

@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import csv
 import json
 import os
@@ -47,8 +48,12 @@ class _Writer:
                     result.append(col)
             return result
 
-        self._columns = parse_notation(columns, self._metadata_columns, self._rename_columns)
-        self._index_cols = parse_notation(index_cols, self._metadata_index_columns, self._rename_index_columns)
+        self._initial_columns = parse_notation(columns, self._metadata_columns, self._rename_columns)
+        self._initial_index_cols = parse_notation(index_cols, self._metadata_index_columns, self._rename_index_columns)
+
+    def _init(self):
+        self._columns = copy.copy(self._initial_columns)
+        self._index_cols = copy.copy(self._initial_index_cols)
 
     @staticmethod
     def _get_column_data_from_dict(new_data, event, columns, metadata_columns, rename_columns):
@@ -137,6 +142,10 @@ class WriteToCSV(_Batching, _Writer):
 
         self._path = path
         self._write_header = header
+
+    def _init(self):
+        _Batching._init(self)
+        _Writer._init(self)
         self._blocking_io_loop_future = None
         self._data_buffer = queue.Queue(1024)
         self._blocking_io_loop_failed = False
@@ -223,6 +232,10 @@ class WriteToParquet(_Batching, _Writer):
 
         self._path = path
         self._partition_cols = partition_cols
+
+    def _init(self):
+        _Batching._init(self)
+        _Writer._init(self)
         self._first_event = True
 
     def _event_to_batch_entry(self, event):
@@ -286,6 +299,10 @@ class WriteToTSDB(_Batching, _Writer):
         self._created = False
         self._frames_client = frames_client or frames.Client(address=v3io_frames, token=access_key, container=container)
 
+    def _init(self):
+        _Batching._init(self)
+        _Writer._init(self)
+
     def _event_to_batch_entry(self, event):
         return self._event_to_writer_entry(event)
 
@@ -335,6 +352,10 @@ class WriteToV3IOStream(Flow, _Writer):
         self._batch_size = batch_size
 
         self._shard_count = None
+
+    def _init(self):
+        Flow._init(self)
+        _Writer._init(self)
 
     @staticmethod
     async def _handle_response(request):
@@ -455,6 +476,10 @@ class WriteToTable(_ConcurrentByKeyJobExecution, _Writer):
                 raise TypeError("Table can not be string if no context was provided to the step")
             self._table = self.context.get_table(table)
         self._closeables = [self._table]
+
+    def _init(self):
+        _ConcurrentByKeyJobExecution._init(self)
+        _Writer._init(self)
 
     async def _process_events(self, events):
         data_to_persist = self._event_to_writer_entry(events[-1])
