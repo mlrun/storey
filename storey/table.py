@@ -28,6 +28,9 @@ class Table:
         self._aggregations_read_only = False
         self._use_windows_from_schema = False
 
+    def __str__(self):
+        return f'{self._container}/{self._table_path}'
+
     def _update_static_attrs(self, key, data):
         attrs = self._get_static_attrs(key)
         if attrs:

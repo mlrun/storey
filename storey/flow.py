@@ -568,8 +568,12 @@ class _PendingEvent:
 
 class _ConcurrentByKeyJobExecution(Flow):
     def __init__(self, max_in_flight=8, **kwargs):
+        kwargs['max_in_flight'] = max_in_flight
         Flow.__init__(self, **kwargs)
         self._max_in_flight = max_in_flight
+
+    def _init(self):
+        super()._init()
         self._q = None
         self._pending_by_key = {}
 
