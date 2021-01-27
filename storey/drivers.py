@@ -82,6 +82,7 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
         if self._v3io_client and not self._closed:
             self._closed = True
             await self._v3io_client.close()
+            self._v3io_client = None
 
     saved_engine_words = {'min': True, 'max': True, 'sqrt': True, 'avg': True, 'stddev': True, 'sum': True,
                           'length': True, 'init_array': True, 'set': True, 'remove': True,

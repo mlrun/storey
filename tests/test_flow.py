@@ -1951,7 +1951,7 @@ def test_to_dict():
     assert identity.to_dict() == {'class_name': 'Map', 'parameters': {'full_event': False}}
 
 
-def test_reuse_flow():
+def test_flow_reuse():
     flow = build_flow([Source(), Map(lambda x: x + 1), Reduce(0, lambda acc, x: acc + x)])
 
     for _ in range(3):
