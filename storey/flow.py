@@ -38,10 +38,13 @@ class Flow:
         pass
 
     def to_dict(self):
-        return {
+        result = {
             'class_name': type(self).__name__,
             'parameters': self._kwargs
         }
+        if self._recovery_step:
+            result['recovery_step'] = self._recovery_step.to_dict()
+        return result
 
     def to(self, outlet):
         self._outlets.append(outlet)
