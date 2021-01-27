@@ -1945,9 +1945,9 @@ def test_result_path():
 
 
 def test_to_dict():
-    source = Source(name='my_source')
+    source = Source(name='my_source', buffer_size=5)
     identity = Map(lambda x: x, full_event=False)
-    assert source.to_dict() == {'class_name': 'Source', 'parameters': {'name': 'my_source'}}
+    assert source.to_dict() == {'class_name': 'Source', 'parameters': {'name': 'my_source', 'buffer_size': 5}}
     assert identity.to_dict() == {'class_name': 'Map', 'parameters': {'full_event': False}}
 
 

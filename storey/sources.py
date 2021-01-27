@@ -137,8 +137,14 @@ class Source(Flow):
     :type name: string
     """
 
-    def __init__(self, buffer_size: int = 1024, key_field: Optional[str] = None, time_field: Optional[str] = None,
+    def __init__(self, buffer_size: Optional[int] = None, key_field: Optional[str] = None, time_field: Optional[str] = None,
                  **kwargs):
+        if buffer_size is None:
+            buffer_size = 1024
+        else:
+            kwargs['buffer_size'] = buffer_size
+        if key_field is not None:
+            kwargs['key_field'] = key_field
         super().__init__(**kwargs)
         if buffer_size <= 0:
             raise ValueError('Buffer size must be positive')
