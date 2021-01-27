@@ -33,7 +33,8 @@ with open('README.md') as fp:
 
 setup(
     name='storey',
-    version=version(),
+    version='0.9.8',  # FIXME
+    # version=version(),
     description='Async flows',
     long_description=long_desc,
     long_description_content_type='text/markdown',
