@@ -1961,3 +1961,32 @@ def test_flow_reuse():
         controller.terminate()
         result = controller.await_termination()
         assert result == 55
+
+
+def test_flow_reuse_read_csv():
+    step = ReadCSV('tests/test-with-timestamp-ns.csv', header=True, key_field='k', timestamp_field='t',
+                   timestamp_format='%d/%m/%Y %H:%M:%S.%f')
+    assert step.to_dict() == {
+        'class_name': 'ReadCSV',
+        'parameters': {
+            'build_dict': False,
+            'header': True,
+            'key_field': 'k',
+            'paths': 'tests/test-with-timestamp-ns.csv',
+            'timestamp_field': 't',
+            'timestamp_format': '%d/%m/%Y %H:%M:%S.%f',
+            'type_inference': True
+        }
+    }
+
+
+def test_flow_reuse_write_to_parquet():
+    step = WriteToParquet('outfile', columns=['col1', 'col2'], max_events=2)
+    assert step.to_dict() == {
+        'class_name': 'WriteToParquet',
+        'parameters': {
+            'path': 'outfile',
+            'columns': ['col1', 'col2'],
+            'max_events': 2
+        }
+    }

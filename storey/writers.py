@@ -227,6 +227,16 @@ class WriteToParquet(_Batching, _Writer):
 
     def __init__(self, path: str, index_cols: Union[str, List[str], None] = None, columns: Union[str, List[str], None] = None,
                  partition_cols: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None, **kwargs):
+        kwargs['path'] = path
+        if index_cols is not None:
+            kwargs['index_cols'] = index_cols
+        if columns is not None:
+            kwargs['columns'] = columns
+        if partition_cols is not None:
+            kwargs['partition_cols'] = partition_cols
+        if infer_columns_from_data is not None:
+            kwargs['infer_columns_from_data'] = infer_columns_from_data
+
         _Batching.__init__(self, **kwargs)
         _Writer.__init__(self, columns, infer_columns_from_data, index_cols)
 

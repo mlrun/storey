@@ -412,6 +412,16 @@ class ReadCSV(_IterableSource):
     def __init__(self, paths: Union[List[str], str], header: bool = False, build_dict: bool = False,
                  key_field: Union[int, str, None] = None, timestamp_field: Union[int, str, None] = None,
                  timestamp_format: Optional[str] = None, type_inference: bool = True, **kwargs):
+        kwargs['paths'] = paths
+        kwargs['header'] = header
+        kwargs['build_dict'] = build_dict
+        if key_field is not None:
+            kwargs['key_field'] = key_field
+        if timestamp_field is not None:
+            kwargs['timestamp_field'] = timestamp_field
+        if timestamp_format is not None:
+            kwargs['timestamp_format'] = timestamp_format
+        kwargs['type_inference'] = type_inference
         super().__init__(**kwargs)
         if isinstance(paths, str):
             paths = [paths]
@@ -421,14 +431,16 @@ class ReadCSV(_IterableSource):
         self._key_field = key_field
         self._timestamp_field = timestamp_field
         self._timestamp_format = timestamp_format
-        self._event_buffer = queue.Queue(1024)
         self._type_inference = type_inference
-        self._types = []
 
         if not header and isinstance(key_field, str):
             raise ValueError('key_field can only be set to an integer when with_header is false')
         if not header and isinstance(timestamp_field, str):
             raise ValueError('timestamp_field can only be set to an integer when with_header is false')
+
+    def _init(self):
+        self._event_buffer = queue.Queue(1024)
+        self._types = []
 
     def _infer_type(self, value):
         lowercase = value.lower()
