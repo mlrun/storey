@@ -526,7 +526,7 @@ class ReadOnlyAggregationBuckets:
             for bucket_index in range(current_time_bucket_index, last_bucket_to_aggregate - 1, -1):
                 if bucket_index < len(self.buckets):
                     bucket = self.buckets[bucket_index]
-                    aggregated_value.aggregate(bucket.last_time, bucket.value)
+                    aggregated_value.aggregate(bucket.time, bucket.value)
 
             # advance the time bucket, so that next iteration won't calculate the same buckets again
             current_time_bucket_index = last_bucket_to_aggregate - 1
@@ -658,7 +658,7 @@ class AggregationValue:
     default_value = None
 
     def __init__(self, max_value=None, set_data=None):
-        self.last_time = datetime.min
+        self.time = datetime.min
         self._max_value = max_value
         self._set_value = self._set_value_with_max if max_value else self._set_value_without_max
 
@@ -699,7 +699,7 @@ class AggregationValue:
         return f'{old}+{self.value}'
 
     def reset(self, value=None):
-        self.last_time = datetime.min
+        self.time = datetime.min
         if value is None:
             self.value = self.default_value
         else:
@@ -722,7 +722,7 @@ class MinValue(AggregationValue):
         return f'min({old}, {self.value})'
 
     def reset(self, value=None):
-        self.last_time = datetime.min
+        self.time = datetime.min
         if value is None:
             self.value = self._max_value or self.default_value
         else:
@@ -790,9 +790,9 @@ class LastValue(AggregationValue):
         super().__init__(max_value, set_data)
 
     def aggregate(self, time, value):
-        if time > self.last_time:
+        if time > self.time:
             self._set_value(value)
-            self.last_time = time
+            self.time = time
 
     def get_update_expression(self, old):
         return f'{self.value}'
@@ -808,19 +808,19 @@ class FirstValue(AggregationValue):
         self._first_time = datetime.max
 
     def aggregate(self, time, value):
-        if time < self._first_time:
+        if time < self.time:
             self._set_value(value)
-            self._first_time = time
-
-    def get_value(self):
-        return self._first_time, self.value
+            self.time = time
 
     def get_update_expression(self, old):
         return f'if_else(({old} == {self.default_value}), {self.value}, {old})'
 
     def reset(self, value=None):
-        super().reset(value)
-        self._first_time = datetime.max
+        self.time = datetime.max
+        if value is None:
+            self.value = self.default_value
+        else:
+            self.value = value
 
 
 class AggregatedStoreElement:
@@ -1111,7 +1111,7 @@ class AggregationBuckets:
                 if bucket_index < len(self.buckets):
                     for aggregation_name in self._all_raw_aggregates:
                         bucket = self.buckets[bucket_index][aggregation_name]
-                        self._intermediate_aggregation_values[aggregation_name].aggregate(bucket.last_time, bucket.value)
+                        self._intermediate_aggregation_values[aggregation_name].aggregate(bucket.time, bucket.value)
 
             # create a feature for the current time window
             for aggregation_name in self._explicit_raw_aggregations:
