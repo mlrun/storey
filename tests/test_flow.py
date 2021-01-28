@@ -1963,7 +1963,7 @@ def test_flow_reuse():
         assert result == 55
 
 
-def test_flow_reuse_read_csv():
+def test_flow_to_dict_read_csv():
     step = ReadCSV('tests/test-with-timestamp-ns.csv', header=True, key_field='k', timestamp_field='t',
                    timestamp_format='%d/%m/%Y %H:%M:%S.%f')
     assert step.to_dict() == {
@@ -1980,7 +1980,7 @@ def test_flow_reuse_read_csv():
     }
 
 
-def test_flow_reuse_write_to_parquet():
+def test_flow_to_dict_write_to_parquet():
     step = WriteToParquet('outfile', columns=['col1', 'col2'], max_events=2)
     assert step.to_dict() == {
         'class_name': 'WriteToParquet',
@@ -1988,5 +1988,22 @@ def test_flow_reuse_write_to_parquet():
             'path': 'outfile',
             'columns': ['col1', 'col2'],
             'max_events': 2
+        }
+    }
+
+
+def test_flow_to_dict_write_to_tsdb():
+    step = WriteToTSDB(path='some/path', time_col='time', index_cols='node', columns=['cpu', 'disk'], rate='1/h',
+                       max_events=1, frames_client=MockFramesClient())
+
+    assert step.to_dict() == {
+        'class_name': 'WriteToTSDB',
+        'parameters': {
+            'columns': ['cpu', 'disk'],
+            'index_cols': 'node',
+            'max_events': 1,
+            'path': 'some/path',
+            'rate': '1/h',
+            'time_col': 'time'
         }
     }

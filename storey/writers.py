@@ -294,6 +294,24 @@ class WriteToTSDB(_Batching, _Writer):
                  infer_columns_from_data: Optional[bool] = None, index_cols: Union[str, List[str], None] = None,
                  v3io_frames: Optional[str] = None, access_key: Optional[str] = None, container: str = "", rate: str = "", aggr: str = "",
                  aggr_granularity: str = "", frames_client=None, **kwargs):
+        kwargs['path'] = path
+        kwargs['time_col'] = time_col
+        if columns is not None:
+            kwargs['columns'] = columns
+        if infer_columns_from_data is not None:
+            kwargs['infer_columns_from_data'] = infer_columns_from_data
+        if index_cols is not None:
+            kwargs['index_cols'] = index_cols
+        if v3io_frames is not None:
+            kwargs['v3io_frames'] = v3io_frames
+        if container:
+            kwargs['container'] = container
+        if rate:
+            kwargs['rate'] = rate
+        if aggr:
+            kwargs['aggr'] = aggr
+        if aggr_granularity:
+            kwargs['aggr_granularity'] = aggr_granularity
         _Batching.__init__(self, **kwargs)
         new_index_cols = [time_col]
         if index_cols:
