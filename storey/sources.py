@@ -574,6 +574,12 @@ class DataframeSource(_IterableSource):
 
     def __init__(self, dfs: Union[pandas.DataFrame, Iterable[pandas.DataFrame]], key_column: Optional[str] = None,
                  time_column: Optional[str] = None, id_column: Optional[str] = None, **kwargs):
+        if key_column is not None:
+            kwargs['key_column'] = key_column
+        if time_column is not None:
+            kwargs['time_column'] = time_column
+        if id_column is not None:
+            kwargs['id_column'] = id_column
         super().__init__(**kwargs)
         if isinstance(dfs, pandas.DataFrame):
             dfs = [dfs]

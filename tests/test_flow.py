@@ -2007,3 +2007,17 @@ def test_flow_to_dict_write_to_tsdb():
             'time_col': 'time'
         }
     }
+
+
+def test_flow_dataframe_source():
+    df = pd.DataFrame([['key1', datetime(2020, 2, 15), 'id1', 1.1]], columns=['my_key', 'my_time', 'my_id', 'my_value'])
+    step = DataframeSource(df, key_column='my_key', time_column='my_time', id_column='my_id')
+
+    assert step.to_dict() == {
+        'class_name': 'DataframeSource',
+        'parameters': {
+            'id_column': 'my_id',
+            'key_column': 'my_key',
+            'time_column': 'my_time'
+        }
+    }
