@@ -26,6 +26,7 @@ class Flow:
         self._full_event = kwargs.get('full_event', False)
         self._input_path = kwargs.get('input_path')
         self._result_path = kwargs.get('result_path')
+        self.first_step_source = False
         name = kwargs.get('name')
         if name:
             self.name = name
@@ -60,10 +61,14 @@ class Flow:
         else:
             return self._recovery_step
 
-    def run(self):
+    def run(self, is_first_time=True):
         self._init()
+        if is_first_time and not self.first_step_source:
+            raise ValueError("first step must be Source/AsyncSource/DataframeSource/ReadCSV/ReadParquet")
+        if self._outlets and self._outlets[0].first_step_source:
+            raise ValueError("Source/AsyncSource/DataframeSource/ReadCSV/ReadParquet can only be first step")
         for outlet in self._outlets:
-            self._closeables.extend(outlet.run())
+            self._closeables.extend(outlet.run(False))
         return self._closeables
 
     async def run_async(self):
