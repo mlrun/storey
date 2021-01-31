@@ -1942,3 +1942,82 @@ def test_result_path():
     controller.terminate()
     termination_result = controller.await_termination()
     assert termination_result == {'col1': 1, 'step_result': {"new_field": 5}}
+
+
+def test_to_dict():
+    source = Source(name='my_source', buffer_size=5)
+    identity = Map(lambda x: x, full_event=False)
+    assert source.to_dict() == {'class_name': 'Source', 'parameters': {'name': 'my_source', 'buffer_size': 5}}
+    assert identity.to_dict() == {'class_name': 'Map', 'parameters': {'full_event': False}}
+
+
+def test_flow_reuse():
+    flow = build_flow([Source(), Map(lambda x: x + 1), Reduce(0, lambda acc, x: acc + x)])
+
+    for _ in range(3):
+        controller = flow.run()
+        for i in range(10):
+            controller.emit(i)
+        controller.terminate()
+        result = controller.await_termination()
+        assert result == 55
+
+
+def test_flow_to_dict_read_csv():
+    step = ReadCSV('tests/test-with-timestamp-ns.csv', header=True, key_field='k', timestamp_field='t',
+                   timestamp_format='%d/%m/%Y %H:%M:%S.%f')
+    assert step.to_dict() == {
+        'class_name': 'ReadCSV',
+        'parameters': {
+            'build_dict': False,
+            'header': True,
+            'key_field': 'k',
+            'paths': 'tests/test-with-timestamp-ns.csv',
+            'timestamp_field': 't',
+            'timestamp_format': '%d/%m/%Y %H:%M:%S.%f',
+            'type_inference': True
+        }
+    }
+
+
+def test_flow_to_dict_write_to_parquet():
+    step = WriteToParquet('outfile', columns=['col1', 'col2'], max_events=2)
+    assert step.to_dict() == {
+        'class_name': 'WriteToParquet',
+        'parameters': {
+            'path': 'outfile',
+            'columns': ['col1', 'col2'],
+            'max_events': 2
+        }
+    }
+
+
+def test_flow_to_dict_write_to_tsdb():
+    step = WriteToTSDB(path='some/path', time_col='time', index_cols='node', columns=['cpu', 'disk'], rate='1/h',
+                       max_events=1, frames_client=MockFramesClient())
+
+    assert step.to_dict() == {
+        'class_name': 'WriteToTSDB',
+        'parameters': {
+            'columns': ['cpu', 'disk'],
+            'index_cols': 'node',
+            'max_events': 1,
+            'path': 'some/path',
+            'rate': '1/h',
+            'time_col': 'time'
+        }
+    }
+
+
+def test_flow_dataframe_source():
+    df = pd.DataFrame([['key1', datetime(2020, 2, 15), 'id1', 1.1]], columns=['my_key', 'my_time', 'my_id', 'my_value'])
+    step = DataframeSource(df, key_column='my_key', time_column='my_time', id_column='my_id')
+
+    assert step.to_dict() == {
+        'class_name': 'DataframeSource',
+        'parameters': {
+            'id_column': 'my_id',
+            'key_column': 'my_key',
+            'time_column': 'my_time'
+        }
+    }

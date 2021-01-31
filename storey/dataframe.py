@@ -27,10 +27,13 @@ class ReduceToDataFrame(Flow):
         self._index = index
         self._columns = columns
         self._insert_key_column_as = insert_key_column_as
-        self._key_column = []
         self._insert_time_column_as = insert_time_column_as
-        self._time_column = []
         self._insert_id_column_as = insert_id_column_as
+
+    def _init(self):
+        super()._init()
+        self._key_column = []
+        self._time_column = []
         self._id_column = []
         self._data = []
 

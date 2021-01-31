@@ -15,22 +15,36 @@ from .utils import _split_path, get_in, update_in
 
 
 class Flow:
-    def __init__(self, recovery_step=None, name=None, full_event=False,
-                 termination_result_fn=lambda x, y: x if x is not None else y,
-                 context=None, input_path: Optional[str] = None, result_path: Optional[str] = None, **kwargs):
+    def __init__(self, recovery_step=None, termination_result_fn=lambda x, y: x if x is not None else y, context=None, **kwargs):
         self._outlets = []
         self._recovery_step = recovery_step
-        self._full_event = full_event
         self._termination_result_fn = termination_result_fn
         self.context = context
         self.verbose = context and getattr(context, 'verbose', False)
-        self._closeables = []
-        self._input_path = input_path
-        self._result_path = result_path
+
+        self._kwargs = kwargs
+        self._full_event = kwargs.get('full_event', False)
+        self._input_path = kwargs.get('input_path')
+        self._result_path = kwargs.get('result_path')
+        name = kwargs.get('name')
         if name:
             self.name = name
         else:
             self.name = type(self).__name__
+
+        self._closeables = []
+
+    def _init(self):
+        pass
+
+    def to_dict(self):
+        result = {
+            'class_name': type(self).__name__,
+            'parameters': self._kwargs
+        }
+        if self._recovery_step:
+            result['recovery_step'] = self._recovery_step.to_dict()
+        return result
 
     def to(self, outlet):
         self._outlets.append(outlet)
@@ -47,6 +61,7 @@ class Flow:
             return self._recovery_step
 
     def run(self):
+        self._init()
         for outlet in self._outlets:
             self._closeables.extend(outlet.run())
         return self._closeables
@@ -415,12 +430,16 @@ class Reduce(Flow):
     """
 
     def __init__(self, initial_value, fn, **kwargs):
+        kwargs['initial_value'] = initial_value
         super().__init__(**kwargs)
         if not callable(fn):
             raise TypeError(f'Expected a callable, got {type(fn)}')
         self._is_async = asyncio.iscoroutinefunction(fn)
         self._fn = fn
-        self._result = initial_value
+        self._initial_value = initial_value
+
+    def _init(self):
+        self._result = self._initial_value
 
     def to(self, outlet):
         raise ValueError("Reduce is a terminal step. It cannot be piped further.")
@@ -479,6 +498,8 @@ class _ConcurrentJobExecution(Flow):
     def __init__(self, max_in_flight=8, **kwargs):
         Flow.__init__(self, **kwargs)
         self._max_in_flight = max_in_flight
+
+    def _init(self):
         self._q = None
 
     async def _worker(self):
@@ -550,8 +571,12 @@ class _PendingEvent:
 
 class _ConcurrentByKeyJobExecution(Flow):
     def __init__(self, max_in_flight=8, **kwargs):
+        kwargs['max_in_flight'] = max_in_flight
         Flow.__init__(self, **kwargs)
         self._max_in_flight = max_in_flight
+
+    def _init(self):
+        super()._init()
         self._q = None
         self._pending_by_key = {}
 
@@ -681,6 +706,8 @@ class SendToHttp(_ConcurrentJobExecution):
         self._request_builder = request_builder
         self._join_from_response = join_from_response
 
+    def _init(self):
+        super()._init()
         self._client_session = None
 
     async def _lazy_init(self):
@@ -710,6 +737,12 @@ class _Batching(Flow):
             key: Optional[Union[str, Callable[[Event], str]]] = None,
             **kwargs,
     ):
+        if max_events:
+            kwargs['max_events'] = max_events
+        if timeout_secs:
+            kwargs['timeout_secs'] = timeout_secs
+        if isinstance(key, str):
+            kwargs['key'] = key
         super().__init__(**kwargs)
 
         self._max_events: int = max_events
@@ -720,6 +753,7 @@ class _Batching(Flow):
 
         self._extract_key: Optional[Callable[[Event], str]] = self._create_key_extractor(key)
 
+    def _init(self):
         self._batch: Dict[Optional[str], List[Any]] = defaultdict(list)
         self._batch_first_event_time: Dict[Optional[str], datetime.datetime] = {}
         self._batch_start_time: Dict[Optional[str], float] = {}
@@ -832,6 +866,8 @@ class JoinWithV3IOTable(_ConcurrentJobExecution):
     """
 
     def __init__(self, storage, key_extractor, join_function, table_path, attributes='*', **kwargs):
+        kwargs['table_path'] = table_path
+        kwargs['attributes'] = attributes
         super().__init__(**kwargs)
 
         self._storage = storage
@@ -879,6 +915,12 @@ class JoinWithTable(_ConcurrentJobExecution):
     def __init__(self, table: Union[Table, str], key_extractor: Union[str, Callable[[Event], str]],
                  attributes: Optional[List[str]] = None,
                  join_function: Optional[Callable[[Event, Dict[str, object]], Event]] = None, **kwargs):
+        if isinstance(table, str):
+            kwargs['table'] = table
+        if isinstance(key_extractor, str):
+            kwargs['key_extractor'] = key_extractor
+        if attributes:
+            kwargs['attributes'] = attributes
         super().__init__(**kwargs)
 
         self._table = table
@@ -886,7 +928,6 @@ class JoinWithTable(_ConcurrentJobExecution):
             if not self.context:
                 raise TypeError("Table can not be string if no context was provided to the step")
             self._table = self.context.get_table(table)
-        self._closeables = [self._table]
 
         if key_extractor:
             if callable(key_extractor):
@@ -903,6 +944,10 @@ class JoinWithTable(_ConcurrentJobExecution):
         self._join_function = join_function or default_join_fn
 
         self._attributes = attributes or '*'
+
+    def _init(self):
+        super()._init()
+        self._closeables = [self._table]
 
     async def _process_event(self, event):
         key = self._key_extractor(self._get_event_or_body(event))

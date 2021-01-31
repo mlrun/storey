@@ -95,7 +95,8 @@ def test_aggregate_and_query_with_different_windows(setup_teardown_test, partiti
     actual = controller.await_termination()
     expected_results = [
         {'col1': 10, 'number_of_stuff_sum_1h': 17, 'number_of_stuff_min_1h': 8, 'number_of_stuff_max_1h': 9, 'number_of_stuff_avg_1h': 8.5},
-        {'col1': 10, 'number_of_stuff_sum_1h': 9.0, 'number_of_stuff_min_1h': 9.0, 'number_of_stuff_max_1h': 9.0,'number_of_stuff_avg_1h': 9.0},
+        {'col1': 10, 'number_of_stuff_sum_1h': 9.0, 'number_of_stuff_min_1h': 9.0, 'number_of_stuff_max_1h': 9.0,
+         'number_of_stuff_avg_1h': 9.0},
     ]
 
     assert actual == expected_results, \
@@ -124,13 +125,16 @@ def test_query_virtual_aggregations_flow(setup_teardown_test):
         {'col1': 0, 'number_of_stuff_avg_24h': 0.0, 'number_of_stuff_stddev_24h': 0, 'number_of_stuff_stdvar_24h': 0},
         {'col1': 1, 'number_of_stuff_avg_24h': 0.5, 'number_of_stuff_stddev_24h': math.sqrt(0.5), 'number_of_stuff_stdvar_24h': 0.5},
         {'col1': 2, 'number_of_stuff_avg_24h': 1.0, 'number_of_stuff_stddev_24h': 1.0, 'number_of_stuff_stdvar_24h': 1.0},
-        {'col1': 3, 'number_of_stuff_avg_24h': 1.5, 'number_of_stuff_stddev_24h': math.sqrt(1.6666666666666667), 'number_of_stuff_stdvar_24h': 1.6666666666666667},
+        {'col1': 3, 'number_of_stuff_avg_24h': 1.5, 'number_of_stuff_stddev_24h': math.sqrt(1.6666666666666667),
+         'number_of_stuff_stdvar_24h': 1.6666666666666667},
         {'col1': 4, 'number_of_stuff_avg_24h': 2.0, 'number_of_stuff_stddev_24h': math.sqrt(2.5), 'number_of_stuff_stdvar_24h': 2.5},
         {'col1': 5, 'number_of_stuff_avg_24h': 2.5, 'number_of_stuff_stddev_24h': math.sqrt(3.5), 'number_of_stuff_stdvar_24h': 3.5},
-        {'col1': 6, 'number_of_stuff_avg_24h': 3.0, 'number_of_stuff_stddev_24h': math.sqrt(4.666666666666667), 'number_of_stuff_stdvar_24h': 4.666666666666667},
+        {'col1': 6, 'number_of_stuff_avg_24h': 3.0, 'number_of_stuff_stddev_24h': math.sqrt(4.666666666666667),
+         'number_of_stuff_stdvar_24h': 4.666666666666667},
         {'col1': 7, 'number_of_stuff_avg_24h': 3.5, 'number_of_stuff_stddev_24h': math.sqrt(6.0), 'number_of_stuff_stdvar_24h': 6.0},
         {'col1': 8, 'number_of_stuff_avg_24h': 4.0, 'number_of_stuff_stddev_24h': math.sqrt(7.5), 'number_of_stuff_stdvar_24h': 7.5},
-        {'col1': 9, 'number_of_stuff_avg_24h': 4.5, 'number_of_stuff_stddev_24h': math.sqrt(9.166666666666666), 'number_of_stuff_stdvar_24h': 9.166666666666666}
+        {'col1': 9, 'number_of_stuff_avg_24h': 4.5, 'number_of_stuff_stddev_24h': math.sqrt(9.166666666666666),
+         'number_of_stuff_stdvar_24h': 9.166666666666666}
     ]
 
     assert actual == expected_results, \
@@ -152,7 +156,8 @@ def test_query_virtual_aggregations_flow(setup_teardown_test):
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [
-        {'col1': 10, 'number_of_stuff_avg_1h': 8.5, 'number_of_stuff_stdvar_2h': 1.6666666666666667, 'number_of_stuff_stddev_3h': 1.8708286933869707},
+        {'col1': 10, 'number_of_stuff_avg_1h': 8.5, 'number_of_stuff_stdvar_2h': 1.6666666666666667,
+         'number_of_stuff_stddev_3h': 1.8708286933869707},
         {'col1': 10, 'number_of_stuff_avg_1h': 9.0, 'number_of_stuff_stdvar_2h': 1.0, 'number_of_stuff_stddev_3h': 1.8708286933869707},
     ]
 
@@ -281,7 +286,7 @@ def test_aggregate_and_query_with_dependent_aggrs_different_windows(setup_teardo
         {'number_of_stuff_sum_1h': 1, 'number_of_stuff_sum_2h': 1,
          'number_of_stuff_avg_1h': 0.5, 'number_of_stuff_avg_2h': 0.5, 'col1': 1},
         {'number_of_stuff_sum_1h': 3, 'number_of_stuff_sum_2h': 3,
-         'number_of_stuff_avg_1h': 1.0, 'number_of_stuff_avg_2h': 1.0,'col1': 2},
+         'number_of_stuff_avg_1h': 1.0, 'number_of_stuff_avg_2h': 1.0, 'col1': 2},
         {'number_of_stuff_sum_1h': 6, 'number_of_stuff_sum_2h': 6,
          'number_of_stuff_avg_1h': 2.0, 'number_of_stuff_avg_2h': 1.5, 'col1': 3},
         {'number_of_stuff_sum_1h': 9, 'number_of_stuff_sum_2h': 10,
@@ -291,7 +296,7 @@ def test_aggregate_and_query_with_dependent_aggrs_different_windows(setup_teardo
         {'number_of_stuff_sum_1h': 15, 'number_of_stuff_sum_2h': 20,
          'number_of_stuff_avg_1h': 5.0, 'number_of_stuff_avg_2h': 4.0, 'col1': 6},
         {'number_of_stuff_sum_1h': 18, 'number_of_stuff_sum_2h': 25,
-         'number_of_stuff_avg_1h': 6.0, 'number_of_stuff_avg_2h': 5.0,  'col1': 7},
+         'number_of_stuff_avg_1h': 6.0, 'number_of_stuff_avg_2h': 5.0, 'col1': 7},
         {'number_of_stuff_sum_1h': 21, 'number_of_stuff_sum_2h': 30,
          'number_of_stuff_avg_1h': 7.0, 'number_of_stuff_avg_2h': 6.0, 'col1': 8},
         {'number_of_stuff_sum_1h': 24, 'number_of_stuff_sum_2h': 35,
@@ -466,7 +471,7 @@ def test_aggregate_by_key_with_extra_aliases(setup_teardown_test):
     controller = build_flow([
         Source(),
         QueryByKey(['number_of_stuff_sum_2h', 'number_of_stuff_avg_2h', 'color', 'age', 'iss', 'sometime'],
-                              other_table, aliases={'color': 'external.color', 'iss': 'external.iss'}),
+                   other_table, aliases={'color': 'external.color', 'iss': 'external.iss'}),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -487,7 +492,7 @@ def test_aggregate_by_key_with_extra_aliases(setup_teardown_test):
 def test_write_cache_with_aggregations(setup_teardown_test):
     table = Table(setup_teardown_test, V3ioDriver())
 
-    table['tal'] =  {'color': 'blue', 'age': 41, 'iss': True, 'sometime': test_base_time}
+    table['tal'] = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': test_base_time}
 
     def enrich(event, state):
         if 'first_activity' not in state:
@@ -959,7 +964,7 @@ def test_query_aggregate_by_key_fixed_window_new_time_exceeds_stored_window(setu
     items_in_ingest_batch = 3
     for i in range(items_in_ingest_batch):
         data = {'col1': i}
-        controller.emit(data, 'tal', test_base_time + timedelta(minutes=45*i))
+        controller.emit(data, 'tal', test_base_time + timedelta(minutes=45 * i))
 
     controller.terminate()
     actual = controller.await_termination()
@@ -1059,7 +1064,7 @@ def test_fixed_query_time_exceeds_stored_window_by_more_than_window(setup_teardo
     items_in_ingest_batch = 3
     for i in range(items_in_ingest_batch):
         data = {'col1': i}
-        controller.emit(data, 'tal', test_base_time + timedelta(minutes=45*i))
+        controller.emit(data, 'tal', test_base_time + timedelta(minutes=45 * i))
 
     controller.terminate()
     actual = controller.await_termination()
@@ -1092,3 +1097,35 @@ def test_fixed_query_time_exceeds_stored_window_by_more_than_window(setup_teardo
 
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
+
+
+def test_write_to_table_reuse(setup_teardown_test):
+    table = Table(setup_teardown_test, V3ioDriver())
+    flow = build_flow([
+        Source(),
+        AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["count"], FixedWindows(['30m', '2h']))], table),
+        WriteToTable(table), Reduce([], lambda acc, x: append_return(acc, x))
+    ])
+    items_in_ingest_batch = 3
+
+    expected_results = [
+        [{'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 1, 'col1': 0},
+         {'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 2, 'col1': 1},
+         {'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 3, 'col1': 2}],
+        [{'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 1, 'col1': 0},
+         {'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 2, 'col1': 1},
+         {'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 3, 'col1': 2},
+         {'number_of_stuff_count_30m': 2, 'number_of_stuff_count_2h': 2, 'col1': 0},
+         {'number_of_stuff_count_30m': 2, 'number_of_stuff_count_2h': 4, 'col1': 1},
+         {'number_of_stuff_count_30m': 2, 'number_of_stuff_count_2h': 6, 'col1': 2}],
+    ]
+
+    for iteration in range(2):
+        controller = flow.run()
+        for i in range(items_in_ingest_batch):
+            data = {'col1': i}
+            controller.emit(data, 'tal', test_base_time + timedelta(minutes=45 * i))
+
+        controller.terminate()
+        actual = controller.await_termination()
+        assert actual == expected_results[iteration]

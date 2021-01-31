@@ -15,6 +15,9 @@ class Window(Flow):
         self._window = window
         self._emit_policy = emit_policy
         self._late_data_handling = late_data_handling
+
+    def _init(self):
+        super()._init()
         self._events_in_batch = 0
         self._emit_worker_running = False
         self._terminate_worker = False

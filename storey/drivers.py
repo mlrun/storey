@@ -64,7 +64,7 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
     def __init__(self, webapi=None, access_key=None):
         NeedsV3ioAccess.__init__(self, webapi, access_key)
         self._v3io_client = None
-        self._closed = False
+        self._closed = True
 
         self._aggregation_attribute_prefix = 'aggr_'
         self._aggregation_time_attribute_prefix = 't_'
@@ -74,8 +74,15 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
         self._mtime_header_name = 'X-v3io-transaction-verifier'
 
     def _lazy_init(self):
+        self._closed = False
         if not self._v3io_client:
             self._v3io_client = v3io.aio.dataplane.Client(endpoint=self._webapi_url, access_key=self._access_key)
+
+    async def close(self):
+        if self._v3io_client and not self._closed:
+            self._closed = True
+            await self._v3io_client.close()
+            self._v3io_client = None
 
     saved_engine_words = {'min': True, 'max': True, 'sqrt': True, 'avg': True, 'stddev': True, 'sum': True,
                           'length': True, 'init_array': True, 'set': True, 'remove': True,
@@ -404,8 +411,3 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
 
         return await self._v3io_client.kv.get(container, table_path, str(key), attribute_names=attributes,
                                               raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
-
-    async def close(self):
-        if self._v3io_client and not self._closed:
-            self._closed = True
-            await self._v3io_client.close()

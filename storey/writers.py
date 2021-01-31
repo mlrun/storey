@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import csv
 import json
 import os
@@ -47,8 +48,12 @@ class _Writer:
                     result.append(col)
             return result
 
-        self._columns = parse_notation(columns, self._metadata_columns, self._rename_columns)
-        self._index_cols = parse_notation(index_cols, self._metadata_index_columns, self._rename_index_columns)
+        self._initial_columns = parse_notation(columns, self._metadata_columns, self._rename_columns)
+        self._initial_index_cols = parse_notation(index_cols, self._metadata_index_columns, self._rename_index_columns)
+
+    def _init(self):
+        self._columns = copy.copy(self._initial_columns)
+        self._index_cols = copy.copy(self._initial_index_cols)
 
     @staticmethod
     def _get_column_data_from_dict(new_data, event, columns, metadata_columns, rename_columns):
@@ -137,6 +142,10 @@ class WriteToCSV(_Batching, _Writer):
 
         self._path = path
         self._write_header = header
+
+    def _init(self):
+        _Batching._init(self)
+        _Writer._init(self)
         self._blocking_io_loop_future = None
         self._data_buffer = queue.Queue(1024)
         self._blocking_io_loop_failed = False
@@ -218,11 +227,25 @@ class WriteToParquet(_Batching, _Writer):
 
     def __init__(self, path: str, index_cols: Union[str, List[str], None] = None, columns: Union[str, List[str], None] = None,
                  partition_cols: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None, **kwargs):
+        kwargs['path'] = path
+        if index_cols is not None:
+            kwargs['index_cols'] = index_cols
+        if columns is not None:
+            kwargs['columns'] = columns
+        if partition_cols is not None:
+            kwargs['partition_cols'] = partition_cols
+        if infer_columns_from_data is not None:
+            kwargs['infer_columns_from_data'] = infer_columns_from_data
+
         _Batching.__init__(self, **kwargs)
         _Writer.__init__(self, columns, infer_columns_from_data, index_cols)
 
         self._path = path
         self._partition_cols = partition_cols
+
+    def _init(self):
+        _Batching._init(self)
+        _Writer._init(self)
         self._first_event = True
 
     def _event_to_batch_entry(self, event):
@@ -271,6 +294,24 @@ class WriteToTSDB(_Batching, _Writer):
                  infer_columns_from_data: Optional[bool] = None, index_cols: Union[str, List[str], None] = None,
                  v3io_frames: Optional[str] = None, access_key: Optional[str] = None, container: str = "", rate: str = "", aggr: str = "",
                  aggr_granularity: str = "", frames_client=None, **kwargs):
+        kwargs['path'] = path
+        kwargs['time_col'] = time_col
+        if columns is not None:
+            kwargs['columns'] = columns
+        if infer_columns_from_data is not None:
+            kwargs['infer_columns_from_data'] = infer_columns_from_data
+        if index_cols is not None:
+            kwargs['index_cols'] = index_cols
+        if v3io_frames is not None:
+            kwargs['v3io_frames'] = v3io_frames
+        if container:
+            kwargs['container'] = container
+        if rate:
+            kwargs['rate'] = rate
+        if aggr:
+            kwargs['aggr'] = aggr
+        if aggr_granularity:
+            kwargs['aggr_granularity'] = aggr_granularity
         _Batching.__init__(self, **kwargs)
         new_index_cols = [time_col]
         if index_cols:
@@ -285,6 +326,10 @@ class WriteToTSDB(_Batching, _Writer):
         self.aggr_granularity = aggr_granularity
         self._created = False
         self._frames_client = frames_client or frames.Client(address=v3io_frames, token=access_key, container=container)
+
+    def _init(self):
+        _Batching._init(self)
+        _Writer._init(self)
 
     def _event_to_batch_entry(self, event):
         return self._event_to_writer_entry(event)
@@ -321,6 +366,12 @@ class WriteToV3IOStream(Flow, _Writer):
 
     def __init__(self, storage: Driver, stream_path: str, sharding_func: Optional[Callable[[Event], int]] = None, batch_size: int = 8,
                  columns: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None, **kwargs):
+        kwargs['stream_path'] = stream_path
+        kwargs['batch_size'] = batch_size
+        if columns:
+            kwargs['columns'] = columns
+        if infer_columns_from_data:
+            kwargs['infer_columns_from_data'] = infer_columns_from_data
         Flow.__init__(self, **kwargs)
         _Writer.__init__(self, columns, infer_columns_from_data, retain_dict=True)
 
@@ -335,6 +386,10 @@ class WriteToV3IOStream(Flow, _Writer):
         self._batch_size = batch_size
 
         self._shard_count = None
+
+    def _init(self):
+        Flow._init(self)
+        _Writer._init(self)
 
     @staticmethod
     async def _handle_response(request):
@@ -447,6 +502,11 @@ class WriteToTable(_ConcurrentByKeyJobExecution, _Writer):
 
     def __init__(self, table: Union[Table, str], columns: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None,
                  **kwargs):
+        kwargs['table'] = table
+        if columns:
+            kwargs['columns'] = columns
+        if infer_columns_from_data:
+            kwargs['infer_columns_from_data'] = infer_columns_from_data
         _ConcurrentByKeyJobExecution.__init__(self, **kwargs)
         _Writer.__init__(self, columns, infer_columns_from_data, retain_dict=True)
         self._table = table
@@ -455,6 +515,10 @@ class WriteToTable(_ConcurrentByKeyJobExecution, _Writer):
                 raise TypeError("Table can not be string if no context was provided to the step")
             self._table = self.context.get_table(table)
         self._closeables = [self._table]
+
+    def _init(self):
+        _ConcurrentByKeyJobExecution._init(self)
+        _Writer._init(self)
 
     async def _process_events(self, events):
         data_to_persist = self._event_to_writer_entry(events[-1])

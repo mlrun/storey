@@ -137,8 +137,14 @@ class Source(Flow):
     :type name: string
     """
 
-    def __init__(self, buffer_size: int = 1024, key_field: Optional[str] = None, time_field: Optional[str] = None,
+    def __init__(self, buffer_size: Optional[int] = None, key_field: Optional[str] = None, time_field: Optional[str] = None,
                  **kwargs):
+        if buffer_size is None:
+            buffer_size = 1024
+        else:
+            kwargs['buffer_size'] = buffer_size
+        if key_field is not None:
+            kwargs['key_field'] = key_field
         super().__init__(**kwargs)
         if buffer_size <= 0:
             raise ValueError('Buffer size must be positive')
@@ -406,6 +412,16 @@ class ReadCSV(_IterableSource):
     def __init__(self, paths: Union[List[str], str], header: bool = False, build_dict: bool = False,
                  key_field: Union[int, str, None] = None, timestamp_field: Union[int, str, None] = None,
                  timestamp_format: Optional[str] = None, type_inference: bool = True, **kwargs):
+        kwargs['paths'] = paths
+        kwargs['header'] = header
+        kwargs['build_dict'] = build_dict
+        if key_field is not None:
+            kwargs['key_field'] = key_field
+        if timestamp_field is not None:
+            kwargs['timestamp_field'] = timestamp_field
+        if timestamp_format is not None:
+            kwargs['timestamp_format'] = timestamp_format
+        kwargs['type_inference'] = type_inference
         super().__init__(**kwargs)
         if isinstance(paths, str):
             paths = [paths]
@@ -415,14 +431,16 @@ class ReadCSV(_IterableSource):
         self._key_field = key_field
         self._timestamp_field = timestamp_field
         self._timestamp_format = timestamp_format
-        self._event_buffer = queue.Queue(1024)
         self._type_inference = type_inference
-        self._types = []
 
         if not header and isinstance(key_field, str):
             raise ValueError('key_field can only be set to an integer when with_header is false')
         if not header and isinstance(timestamp_field, str):
             raise ValueError('timestamp_field can only be set to an integer when with_header is false')
+
+    def _init(self):
+        self._event_buffer = queue.Queue(1024)
+        self._types = []
 
     def _infer_type(self, value):
         lowercase = value.lower()
@@ -556,6 +574,12 @@ class DataframeSource(_IterableSource):
 
     def __init__(self, dfs: Union[pandas.DataFrame, Iterable[pandas.DataFrame]], key_column: Optional[str] = None,
                  time_column: Optional[str] = None, id_column: Optional[str] = None, **kwargs):
+        if key_column is not None:
+            kwargs['key_column'] = key_column
+        if time_column is not None:
+            kwargs['time_column'] = time_column
+        if id_column is not None:
+            kwargs['id_column'] = id_column
         super().__init__(**kwargs)
         if isinstance(dfs, pandas.DataFrame):
             dfs = [dfs]

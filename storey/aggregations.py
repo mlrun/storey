@@ -54,10 +54,6 @@ class AggregateByKey(Flow):
         self._emit_policy = emit_policy
         if isinstance(self._emit_policy, dict):
             self._emit_policy = _dict_to_emit_policy(self._emit_policy)
-        self._events_in_batch = {}
-        self._emit_worker_running = False
-        self._terminate_worker = False
-        self._timeout_task: Optional[asyncio.Task] = None
 
         self._augmentation_fn = augmentation_fn
         if not augmentation_fn:
@@ -75,6 +71,13 @@ class AggregateByKey(Flow):
                 self.key_extractor = lambda element: element[key]
             else:
                 raise TypeError(f'key is expected to be either a callable or string but got {type(key)}')
+
+    def _init(self):
+        super()._init()
+        self._events_in_batch = {}
+        self._emit_worker_running = False
+        self._terminate_worker = False
+        self._timeout_task: Optional[asyncio.Task] = None
 
     def _check_unique_names(self, aggregates):
         unique_aggr_names = set()
