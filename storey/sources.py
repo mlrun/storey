@@ -155,6 +155,7 @@ class Source(Flow):
         self._ex = None
         self._closeables = []
         self.first_step_source = True
+        self._runnable = True
 
     async def _run_loop(self):
         loop = asyncio.get_running_loop()
@@ -303,6 +304,7 @@ class AsyncSource(Flow):
         self._ex = None
         self._closeables = []
         self.first_step_source = True
+        self._runnable = True
 
     async def _run_loop(self):
         while True:
@@ -353,6 +355,7 @@ class _IterableSource(Flow):
         self._ex = None
         self._closeables = []
         self.first_step_source = True
+        self._runnable = True
 
     async def _run_loop(self):
         raise NotImplementedError()

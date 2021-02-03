@@ -2023,15 +2023,17 @@ def test_flow_dataframe_source():
     }
 
 
-def test_illegal_steps():
+def test_illegal_step_no_source():
     try:
         controller = build_flow([
             Reduce([], append_and_return, full_event=True),
         ]).run()
         assert False
     except ValueError as err:
-        assert (err.args[0] == "first step must be Source/AsyncSource/DataframeSource/ReadCSV/ReadParquet")
+        assert (err.args[0] == "First step must be a source")
 
+
+def test_illegal_steps_source_not_first_step():
     df = pd.DataFrame([['hello', 1, 1.5], ['world', 2, 2.5]], columns=['string', 'int', 'float'])
     try:
         controller = build_flow([
@@ -2041,5 +2043,4 @@ def test_illegal_steps():
         ]).run()
         assert False
     except ValueError as err:
-        assert (err.args[0] == "Source/AsyncSource/DataframeSource/ReadCSV/ReadParquet can only be first step")
-        pass
+        assert (err.args[0] == "DataframeSource can only be first step")
