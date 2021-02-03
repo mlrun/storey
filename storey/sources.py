@@ -136,6 +136,7 @@ class Source(Flow):
     :param name: Name of this step, as it should appear in logs. Defaults to class name (Source).
     :type name: string
     """
+    _legal_first_step = True
 
     def __init__(self, buffer_size: Optional[int] = None, key_field: Optional[str] = None, time_field: Optional[str] = None,
                  **kwargs):
@@ -154,7 +155,6 @@ class Source(Flow):
         self._termination_q = queue.Queue(1)
         self._ex = None
         self._closeables = []
-        self._legal_first_step = True
 
     async def _run_loop(self):
         loop = asyncio.get_running_loop()
@@ -291,6 +291,7 @@ class AsyncSource(Flow):
     :param name: Name of this step, as it should appear in logs. Defaults to class name (AsyncSource).
     :type name: string
     """
+    _legal_first_step = True
 
     def __init__(self, buffer_size: int = 1024, key_field: Optional[str] = None, time_field: Optional[str] = None,
                  **kwargs):
@@ -302,7 +303,6 @@ class AsyncSource(Flow):
         self._time_field = time_field
         self._ex = None
         self._closeables = []
-        self._legal_first_step = True
 
     async def _run_loop(self):
         while True:
@@ -346,13 +346,14 @@ class AsyncSource(Flow):
 
 class _IterableSource(Flow):
 
+    _legal_first_step = True
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
         self._termination_q = queue.Queue(1)
         self._ex = None
         self._closeables = []
-        self._legal_first_step = True
 
     async def _run_loop(self):
         raise NotImplementedError()

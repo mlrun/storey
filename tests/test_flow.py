@@ -2041,4 +2041,4 @@ def test_illegal_step_source_not_first_step():
         ]).run()
         assert False
     except ValueError as ex:
-        assert str(ex) == 'DataframeSource can only be first step'
+        assert str(ex) == 'DataframeSource can only appear as the first step of a flow'
