@@ -2025,15 +2025,13 @@ def test_flow_dataframe_source():
 
 def test_illegal_step_no_source():
     try:
-        controller = build_flow([
-            Reduce([], append_and_return, full_event=True),
-        ]).run()
+        Reduce([], append_and_return, full_event=True).run()
         assert False
-    except ValueError as err:
-        assert (err.args[0] == "First step must be a source")
+    except ValueError as ex:
+        assert str(ex) == "Flow must start with a source"
 
 
-def test_illegal_steps_source_not_first_step():
+def test_illegal_step_source_not_first_step():
     df = pd.DataFrame([['hello', 1, 1.5], ['world', 2, 2.5]], columns=['string', 'int', 'float'])
     try:
         controller = build_flow([
@@ -2042,5 +2040,5 @@ def test_illegal_steps_source_not_first_step():
             Reduce([], append_and_return),
         ]).run()
         assert False
-    except ValueError as err:
-        assert (err.args[0] == "DataframeSource can only be first step")
+    except ValueError as ex:
+        assert str(ex) == "DataframeSource can only be first step"

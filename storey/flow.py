@@ -50,7 +50,7 @@ class Flow:
 
     def to(self, outlet):
         if outlet.first_step_source:
-            raise ValueError(outlet.name + " can only be first step")
+            raise ValueError(f"{outlet.name} can only be first step")
         self._outlets.append(outlet)
         return outlet
 
@@ -65,14 +65,13 @@ class Flow:
             return self._recovery_step
 
     def run(self):
-        if self._runnable:
-            self._init()
-            for outlet in self._outlets:
-                outlet._runnable = True
-                self._closeables.extend(outlet.run())
-            return self._closeables
-        else:
-            raise ValueError("First step must be a source")
+        if not self.first_step_source and not self._runnable:
+            raise ValueError("Flow must start with a source")
+        self._init()
+        for outlet in self._outlets:
+            outlet._runnable = True
+            self._closeables.extend(outlet.run())
+        return self._closeables
 
     async def run_async(self):
         raise NotImplementedError
