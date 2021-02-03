@@ -15,6 +15,8 @@ from .utils import _split_path, get_in, update_in
 
 
 class Flow:
+    _legal_first_step = False
+
     def __init__(self, recovery_step=None, termination_result_fn=lambda x, y: x if x is not None else y, context=None, **kwargs):
         self._outlets = []
         self._recovery_step = recovery_step
@@ -26,6 +28,7 @@ class Flow:
         self._full_event = kwargs.get('full_event', False)
         self._input_path = kwargs.get('input_path')
         self._result_path = kwargs.get('result_path')
+        self._runnable = False
         name = kwargs.get('name')
         if name:
             self.name = name
@@ -47,6 +50,8 @@ class Flow:
         return result
 
     def to(self, outlet):
+        if outlet._legal_first_step:
+            raise ValueError(f'{outlet.name} can only appear as the first step of a flow')
         self._outlets.append(outlet)
         return outlet
 
@@ -61,8 +66,11 @@ class Flow:
             return self._recovery_step
 
     def run(self):
+        if not self._legal_first_step and not self._runnable:
+            raise ValueError('Flow must start with a source')
         self._init()
         for outlet in self._outlets:
+            outlet._runnable = True
             self._closeables.extend(outlet.run())
         return self._closeables
 
