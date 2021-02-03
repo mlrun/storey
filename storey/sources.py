@@ -156,7 +156,6 @@ class Source(Flow):
         self._closeables = []
         self._legal_first_step = True
 
-
     async def _run_loop(self):
         loop = asyncio.get_running_loop()
         self._termination_future = asyncio.get_running_loop().create_future()
