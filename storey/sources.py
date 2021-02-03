@@ -154,7 +154,8 @@ class Source(Flow):
         self._termination_q = queue.Queue(1)
         self._ex = None
         self._closeables = []
-        self.first_step_source = True
+        self._legal_first_step = True
+
 
     async def _run_loop(self):
         loop = asyncio.get_running_loop()
@@ -302,7 +303,7 @@ class AsyncSource(Flow):
         self._time_field = time_field
         self._ex = None
         self._closeables = []
-        self.first_step_source = True
+        self._legal_first_step = True
 
     async def _run_loop(self):
         while True:
@@ -352,7 +353,7 @@ class _IterableSource(Flow):
         self._termination_q = queue.Queue(1)
         self._ex = None
         self._closeables = []
-        self.first_step_source = True
+        self._legal_first_step = True
 
     async def _run_loop(self):
         raise NotImplementedError()

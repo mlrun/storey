@@ -26,7 +26,7 @@ class Flow:
         self._full_event = kwargs.get('full_event', False)
         self._input_path = kwargs.get('input_path')
         self._result_path = kwargs.get('result_path')
-        self.first_step_source = False
+        self._legal_first_step = False
         self._runnable = False
         name = kwargs.get('name')
         if name:
@@ -49,7 +49,7 @@ class Flow:
         return result
 
     def to(self, outlet):
-        if outlet.first_step_source:
+        if outlet._legal_first_step:
             raise ValueError(f"{outlet.name} can only be first step")
         self._outlets.append(outlet)
         return outlet
@@ -65,8 +65,8 @@ class Flow:
             return self._recovery_step
 
     def run(self):
-        if not self.first_step_source and not self._runnable:
-            raise ValueError("Flow must start with a source")
+        if not self._legal_first_step and not self._runnable:
+            raise ValueError('Flow must start with a source')
         self._init()
         for outlet in self._outlets:
             outlet._runnable = True

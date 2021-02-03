@@ -2028,7 +2028,7 @@ def test_illegal_step_no_source():
         Reduce([], append_and_return, full_event=True).run()
         assert False
     except ValueError as ex:
-        assert str(ex) == "Flow must start with a source"
+        assert str(ex) == 'Flow must start with a source'
 
 
 def test_illegal_step_source_not_first_step():
@@ -2041,4 +2041,4 @@ def test_illegal_step_source_not_first_step():
         ]).run()
         assert False
     except ValueError as ex:
-        assert str(ex) == "DataframeSource can only be first step"
+        assert str(ex) == 'DataframeSource can only be first step'
