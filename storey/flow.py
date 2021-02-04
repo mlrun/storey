@@ -738,6 +738,8 @@ class SendToHttp(_ConcurrentJobExecution):
 
 
 class _Batching(Flow):
+    _do_downstream_per_event = True
+
     def __init__(
             self,
             max_events: Optional[int] = None,
@@ -807,6 +809,9 @@ class _Batching(Flow):
         if len(self._batch[key]) == self._max_events:
             await self._emit_batch(key)
 
+        if self._do_downstream_per_event:
+            await self._do_downstream(event)
+
     async def _sleep_and_emit(self):
         while self._batch:
             key = next(iter(self._batch.keys()))
@@ -847,6 +852,7 @@ class Batch(_Batching):
     set a 'str' key to group events by Event.body[str].
     set a Callable[Any, Any] to group events by a a custom key extractor.
     """
+    _do_downstream_per_event = False
 
     async def _emit(self, batch, batch_time):
         event = Event(batch, time=batch_time)

@@ -2034,7 +2034,7 @@ def test_illegal_step_no_source():
 def test_illegal_step_source_not_first_step():
     df = pd.DataFrame([['hello', 1, 1.5], ['world', 2, 2.5]], columns=['string', 'int', 'float'])
     try:
-        controller = build_flow([
+        build_flow([
             ReadParquet('tests/test.parquet'),
             DataframeSource(df),
             Reduce([], append_and_return),
@@ -2042,3 +2042,19 @@ def test_illegal_step_source_not_first_step():
         assert False
     except ValueError as ex:
         assert str(ex) == 'DataframeSource can only appear as the first step of a flow'
+
+
+def test_writer_downstream(tmpdir):
+    file_path = f'{tmpdir}/test_writer_downstream/out.csv'
+    controller = build_flow([
+        Source(),
+        WriteToCSV(file_path, columns=['n', 'n*10'], header=True),
+        Reduce(0, lambda acc, x: acc + x[0])
+    ]).run()
+
+    for i in range(10):
+        controller.emit([i, i * 10])
+
+    controller.terminate()
+    result = controller.await_termination()
+    assert result == 45
