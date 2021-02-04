@@ -5,7 +5,7 @@ import time
 import traceback
 from asyncio import Task
 from collections import defaultdict
-from typing import Optional, Union, Callable, List, Dict, Any
+from typing import Optional, Union, Callable, List, Dict, Any, Set
 
 import aiohttp
 
@@ -47,6 +47,43 @@ class Flow:
         }
         if self._recovery_step:
             result['recovery_step'] = self._recovery_step.to_dict()
+        return result
+
+    def _to_code(self, taken: Set[str]):
+        class_name = type(self).__name__
+        base_var_name = ''
+        for c in class_name:
+            if c.isupper() and base_var_name:
+                base_var_name += '_'
+            base_var_name += c.lower()
+        i = 0
+        while True:
+            var_name = f'{base_var_name}{i}'
+            if var_name not in taken:
+                taken.add(var_name)
+                break
+            i += 1
+        taken.add(var_name)
+        param_list = []
+        for key, value in self._kwargs.items():
+            param_list.append(f'{key}={value}')
+        param_str = ', '.join(param_list)
+        step = f'{var_name} = {class_name}({param_str})'
+        steps = [step]
+        tos = []
+        for outlet in self._outlets:
+            outlet_var_name, outlet_steps, outlet_tos = outlet._to_code(taken)
+            steps.extend(outlet_steps)
+            tos.append(f'{var_name}.to({outlet_var_name})')
+            tos.extend(outlet_tos)
+        return var_name, steps, tos
+
+    def to_code(self):
+        _, steps, tos = self._to_code(set())
+        result = "\n".join(steps)
+        result += "\n\n"
+        result += "\n".join(tos)
+        result += "\n"
         return result
 
     def to(self, outlet):
