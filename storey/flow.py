@@ -170,6 +170,7 @@ class Flow:
             return step.check_stage_in_flow(type_to_check)
         return False
 
+
 class Choice(Flow):
     """Redirects each input element into at most one of multiple downstreams.
 
