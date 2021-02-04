@@ -163,6 +163,12 @@ class Flow:
                 mapped_event.body = fn_result
             return mapped_event
 
+    def check_stage_in_flow(self, type_to_check):
+        for step in self._outlets:
+            if isinstance(step, type_to_check):
+                return True
+            return step.check_stage_in_flow(type_to_check)
+        return False
 
 class Choice(Flow):
     """Redirects each input element into at most one of multiple downstreams.
