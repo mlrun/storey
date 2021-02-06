@@ -19,6 +19,8 @@ jobs:
         uses: dschep/install-pipenv-action@v1
       - name: Install dependencies
         run: make dev-env
+      - name: Print dependencies
+        run: pipenv graph
       - name: lint
         run: make lint
       - name: test

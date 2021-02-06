@@ -136,6 +136,7 @@ class Source(Flow):
     :param name: Name of this step, as it should appear in logs. Defaults to class name (Source).
     :type name: string
     """
+    _legal_first_step = True
 
     def __init__(self, buffer_size: Optional[int] = None, key_field: Optional[str] = None, time_field: Optional[str] = None,
                  **kwargs):
@@ -290,6 +291,7 @@ class AsyncSource(Flow):
     :param name: Name of this step, as it should appear in logs. Defaults to class name (AsyncSource).
     :type name: string
     """
+    _legal_first_step = True
 
     def __init__(self, buffer_size: int = 1024, key_field: Optional[str] = None, time_field: Optional[str] = None,
                  **kwargs):
@@ -343,6 +345,8 @@ class AsyncSource(Flow):
 
 
 class _IterableSource(Flow):
+
+    _legal_first_step = True
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

@@ -2009,7 +2009,7 @@ def test_flow_to_dict_write_to_tsdb():
     }
 
 
-def test_flow_dataframe_source():
+def test_flow_to_dict_dataframe_source():
     df = pd.DataFrame([['key1', datetime(2020, 2, 15), 'id1', 1.1]], columns=['my_key', 'my_time', 'my_id', 'my_value'])
     step = DataframeSource(df, key_column='my_key', time_column='my_time', id_column='my_id')
 
@@ -2021,3 +2021,74 @@ def test_flow_dataframe_source():
             'time_column': 'my_time'
         }
     }
+
+
+def test_to_code():
+    flow = build_flow([
+        Source(),
+        Batch(5),
+        ToDataFrame(index=[]),
+        Reduce([], append_and_return, full_event=True)
+    ])
+
+    reconstructed_code = flow.to_code()
+    expected = """source0 = Source()
+batch0 = Batch(max_events=5)
+to_data_frame0 = ToDataFrame()
+reduce0 = Reduce(full_event=True, initial_value=[])
+
+source0.to(batch0)
+batch0.to(to_data_frame0)
+to_data_frame0.to(reduce0)
+"""
+    assert reconstructed_code == expected
+
+
+def test_split_flow_to_code():
+    flow = build_flow([
+        Source(),
+        [
+            Batch(5),
+            Reduce([], lambda x: len(x))
+        ],
+        Batch(5),
+        ToDataFrame(index=[]),
+        Reduce([], append_and_return, full_event=True)
+    ])
+
+    reconstructed_code = flow.to_code()
+    expected = """source0 = Source()
+batch0 = Batch(max_events=5)
+reduce0 = Reduce(initial_value=[])
+batch1 = Batch(max_events=5)
+to_data_frame0 = ToDataFrame()
+reduce1 = Reduce(full_event=True, initial_value=[])
+
+source0.to(batch0)
+batch0.to(reduce0)
+source0.to(batch1)
+batch1.to(to_data_frame0)
+to_data_frame0.to(reduce1)
+"""
+    assert reconstructed_code == expected
+
+
+def test_illegal_step_no_source():
+    try:
+        Reduce([], append_and_return, full_event=True).run()
+        assert False
+    except ValueError as ex:
+        assert str(ex) == 'Flow must start with a source'
+
+
+def test_illegal_step_source_not_first_step():
+    df = pd.DataFrame([['hello', 1, 1.5], ['world', 2, 2.5]], columns=['string', 'int', 'float'])
+    try:
+        controller = build_flow([
+            ReadParquet('tests/test.parquet'),
+            DataframeSource(df),
+            Reduce([], append_and_return),
+        ]).run()
+        assert False
+    except ValueError as ex:
+        assert str(ex) == 'DataframeSource can only appear as the first step of a flow'

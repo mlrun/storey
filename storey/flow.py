@@ -5,7 +5,7 @@ import time
 import traceback
 from asyncio import Task
 from collections import defaultdict
-from typing import Optional, Union, Callable, List, Dict, Any
+from typing import Optional, Union, Callable, List, Dict, Any, Set
 
 import aiohttp
 
@@ -15,6 +15,8 @@ from .utils import _split_path, get_in, update_in
 
 
 class Flow:
+    _legal_first_step = False
+
     def __init__(self, recovery_step=None, termination_result_fn=lambda x, y: x if x is not None else y, context=None, **kwargs):
         self._outlets = []
         self._recovery_step = recovery_step
@@ -26,6 +28,7 @@ class Flow:
         self._full_event = kwargs.get('full_event', False)
         self._input_path = kwargs.get('input_path')
         self._result_path = kwargs.get('result_path')
+        self._runnable = False
         name = kwargs.get('name')
         if name:
             self.name = name
@@ -46,7 +49,46 @@ class Flow:
             result['recovery_step'] = self._recovery_step.to_dict()
         return result
 
+    def _to_code(self, taken: Set[str]):
+        class_name = type(self).__name__
+        base_var_name = ''
+        for c in class_name:
+            if c.isupper() and base_var_name:
+                base_var_name += '_'
+            base_var_name += c.lower()
+        i = 0
+        while True:
+            var_name = f'{base_var_name}{i}'
+            if var_name not in taken:
+                taken.add(var_name)
+                break
+            i += 1
+        taken.add(var_name)
+        param_list = []
+        for key, value in self._kwargs.items():
+            param_list.append(f'{key}={value}')
+        param_str = ', '.join(param_list)
+        step = f'{var_name} = {class_name}({param_str})'
+        steps = [step]
+        tos = []
+        for outlet in self._outlets:
+            outlet_var_name, outlet_steps, outlet_tos = outlet._to_code(taken)
+            steps.extend(outlet_steps)
+            tos.append(f'{var_name}.to({outlet_var_name})')
+            tos.extend(outlet_tos)
+        return var_name, steps, tos
+
+    def to_code(self):
+        _, steps, tos = self._to_code(set())
+        result = "\n".join(steps)
+        result += "\n\n"
+        result += "\n".join(tos)
+        result += "\n"
+        return result
+
     def to(self, outlet):
+        if outlet._legal_first_step:
+            raise ValueError(f'{outlet.name} can only appear as the first step of a flow')
         self._outlets.append(outlet)
         return outlet
 
@@ -61,8 +103,11 @@ class Flow:
             return self._recovery_step
 
     def run(self):
+        if not self._legal_first_step and not self._runnable:
+            raise ValueError('Flow must start with a source')
         self._init()
         for outlet in self._outlets:
+            outlet._runnable = True
             self._closeables.extend(outlet.run())
         return self._closeables
 
