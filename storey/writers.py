@@ -20,7 +20,7 @@ from .utils import url_to_file_system
 class _Writer:
     def __init__(self, columns: Union[str, List[str], None], infer_columns_from_data: Optional[bool],
                  index_cols: Union[str, List[str], None] = None, retain_dict: bool = False,
-                 storage_options: [Optional[dict]] = None):
+                 storage_options: Optional[dict] = None):
         if infer_columns_from_data is None:
             infer_columns_from_data = not bool(columns)
         self._infer_columns_from_data = infer_columns_from_data
@@ -140,7 +140,7 @@ class WriteToCSV(_Batching, _Writer):
     def __init__(self, path: str, columns: Optional[List[str]] = None, header: bool = False, infer_columns_from_data: Optional[bool] = None,
                  max_lines_before_flush: int = 128, max_seconds_before_flush: int = 3, **kwargs):
         _Batching.__init__(self, max_events=max_lines_before_flush, timeout_secs=max_seconds_before_flush, **kwargs)
-        _Writer.__init__(self, columns, infer_columns_from_data)
+        _Writer.__init__(self, columns, infer_columns_from_data, storage_options=kwargs.get('storage_options'))
 
         self._path = path
         self._write_header = header
@@ -240,7 +240,7 @@ class WriteToParquet(_Batching, _Writer):
             kwargs['infer_columns_from_data'] = infer_columns_from_data
 
         _Batching.__init__(self, **kwargs)
-        _Writer.__init__(self, columns, infer_columns_from_data, index_cols, kwargs.get('storage_options'))
+        _Writer.__init__(self, columns, infer_columns_from_data, index_cols, storage_options=kwargs.get('storage_options'))
 
         self._path = path
         self._partition_cols = partition_cols
@@ -270,7 +270,8 @@ class WriteToParquet(_Batching, _Writer):
         df = pd.DataFrame(batch, columns=df_columns)
         if self._index_cols:
             df.set_index(self._index_cols, inplace=True)
-        df.to_parquet(path=self._path, index=bool(self._index_cols), partition_cols=self._partition_cols)
+        df.to_parquet(path=self._path, index=bool(self._index_cols), partition_cols=self._partition_cols,
+                      storage_options=self._storage_options)
 
 
 class WriteToTSDB(_Batching, _Writer):

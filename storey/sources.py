@@ -623,5 +623,6 @@ class ReadParquet(DataframeSource):
     def __init__(self, paths: Union[str, Iterable[str]], columns=None, **kwargs):
         if isinstance(paths, str):
             paths = [paths]
-        dfs = map(lambda path: pandas.read_parquet(path, columns=columns), paths)
+        dfs = map(lambda path: pandas.read_parquet(path, columns=columns,
+                                                   storage_options=kwargs.get('storage_options')), paths)
         super().__init__(dfs, **kwargs)
