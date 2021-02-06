@@ -432,6 +432,7 @@ class ReadCSV(_IterableSource):
         self._timestamp_field = timestamp_field
         self._timestamp_format = timestamp_format
         self._type_inference = type_inference
+        self._storage_options = kwargs.get('storage_options')
 
         if not header and isinstance(key_field, str):
             raise ValueError('key_field can only be set to an integer when with_header is false')
@@ -494,8 +495,9 @@ class ReadCSV(_IterableSource):
 
     def _blocking_io_loop(self):
         try:
+
             for path in self._paths:
-                fs, file_path = url_to_file_system(path)
+                fs, file_path = url_to_file_system(path, self._storage_options)
                 with fs.open(file_path, mode='r') as f:
                     header = None
                     field_name_to_index = None

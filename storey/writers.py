@@ -19,7 +19,8 @@ from .utils import url_to_file_system
 
 class _Writer:
     def __init__(self, columns: Union[str, List[str], None], infer_columns_from_data: Optional[bool],
-                 index_cols: Union[str, List[str], None] = None, retain_dict: bool = False):
+                 index_cols: Union[str, List[str], None] = None, retain_dict: bool = False,
+                 storage_options: [Optional[dict]] = None):
         if infer_columns_from_data is None:
             infer_columns_from_data = not bool(columns)
         self._infer_columns_from_data = infer_columns_from_data
@@ -31,6 +32,7 @@ class _Writer:
         columns = [columns] if isinstance(columns, str) else columns
         index_cols = [index_cols] if isinstance(index_cols, str) else index_cols
         self._retain_dict = retain_dict
+        self._storage_options = storage_options
 
         def parse_notation(columns, metadata_columns, rename_columns):
             result = []
@@ -153,7 +155,7 @@ class WriteToCSV(_Batching, _Writer):
     def _blocking_io_loop(self):
         try:
             got_first_event = False
-            fs, file_path = url_to_file_system(self._path)
+            fs, file_path = url_to_file_system(self._path, self._storage_options)
             dirname = os.path.dirname(self._path)
             if dirname:
                 fs.makedirs(dirname, exist_ok=True)
@@ -238,7 +240,7 @@ class WriteToParquet(_Batching, _Writer):
             kwargs['infer_columns_from_data'] = infer_columns_from_data
 
         _Batching.__init__(self, **kwargs)
-        _Writer.__init__(self, columns, infer_columns_from_data, index_cols)
+        _Writer.__init__(self, columns, infer_columns_from_data, index_cols, kwargs.get('storage_options'))
 
         self._path = path
         self._partition_cols = partition_cols
@@ -252,7 +254,7 @@ class WriteToParquet(_Batching, _Writer):
         return self._event_to_writer_entry(event)
 
     def _makedirs(self):
-        fs, file_path = url_to_file_system(self._path)
+        fs, file_path = url_to_file_system(self._path, self._storage_options)
         dirname = os.path.dirname(self._path)
         if dirname:
             fs.makedirs(dirname, exist_ok=True)
