@@ -1,11 +1,13 @@
-from typing import List
 import copy
+from asyncio import Lock
 from datetime import datetime
-from .drivers import Driver
-from .utils import _split_path
-from .dtypes import FieldAggregator, SlidingWindows, FixedWindows
+from typing import List
+
 from .aggregation_utils import is_raw_aggregate, get_virtual_aggregation_func, get_implied_aggregates, get_all_raw_aggregates, \
     get_all_raw_aggregates_with_hidden
+from .drivers import Driver
+from .dtypes import FieldAggregator, SlidingWindows, FixedWindows
+from .utils import _split_path
 
 
 class Table:
@@ -25,11 +27,25 @@ class Table:
         self._attrs_cache = {}
         self._aggregates = None
         self._schema = None
+        self._schema_lock = None
         self._aggregations_read_only = False
         self._use_windows_from_schema = False
 
     def __str__(self):
         return f'{self._container}/{self._table_path}'
+
+    def _get_lock(self, key):
+        cache_element = self._attrs_cache.get(key)
+        if cache_element is None:
+            cache_element = _CacheElement({}, None)
+            self._attrs_cache[key] = cache_element
+        cache_element.lock = Lock()
+        return cache_element.lock
+
+    def _get_schema_lock(self):
+        if self._schema_lock is None:
+            self._schema_lock = Lock()
+        return self._schema_lock
 
     def _update_static_attrs(self, key, data):
         attrs = self._get_static_attrs(key)
@@ -41,63 +57,72 @@ class Table:
 
     async def _lazy_load_key_with_aggregates(self, key, timestamp=None):
         if self._aggregations_read_only or not self._get_aggregations_attrs(key):
-            # Try load from the store, and create a new one only if the key really is new
-            aggregate_initial_data, additional_data = await self._storage._load_aggregates_by_key(self._container, self._table_path, key)
+            async with self._get_lock(key):
+                # Try load from the store, and create a new one only if the key really is new
+                aggregate_initial_data, additional_data = \
+                    await self._storage._load_aggregates_by_key(self._container, self._table_path, key)
 
-            # Create new aggregation element
-            await self.add_aggregation_by_key(key, timestamp, aggregate_initial_data)
+                # Create new aggregation element
+                await self.add_aggregation_by_key(key, timestamp, aggregate_initial_data)
 
-            if additional_data:
-                # Add additional data to simple cache
-                self._update_static_attrs(key, additional_data)
+                if additional_data:
+                    # Add additional data to simple cache
+                    self._update_static_attrs(key, additional_data)
 
     async def _get_or_load_static_attributes_by_key(self, key, attributes='*'):
-        attrs = self._get_static_attrs(key)
-        if not attrs:
-            res = await self._storage._load_by_key(self._container, self._table_path, key, attributes)
-            if res:
-                self._set_static_attrs(key, res)
-            else:
-                self._set_static_attrs(key, {})
-        return self._get_static_attrs(key)
+        async with self._get_lock(key):
+            attrs = self._get_static_attrs(key)
+            if not attrs:
+                res = await self._storage._load_by_key(self._container, self._table_path, key, attributes)
+                if res:
+                    self._set_static_attrs(key, res)
+                else:
+                    self._set_static_attrs(key, {})
+            return self._get_static_attrs(key)
 
     def _set_aggregation_metadata(self, aggregates: List[FieldAggregator], use_windows_from_schema: bool = False):
         self._use_windows_from_schema = use_windows_from_schema
         self._aggregates = aggregates
 
     async def _persist_key(self, key, event_data_to_persist):
-        aggr_by_key = self._get_aggregations_attrs(key)
-        additional_data_persist = self._get_static_attrs(key)
-        if event_data_to_persist:
-            if not additional_data_persist:
-                additional_data_persist = event_data_to_persist
-            else:
-                additional_data_persist.update(event_data_to_persist)
-        await self._storage._save_key(self._container, self._table_path, key, aggr_by_key, self._partitioned_by_key,
-                                      additional_data_persist)
+        async with self._get_lock(key):
+            aggr_by_key = self._get_aggregations_attrs(key)
+            additional_data_persist = self._get_static_attrs(key)
+            if event_data_to_persist:
+                if not additional_data_persist:
+                    additional_data_persist = event_data_to_persist
+                else:
+                    additional_data_persist.update(event_data_to_persist)
+            await self._storage._save_key(self._container, self._table_path, key, aggr_by_key, self._partitioned_by_key,
+                                          additional_data_persist)
 
     async def close(self):
         await self._storage.close()
 
     async def _aggregate(self, key, data, timestamp):
         if not self._schema:
-            await self._get_or_save_schema()
+            async with self._get_schema_lock():
+                await self._get_or_save_schema()
 
-        self._get_aggregations_attrs(key).aggregate(data, timestamp)
+        async with self._get_lock(key):
+            self._get_aggregations_attrs(key).aggregate(data, timestamp)
 
     async def _get_features(self, key, timestamp):
         if not self._schema:
-            await self._get_or_save_schema()
+            async with self._get_schema_lock():
+                await self._get_or_save_schema()
 
-        return self._get_aggregations_attrs(key).get_features(timestamp)
+        async with self._get_lock(key):
+            return self._get_aggregations_attrs(key).get_features(timestamp)
 
     async def _get_or_load_aggregations_by_key(self, key, timestamp=None):
-        if self._aggregations_read_only or not self._get_aggregations_attrs(key):
-            # Try load from the store, and create a new one only if the key really is new
-            initial_data = await self._storage._load_aggregates_by_key(self._container, self._table_path, key)
-            self._set_aggregations_attrs(key, self._new_aggregated_store_element()(key, self._aggregates, timestamp, initial_data))
+        async with self._get_lock(key):
+            if self._aggregations_read_only or not self._get_aggregations_attrs(key):
+                # Try load from the store, and create a new one only if the key really is new
+                initial_data = await self._storage._load_aggregates_by_key(self._container, self._table_path, key)
+                self._set_aggregations_attrs(key, self._new_aggregated_store_element()(key, self._aggregates, timestamp, initial_data))
 
-        return self._get_aggregations_attrs(key)
+            return self._get_aggregations_attrs(key)
 
     def _new_aggregated_store_element(self):
         if self._aggregations_read_only:
@@ -106,8 +131,10 @@ class Table:
 
     async def add_aggregation_by_key(self, key, base_timestamp, initial_data):
         if not self._schema:
-            await self._get_or_save_schema()
-        self._set_aggregations_attrs(key, self._new_aggregated_store_element()(key, self._aggregates, base_timestamp, initial_data))
+            async with self._get_schema_lock():
+                await self._get_or_save_schema()
+        async with self._get_lock(key):
+            self._set_aggregations_attrs(key, self._new_aggregated_store_element()(key, self._aggregates, base_timestamp, initial_data))
 
     async def _get_or_save_schema(self):
         self._schema = await self._storage._load_schema(self._container, self._table_path)
@@ -179,7 +206,8 @@ class Table:
         return should_update
 
     async def _save_aggregations_by_key(self, key):
-        await self._storage._save_key(self._container, self._table_path, key, self._get_aggregations_attrs(key))
+        async with self._get_lock(key):
+            await self._storage._save_key(self._container, self._table_path, key, self._get_aggregations_attrs(key))
 
     def _aggregates_to_schema(self):
         schema = {}
@@ -232,6 +260,7 @@ class _CacheElement:
     def __init__(self, static_attrs, aggregations):
         self.static_attrs = static_attrs
         self.aggregations = aggregations
+        self.lock = None
 
 
 class ReadOnlyAggregatedStoreElement:
