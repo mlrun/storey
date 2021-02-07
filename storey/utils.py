@@ -102,11 +102,14 @@ def _split_path(path):
         return parts[0], f'/{parts[1]}'
 
 
-def url_to_file_system(url):
+def url_to_file_system(url, storage_options):
     parsed_url = urlparse(url)
     schema = parsed_url.scheme.lower()
     load_fs_dependencies(schema)
-    return fsspec.filesystem(schema), parsed_url.path
+    if storage_options:
+        return fsspec.filesystem(schema, **storage_options), parsed_url.path
+    else:
+        return fsspec.filesystem(schema), parsed_url.path
 
 
 def load_fs_dependencies(schema):
@@ -116,6 +119,13 @@ def load_fs_dependencies(schema):
         except ImportError:
             raise StoreyMissingDependencyError(
                 "s3 packages are missing, use pip install storey[s3]"
+            )
+    if schema == "az":
+        try:
+            import adlfs  # noqa: F401
+        except ImportError:
+            raise StoreyMissingDependencyError(
+                "azure packages are missing, use pip install storey[az]"
             )
 
 
