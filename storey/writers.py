@@ -201,9 +201,6 @@ class WriteToCSV(_Batching, _Writer):
         else:
             await asyncio.get_running_loop().run_in_executor(None, lambda: self._data_buffer.put(batch))
 
-        for data in batch:
-            await self._do_downstream(data)
-
 
 class WriteToParquet(_Batching, _Writer):
     """Writes incoming events to parquet files.
