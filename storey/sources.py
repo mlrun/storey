@@ -81,12 +81,12 @@ class FlowController(FlowControllerBase):
     To be used from a synchronous context.
     """
 
-    def __init__(self, emit_fn, await_termination_fn, has_complete_in_flow, key_field: Optional[str] = None,
+    def __init__(self, emit_fn, await_termination_fn, return_awaitable_result, key_field: Optional[str] = None,
                  time_field: Optional[str] = None):
         super().__init__(key_field, time_field)
         self._emit_fn = emit_fn
         self._await_termination_fn = await_termination_fn
-        self.return_awaitable_result = has_complete_in_flow
+        self.return_awaitable_result = return_awaitable_result
 
     def emit(self, element: object, key: Optional[str] = None, event_time: Optional[datetime] = None,
              return_awaitable_result: Optional[bool] = None):
@@ -101,7 +101,8 @@ class FlowController(FlowControllerBase):
         :returns: AsyncAwaitableResult if Complete() is part of the flow. None otherwise.
         """
         if return_awaitable_result is not None:
-            warnings.warn("return_awaitable_result is deprecated. awaitable result will be returned if there is Complete() in the flow",
+            warnings.warn("return_awaitable_result is deprecated. An awaitable result object will be returned if a Complete step appears "
+                          "in the flow.",
                           DeprecationWarning)
 
         event = self._build_event(element, key, event_time)
@@ -215,7 +216,7 @@ class Source(Flow):
             self._raise_on_error(self._termination_q.get())
             return self._termination_future.result()
 
-        has_complete = self.check_stage_in_flow(Complete)
+        has_complete = self._check_stage_in_flow(Complete)
 
         return FlowController(self._emit, raise_error_or_return_termination_result, has_complete, self._key_field, self._time_field)
 
@@ -251,13 +252,13 @@ class AsyncFlowController(FlowControllerBase):
     Used to emit events into the associated flow, terminate the flow, and await the flow's termination. To be used from inside an async def.
     """
 
-    def __init__(self, emit_fn, loop_task, has_complete, key_field: Optional[str] = None, time_field: Optional[str] = None):
+    def __init__(self, emit_fn, loop_task, await_result, key_field: Optional[str] = None, time_field: Optional[str] = None):
         super().__init__(key_field, time_field)
         self._emit_fn = emit_fn
         self._loop_task = loop_task
         self._key_field = key_field
         self._time_field = time_field
-        self._await_result = has_complete
+        self._await_result = await_result
 
     async def emit(self, element: object, key: Optional[str] = None, event_time: Optional[datetime] = None,
                    await_result: Optional[bool] = None) -> object:
@@ -271,7 +272,8 @@ class AsyncFlowController(FlowControllerBase):
         :returns: The result received from the flow if there is Complete in Flow. None otherwise.
         """
         if await_result is not None:
-            warnings.warn("await_result is deprecated. awaitable result will be returned if there is Complete() in the flow",
+            warnings.warn("await_result is deprecated. An awaitable result object will be returned if a Complete step appears "
+                          "in the flow.",
                           DeprecationWarning)
 
         event = self._build_event(element, key, event_time)
@@ -354,7 +356,7 @@ class AsyncSource(Flow):
     async def run(self):
         self._closeables = super().run()
         loop_task = asyncio.get_running_loop().create_task(self._run_loop())
-        has_complete = self.check_stage_in_flow(Complete)
+        has_complete = self._check_stage_in_flow(Complete)
         return AsyncFlowController(self._emit, loop_task, has_complete, self._key_field, self._time_field)
 
 
