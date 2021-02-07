@@ -573,26 +573,26 @@ class DataframeSource(_IterableSource):
     """Use pandas dataframe as input source for a flow.
 
     :param dfs: A pandas dataframe, or dataframes, to be used as input source for the flow.
-    :param key_column: column to be used as key for events.
-    :param time_column: column to be used as time for events.
-    :param id_column: column to be used as ID for events.
+    :param key_field: column to be used as key for events.
+    :param time_field: column to be used as time for events.
+    :param id_field: column to be used as ID for events.
     """
 
-    def __init__(self, dfs: Union[pandas.DataFrame, Iterable[pandas.DataFrame]], key_column: Optional[str] = None,
-                 time_column: Optional[str] = None, id_column: Optional[str] = None, **kwargs):
-        if key_column is not None:
-            kwargs['key_column'] = key_column
-        if time_column is not None:
-            kwargs['time_column'] = time_column
-        if id_column is not None:
-            kwargs['id_column'] = id_column
+    def __init__(self, dfs: Union[pandas.DataFrame, Iterable[pandas.DataFrame]], key_field: Optional[str] = None,
+                 time_field: Optional[str] = None, id_field: Optional[str] = None, **kwargs):
+        if key_field is not None:
+            kwargs['key_field'] = key_field
+        if time_field is not None:
+            kwargs['time_field'] = time_field
+        if id_field is not None:
+            kwargs['id_field'] = id_field
         super().__init__(**kwargs)
         if isinstance(dfs, pandas.DataFrame):
             dfs = [dfs]
         self._dfs = dfs
-        self._key_field = key_column
-        self._time_field = time_column
-        self._id_field = id_column
+        self._key_field = key_field
+        self._time_field = time_field
+        self._id_field = id_field
 
     async def _run_loop(self):
         for df in self._dfs:
