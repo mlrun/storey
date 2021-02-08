@@ -29,3 +29,8 @@ Storey api
     :members:
     :show-inheritance:
 
+.. automodule:: storey.aggregations
+    :members:
+    :show-inheritance:
+
+
