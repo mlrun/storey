@@ -872,10 +872,9 @@ class _Batching(Flow):
 
 
 class Batch(_Batching):
-    """
-    Batches events into lists of up to max_events events. Each emitted list contained max_events events, unless
-        timeout_secs seconds have passed since the first event in the batch was received, at which the batch is emitted with
-        potentially fewer than max_events event.
+    """Batches events into lists of up to max_events events. Each emitted list contained max_events events, unless
+    timeout_secs seconds have passed since the first event in the batch was received, at which the batch is emitted with
+    potentially fewer than max_events event.
 
     :param max_events: Maximum number of events per emitted batch. Set to None to emit all events in one batch on flow
         termination.

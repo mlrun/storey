@@ -26,7 +26,6 @@ integration:
 env:
 	pipenv install -r requirements.txt
 
-
 .PHONY: dev-env
 dev-env: env
 	pipenv install -r dev-requirements.txt
@@ -40,8 +39,7 @@ dist: dev-env
 set-version:
 	python set-version.py
 
-.PHONY: html-docs
-html-docs: ## Build html docs
+.PHONY: docs
+docs: # Build html docs
 	rm -f docs/external/*.md
 	cd docs && pipenv run make html
-
