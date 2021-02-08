@@ -110,7 +110,7 @@ class _Writer:
         return data
 
 
-class V3ioCSVDialect(csv.Dialect):
+class _V3ioCSVDialect(csv.Dialect):
     """Describe a dialect based on excel dialect but with '\n' line terminator"""
     delimiter = ','
     quotechar = '"'
@@ -160,7 +160,7 @@ class WriteToCSV(_Batching, _Writer):
             if dirname:
                 fs.makedirs(dirname, exist_ok=True)
             with fs.open(file_path, mode='w') as f:
-                csv_writer = csv.writer(f, V3ioCSVDialect())
+                csv_writer = csv.writer(f, _V3ioCSVDialect())
                 line_number = 0
                 while True:
                     batch = self._data_buffer.get()
