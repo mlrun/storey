@@ -581,7 +581,7 @@ def test_awaitable_result():
     ]).run()
 
     for i in range(10):
-        awaitable_result = controller.emit(i, return_awaitable_result=True)
+        awaitable_result = controller.emit(i)
         assert awaitable_result.await_result() == i + 1
     controller.terminate()
     termination_result = controller.await_termination()
@@ -597,7 +597,7 @@ def test_double_completion():
     ]).run()
 
     for i in range(10):
-        awaitable_result = controller.emit(i, return_awaitable_result=True)
+        awaitable_result = controller.emit(i)
         assert awaitable_result.await_result() == i
     controller.terminate()
     termination_result = controller.await_termination()
@@ -613,7 +613,7 @@ async def async_test_async_double_completion():
     ]).run()
 
     for i in range(10):
-        result = await controller.emit(i, await_result=True)
+        result = await controller.emit(i)
         assert result == i
     await controller.terminate()
     termination_result = await controller.await_termination()
@@ -634,7 +634,7 @@ def test_awaitable_result_error():
         Complete()
     ]).run()
 
-    awaitable_result = controller.emit(0, return_awaitable_result=True)
+    awaitable_result = controller.emit(0)
     try:
         awaitable_result.await_result()
         assert False
@@ -652,7 +652,7 @@ async def async_test_async_awaitable_result_error():
         Complete()
     ]).run()
 
-    awaitable_result = controller.emit(0, await_result=True)
+    awaitable_result = controller.emit(0)
     try:
         await awaitable_result
         assert False
@@ -677,7 +677,7 @@ async def async_test_async_source():
     ]).run()
 
     for i in range(10):
-        result = await controller.emit(i, await_result=True)
+        result = await controller.emit(i)
         assert result == i + 1
     await controller.terminate()
     termination_result = await controller.await_termination()
@@ -711,7 +711,7 @@ def test_awaitable_result_error_in_async_downstream():
         Complete()
     ]).run()
     try:
-        controller.emit(1, return_awaitable_result=True).await_result()
+        controller.emit(1).await_result()
         assert False
     except InvalidURL:
         pass
@@ -724,7 +724,7 @@ async def async_test_async_awaitable_result_error_in_async_downstream():
         Complete()
     ]).run()
     try:
-        await controller.emit(1, await_result=True)
+        await controller.emit(1)
         assert False
     except InvalidURL:
         pass
@@ -745,7 +745,7 @@ def test_awaitable_result_error_in_by_key_async_downstream():
         Complete()
     ]).run()
     try:
-        controller.emit(1, return_awaitable_result=True).await_result()
+        controller.emit(1).await_result()
         assert False
     except ValueError:
         pass
@@ -815,7 +815,7 @@ def test_metadata_immutability():
     ]).run()
 
     event = Event('original body', key='original key')
-    result = controller.emit(event, return_awaitable_result=True).await_result()
+    result = controller.emit(event).await_result()
     controller.terminate()
     controller.await_termination()
 
@@ -1789,7 +1789,7 @@ def test_async_task_error_and_complete():
         Complete()
     ]).run()
 
-    awaitable_result = controller.emit({'col1': 0}, 'tal', return_awaitable_result=True)
+    awaitable_result = controller.emit({'col1': 0}, 'tal')
     try:
         awaitable_result.await_result()
         assert False
@@ -1815,7 +1815,7 @@ def test_async_task_error_and_complete_repeated_emits():
     ]).run()
     for i in range(3):
         try:
-            awaitable_result = controller.emit({'col1': 0}, 'tal', return_awaitable_result=True)
+            awaitable_result = controller.emit({'col1': 0}, 'tal')
         except ATestException:
             continue
         try:
