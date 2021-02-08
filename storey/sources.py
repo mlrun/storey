@@ -97,11 +97,11 @@ class FlowController(FlowControllerBase):
         :param event_time: The event time (default to current time, UTC).
         :param return_awaitable_result: Deprecated! An awaitable result object will be returned if a Complete step appears in the flow.
 
-        :returns: AsyncAwaitableResult if Complete() is part of the flow. None otherwise.
+        :returns: AsyncAwaitableResult if a Complete appears in the flow. None otherwise.
         """
         if return_awaitable_result is not None:
-            warnings.warn("return_awaitable_result is deprecated. An awaitable result object will be returned if a Complete step appears "
-                          "in the flow.",
+            warnings.warn('return_awaitable_result is deprecated. An awaitable result object will be returned if a Complete step appears '
+                          'in the flow.',
                           DeprecationWarning)
 
         event = self._build_event(element, key, event_time)
