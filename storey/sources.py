@@ -402,12 +402,14 @@ class ReadCSV(_IterableSource):
     Reads CSV files as input source for a flow.
 
     :parameter paths: paths to CSV files :parameter header: whether CSV files have a header or not. Defaults to False.
-    :parameter build_dict: whether to format each record produced from the input file as a dictionary (as opposed to a list). Default to False.
+    :parameter build_dict: whether to format each record produced from the input file as a dictionary (as opposed to a list).
+        Default to False.
     :parameter key_field: the CSV field to be use as the key for events. May be an int (field index) or string (field name) if
         with_header is True. Defaults to None (no key).
-    :parameter timestamp_field: the CSV field to be parsed as the timestamp for events. May be an int (field index) or string (field name) if
-        with_header is True. Defaults to None (no timestamp field).
-    :parameter timestamp_format: timestamp format as defined in datetime.strptime(). Default to ISO-8601 as defined in datetime.fromisoformat().
+    :parameter timestamp_field: the CSV field to be parsed as the timestamp for events. May be an int (field index) or string (field name)
+        if with_header is True. Defaults to None (no timestamp field).
+    :parameter timestamp_format: timestamp format as defined in datetime.strptime(). Default to ISO-8601 as defined in
+        datetime.fromisoformat().
     :parameter type_inference: Whether to infer data types from the data (when True), or read all fields in as strings (when False).
         Defaults to True.
     """
