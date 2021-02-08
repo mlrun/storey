@@ -86,7 +86,7 @@ class FlowController(FlowControllerBase):
         super().__init__(key_field, time_field)
         self._emit_fn = emit_fn
         self._await_termination_fn = await_termination_fn
-        self.return_awaitable_result = return_awaitable_result
+        self._return_awaitable_result = return_awaitable_result
 
     def emit(self, element: object, key: Optional[str] = None, event_time: Optional[datetime] = None,
              return_awaitable_result: Optional[bool] = None):
@@ -95,8 +95,7 @@ class FlowController(FlowControllerBase):
         :param element: The event data, or payload. To set metadata as well, pass an Event object.
         :param key: The event key (optional)
         :param event_time: The event time (default to current time, UTC).
-        :param return_awaitable_result: Deprecated! will return awaitable result if Complete() is part of flow
-        :type return_awaitable_result: boolean.
+        :param return_awaitable_result: Deprecated! An awaitable result object will be returned if a Complete step appears in the flow.
 
         :returns: AsyncAwaitableResult if Complete() is part of the flow. None otherwise.
         """
@@ -107,7 +106,7 @@ class FlowController(FlowControllerBase):
 
         event = self._build_event(element, key, event_time)
         awaitable_result = None
-        if self.return_awaitable_result:
+        if self._return_awaitable_result:
             awaitable_result = AwaitableResult(self.terminate)
         event._awaitable_result = awaitable_result
         self._emit_fn(event)
@@ -267,13 +266,13 @@ class AsyncFlowController(FlowControllerBase):
         :param element: The event data, or payload. To set metadata as well, pass an Event object.
         :param key: The event key (optional)
         :param event_time: The event time (default to current time, UTC).
-        :param await_result: Deprecated. Will await a result from the flow if there is Complete in flow
+        :param await_result: Deprecated. Will await a result if a Complete step appears in the flow.
 
-        :returns: The result received from the flow if there is Complete in Flow. None otherwise.
+        :returns: The result received from the flow if a Complete step appears in the flow. None otherwise.
         """
         if await_result is not None:
-            warnings.warn("await_result is deprecated. An awaitable result object will be returned if a Complete step appears "
-                          "in the flow.",
+            warnings.warn('await_result is deprecated. An awaitable result object will be returned if a Complete step appears '
+                          'in the flow.',
                           DeprecationWarning)
 
         event = self._build_event(element, key, event_time)

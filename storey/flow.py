@@ -167,7 +167,7 @@ class Flow:
         for step in self._outlets:
             if isinstance(step, type_to_check):
                 return True
-            if step._check_stage_in_flow(type_to_check) is True:
+            if step._check_stage_in_flow(type_to_check):
                 return True
         return False
 
