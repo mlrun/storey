@@ -221,9 +221,18 @@ class Table:
         return self._attrs_cache.keys()
 
     def __setitem__(self, key, value):
+        """Sets attribute in table.
+
+        :param key: attribute name
+        :param value: attribute value
+         """
         self._set_static_attrs(key, value)
 
     def __getitem__(self, key):
+        """Gets attribute from table.
+
+        :param key: attribute to get
+         """
         return self._get_static_attrs(key)
 
 
