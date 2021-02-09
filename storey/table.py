@@ -9,14 +9,13 @@ from .aggregation_utils import is_raw_aggregate, get_virtual_aggregation_func, g
 
 
 class Table:
-    """
-        Table object, represents a single table in a specific storage.
+    """Table object, represents a single table in a specific storage.
 
-        :param table_path: Path to the table in the storage.
-        :param storage: Storage driver
-        :param partitioned_by_key: Whether that data is partitioned by the key or not, based on this indication storage drivers
-         can optimize writes. Defaults to True.
-        """
+    :param table_path: Path to the table in the storage.
+    :param storage: Storage driver
+    :param partitioned_by_key: Whether that data is partitioned by the key or not, based on this indication storage drivers
+     can optimize writes. Defaults to True.
+     """
 
     def __init__(self, table_path: str, storage: Driver, partitioned_by_key: bool = True):
         self._container, self._table_path = _split_path(table_path)

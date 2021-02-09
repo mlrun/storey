@@ -11,13 +11,13 @@ class ReduceToDataFrame(Flow):
     :param columns: List of column names to be passed as-is to the DataFrame constructor. Optional.
     :type columns: list of string
     :param insert_key_column_as: Name of the column to be inserted for event keys. Optional.
-    If not set, event keys will not be inserted into the DataFrame.
+        If not set, event keys will not be inserted into the DataFrame.
     :type insert_key_column_as: string
     :param insert_time_column_as: Name of the column to be inserted for event times. Optional.
-    If not set, event times will not be inserted into the DataFrame.
+        If not set, event times will not be inserted into the DataFrame.
     :type insert_time_column_as: string
     :param insert_id_column_as: Name of the column to be inserted for event IDs. Optional.
-    If not set, event IDs will not be inserted into the DataFrame.
+        If not set, event IDs will not be inserted into the DataFrame.
     :type insert_id_column_as: string
     """
 

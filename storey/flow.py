@@ -213,16 +213,16 @@ class Choice(Flow):
     """Redirects each input element into at most one of multiple downstreams.
 
     :param choice_array: a list of (downstream, condition) tuples, where downstream is a step and condition is a function. The first
-    condition in the list to evaluate as true for an input element causes that element to be redirected to that downstream step.
+        condition in the list to evaluate as true for an input element causes that element to be redirected to that downstream step.
     :type choice_array: tuple of (Flow, Function (Event=>boolean))
 
     :param default: a default step for events that did not match any condition in choice_array. If not set, elements that don't match any
-    condition will be discarded.
+        condition will be discarded.
     :type default: Flow
     :param name: Name of this step, as it should appear in logs. Defaults to class name (Choice).
     :type name: string
     :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
-    Defaults to False.
+        Defaults to False.
     :type full_event: boolean
     """
 
@@ -306,7 +306,7 @@ class Map(_UnaryFunctionFlow):
     :param name: Name of this step, as it should appear in logs. Defaults to class name (Map).
     :type name: string
     :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
-    Defaults to False.
+        Defaults to False.
     :type full_event: boolean
     """
 
@@ -323,7 +323,7 @@ class Filter(_UnaryFunctionFlow):
     :param name: Name of this step, as it should appear in logs. Defaults to class name (Filter).
     :type name: string
     :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
-    Defaults to False.
+        Defaults to False.
     :type full_event: boolean
     """
 
@@ -340,7 +340,7 @@ class FlatMap(_UnaryFunctionFlow):
     :param name: Name of this step, as it should appear in logs. Defaults to class name (FlatMap).
     :type name: string
     :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
-    Defaults to False.
+        Defaults to False.
     :type full_event: boolean
     """
 
@@ -406,7 +406,7 @@ class MapWithState(_FunctionWithStateFlow):
     :param group_by_key: Whether the state is computed by key. Optional. Default to False.
     :type group_by_key: boolean
     :param full_event: Whether fn will receive and return an Event object or only the body (payload). Optional. Defaults to
-    False (body only).
+        False (body only).
     :type full_event: boolean
     """
 
@@ -471,6 +471,7 @@ class Complete(Flow):
 class Reduce(Flow):
     """
     Reduces incoming events into a single value which is returned upon the successful termination of the flow.
+
     :param initial_value: Starting value. When the first event is received, fn will be appled to the initial_value and that event.
     :type initial_value: object
     :param fn: Function to apply to the current value and each event.
@@ -478,7 +479,7 @@ class Reduce(Flow):
     :param name: Name of this step, as it should appear in logs. Defaults to class name (Reduce).
     :type name: string
     :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
-    Defaults to False.
+        Defaults to False.
     :type full_event: boolean
     """
 
@@ -750,7 +751,7 @@ class SendToHttp(_ConcurrentJobExecution):
     :param name: Name of this step, as it should appear in logs. Defaults to class name (SendToHttp).
     :type name: string
     :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
-    Defaults to False.
+        Defaults to False.
     :type full_event: boolean
     """
 
@@ -884,18 +885,18 @@ class _Batching(Flow):
 
 
 class Batch(_Batching):
-    """
-    Batches events into lists of up to max_events events. Each emitted list contained max_events events, unless
+    """Batches events into lists of up to max_events events. Each emitted list contained max_events events, unless
     timeout_secs seconds have passed since the first event in the batch was received, at which the batch is emitted with
     potentially fewer than max_events event.
+
     :param max_events: Maximum number of events per emitted batch. Set to None to emit all events in one batch on flow
-    termination.
+        termination.
     :param timeout_secs: Maximum number of seconds to wait before a batch is emitted.
     :param key: The key by which events are grouped. By default (None), events are not grouped.
-    Other options may be:
-    Set a '$key' to group events by the Event.key property.
-    set a 'str' key to group events by Event.body[str].
-    set a Callable[Any, Any] to group events by a a custom key extractor.
+        Other options may be:
+        Set a '$key' to group events by the Event.key property.
+        set a 'str' key to group events by Event.body[str].
+        set a Callable[Any, Any] to group events by a a custom key extractor.
     """
     _do_downstream_per_event = False
 
@@ -920,7 +921,7 @@ class JoinWithV3IOTable(_ConcurrentJobExecution):
     :param name: Name of this step, as it should appear in logs. Defaults to class name (JoinWithV3IOTable).
     :type name: string
     :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
-    Defaults to False.
+        Defaults to False.
     :type full_event: boolean
     """
 
@@ -964,10 +965,10 @@ class JoinWithTable(_ConcurrentJobExecution):
     :param key_extractor: Key's column name or a function for extracting the key, for table access from an event.
     :param attributes: A comma-separated list of attributes to be queried for. Defaults to all attributes.
     :param join_function: Joins the original event with relevant data received from the storage. Defaults to assume the event's body is a
-    dict-like object and updating it.
+        dict-like object and updating it.
     :param name: Name of this step, as it should appear in logs. Defaults to class name (JoinWithTable).
     :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
-    Defaults to False.
+        Defaults to False.
     :param context: Context object that holds global configurations and secrets.
     """
 

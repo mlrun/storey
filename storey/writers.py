@@ -125,12 +125,14 @@ class WriteToCSV(_Batching, _Writer):
 
     :param path: path where CSV file will be written.
     :param columns: Fields to be written to CSV. Will be written as the file header if write_header is True. Will be extracted from
-    events when an event is a dictionary (lists will be written as is). Use = notation for renaming fields (e.g. write_this=event_field).
-    Use $ notation to refer to metadata ($key, event_time=$time). Optional. Defaults to None (will be inferred if event is dictionary).
+        events when an event is a dictionary (lists will be written as is). Use = notation for renaming fields
+        (e.g. write_this=event_field).
+        Use $ notation to refer to metadata ($key, event_time=$time). Optional. Defaults to None (will be inferred if event is dictionary).
     :param header: Whether to write the columns as a CSV header.
     :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries. If True, columns will be
-    inferred from data and used in place of explicit columns list if none was provided, or appended to the provided list. If header is True
-    and columns is not provided, infer_columns_from_data=True is implied. Optional. Default to False if columns is provided, True otherwise.
+        inferred from data and used in place of explicit columns list if none was provided, or appended to the provided list.
+        If header is True and columns is not provided, infer_columns_from_data=True is implied.
+        Optional. Default to False if columns is provided, True otherwise.
     :param max_lines_before_flush: Number of lines to write before flushing data to the output file. Defaults to 128.
     :param max_seconds_before_flush: Maximum delay in seconds before flushing lines. Defaults to 3.
     :param name: Name of this step, as it should appear in logs. Defaults to class name (WriteToCSV).
@@ -207,20 +209,22 @@ class WriteToParquet(_Batching, _Writer):
 
     :param path: Output path. Can be either a file or directory. This parameter is forwarded as-is to pandas.DataFrame.to_parquet().
     :param index_cols: Index columns for writing the data. Use = notation for renaming fields (e.g. write_this=event_field). Use $ notation
-    to refer to metadata ($key, event_time=$time).If None (default), no index is set.
-    :param columns: Fields to be written to parquet. Will be extracted from events when an event is a dictionary (lists will be written as
-    is). Use = notation for renaming fields (e.g. write_this=event_field). Use $ notation to refer to metadata ($key, event_time=$time).
-    Optional. Defaults to None (will be inferred if event is dictionary).
-    :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries. If True, columns will be
-    inferred from data and used in place of explicit columns list if none was provided, or appended to the provided list. If header is True
-    and columns is not provided, infer_columns_from_data=True is implied. Optional. Default to False if columns is provided, True otherwise.
+        to refer to metadata ($key, event_time=$time).If None (default), no index is set.
+    :param columns: Fields to be written to parquet. Will be extracted from events when an event is a dictionary
+        (lists will be written as is). Use = notation for renaming fields (e.g. write_this=event_field).
+        Use $ notation to refer to metadata ($key, event_time=$time).
+        Optional. Defaults to None (will be inferred if event is dictionary).
+    :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries.
+        If True, columns will be inferred from data and used in place of explicit columns list if none was provided, or appended to the
+        provided list. If header is True and columns is not provided, infer_columns_from_data=True is implied.
+        Optional. Default to False if columns is provided, True otherwise.
     :param partition_cols: Columns by which to partition the data into separate parquet files. If None (default), data will be written
-    to a single file at path. This parameter is forwarded as-is to pandas.DataFrame.to_parquet().
+        to a single file at path. This parameter is forwarded as-is to pandas.DataFrame.to_parquet().
     :param max_events: Maximum number of events to write at a time. If None (default), all events will be written on flow termination,
-    or after timeout_secs (if timeout_secs is set).
+        or after timeout_secs (if timeout_secs is set).
     :type max_events: int
     :param timeout_secs: Maximum number of seconds to hold events before they are written. If None (default), all events will be written
-    on flow termination, or after max_events are accumulated (if max_events is set).
+        on flow termination, or after max_events are accumulated (if max_events is set).
     :type timeout_secs: int
     """
 
@@ -277,10 +281,11 @@ class WriteToTSDB(_Batching, _Writer):
     :param path: Path to TSDB table.
     :param time_col: Name of the time column. Optional. Defaults to '$time'.
     :param columns: List of column names to be passed to the DataFrame constructor. Use = notation for renaming fields (e.g.
-    write_this=event_field). Use $ notation to refer to metadata ($key, event_time=$time).
+        write_this=event_field). Use $ notation to refer to metadata ($key, event_time=$time).
     :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries. If True, columns will be
-    inferred from data and used in place of explicit columns list if none was provided, or appended to the provided list. If header is True
-    and columns is not provided, infer_columns_from_data=True is implied. Optional. Default to False if columns is provided, True otherwise.
+        inferred from data and used in place of explicit columns list if none was provided, or appended to the provided list. If header is
+        True and columns is not provided, infer_columns_from_data=True is implied. Optional. Default to False if columns is provided,
+        True otherwise.
     :param index_cols: List of column names to be used for metric labels.
     :param v3io_frames: Frames service url.
     :param access_key: Access key to the system.
@@ -357,11 +362,12 @@ class WriteToV3IOStream(Flow, _Writer):
     :param sharding_func: Function for determining the shard ID to which to write each event.
     :param batch_size: Batch size for each write request.
     :param columns: Fields to be written to stream. Will be extracted from events when an event is a dictionary (other types will be written
-    as is). Use = notation for renaming fields (e.g. write_this=event_field). Use $ notation to refer to metadata ($key, event_time=$time).
-    Optional. Defaults to None (will be inferred if event is dictionary).
+        as is). Use = notation for renaming fields (e.g. write_this=event_field). Use $ notation to refer to metadata
+        ($key, event_time=$time). Optional. Defaults to None (will be inferred if event is dictionary).
     :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries. If True, columns will be
-    inferred from data and used in place of explicit columns list if none was provided, or appended to the provided list. If header is True
-    and columns is not provided, infer_columns_from_data=True is implied. Optional. Default to False if columns is provided, True otherwise.
+        inferred from data and used in place of explicit columns list if none was provided, or appended to the provided list. If header is
+        True and columns is not provided, infer_columns_from_data=True is implied. Optional. Default to False if columns is provided,
+        True otherwise.
     """
 
     def __init__(self, storage: Driver, stream_path: str, sharding_func: Optional[Callable[[Event], int]] = None, batch_size: int = 8,
@@ -493,11 +499,12 @@ class WriteToTable(_ConcurrentByKeyJobExecution, _Writer):
 
     :param table: A Table object or name to persist. If a table name is provided, it will be looked up in the context.
     :param columns: Fields to be written to the storage. Will be extracted from events when an event is a dictionary (lists will be written
-    as is). Use = notation for renaming fields (e.g. write_this=event_field).
-    Use $ notation to refer to metadata ($key, event_time=$time). Optional. Defaults to None (will be inferred if event is dictionary).
+        as is). Use = notation for renaming fields (e.g. write_this=event_field).
+        Use $ notation to refer to metadata ($key, event_time=$time). Optional. Defaults to None (will be inferred if event is dictionary).
     :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries. If True, columns will be
-    inferred from data and used in place of explicit columns list if none was provided, or appended to the provided list. If header is True
-    and columns is not provided, infer_columns_from_data=True is implied. Optional. Default to False if columns is provided, True otherwise.
+        inferred from data and used in place of explicit columns list if none was provided, or appended to the provided list. If header is
+        True and columns is not provided, infer_columns_from_data=True is implied. Optional. Default to False if columns is provided, True
+        otherwise.
     """
 
     def __init__(self, table: Union[Table, str], columns: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None,
