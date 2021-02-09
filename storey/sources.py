@@ -3,13 +3,14 @@ import csv
 import queue
 import threading
 import uuid
+import warnings
 from datetime import datetime, timezone
 from typing import List, Optional, Union, Callable, Coroutine, Iterable
 
 import pandas
 
 from .dtypes import _termination_obj, Event
-from .flow import Flow
+from .flow import Flow, Complete
 from .utils import url_to_file_system
 
 
@@ -80,27 +81,32 @@ class FlowController(FlowControllerBase):
     To be used from a synchronous context.
     """
 
-    def __init__(self, emit_fn, await_termination_fn, key_field: Optional[str] = None,
+    def __init__(self, emit_fn, await_termination_fn, return_awaitable_result, key_field: Optional[str] = None,
                  time_field: Optional[str] = None):
         super().__init__(key_field, time_field)
         self._emit_fn = emit_fn
         self._await_termination_fn = await_termination_fn
+        self._return_awaitable_result = return_awaitable_result
 
     def emit(self, element: object, key: Optional[str] = None, event_time: Optional[datetime] = None,
-             return_awaitable_result: bool = False):
+             return_awaitable_result: Optional[bool] = None):
         """Emits an event into the associated flow.
 
         :param element: The event data, or payload. To set metadata as well, pass an Event object.
         :param key: The event key (optional)
         :param event_time: The event time (default to current time, UTC).
-        :param return_awaitable_result: Whether an AwaitableResult object should be returned. Defaults to False.
-        :type return_awaitable_result: boolean
+        :param return_awaitable_result: Deprecated! An awaitable result object will be returned if a Complete step appears in the flow.
 
-        :returns: AsyncAwaitableResult if return_awaitable_result is True. None otherwise.
+        :returns: AsyncAwaitableResult if a Complete appears in the flow. None otherwise.
         """
+        if return_awaitable_result is not None:
+            warnings.warn('return_awaitable_result is deprecated. An awaitable result object will be returned if a Complete step appears '
+                          'in the flow.',
+                          DeprecationWarning)
+
         event = self._build_event(element, key, event_time)
         awaitable_result = None
-        if return_awaitable_result:
+        if self._return_awaitable_result:
             awaitable_result = AwaitableResult(self.terminate)
         event._awaitable_result = awaitable_result
         self._emit_fn(event)
@@ -209,7 +215,9 @@ class Source(Flow):
             self._raise_on_error(self._termination_q.get())
             return self._termination_future.result()
 
-        return FlowController(self._emit, raise_error_or_return_termination_result, self._key_field, self._time_field)
+        has_complete = self._check_stage_in_flow(Complete)
+
+        return FlowController(self._emit, raise_error_or_return_termination_result, has_complete, self._key_field, self._time_field)
 
 
 class AsyncAwaitableResult:
@@ -243,31 +251,37 @@ class AsyncFlowController(FlowControllerBase):
     Used to emit events into the associated flow, terminate the flow, and await the flow's termination. To be used from inside an async def.
     """
 
-    def __init__(self, emit_fn, loop_task, key_field: Optional[str] = None, time_field: Optional[str] = None, ):
+    def __init__(self, emit_fn, loop_task, await_result, key_field: Optional[str] = None, time_field: Optional[str] = None):
         super().__init__(key_field, time_field)
         self._emit_fn = emit_fn
         self._loop_task = loop_task
         self._key_field = key_field
         self._time_field = time_field
+        self._await_result = await_result
 
     async def emit(self, element: object, key: Optional[str] = None, event_time: Optional[datetime] = None,
-                   await_result: bool = False) -> object:
+                   await_result: Optional[bool] = None) -> object:
         """Emits an event into the associated flow.
 
         :param element: The event data, or payload. To set metadata as well, pass an Event object.
         :param key: The event key (optional)
         :param event_time: The event time (default to current time, UTC).
-        :param await_result: Whether to await a result from the flow (as signaled by the Complete step). Defaults to False.
+        :param await_result: Deprecated. Will await a result if a Complete step appears in the flow.
 
-        :returns: The result received from the flow if await_result is True. None otherwise.
+        :returns: The result received from the flow if a Complete step appears in the flow. None otherwise.
         """
+        if await_result is not None:
+            warnings.warn('await_result is deprecated. An awaitable result object will be returned if a Complete step appears '
+                          'in the flow.',
+                          DeprecationWarning)
+
         event = self._build_event(element, key, event_time)
         awaitable = None
-        if await_result:
+        if self._await_result:
             awaitable = AsyncAwaitableResult(self.terminate)
         event._awaitable_result = awaitable
         await self._emit_fn(event)
-        if await_result:
+        if self._await_result:
             result = await awaitable.await_result()
             if isinstance(result, BaseException):
                 raise result
@@ -341,7 +355,8 @@ class AsyncSource(Flow):
     async def run(self):
         self._closeables = super().run()
         loop_task = asyncio.get_running_loop().create_task(self._run_loop())
-        return AsyncFlowController(self._emit, loop_task, self._key_field, self._time_field)
+        has_complete = self._check_stage_in_flow(Complete)
+        return AsyncFlowController(self._emit, loop_task, has_complete, self._key_field, self._time_field)
 
 
 class _IterableSource(Flow):
@@ -574,26 +589,26 @@ class DataframeSource(_IterableSource):
     """Use pandas dataframe as input source for a flow.
 
     :param dfs: A pandas dataframe, or dataframes, to be used as input source for the flow.
-    :param key_column: column to be used as key for events.
-    :param time_column: column to be used as time for events.
-    :param id_column: column to be used as ID for events.
+    :param key_field: column to be used as key for events.
+    :param time_field: column to be used as time for events.
+    :param id_field: column to be used as ID for events.
     """
 
-    def __init__(self, dfs: Union[pandas.DataFrame, Iterable[pandas.DataFrame]], key_column: Optional[str] = None,
-                 time_column: Optional[str] = None, id_column: Optional[str] = None, **kwargs):
-        if key_column is not None:
-            kwargs['key_column'] = key_column
-        if time_column is not None:
-            kwargs['time_column'] = time_column
-        if id_column is not None:
-            kwargs['id_column'] = id_column
+    def __init__(self, dfs: Union[pandas.DataFrame, Iterable[pandas.DataFrame]], key_field: Optional[str] = None,
+                 time_field: Optional[str] = None, id_field: Optional[str] = None, **kwargs):
+        if key_field is not None:
+            kwargs['key_field'] = key_field
+        if time_field is not None:
+            kwargs['time_field'] = time_field
+        if id_field is not None:
+            kwargs['id_field'] = id_field
         super().__init__(**kwargs)
         if isinstance(dfs, pandas.DataFrame):
             dfs = [dfs]
         self._dfs = dfs
-        self._key_field = key_column
-        self._time_field = time_column
-        self._id_field = id_column
+        self._key_field = key_field
+        self._time_field = time_field
+        self._id_field = id_field
 
     async def _run_loop(self):
         for df in self._dfs:

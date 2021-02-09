@@ -1,5 +1,3 @@
-
-
 Welcome to storey's documentation!
 ==================================
 

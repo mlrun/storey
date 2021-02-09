@@ -208,7 +208,7 @@ def test_dataframe_source_with_metadata():
     df = pd.DataFrame([['key1', t1, 'id1', 1.1], ['key2', t2, 'id2', 2.2]],
                       columns=['my_key', 'my_time', 'my_id', 'my_value'])
     controller = build_flow([
-        DataframeSource(df, key_column='my_key', time_column='my_time', id_column='my_id'),
+        DataframeSource(df, key_field='my_key', time_field='my_time', id_field='my_id'),
         Reduce([], append_and_return, full_event=True),
     ]).run()
 
@@ -581,7 +581,7 @@ def test_awaitable_result():
     ]).run()
 
     for i in range(10):
-        awaitable_result = controller.emit(i, return_awaitable_result=True)
+        awaitable_result = controller.emit(i)
         assert awaitable_result.await_result() == i + 1
     controller.terminate()
     termination_result = controller.await_termination()
@@ -597,7 +597,7 @@ def test_double_completion():
     ]).run()
 
     for i in range(10):
-        awaitable_result = controller.emit(i, return_awaitable_result=True)
+        awaitable_result = controller.emit(i)
         assert awaitable_result.await_result() == i
     controller.terminate()
     termination_result = controller.await_termination()
@@ -613,7 +613,7 @@ async def async_test_async_double_completion():
     ]).run()
 
     for i in range(10):
-        result = await controller.emit(i, await_result=True)
+        result = await controller.emit(i)
         assert result == i
     await controller.terminate()
     termination_result = await controller.await_termination()
@@ -634,7 +634,7 @@ def test_awaitable_result_error():
         Complete()
     ]).run()
 
-    awaitable_result = controller.emit(0, return_awaitable_result=True)
+    awaitable_result = controller.emit(0)
     try:
         awaitable_result.await_result()
         assert False
@@ -652,7 +652,7 @@ async def async_test_async_awaitable_result_error():
         Complete()
     ]).run()
 
-    awaitable_result = controller.emit(0, await_result=True)
+    awaitable_result = controller.emit(0)
     try:
         await awaitable_result
         assert False
@@ -677,7 +677,7 @@ async def async_test_async_source():
     ]).run()
 
     for i in range(10):
-        result = await controller.emit(i, await_result=True)
+        result = await controller.emit(i)
         assert result == i + 1
     await controller.terminate()
     termination_result = await controller.await_termination()
@@ -711,7 +711,7 @@ def test_awaitable_result_error_in_async_downstream():
         Complete()
     ]).run()
     try:
-        controller.emit(1, return_awaitable_result=True).await_result()
+        controller.emit(1).await_result()
         assert False
     except InvalidURL:
         pass
@@ -724,7 +724,7 @@ async def async_test_async_awaitable_result_error_in_async_downstream():
         Complete()
     ]).run()
     try:
-        await controller.emit(1, await_result=True)
+        await controller.emit(1)
         assert False
     except InvalidURL:
         pass
@@ -745,7 +745,7 @@ def test_awaitable_result_error_in_by_key_async_downstream():
         Complete()
     ]).run()
     try:
-        controller.emit(1, return_awaitable_result=True).await_result()
+        controller.emit(1).await_result()
         assert False
     except ValueError:
         pass
@@ -815,7 +815,7 @@ def test_metadata_immutability():
     ]).run()
 
     event = Event('original body', key='original key')
-    result = controller.emit(event, return_awaitable_result=True).await_result()
+    result = controller.emit(event).await_result()
     controller.terminate()
     controller.await_termination()
 
@@ -1789,7 +1789,7 @@ def test_async_task_error_and_complete():
         Complete()
     ]).run()
 
-    awaitable_result = controller.emit({'col1': 0}, 'tal', return_awaitable_result=True)
+    awaitable_result = controller.emit({'col1': 0}, 'tal')
     try:
         awaitable_result.await_result()
         assert False
@@ -1815,7 +1815,7 @@ def test_async_task_error_and_complete_repeated_emits():
     ]).run()
     for i in range(3):
         try:
-            awaitable_result = controller.emit({'col1': 0}, 'tal', return_awaitable_result=True)
+            awaitable_result = controller.emit({'col1': 0}, 'tal')
         except ATestException:
             continue
         try:
@@ -2011,14 +2011,14 @@ def test_flow_to_dict_write_to_tsdb():
 
 def test_flow_to_dict_dataframe_source():
     df = pd.DataFrame([['key1', datetime(2020, 2, 15), 'id1', 1.1]], columns=['my_key', 'my_time', 'my_id', 'my_value'])
-    step = DataframeSource(df, key_column='my_key', time_column='my_time', id_column='my_id')
+    step = DataframeSource(df, key_field='my_key', time_field='my_time', id_field='my_id')
 
     assert step.to_dict() == {
         'class_name': 'DataframeSource',
         'parameters': {
-            'id_column': 'my_id',
-            'key_column': 'my_key',
-            'time_column': 'my_time'
+            'id_field': 'my_id',
+            'key_field': 'my_key',
+            'time_field': 'my_time'
         }
     }
 
@@ -2084,7 +2084,7 @@ def test_illegal_step_no_source():
 def test_illegal_step_source_not_first_step():
     df = pd.DataFrame([['hello', 1, 1.5], ['world', 2, 2.5]], columns=['string', 'int', 'float'])
     try:
-        controller = build_flow([
+        build_flow([
             ReadParquet('tests/test.parquet'),
             DataframeSource(df),
             Reduce([], append_and_return),
@@ -2092,3 +2092,19 @@ def test_illegal_step_source_not_first_step():
         assert False
     except ValueError as ex:
         assert str(ex) == 'DataframeSource can only appear as the first step of a flow'
+
+
+def test_writer_downstream(tmpdir):
+    file_path = f'{tmpdir}/test_writer_downstream/out.csv'
+    controller = build_flow([
+        Source(),
+        WriteToCSV(file_path, columns=['n', 'n*10'], header=True),
+        Reduce(0, lambda acc, x: acc + x[0])
+    ]).run()
+
+    for i in range(10):
+        controller.emit([i, i * 10])
+
+    controller.terminate()
+    result = controller.await_termination()
+    assert result == 45

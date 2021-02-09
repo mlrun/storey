@@ -112,7 +112,7 @@ def test_aggregate_df_86420_events(benchmark):
         table = Table(f'test', driver)
 
         controller = build_flow([
-            DataframeSource(df, key_column='patient_id', time_column='timestamp'),
+            DataframeSource(df, key_field='patient_id', time_field='timestamp'),
             AggregateByKey([FieldAggregator("hr", "hr", ["avg", "min", "max"],
                                             SlidingWindows(['1h', '2h'], '10m')),
                             FieldAggregator("rr", "rr", ["avg", "min", "max"],
@@ -136,7 +136,7 @@ def test_aggregate_df_86420_events_basic(benchmark):
         table = Table(f'test', driver)
 
         controller = build_flow([
-            DataframeSource(df, key_column='patient_id', time_column='timestamp'),
+            DataframeSource(df, key_field='patient_id', time_field='timestamp'),
             AggregateByKey([FieldAggregator("hr", "hr", ["sum", "count"],
                                             SlidingWindows(['1h', '2h'], '10m')),
                             FieldAggregator("rr", "rr", ["sum", "count"],
