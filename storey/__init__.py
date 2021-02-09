@@ -13,7 +13,8 @@ from .drivers import (  # noqa: F401
     Driver, NoopDriver, V3ioDriver
 )
 from .dtypes import (  # noqa: F401
-    Event, FieldAggregator
+    Event, FieldAggregator, SlidingWindows, FixedWindows, EmissionType, EmitAfterPeriod, EmitAfterWindow, EmitAfterMaxEvent, EmitAfterDelay,
+    EmitEveryEvent, LateDataHandling
 )
 from .flow import (  # noqa: F401
     Filter, FlatMap, Flow, FlowError, JoinWithV3IOTable, SendToHttp, JoinWithTable, Map, Extend, Reduce, Batch,
