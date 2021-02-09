@@ -1,6 +1,6 @@
 Storey Package Documentation
 ==================================
-Storey overview
+Introduction
 ================
 .. _asyncio: https://docs.python.org/3/library/asyncio.html
 
