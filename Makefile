@@ -28,7 +28,8 @@ env:
 
 .PHONY: dev-env
 dev-env: env
-	pipenv install -r dev-requirements.txt -r docs/requirements.txt
+	pipenv install -r dev-requirements.txt
+	pipenv install -r docs/requirements.txt
 
 .PHONY: dist
 dist: dev-env
