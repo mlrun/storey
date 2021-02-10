@@ -585,9 +585,9 @@ class ReadCSV(_IterableSource):
         asyncio.get_running_loop().run_in_executor(None, self._blocking_io_loop)
 
         def get_multiple():
-            events = [self.get_event()]
+            events = [self._get_event()]
             while not self._event_buffer.empty() and len(events) < 128:
-                events.append(self.get_event())
+                events.append(self._get_event())
             return events
 
         while True:
