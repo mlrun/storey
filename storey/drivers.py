@@ -2,6 +2,7 @@ import base64
 import json
 import os
 from datetime import datetime
+from typing import Optional
 
 import v3io
 import v3io.aio.dataplane
@@ -11,6 +12,7 @@ from .utils import schema_file_name
 
 
 class Driver:
+    """Abstract class for database connection"""
     async def _save_schema(self, container, table_path, schema):
         pass
 
@@ -35,6 +37,12 @@ class NoopDriver(Driver):
 
 
 class NeedsV3ioAccess:
+    """Checks that params for access to V3IO exist and are legal
+
+    :param webapi: URL to the web API (https or http). If not set, the V3IO_API environment variable will be used.
+    :param access_key: V3IO access key. If not set, the V3IO_ACCESS_KEY environment variable will be used.
+
+    """
     def __init__(self, webapi=None, access_key=None):
         webapi = webapi or os.getenv('V3IO_API')
         if not webapi:
@@ -56,12 +64,10 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
     """
     Database connection to V3IO.
     :param webapi: URL to the web API (https or http). If not set, the V3IO_API environment variable will be used.
-    :type webapi: string
     :param access_key: V3IO access key. If not set, the V3IO_ACCESS_KEY environment variable will be used.
-    :type access_key: string
     """
 
-    def __init__(self, webapi=None, access_key=None):
+    def __init__(self, webapi: Optional[str] = None, access_key: Optional[str] = None):
         NeedsV3ioAccess.__init__(self, webapi, access_key)
         self._v3io_client = None
         self._closed = True
@@ -79,6 +85,7 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
             self._v3io_client = v3io.aio.dataplane.Client(endpoint=self._webapi_url, access_key=self._access_key)
 
     async def close(self):
+        """Closes database connection to V3IO"""
         if self._v3io_client and not self._closed:
             self._closed = True
             await self._v3io_client.close()
