@@ -19,14 +19,15 @@ class AggregateByKey(Flow):
     Persistence is done via the `WriteToTable` step and based on the Cache object persistence settings.
 
     :param aggregates: List of aggregates to apply for each event.
-    :param table: A Table object or name for persistence of aggregations. If a table name is provided, it will be looked up in the context.
+        accepts either list of FieldAggregators or a dictionary describing FieldAggregators.
+    :param table: A Table object or name for persistence of aggregations.
+        If a table name is provided, it will be looked up in the context object passed in kwargs.
     :param key: Key field to aggregate by, accepts either a string representing the key field or a key extracting function.
      Defaults to the key in the event's metadata. (Optional)
-    :param emit_policy: Policy indicating when the data will be emitted. Defaults to EmitEveryEvent. (Optional)
+    :param emit_policy: Policy indicating when the data will be emitted. Defaults to EmitEveryEvent
     :param augmentation_fn: Function that augments the features into the event's body. Defaults to updating a dict. (Optional)
     :param enrich_with: List of attributes names from the associated storage object to be fetched and added to every event. (Optional)
     :param aliases: Dictionary specifying aliases to the enriched columns, of the format `{'col_name': 'new_col_name'}`. (Optional)
-    :param context: Context object that holds global configurations and secrets.
     """
 
     def __init__(self, aggregates: Union[List[FieldAggregator], List[Dict[str, object]]], table: Union[Table, str],
@@ -211,12 +212,12 @@ class QueryByKey(AggregateByKey):
     Query features by name
 
     :param features: List of features to get.
-    :param table: A Table object or name for persistence of aggregations. If a table name is provided, it will be looked up in the context.
+    :param table: A Table object or name for persistence of aggregations.
+        If a table name is provided, it will be looked up in the context object passed in kwargs.
     :param key: Key field to aggregate by, accepts either a string representing the key field or a key extracting function.
      Defaults to the key in the event's metadata. (Optional)
     :param augmentation_fn: Function that augments the features into the event's body. Defaults to updating a dict. (Optional)
     :param aliases: Dictionary specifying aliases to the enriched columns, of the format `{'col_name': 'new_col_name'}`. (Optional)
-    :param context: Context object that holds global configurations and secrets.
     """
 
     def __init__(self, features: List[str], table: Union[Table, str], key: Union[str, Callable[[Event], object], None] = None,
