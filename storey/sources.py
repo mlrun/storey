@@ -23,6 +23,7 @@ class AwaitableResult:
         self._completed = False
 
     def await_result(self):
+        """Returns the result, once the computation is completed"""
         result = self._q.get()
         if isinstance(result, BaseException):
             if self._on_error:
@@ -79,6 +80,7 @@ class FlowControllerBase:
 class FlowController(FlowControllerBase):
     """Used to emit events into the associated flow, terminate the flow, and await the flow's termination.
     To be used from a synchronous context.
+
     """
 
     def __init__(self, emit_fn, await_termination_fn, return_awaitable_result, key_field: Optional[str] = None,
@@ -129,6 +131,7 @@ class FlowAwaiter:
         self._await_termination_fn = await_termination_fn
 
     def await_termination(self):
+        """"waits for the flow to terminate and returns the result"""
         return self._await_termination_fn()
 
 
@@ -141,6 +144,8 @@ class Source(Flow):
     :param time_field: Field to extract and use as the time. Optional.
     :param name: Name of this step, as it should appear in logs. Defaults to class name (Source).
     :type name: string
+
+    for additional params, see documentation of  :class:`storey.flow.Flow`
     """
     _legal_first_step = True
 
@@ -206,6 +211,7 @@ class Source(Flow):
             self._raise_on_error(self._ex)
 
     def run(self):
+        """Starts the flow"""
         self._closeables = super().run()
 
         thread = threading.Thread(target=self._loop_thread_main)
@@ -230,6 +236,7 @@ class AsyncAwaitableResult:
         self._completed = False
 
     async def await_result(self):
+        """returns the result of the computation, once the computation is complete"""
         result = await self._q.get()
         if isinstance(result, BaseException):
             if self._on_error:
@@ -304,6 +311,8 @@ class AsyncSource(Flow):
     :param buffer_size: size of the incoming event buffer. Defaults to 1024.
     :param name: Name of this step, as it should appear in logs. Defaults to class name (AsyncSource).
     :type name: string
+
+    for additional params, see documentation of  :class:`~storey.flow.Flow`
     """
     _legal_first_step = True
 
@@ -353,6 +362,7 @@ class AsyncSource(Flow):
             self._raise_on_error()
 
     async def run(self):
+        """Starts the flow"""
         self._closeables = super().run()
         loop_task = asyncio.get_running_loop().create_task(self._run_loop())
         has_complete = self._check_stage_in_flow(Complete)
@@ -416,7 +426,8 @@ class ReadCSV(_IterableSource):
     """
     Reads CSV files as input source for a flow.
 
-    :parameter paths: paths to CSV files :parameter header: whether CSV files have a header or not. Defaults to False.
+    :parameter paths: paths to CSV files
+    :parameter header: whether CSV files have a header or not. Defaults to False.
     :parameter build_dict: whether to format each record produced from the input file as a dictionary (as opposed to a list).
         Default to False.
     :parameter key_field: the CSV field to be use as the key for events. May be an int (field index) or string (field name) if
@@ -427,6 +438,8 @@ class ReadCSV(_IterableSource):
         datetime.fromisoformat().
     :parameter type_inference: Whether to infer data types from the data (when True), or read all fields in as strings (when False).
         Defaults to True.
+
+    for additional params, see documentation of  :class:`~storey.flow.Flow`
     """
 
     def __init__(self, paths: Union[List[str], str], header: bool = False, build_dict: bool = False,
@@ -562,7 +575,7 @@ class ReadCSV(_IterableSource):
             self._event_buffer.put(ex)
         self._event_buffer.put(_termination_obj)
 
-    def get_event(self):
+    def _get_event(self):
         event = self._event_buffer.get()
         if isinstance(event, BaseException):
             raise event
@@ -592,6 +605,8 @@ class DataframeSource(_IterableSource):
     :param key_field: column to be used as key for events.
     :param time_field: column to be used as time for events.
     :param id_field: column to be used as ID for events.
+
+    for additional params, see documentation of  :class:`~storey.flow.Flow`
     """
 
     def __init__(self, dfs: Union[pandas.DataFrame, Iterable[pandas.DataFrame]], key_field: Optional[str] = None,
@@ -636,6 +651,10 @@ class DataframeSource(_IterableSource):
 
 
 class ReadParquet(DataframeSource):
+    """Reads Parquet files as input source for a flow.
+    :parameter paths: paths to Parquet files
+    :parameter columns : list, default=None. If not None, only these columns will be read from the file.
+    """
     def __init__(self, paths: Union[str, Iterable[str]], columns=None, **kwargs):
         if isinstance(paths, str):
             paths = [paths]

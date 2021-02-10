@@ -137,6 +137,17 @@ class WriteToCSV(_Batching, _Writer):
     :param max_seconds_before_flush: Maximum delay in seconds before flushing lines. Defaults to 3.
     :param name: Name of this step, as it should appear in logs. Defaults to class name (WriteToCSV).
     :type name: string
+    :param max_events: Maximum number of events to write at a time. If None (default), all events will be written on flow termination,
+        or after timeout_secs (if timeout_secs is set).
+    :type max_events: int
+    :param timeout_secs: Maximum number of seconds to hold events before they are written. If None (default), all events will be written
+        on flow termination, or after max_events are accumulated (if max_events is set).
+    :type timeout_secs: int
+    :param key: batching will be done by key
+    :type key: str or Event
+    :param storage_options: Extra options that make sense for a particular storage connection, e.g. host, port, username, password, etc.,
+        if using a URL that will be parsed by fsspec, e.g., starting “s3://”, “gcs://”. Optional
+    :type storage_options: dict
     """
 
     def __init__(self, path: str, columns: Optional[List[str]] = None, header: bool = False, infer_columns_from_data: Optional[bool] = None,
@@ -226,6 +237,9 @@ class WriteToParquet(_Batching, _Writer):
     :param timeout_secs: Maximum number of seconds to hold events before they are written. If None (default), all events will be written
         on flow termination, or after max_events are accumulated (if max_events is set).
     :type timeout_secs: int
+    :param storage_options: Extra options that make sense for a particular storage connection, e.g. host, port, username, password, etc.,
+        if using a URL that will be parsed by fsspec, e.g., starting “s3://”, “gcs://”. Optional
+    :type storage_options: dict
     """
 
     def __init__(self, path: str, index_cols: Union[str, List[str], None] = None, columns: Union[str, List[str], None] = None,
@@ -293,6 +307,16 @@ class WriteToTSDB(_Batching, _Writer):
     :param rate: TSDB table sample rate.
     :param aggr: Server-side aggregations for this TSDB table (e.g. 'sum,count').
     :param aggr_granularity: Granularity of server-side aggregations for this TSDB table (e.g. '1h').
+    :param frames_client: Frames instance. Allows usage of an existing frames client.
+    :param max_events: Maximum number of events to write at a time. If None (default), all events will be written on flow termination,
+        or after timeout_secs (if timeout_secs is set).
+    :type max_events: int
+    :param timeout_secs: Maximum number of seconds to hold events before they are written. If None (default), all events will be written
+        on flow termination, or after max_events are accumulated (if max_events is set).
+    :type timeout_secs: int
+    :param storage_options: Extra options that make sense for a particular storage connection, e.g. host, port, username, password, etc.,
+        if using a URL that will be parsed by fsspec, e.g., starting “s3://”, “gcs://”. Optional
+    :type storage_options: dict
     """
 
     def __init__(self, path: str, time_col: str = '$time', columns: Union[str, List[str], None] = None,
@@ -359,7 +383,7 @@ class WriteToV3IOStream(Flow, _Writer):
 
     :param storage: Database driver.
     :param stream_path: Path to the V3IO stream.
-    :param sharding_func: Function for determining the shard ID to which to write each event.
+    :param sharding_func: Function for determining the shard ID to which to write each event. Optional. Default is None
     :param batch_size: Batch size for each write request.
     :param columns: Fields to be written to stream. Will be extracted from events when an event is a dictionary (other types will be written
         as is). Use = notation for renaming fields (e.g. write_this=event_field). Use $ notation to refer to metadata
@@ -368,6 +392,9 @@ class WriteToV3IOStream(Flow, _Writer):
         inferred from data and used in place of explicit columns list if none was provided, or appended to the provided list. If header is
         True and columns is not provided, infer_columns_from_data=True is implied. Optional. Default to False if columns is provided,
         True otherwise.
+    :param storage_options: Extra options that make sense for a particular storage connection, e.g. host, port, username, password, etc.,
+        if using a URL that will be parsed by fsspec, e.g., starting “s3://”, “gcs://”. Optional
+    :type storage_options: dict
     """
 
     def __init__(self, storage: Driver, stream_path: str, sharding_func: Optional[Callable[[Event], int]] = None, batch_size: int = 8,
@@ -505,6 +532,9 @@ class WriteToTable(_ConcurrentByKeyJobExecution, _Writer):
         inferred from data and used in place of explicit columns list if none was provided, or appended to the provided list. If header is
         True and columns is not provided, infer_columns_from_data=True is implied. Optional. Default to False if columns is provided, True
         otherwise.
+    :param storage_options: Extra options that make sense for a particular storage connection, e.g. host, port, username, password, etc.,
+        if using a URL that will be parsed by fsspec, e.g., starting “s3://”, “gcs://”. Optional
+    :type storage_options: dict
     """
 
     def __init__(self, table: Union[Table, str], columns: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None,
