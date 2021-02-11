@@ -9,6 +9,7 @@ Storey is an asynchronous streaming library, for real time event processing and 
 - [API Walkthrough](#api-walkthrough)
 - [Usage Examples](#examples)
 
+&#x25B6; For more information, see the [Storey Python package documentation](https://storey.readthedocs.io).
 
 <a id="api-walkthrough"></a>
 ## API Walkthrough
@@ -16,28 +17,35 @@ A Storey flow consist of steps linked together by the `build_flow` function, eac
 
 ### Supported Steps
 #### Input Steps
-* `Source` - 
-* `AsyncSource` - 
-* `ReadCSV` - 
+* `Source` 
+* `AsyncSource` 
+* `ReadCSV`  
+* `ReadParquet` 
+* `DataframeSource`  
 
 #### Processing Steps
-* `Filter` - 
-* `Map` -  
-* `FlatMap` -
-* `MapWithState` -
+* `Filter` 
+* `Map` 
+* `FlatMap`
+* `MapWithState`
 * `Batch(max_events, timeout)` - Batches events. This step emits a batch every max_events events, or when timeout seconds have passed since the first event in the batch was received.
-* `Choice` - 
-* `JoinWithV3IOTable` - 
-* `SendToHttp` - 
+* `Choice`  
+* `JoinWithV3IOTable` 
+* `SendToHttp` 
 * `AggregateByKey(aggregations,cache, key=None, emit_policy=EmitEveryEvent(), augmentation_fn=None)` - This step aggregates the data into the cache object provided for later persistence, and outputs an event enriched with the requested aggregation features.
 * `QueryByKey(features, cache, key=None, augmentation_fn=None, aliases=None)` - Similar to to `AggregateByKey`, but this step is for serving only and does not aggregate the event.
 * `WriteToTable(table)` - Persists the data in `table` to its associated storage by key.
-
+* `Extend`
+* `JoinWithTable`  
 
 #### Output Steps
-* `Complete` -  
-* `Reduce` -
-* `WriteToV3IOStream` - 
+* `Complete`  
+* `Reduce` 
+* `WriteToV3IOStream` 
+* `WriteToCSV`
+* `ReduceToDataFrame`
+* `WriteToTSDB`
+* `WriteToParquet`     
 
 
 <a id="examples"></a>
@@ -52,7 +60,7 @@ from storey.dtypes import SlidingWindows
 
 v3io_web_api = 'https://webapi.change-me.com'
 v3io_acceess_key = '1284ne83-i262-46m6-9a23-810n41f169ea'
-table_object = Table('/bigdata/my_features', V3ioDriver(v3io_web_api, v3io_acceess_key))
+table_object = Table('/projects/my_features', V3ioDriver(v3io_web_api, v3io_acceess_key))
 
 def enrich(event, state):
     if 'first_activity' not in state:
