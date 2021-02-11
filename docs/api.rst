@@ -1,24 +1,22 @@
 Storey api
 ================
 
-=========
-Writers
-=========
+
+Writers:
+********
 
 .. automodule:: storey.writers
     :members:
     :show-inheritance:
 
-=========
-Readers
-=========
+Readers:
+********
 .. automodule:: storey.sources
     :members:
     :show-inheritance:
 
-===============
-Transformations
-===============
+Transformations:
+****************
 
 .. automodule:: storey.flow
     :members:
@@ -28,9 +26,9 @@ Transformations
     :members:
     :show-inheritance:
 
-===============
-Miscellaneous
-===============
+
+Miscellaneous:
+**************
 
 .. automodule:: storey.drivers
     :members:
