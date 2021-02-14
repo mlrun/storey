@@ -432,7 +432,7 @@ class ReadCSV(_IterableSource):
         Default to False.
     :parameter key_field: the CSV field to be use as the key for events. May be an int (field index) or string (field name) if
         with_header is True. Defaults to None (no key).
-    :parameter timestamp_field: the CSV field to be parsed as the timestamp for events. May be an int (field index) or string (field name)
+    :parameter time_field: the CSV field to be parsed as the timestamp for events. May be an int (field index) or string (field name)
         if with_header is True. Defaults to None (no timestamp field).
     :parameter timestamp_format: timestamp format as defined in datetime.strptime(). Default to ISO-8601 as defined in
         datetime.fromisoformat().
@@ -443,15 +443,15 @@ class ReadCSV(_IterableSource):
     """
 
     def __init__(self, paths: Union[List[str], str], header: bool = False, build_dict: bool = False,
-                 key_field: Union[int, str, None] = None, timestamp_field: Union[int, str, None] = None,
+                 key_field: Union[int, str, None] = None, time_field: Union[int, str, None] = None,
                  timestamp_format: Optional[str] = None, type_inference: bool = True, **kwargs):
         kwargs['paths'] = paths
         kwargs['header'] = header
         kwargs['build_dict'] = build_dict
         if key_field is not None:
             kwargs['key_field'] = key_field
-        if timestamp_field is not None:
-            kwargs['timestamp_field'] = timestamp_field
+        if time_field is not None:
+            kwargs['time_field'] = time_field
         if timestamp_format is not None:
             kwargs['timestamp_format'] = timestamp_format
         kwargs['type_inference'] = type_inference
@@ -462,15 +462,15 @@ class ReadCSV(_IterableSource):
         self._with_header = header
         self._build_dict = build_dict
         self._key_field = key_field
-        self._timestamp_field = timestamp_field
+        self._time_field = time_field
         self._timestamp_format = timestamp_format
         self._type_inference = type_inference
         self._storage_options = kwargs.get('storage_options')
 
         if not header and isinstance(key_field, str):
             raise ValueError('key_field can only be set to an integer when with_header is false')
-        if not header and isinstance(timestamp_field, str):
-            raise ValueError('timestamp_field can only be set to an integer when with_header is false')
+        if not header and isinstance(time_field, str):
+            raise ValueError('time_field can only be set to an integer when with_header is false')
 
     def _init(self):
         self._event_buffer = queue.Queue(1024)
@@ -563,11 +563,11 @@ class ReadCSV(_IterableSource):
                             if self._with_header and isinstance(key_field, str):
                                 key_field = field_name_to_index[key_field]
                             key = parsed_line[key_field]
-                        if self._timestamp_field:
-                            timestamp_field = self._timestamp_field
-                            if self._with_header and isinstance(timestamp_field, str):
-                                timestamp_field = field_name_to_index[timestamp_field]
-                            time_as_datetime = parsed_line[timestamp_field]
+                        if self._time_field:
+                            time_field = self._time_field
+                            if self._with_header and isinstance(time_field, str):
+                                time_field = field_name_to_index[time_field]
+                            time_as_datetime = parsed_line[time_field]
                         else:
                             time_as_datetime = datetime.now()
                         self._event_buffer.put(Event(element, key=key, time=time_as_datetime))
