@@ -470,7 +470,7 @@ class ReadCSV(_IterableSource):
         if not header and isinstance(key_field, str):
             raise ValueError('key_field can only be set to an integer when with_header is false')
         if not header and isinstance(time_field, str):
-            raise ValueError('timestamp_field can only be set to an integer when with_header is false')
+            raise ValueError('time_field can only be set to an integer when with_header is false')
 
     def _init(self):
         self._event_buffer = queue.Queue(1024)
@@ -564,10 +564,10 @@ class ReadCSV(_IterableSource):
                                 key_field = field_name_to_index[key_field]
                             key = parsed_line[key_field]
                         if self._time_field:
-                            timestamp_field = self._time_field
-                            if self._with_header and isinstance(timestamp_field, str):
-                                timestamp_field = field_name_to_index[timestamp_field]
-                            time_as_datetime = parsed_line[timestamp_field]
+                            time_field = self._time_field
+                            if self._with_header and isinstance(time_field, str):
+                                time_field = field_name_to_index[time_field]
+                            time_as_datetime = parsed_line[time_field]
                         else:
                             time_as_datetime = datetime.now()
                         self._event_buffer.put(Event(element, key=key, time=time_as_datetime))
