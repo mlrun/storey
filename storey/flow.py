@@ -211,7 +211,7 @@ class Flow:
                 return True
             if isinstance(self._recovery_step, dict):
                 for step in self._recovery_step.values():
-                    if step is type_to_check:
+                    if isinstance(step, type_to_check):
                         return True
                     if step._check_stage_in_flow(type_to_check):
                         return True
