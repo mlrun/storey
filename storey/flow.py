@@ -206,6 +206,11 @@ class Flow:
                 return True
             if step._check_stage_in_flow(type_to_check):
                 return True
+        if self._recovery_step is not None:
+            if isinstance(self._recovery_step, type_to_check):
+                return True
+            if self._recovery_step._check_stage_in_flow(type_to_check):
+                return True
         return False
 
 
