@@ -25,15 +25,17 @@ class Flow:
         self.verbose = context and getattr(context, 'verbose', False)
 
         self._kwargs = kwargs
-        self._full_event = kwargs.get('full_event', False)
+        self._full_event = kwargs.pop('full_event', False)
         self._input_path = kwargs.get('input_path')
         self._result_path = kwargs.get('result_path')
         self._runnable = False
-        name = kwargs.get('name')
+        name = kwargs.pop('name', None)
         if name:
             self.name = name
+            self._custom_name = True
         else:
             self.name = type(self).__name__
+            self._custom_name = False
 
         self._closeables = []
 
@@ -41,10 +43,18 @@ class Flow:
         pass
 
     def to_dict(self):
+        module = type(self).__module__
+        if module is None or module == str.__class__.__module__:
+            module = ''
+        else:
+            module += '.'
         result = {
-            'class_name': type(self).__name__,
-            'parameters': self._kwargs
+            'class_name': f'{module}{type(self).__name__}',
+            'class_args': self._kwargs,
+            'full_event': self._full_event,
         }
+        if self._custom_name:
+            result['name'] = self.name
         if self._recovery_step:
             result['recovery_step'] = self._recovery_step.to_dict()
         return result
@@ -67,6 +77,10 @@ class Flow:
         param_list = []
         for key, value in self._kwargs.items():
             param_list.append(f'{key}={value}')
+        if self._custom_name:
+            param_list.append(f'name={self.name}')
+        if self._full_event:
+            param_list.append(f'full_event={self._full_event}')
         param_str = ', '.join(param_list)
         step = f'{var_name} = {class_name}({param_str})'
         steps = [step]
