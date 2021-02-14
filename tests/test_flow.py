@@ -1973,7 +1973,7 @@ def test_flow_to_dict_read_csv():
             'header': True,
             'key_field': 'k',
             'paths': 'tests/test-with-timestamp-ns.csv',
-            'timestamp_field': 't',
+            'time_field': 't',
             'timestamp_format': '%d/%m/%Y %H:%M:%S.%f',
             'type_inference': True
         }
