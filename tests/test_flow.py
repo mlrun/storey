@@ -1947,8 +1947,9 @@ def test_result_path():
 def test_to_dict():
     source = Source(name='my_source', buffer_size=5)
     identity = Map(lambda x: x, full_event=False)
-    assert source.to_dict() == {'class_name': 'Source', 'parameters': {'name': 'my_source', 'buffer_size': 5}}
-    assert identity.to_dict() == {'class_name': 'Map', 'parameters': {'full_event': False}}
+    assert source.to_dict() == {'class_name': 'storey.sources.Source', 'class_args': {'buffer_size': 5}, 'name': 'my_source',
+                                'full_event': False}
+    assert identity.to_dict() == {'class_name': 'storey.flow.Map', 'class_args': {}, 'full_event': False}
 
 
 def test_flow_reuse():
@@ -1967,8 +1968,8 @@ def test_flow_to_dict_read_csv():
     step = ReadCSV('tests/test-with-timestamp-ns.csv', header=True, key_field='k', timestamp_field='t',
                    timestamp_format='%d/%m/%Y %H:%M:%S.%f')
     assert step.to_dict() == {
-        'class_name': 'ReadCSV',
-        'parameters': {
+        'class_name': 'storey.sources.ReadCSV',
+        'class_args': {
             'build_dict': False,
             'header': True,
             'key_field': 'k',
@@ -1976,19 +1977,21 @@ def test_flow_to_dict_read_csv():
             'timestamp_field': 't',
             'timestamp_format': '%d/%m/%Y %H:%M:%S.%f',
             'type_inference': True
-        }
+        },
+        'full_event': False
     }
 
 
 def test_flow_to_dict_write_to_parquet():
     step = WriteToParquet('outfile', columns=['col1', 'col2'], max_events=2)
     assert step.to_dict() == {
-        'class_name': 'WriteToParquet',
-        'parameters': {
+        'class_name': 'storey.writers.WriteToParquet',
+        'class_args': {
             'path': 'outfile',
             'columns': ['col1', 'col2'],
             'max_events': 2
-        }
+        },
+        'full_event': False
     }
 
 
@@ -1997,15 +2000,16 @@ def test_flow_to_dict_write_to_tsdb():
                        max_events=1, frames_client=MockFramesClient())
 
     assert step.to_dict() == {
-        'class_name': 'WriteToTSDB',
-        'parameters': {
+        'class_name': 'storey.writers.WriteToTSDB',
+        'class_args': {
             'columns': ['cpu', 'disk'],
             'index_cols': 'node',
             'max_events': 1,
             'path': 'some/path',
             'rate': '1/h',
             'time_col': 'time'
-        }
+        },
+        'full_event': False
     }
 
 
@@ -2014,12 +2018,13 @@ def test_flow_to_dict_dataframe_source():
     step = DataframeSource(df, key_field='my_key', time_field='my_time', id_field='my_id')
 
     assert step.to_dict() == {
-        'class_name': 'DataframeSource',
-        'parameters': {
+        'class_name': 'storey.sources.DataframeSource',
+        'class_args': {
             'id_field': 'my_id',
             'key_field': 'my_key',
             'time_field': 'my_time'
-        }
+        },
+        'full_event': False
     }
 
 
@@ -2035,7 +2040,7 @@ def test_to_code():
     expected = """source0 = Source()
 batch0 = Batch(max_events=5)
 to_data_frame0 = ToDataFrame()
-reduce0 = Reduce(full_event=True, initial_value=[])
+reduce0 = Reduce(initial_value=[], full_event=True)
 
 source0.to(batch0)
 batch0.to(to_data_frame0)
@@ -2062,7 +2067,7 @@ batch0 = Batch(max_events=5)
 reduce0 = Reduce(initial_value=[])
 batch1 = Batch(max_events=5)
 to_data_frame0 = ToDataFrame()
-reduce1 = Reduce(full_event=True, initial_value=[])
+reduce1 = Reduce(initial_value=[], full_event=True)
 
 source0.to(batch0)
 batch0.to(reduce0)
