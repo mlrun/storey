@@ -132,7 +132,7 @@ def append_and_return(lst, x):
 def test_csv_reader_as_dict_with_key_and_timestamp():
     controller = build_flow([
         ReadCSV('tests/test-with-timestamp.csv', header=True, build_dict=True, key_field='k',
-                timestamp_field='t', timestamp_format='%d/%m/%Y %H:%M:%S'),
+                time_field='t', timestamp_format='%d/%m/%Y %H:%M:%S'),
         Reduce([], append_and_return, full_event=True),
     ]).run()
 
@@ -150,7 +150,7 @@ def test_csv_reader_as_dict_with_key_and_timestamp():
 def test_csv_reader_with_key_and_timestamp():
     controller = build_flow([
         ReadCSV('tests/test-with-timestamp.csv', header=True, key_field='k',
-                timestamp_field='t', timestamp_format='%d/%m/%Y %H:%M:%S'),
+                time_field='t', timestamp_format='%d/%m/%Y %H:%M:%S'),
         Reduce([], append_and_return, full_event=True),
     ]).run()
 
@@ -1750,7 +1750,7 @@ def test_csv_reader_parquet_write_ns(tmpdir):
 
     controller = build_flow([
         ReadCSV('tests/test-with-timestamp-ns.csv', header=True, key_field='k',
-                timestamp_field='t', timestamp_format='%d/%m/%Y %H:%M:%S.%f'),
+                time_field='t', timestamp_format='%d/%m/%Y %H:%M:%S.%f'),
         WriteToParquet(out_file, columns=columns, max_events=2)
     ]).run()
 
@@ -1964,7 +1964,7 @@ def test_flow_reuse():
 
 
 def test_flow_to_dict_read_csv():
-    step = ReadCSV('tests/test-with-timestamp-ns.csv', header=True, key_field='k', timestamp_field='t',
+    step = ReadCSV('tests/test-with-timestamp-ns.csv', header=True, key_field='k', time_field='t',
                    timestamp_format='%d/%m/%Y %H:%M:%S.%f')
     assert step.to_dict() == {
         'class_name': 'ReadCSV',
