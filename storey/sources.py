@@ -221,7 +221,7 @@ class Source(Flow):
             self._raise_on_error(self._termination_q.get())
             return self._termination_future.result()
 
-        has_complete = self._check_stage_in_flow(Complete)
+        has_complete = self._check_step_in_flow(Complete)
 
         return FlowController(self._emit, raise_error_or_return_termination_result, has_complete, self._key_field, self._time_field)
 
@@ -365,7 +365,7 @@ class AsyncSource(Flow):
         """Starts the flow"""
         self._closeables = super().run()
         loop_task = asyncio.get_running_loop().create_task(self._run_loop())
-        has_complete = self._check_stage_in_flow(Complete)
+        has_complete = self._check_step_in_flow(Complete)
         return AsyncFlowController(self._emit, loop_task, has_complete, self._key_field, self._time_field)
 
 
