@@ -200,25 +200,21 @@ class Flow:
                 mapped_event.body = fn_result
             return mapped_event
 
-    def _check_stage_in_flow(self, type_to_check):
-        for step in self._outlets:
-            if isinstance(step, type_to_check):
+    def _check_step_in_flow(self, type_to_check):
+        if isinstance(self, type_to_check):
+            return True
+        for outlet in self._outlets:
+            if outlet._check_step_in_flow(type_to_check):
                 return True
-            if step._check_stage_in_flow(type_to_check):
+        if isinstance(self._recovery_step, Flow):
+            if self._recovery_step._check_step_in_flow(type_to_check):
                 return True
-        if self._recovery_step is not None:
-            if isinstance(self._recovery_step, type_to_check):
-                return True
-            if isinstance(self._recovery_step, dict):
-                for step in self._recovery_step.values():
-                    if isinstance(step, type_to_check):
-                        return True
-                    if step._check_stage_in_flow(type_to_check):
-                        return True
-            else:
-                if self._recovery_step._check_stage_in_flow(type_to_check):
+        elif isinstance(self._recovery_step, dict):
+            for step in self._recovery_step.values():
+                if step._check_step_in_flow(type_to_check):
                     return True
         return False
+
 
 
 class Choice(Flow):
