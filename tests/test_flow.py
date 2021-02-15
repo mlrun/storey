@@ -2078,6 +2078,22 @@ to_data_frame0.to(reduce1)
     assert reconstructed_code == expected
 
 
+def test_reader_writer_to_code():
+    flow = build_flow([
+        ReadCSV('mycsv.csv'),
+        WriteToParquet('mypq.pq')
+    ])
+
+    reconstructed_code = flow.to_code()
+    print(reconstructed_code)
+    expected = """read_c_s_v0 = ReadCSV(paths='mycsv.csv', header=False, build_dict=False, type_inference=True)
+write_to_parquet0 = WriteToParquet(path='mypq.pq')
+
+read_c_s_v0.to(write_to_parquet0)
+"""
+    assert reconstructed_code == expected
+
+
 def test_illegal_step_no_source():
     try:
         Reduce([], append_and_return, full_event=True).run()

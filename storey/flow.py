@@ -76,6 +76,8 @@ class Flow:
         taken.add(var_name)
         param_list = []
         for key, value in self._kwargs.items():
+            if isinstance(value, str):
+                value = f"'{value}'"
             param_list.append(f'{key}={value}')
         if self._custom_name:
             param_list.append(f'name={self.name}')
