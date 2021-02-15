@@ -216,7 +216,6 @@ class Flow:
         return False
 
 
-
 class Choice(Flow):
     """Redirects each input element into at most one of multiple downstreams.
 
