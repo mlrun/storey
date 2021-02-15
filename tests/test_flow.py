@@ -2119,12 +2119,16 @@ def test_complete_in_error_flow():
         Source(),
         Map(lambda x: x + 1),
         Map(RaiseEx(5).raise_ex, recovery_step=reduce),
+        Map(lambda x: x * 100),
         reduce
     ]).run()
 
     for i in range(10):
         awaitable_result = controller.emit(i)
-        assert awaitable_result.await_result() == i + 1
+        if i == 4:
+            assert awaitable_result.await_result() == i + 1
+        else:
+            assert awaitable_result.await_result() == (i + 1) * 100
     controller.terminate()
     termination_result = controller.await_termination()
-    assert termination_result == 55
+    assert termination_result == 5005
