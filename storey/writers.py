@@ -285,8 +285,10 @@ class WriteToParquet(_Batching, _Writer):
         df = pd.DataFrame(batch, columns=df_columns)
         if self._index_cols:
             df.set_index(self._index_cols, inplace=True)
-        df.to_parquet(path=self._path, index=bool(self._index_cols), partition_cols=self._partition_cols,
-                      storage_options=self._storage_options)
+        fs, _ = url_to_file_system(self._path, self._storage_options)
+        with fs.open(self._path, 'wb') as fp:
+            df.to_parquet(path=fp, index=bool(self._index_cols),
+                          partition_cols=self._partition_cols)
 
 
 class WriteToTSDB(_Batching, _Writer):
