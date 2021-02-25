@@ -2166,8 +2166,7 @@ def test_non_existing_key_query_by_key():
 
     controller = build_flow([
         Source(),
-        QueryByKey(["color"],
-                   table, key="name"),
+        QueryByKey(["color"], table, key="name"),
     ]).run()
 
     controller.emit({'nameeeee': 'katya'})
