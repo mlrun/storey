@@ -2158,17 +2158,16 @@ def test_complete_in_error_flow():
 def test_non_existing_key_query_by_key():
     df = pd.DataFrame([['katya', 'green'], ['dina', 'blue']], columns=['name', 'color'])
     table = Table('table', NoopDriver())
-    build_flow([
+    controller = build_flow([
         DataframeSource(df),
         WriteToTable(table),
-        Complete()
     ]).run()
+    controller.await_termination()
 
     controller = build_flow([
         Source(),
         QueryByKey(["color"],
                    table, key="name"),
-        Complete(),
     ]).run()
 
     controller.emit({'nameeeee': 'katya'})

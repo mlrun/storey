@@ -69,7 +69,7 @@ class AggregateByKey(Flow):
             if callable(key):
                 self.key_extractor = key
             elif isinstance(key, str):
-                self.key_extractor = lambda element: element[key]
+                self.key_extractor = lambda element: element.get(key)
             else:
                 raise TypeError(f'key is expected to be either a callable or string but got {type(key)}')
 
@@ -251,10 +251,8 @@ class QueryByKey(AggregateByKey):
         element = event.body
         key = event.key
         if self.key_extractor:
-            try:
-                key = self.key_extractor(element)
-            except Exception:
-                # in case of an error, emit event without key and features
+            key = self.key_extractor(element)
+            if key is None:
                 await self._do_downstream(event)
                 return
         await self._emit_event(key, event)
