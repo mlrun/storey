@@ -253,7 +253,7 @@ class QueryByKey(AggregateByKey):
         if self.key_extractor:
             try:
                 key = self.key_extractor(element)
-            except:
+            except Exception:
                 # in case of an error, emit event without key and features
                 await self._do_downstream(event)
                 return
