@@ -248,15 +248,16 @@ class QueryByKey(AggregateByKey):
             self._terminate_worker = True
             return await self._do_downstream(_termination_obj)
 
-        try:
-            element = event.body
-            key = event.key
-            if self.key_extractor:
+        element = event.body
+        key = event.key
+        if self.key_extractor:
+            try:
                 key = self.key_extractor(element)
-            await self._emit_event(key, event)
-
-        except Exception as ex:
-            raise ex
+            except:
+                # in case of an error, emit event without key and features
+                await self._do_downstream(event)
+                return
+        await self._emit_event(key, event)
 
     def _check_unique_names(self, aggregates):
         pass
