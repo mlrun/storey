@@ -10,7 +10,7 @@ from aiohttp import InvalidURL
 from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, MapWithState, ReadCSV, Complete, \
     AsyncSource, Choice, \
     Event, Batch, Table, WriteToCSV, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, \
-    WriteToParquet, \
+    WriteToParquet, QueryByKey, \
     WriteToTSDB, Extend, SendToHttp, HttpRequest, WriteToTable, NoopDriver, Driver, Recover, V3ioDriver, ReadParquet
 
 
@@ -2153,3 +2153,22 @@ def test_complete_in_error_flow():
     controller.terminate()
     termination_result = controller.await_termination()
     assert termination_result == 5005
+
+
+def test_non_existing_key_query_by_key():
+    df = pd.DataFrame([['katya', 'green'], ['dina', 'blue']], columns=['name', 'color'])
+    table = Table('table', NoopDriver())
+    controller = build_flow([
+        DataframeSource(df),
+        WriteToTable(table),
+    ]).run()
+    controller.await_termination()
+
+    controller = build_flow([
+        Source(),
+        QueryByKey(["color"], table, key="name"),
+    ]).run()
+
+    controller.emit({'nameeeee': 'katya'})
+    controller.terminate()
+    controller.await_termination()
