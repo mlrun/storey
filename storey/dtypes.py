@@ -354,7 +354,7 @@ class FieldAggregator:
         if callable(field):
             self.value_extractor = field
         elif isinstance(field, str):
-            self.value_extractor = lambda element: element[field]
+            self.value_extractor = lambda element: element.get(field)
 
         self.name = name
         self.aggregations = aggr

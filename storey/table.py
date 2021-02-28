@@ -295,6 +295,8 @@ class ReadOnlyAggregatedStoreElement:
         for aggregation_metadata in self.aggregates:
             if aggregation_metadata.should_aggregate(data):
                 curr_value = aggregation_metadata.value_extractor(data)
+                if curr_value is None:
+                    continue
                 for aggr in aggregation_metadata.get_all_raw_aggregates():
                     self.aggregation_buckets[f'{aggregation_metadata.name}_{aggr}'].aggregate(timestamp, curr_value)
 
@@ -876,6 +878,8 @@ class AggregatedStoreElement:
         for aggregation_metadata in self.aggregates:
             if aggregation_metadata.should_aggregate(data):
                 curr_value = aggregation_metadata.value_extractor(data)
+                if curr_value is None:
+                    continue
                 # for aggr in aggregation_metadata.get_all_raw_aggregates():
                 self.aggregation_buckets[f'{aggregation_metadata.name}'].aggregate(timestamp, curr_value)
 
@@ -996,7 +1000,7 @@ class AggregationBuckets:
                 self.initialize_column()
                 self._need_to_recalculate_pre_aggregates = True
             else:
-                # Updating the pre aggreagted data per window
+                # Updating the pre-aggregated data per window
                 self.remove_old_values_from_pre_aggregations(advance_to)
                 buckets_to_reuse = self.buckets[:buckets_to_advance]
                 self.buckets = self.buckets[buckets_to_advance:]
