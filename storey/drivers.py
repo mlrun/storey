@@ -134,6 +134,7 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
         if not update_expression:
             return
 
+        key = str(key)
         response = await self._v3io_client.kv.update(container, table_path, key, expression=update_expression,
                                                      condition=condition_expression,
                                                      raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
