@@ -1,4 +1,5 @@
 import asyncio
+import math
 import queue
 import uuid
 from datetime import datetime
@@ -1477,6 +1478,28 @@ def test_write_to_parquet(tmpdir):
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
 
 
+def test_write_sparse_data_to_parquet(tmpdir):
+    out_dir = f'{tmpdir}/test_write_sparse_data_to_parquet/{uuid.uuid4().hex}.parquet'
+    columns = ['my_int', 'my_string']
+    controller = build_flow([
+        Source(),
+        WriteToParquet(out_dir, columns=columns)
+    ]).run()
+
+    expected = []
+    for i in range(10):
+        expected.append({'my_int': i})
+        controller.emit({'my_int': i})
+        expected.append({'my_string': f'this is {i}'})
+        controller.emit({'my_string': f'this is {i}'})
+    expected = pd.DataFrame(expected, columns=columns)
+    controller.terminate()
+    controller.await_termination()
+
+    read_back_df = pd.read_parquet(out_dir, columns=columns)
+    assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+
+
 def test_write_to_parquet_single_file_on_termination(tmpdir):
     out_file = f'{tmpdir}/test_write_to_parquet_single_file_on_termination_{uuid.uuid4().hex}/out.parquet'
     columns = ['my_int', 'my_string']
@@ -1770,12 +1793,12 @@ def test_error_in_concurrent_by_key_task():
         WriteToTable(table, columns=['twice_total_activities']),
     ]).run()
 
-    controller.emit({'col1': 0}, 'tal')
+    controller.emit(None)
 
     controller.terminate()
     try:
         controller.await_termination()
-    except KeyError:
+    except TypeError:
         pass
 
 

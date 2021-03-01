@@ -65,9 +65,9 @@ class _Writer:
                     metadata_attr = metadata_columns[column]
                     new_value = getattr(event, metadata_attr)
                 elif column in rename_columns:
-                    new_value = event.body[rename_columns[column]]
+                    new_value = event.body.get(rename_columns[column])
                 else:
-                    new_value = event.body[column]
+                    new_value = event.body.get(column)
                 if isinstance(new_data, list):
                     new_data.append(new_value)
                 else:
