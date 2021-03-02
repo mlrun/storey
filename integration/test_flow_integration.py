@@ -11,7 +11,7 @@ import v3io.aio.dataplane
 import v3io_frames as frames
 
 from storey import Filter, JoinWithV3IOTable, SendToHttp, Map, Reduce, Source, HttpRequest, build_flow, \
-    WriteToV3IOStream, V3ioDriver, WriteToTSDB, Table, JoinWithTable, MapWithState, WriteToTable
+    WriteToV3IOStream, V3ioDriver, WriteToTSDB, Table, JoinWithTable, MapWithState, WriteToTable, DataframeSource
 from .integration_test_utils import V3ioHeaders, append_return, test_base_time, setup_kv_teardown_test, setup_teardown_test, \
     setup_stream_teardown_test
 
@@ -387,3 +387,17 @@ async def get_kv_item(full_path, key):
         return response
     finally:
         await _v3io_client.close()
+
+
+def test_writing_int_key(setup_teardown_test):
+    table = Table(setup_teardown_test, V3ioDriver())
+
+    df = pd.DataFrame({"num": [0, 1, 2], "color": ["green", "blue", "red"]})
+
+    controller = build_flow([
+        DataframeSource(df, key_field='num'),
+        WriteToTable(table),
+
+    ]).run()
+    controller.await_termination()
+
