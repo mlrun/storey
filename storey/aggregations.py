@@ -5,7 +5,7 @@ import re
 from typing import Optional, Union, Callable, List, Dict
 
 from .dtypes import EmitEveryEvent, FixedWindows, SlidingWindows, EmitAfterPeriod, EmitAfterWindow, EmitAfterMaxEvent, \
-    _dict_to_emit_policy, FieldAggregator
+    _dict_to_emit_policy, FieldAggregator, EmitPolicy
 from .table import Table
 from .flow import Flow, _termination_obj, Event
 
@@ -32,8 +32,7 @@ class AggregateByKey(Flow):
 
     def __init__(self, aggregates: Union[List[FieldAggregator], List[Dict[str, object]]], table: Union[Table, str],
                  key: Union[str, Callable[[Event], object], None] = None,
-                 emit_policy: Union[EmitEveryEvent, FixedWindows, SlidingWindows, EmitAfterPeriod, EmitAfterWindow,
-                                    EmitAfterMaxEvent, Dict[str, object]] = _default_emit_policy,
+                 emit_policy: Union[EmitPolicy, Dict[str, object]] = _default_emit_policy,
                  augmentation_fn: Optional[Callable[[Event, Dict[str, object]], Event]] = None, enrich_with: Optional[List[str]] = None,
                  aliases: Optional[Dict[str, str]] = None, use_windows_from_schema: bool = False, **kwargs):
         Flow.__init__(self, **kwargs)
@@ -52,6 +51,10 @@ class AggregateByKey(Flow):
 
         self._enrich_with = enrich_with or []
         self._aliases = aliases or {}
+
+        if not isinstance(emit_policy, EmitPolicy) and not isinstance(emit_policy, Dict):
+            raise TypeError(f'emit_policy parameter must be of type EmitPolicy, or dict. Found {type(emit_policy)} instead.')
+
         self._emit_policy = emit_policy
         if isinstance(self._emit_policy, dict):
             self._emit_policy = _dict_to_emit_policy(self._emit_policy)
