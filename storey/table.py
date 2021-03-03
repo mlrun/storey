@@ -284,8 +284,8 @@ class Table():
                 else:
                     del self._pending_by_key[job.key]
         except BaseException as ex:
-            if task and task is not _termination_obj and task[0].exra_data and task[0].exra_data._awaitable_result:
-                task[0].exra_data._awaitable_result._set_error(ex)
+            if task and task is not _termination_obj and task[0].extra_data and task[0].extra_data._awaitable_result:
+                task[0].extra_data._awaitable_result._set_error(ex)
             if not self._q.empty():
                 await self._q.get()
             raise ex
