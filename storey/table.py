@@ -73,7 +73,7 @@ class Table():
             else:
                 additional_data_persist.update(event_data_to_persist)
         await self._storage._save_key(self._container, self._table_path, key, aggr_by_key,
-                                             self._partitioned_by_key, additional_data_persist)
+                                      self._partitioned_by_key, additional_data_persist)
 
     def _set_aggregation_metadata(self, aggregates: List[FieldAggregator], use_windows_from_schema: bool = False):
         self._use_windows_from_schema = use_windows_from_schema
@@ -294,7 +294,6 @@ class Table():
         await self._q.put(_termination_obj)
         await self._worker_awaitable
         self._q = None
-
 
     async def _persist(self, job):
         if not self._q:
@@ -1331,7 +1330,7 @@ class _PendingEvent:
 
 
 class _PersistJob:
-    def __init__(self, key, data, callback, extra_data = None):
+    def __init__(self, key, data, callback, extra_data=None):
         self.key = key
         self.data = data
         self.callback = callback
