@@ -557,14 +557,11 @@ class WriteToTable(_Writer, Flow):
         _Writer._init(self)
 
     async def _handle_completed(self, event, response):
-        if event is _termination_obj:
-            return await self._do_downstream(_termination_obj)
-        else:
-            await self._do_downstream(event)
+        await self._do_downstream(event)
 
     async def _do(self, event):
         if event is _termination_obj:
-            await self._table._persist(_PersistJob(None, None, self._handle_completed, _termination_obj))
+            await self._table._terminate()
             return await self._do_downstream(_termination_obj)
         else:
             data_to_persist = self._event_to_writer_entry(event)

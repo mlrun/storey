@@ -30,7 +30,6 @@ class Table():
         self._q = None
         self._max_updates_in_flight = max_updates_in_flight
         self._pending_by_key = {}
-        self._closed = False
 
     def __str__(self):
         return f'{self._container}/{self._table_path}'
@@ -81,11 +80,6 @@ class Table():
         self._aggregates = aggregates
 
     async def close(self):
-        self._closed = True
-        if self._q:
-            await self._q.put(_termination_obj)
-        if self._worker_awaitable:
-            await self._worker_awaitable
         await self._storage.close()
 
     async def _aggregate(self, key, data, timestamp):
@@ -259,21 +253,16 @@ class Table():
                 else:
                     task = await self._q.get()
                     received_job_count += 1
-                    if task[0] is _termination_obj:
+                    if task is _termination_obj:
                         if received_job_count in self_sent_jobs:
-                            await self._q.put(task)
+                            await self._q.put(_termination_obj)
                             continue
                         for key, pending_event in self._pending_by_key.items():
                             if pending_event.pending and not pending_event.in_flight:
                                 for job in pending_event.pending:
                                     resp = await self._persist_key(key, job.data)
                                     await job.callback(job.extra_data, resp)
-                        await task[1](task[0], None)
-                        if self._closed:
-                            break
-                        else:
-                            # flow was terminated but the table wasn't closed
-                            continue
+                        break
 
                 job = task[0]
                 completed = await task[1]
@@ -301,6 +290,12 @@ class Table():
                 await self._q.get()
             raise ex
 
+    async def _terminate(self):
+        await self._q.put(_termination_obj)
+        await self._worker_awaitable
+        self._q = None
+
+
     async def _persist(self, job):
         if not self._q:
             self._q = asyncio.queues.Queue(self._max_updates_in_flight)
@@ -310,22 +305,19 @@ class Table():
             await self._worker_awaitable
             raise FlowError("ConcurrentByKeyJobExecution worker has already terminated")
         else:
-            if job.event is _termination_obj:
-                await self._q.put((job.event, job.callback))
-            else:
-                # Initializing the key with 2 lists. One for pending requests and one for requests that an update request has been issued for.
-                if job.key not in self._pending_by_key:
-                    self._pending_by_key[job.key] = _PendingEvent()
+            # Initializing the key with 2 lists. One for pending requests and one for requests that an update request has been issued for.
+            if job.key not in self._pending_by_key:
+                self._pending_by_key[job.key] = _PendingEvent()
 
-                # If there is a current update in flight for the key, add the event to the pending list. Otherwise update the key.
-                self._pending_by_key[job.key].pending.append(job)
-                if len(self._pending_by_key[job.key].in_flight) == 0:
-                    self._pending_by_key[job.key].in_flight = self._pending_by_key[job.key].pending
-                    self._pending_by_key[job.key].pending = []
-                    task = self._safe_process_events(self._pending_by_key[job.key].in_flight)
-                    await self._q.put((job, asyncio.get_running_loop().create_task(task)))
-                    if self._worker_awaitable.done():
-                        await self._worker_awaitable
+            # If there is a current update in flight for the key, add the event to the pending list. Otherwise update the key.
+            self._pending_by_key[job.key].pending.append(job)
+            if len(self._pending_by_key[job.key].in_flight) == 0:
+                self._pending_by_key[job.key].in_flight = self._pending_by_key[job.key].pending
+                self._pending_by_key[job.key].pending = []
+                task = self._safe_process_events(self._pending_by_key[job.key].in_flight)
+                await self._q.put((job, asyncio.get_running_loop().create_task(task)))
+                if self._worker_awaitable.done():
+                    await self._worker_awaitable
 
     async def _safe_process_events(self, jobs):
         try:
