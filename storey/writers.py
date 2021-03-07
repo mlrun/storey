@@ -255,13 +255,14 @@ class WriteToParquet(_Batching, _Writer):
     def __init__(self, path: str, index_cols: Union[str, List[str], None] = None, columns: Union[str, List[str], None] = None,
                  partition_cols: Union[str, List[str], None] = None, infer_columns_from_data: Optional[bool] = None,
                  max_events: Optional[int] = None, flush_after_seconds: Optional[int] = None, **kwargs):
-        if max_events is None:
+        self._single_file_mode = (path.endswith('.parquet') or path.endswith('.pq')) and partition_cols is None
+        if max_events is None and not self._single_file_mode:
             max_events = 10000
-        if flush_after_seconds is None:
+        if flush_after_seconds is None and not self._single_file_mode:
             flush_after_seconds = 60
 
         kwargs['path'] = path
-        if not path.endswith('/'):
+        if not self._single_file_mode and not path.endswith('/'):
             path += '/'
         if index_cols is not None:
             kwargs['index_cols'] = index_cols
@@ -327,11 +328,12 @@ class WriteToParquet(_Batching, _Writer):
         df = pd.DataFrame(batch, columns=df_columns)
         if self._index_cols:
             df.set_index(self._index_cols, inplace=True)
-        dir_path = self._path
+        dir_path = os.path.dirname(self._path) if self._single_file_mode else self._path
         if self._partition_cols:
             dir_path = f'{dir_path}{batch_key}'
-        file_path = f'{dir_path}{uuid.uuid4()}.parquet'
-        self._file_system.makedirs(dir_path, exist_ok=True)
+        if dir_path:
+            self._file_system.makedirs(dir_path, exist_ok=True)
+        file_path = self._path if self._single_file_mode else f'{dir_path}{uuid.uuid4()}.parquet'
         with self._file_system.open(file_path, 'wb') as file:
             df.to_parquet(path=file, index=bool(self._index_cols))
 

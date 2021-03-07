@@ -1496,8 +1496,7 @@ def test_write_sparse_data_to_parquet(tmpdir):
     controller.terminate()
     controller.await_termination()
 
-    file_name = os.listdir(out_dir)[0]
-    read_back_df = pd.read_parquet(f'{out_dir}/{file_name}', columns=columns)
+    read_back_df = pd.read_parquet(out_dir, columns=columns)
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
 
 
@@ -1517,12 +1516,13 @@ def test_write_to_parquet_single_file_on_termination(tmpdir):
     controller.terminate()
     controller.await_termination()
 
+    assert os.path.isfile(out_file)
     read_back_df = pd.read_parquet(out_file, columns=columns)
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
 
 
 def test_write_to_parquet_with_metadata(tmpdir):
-    out_file = f'{tmpdir}/test_write_to_parquet_with_metadata{uuid.uuid4().hex}.parquet'
+    out_file = f'{tmpdir}/test_write_to_parquet_with_metadata{uuid.uuid4().hex}/'
     columns = ['event_key', 'my_int', 'my_string']
     controller = build_flow([
         Source(),
@@ -1542,7 +1542,7 @@ def test_write_to_parquet_with_metadata(tmpdir):
 
 
 def test_write_to_parquet_with_indices(tmpdir):
-    out_file = f'{tmpdir}/test_write_to_parquet_with_indices{uuid.uuid4().hex}.parquet'
+    out_file = f'{tmpdir}/test_write_to_parquet_with_indices{uuid.uuid4().hex}'
     controller = build_flow([
         Source(),
         WriteToParquet(out_file, index_cols='event_key=$key', columns=['my_int', 'my_string'])
@@ -1563,7 +1563,7 @@ def test_write_to_parquet_with_indices(tmpdir):
 
 
 def test_write_to_parquet_with_inference(tmpdir):
-    out_file = f'{tmpdir}/test_write_to_parquet_with_inference{uuid.uuid4().hex}.parquet'
+    out_file = f'{tmpdir}/test_write_to_parquet_with_inference{uuid.uuid4().hex}/'
     controller = build_flow([
         Source(),
         WriteToParquet(out_file, index_cols='$key')
@@ -1769,7 +1769,7 @@ def test_write_to_tsdb_with_key_index_and_default_time():
 
 
 def test_csv_reader_parquet_write_ns(tmpdir):
-    out_file = f'{tmpdir}/test_csv_reader_parquet_write_ns_{uuid.uuid4().hex}/out.parquet'
+    out_file = f'{tmpdir}/test_csv_reader_parquet_write_ns_{uuid.uuid4().hex}/'
     columns = ['k', 't']
 
     controller = build_flow([
