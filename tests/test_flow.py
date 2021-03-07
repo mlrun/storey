@@ -1,4 +1,5 @@
 import asyncio
+import os
 import queue
 import uuid
 from datetime import datetime
@@ -1469,7 +1470,7 @@ def test_write_to_parquet(tmpdir):
     for i in range(10):
         controller.emit([i, f'this is {i}'])
         expected.append([i, f'this is {i}'])
-    expected = pd.DataFrame(expected, columns=columns, dtype='int32')
+    expected = pd.DataFrame(expected, columns=columns)
     controller.terminate()
     controller.await_termination()
 
@@ -1478,7 +1479,7 @@ def test_write_to_parquet(tmpdir):
 
 
 def test_write_sparse_data_to_parquet(tmpdir):
-    out_dir = f'{tmpdir}/test_write_sparse_data_to_parquet/{uuid.uuid4().hex}.parquet'
+    out_dir = f'{tmpdir}/test_write_sparse_data_to_parquet/{uuid.uuid4().hex}'
     columns = ['my_int', 'my_string']
     controller = build_flow([
         Source(),
@@ -1495,7 +1496,8 @@ def test_write_sparse_data_to_parquet(tmpdir):
     controller.terminate()
     controller.await_termination()
 
-    read_back_df = pd.read_parquet(out_dir, columns=columns)
+    file_name = os.listdir(out_dir)[0]
+    read_back_df = pd.read_parquet(f'{out_dir}/{file_name}', columns=columns)
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
 
 
@@ -2005,13 +2007,14 @@ def test_flow_to_dict_read_csv():
 
 
 def test_flow_to_dict_write_to_parquet():
-    step = WriteToParquet('outfile', columns=['col1', 'col2'], max_events=2)
+    step = WriteToParquet('outdir', columns=['col1', 'col2'], max_events=2)
     assert step.to_dict() == {
         'class_name': 'storey.writers.WriteToParquet',
         'class_args': {
-            'path': 'outfile',
+            'path': 'outdir',
             'columns': ['col1', 'col2'],
-            'max_events': 2
+            'max_events': 2,
+            'flush_after_seconds': 60,
         },
         'full_event': False
     }
@@ -2103,13 +2106,13 @@ to_data_frame0.to(reduce1)
 def test_reader_writer_to_code():
     flow = build_flow([
         ReadCSV('mycsv.csv'),
-        WriteToParquet('mypq.pq')
+        WriteToParquet('mypq')
     ])
 
     reconstructed_code = flow.to_code()
     print(reconstructed_code)
     expected = """read_c_s_v0 = ReadCSV(paths='mycsv.csv', header=False, build_dict=False, type_inference=True)
-write_to_parquet0 = WriteToParquet(path='mypq.pq')
+write_to_parquet0 = WriteToParquet(flush_after_seconds=60, path='mypq', max_events=10000)
 
 read_c_s_v0.to(write_to_parquet0)
 """
@@ -2128,7 +2131,7 @@ def test_illegal_step_source_not_first_step():
     df = pd.DataFrame([['hello', 1, 1.5], ['world', 2, 2.5]], columns=['string', 'int', 'float'])
     try:
         build_flow([
-            ReadParquet('tests/test.parquet'),
+            ReadParquet('tests'),
             DataframeSource(df),
             Reduce([], append_and_return),
         ]).run()

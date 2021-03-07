@@ -199,7 +199,7 @@ def test_write_to_parquet_to_v3io(setup_teardown_test):
     for i in range(10):
         controller.emit([i, f'this is {i}'])
         expected.append([i, f'this is {i}'])
-    expected = pd.DataFrame(expected, columns=columns, dtype='int32')
+    expected = pd.DataFrame(expected, columns=columns)
     controller.terminate()
     controller.await_termination()
 

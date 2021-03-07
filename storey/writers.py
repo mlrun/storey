@@ -5,6 +5,7 @@ import json
 import os
 import queue
 import random
+import uuid
 from typing import Optional, Union, List, Callable
 
 import pandas as pd
@@ -214,7 +215,7 @@ class WriteToCSV(_Batching, _Writer):
         asyncio.get_running_loop().run_in_executor(None, lambda: self._data_buffer.put(_termination_obj))
         await self._blocking_io_loop_future
 
-    async def _emit(self, batch, batch_time):
+    async def _emit(self, batch, batch_key, batch_time):
         if not self._blocking_io_loop_future:
             self._blocking_io_loop_future = asyncio.get_running_loop().run_in_executor(None, self._blocking_io_loop)
 
@@ -252,8 +253,16 @@ class WriteToParquet(_Batching, _Writer):
     """
 
     def __init__(self, path: str, index_cols: Union[str, List[str], None] = None, columns: Union[str, List[str], None] = None,
-                 partition_cols: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None, **kwargs):
+                 partition_cols: Union[str, List[str], None] = None, infer_columns_from_data: Optional[bool] = None,
+                 max_events: Optional[int] = None, flush_after_seconds: Optional[int] = None, **kwargs):
+        if max_events is None:
+            max_events = 10000
+        if flush_after_seconds is None:
+            flush_after_seconds = 60
+
         kwargs['path'] = path
+        if not path.endswith('/'):
+            path += '/'
         if index_cols is not None:
             kwargs['index_cols'] = index_cols
         if columns is not None:
@@ -263,11 +272,42 @@ class WriteToParquet(_Batching, _Writer):
         if infer_columns_from_data is not None:
             kwargs['infer_columns_from_data'] = infer_columns_from_data
 
-        _Batching.__init__(self, **kwargs)
-        _Writer.__init__(self, columns, infer_columns_from_data, index_cols, storage_options=kwargs.get('storage_options'))
+        storage_options = kwargs.get('storage_options')
+        self._file_system, self._path = url_to_file_system(path, storage_options)
 
-        self._path = path
+        if isinstance(partition_cols, str):
+            partition_cols = [partition_cols]
         self._partition_cols = partition_cols
+
+        partition_col_indices = {}
+        if partition_cols is not None:
+            for index, col in enumerate(columns):
+                if col in self._partition_cols:
+                    partition_col_indices[col] = index
+
+        def path_from_event(event):
+            res = '/'
+            for col in partition_cols:
+                if col == '$date':
+                    val = f'{event.time.year()}-{event.time.month()}-{event.time.day()}'
+                elif col == '$year':
+                    val = event.time.year()
+                elif col == '$month':
+                    val = event.time.month()
+                elif col == '$day':
+                    val = event.time.day()
+                else:
+                    if isinstance(event.body, list):
+                        val = event.body[partition_col_indices[col]]
+                    else:
+                        val = event.body[col]
+                res += f'{val}/'
+            return res
+
+        path_from_event = path_from_event if partition_cols else None
+
+        _Batching.__init__(self, max_events=max_events, flush_after_seconds=flush_after_seconds, key=path_from_event, **kwargs)
+        _Writer.__init__(self, columns, infer_columns_from_data, index_cols, storage_options=storage_options)
 
         self._field_extractor = lambda event_body, field_name: event_body.get(field_name)
         self._write_missing_fields = True
@@ -275,21 +315,11 @@ class WriteToParquet(_Batching, _Writer):
     def _init(self):
         _Batching._init(self)
         _Writer._init(self)
-        self._first_event = True
 
     def _event_to_batch_entry(self, event):
         return self._event_to_writer_entry(event)
 
-    def _makedirs(self):
-        fs, file_path = url_to_file_system(self._path, self._storage_options)
-        dirname = os.path.dirname(self._path)
-        if dirname:
-            fs.makedirs(dirname, exist_ok=True)
-
-    async def _emit(self, batch, batch_time):
-        if self._first_event:
-            await asyncio.get_running_loop().run_in_executor(None, self._makedirs)
-            self._first_event = False
+    async def _emit(self, batch, batch_key, batch_time):
         df_columns = []
         if self._index_cols:
             df_columns.extend(self._index_cols)
@@ -297,8 +327,13 @@ class WriteToParquet(_Batching, _Writer):
         df = pd.DataFrame(batch, columns=df_columns)
         if self._index_cols:
             df.set_index(self._index_cols, inplace=True)
-        df.to_parquet(path=self._path, index=bool(self._index_cols), partition_cols=self._partition_cols,
-                      storage_options=self._storage_options)
+        dir_path = self._path
+        if self._partition_cols:
+            dir_path = f'{dir_path}{batch_key}'
+        file_path = f'{dir_path}{uuid.uuid4()}.parquet'
+        self._file_system.makedirs(dir_path, exist_ok=True)
+        with self._file_system.open(file_path, 'wb') as file:
+            df.to_parquet(path=file, index=bool(self._index_cols))
 
 
 class WriteToTSDB(_Batching, _Writer):
@@ -375,7 +410,7 @@ class WriteToTSDB(_Batching, _Writer):
     def _event_to_batch_entry(self, event):
         return self._event_to_writer_entry(event)
 
-    async def _emit(self, batch, batch_time):
+    async def _emit(self, batch, batch_key, batch_time):
         df_columns = []
         if self._index_cols:
             df_columns.extend(self._index_cols)
