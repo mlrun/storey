@@ -90,14 +90,6 @@ class Table:
 
         return self._get_aggregations_attrs(key).get_features(timestamp)
 
-    async def _get_or_load_aggregations_by_key(self, key, timestamp=None):
-        if self._aggregations_read_only or not self._get_aggregations_attrs(key):
-            # Try load from the store, and create a new one only if the key really is new
-            initial_data = await self._storage._load_aggregates_by_key(self._container, self._table_path, key)
-            self._set_aggregations_attrs(key, self._new_aggregated_store_element()(key, self._aggregates, timestamp, initial_data))
-
-        return self._get_aggregations_attrs(key)
-
     def _new_aggregated_store_element(self):
         if self._aggregations_read_only:
             return ReadOnlyAggregatedStoreElement

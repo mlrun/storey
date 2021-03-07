@@ -88,6 +88,7 @@ class FixedWindow(WindowBase):
 
     :param window: Time window in the format [0-9]+[smhd]
     """
+
     def __init__(self, window: str):
         window_millis = parse_duration(window)
         WindowBase.__init__(self, window_millis, window_millis / bucketPerWindow, window)
@@ -112,6 +113,7 @@ class SlidingWindow(WindowBase):
     :param window: Time window in the format [0-9]+[smhd]
     :param period: Number of buckets to use for the window [0-9]+[smhd]
     """
+
     def __init__(self, window: str, period: str):
         window_millis, period_millis = parse_duration(window), parse_duration(period)
         if not window_millis % period_millis == 0:
@@ -229,72 +231,76 @@ class EmissionType(Enum):
     Incremental = 2
 
 
-class EmitBase:
+class EmitPolicy:
     def __init__(self, emission_type=EmissionType.All):
         self.emission_type = emission_type
 
 
-class EmitAfterPeriod(EmitBase):
+class EmitAfterPeriod(EmitPolicy):
     """
     Emit event for next step after each period ends
 
     :param delay_in_seconds: Delay event emission by seconds (Optional)
     """
+
     def __init__(self, delay_in_seconds: Optional[int] = 0, emission_type=EmissionType.All):
         self.delay_in_seconds = delay_in_seconds
-        EmitBase.__init__(self, emission_type)
+        EmitPolicy.__init__(self, emission_type)
 
     @staticmethod
     def name():
         return 'afterPeriod'
 
 
-class EmitAfterWindow(EmitBase):
+class EmitAfterWindow(EmitPolicy):
     """
     Emit event for next step after each window ends
 
     :param delay_in_seconds: Delay event emission by seconds (Optional)
     """
+
     def __init__(self, delay_in_seconds: Optional[int] = 0, emission_type=EmissionType.All):
         self.delay_in_seconds = delay_in_seconds
-        EmitBase.__init__(self, emission_type)
+        EmitPolicy.__init__(self, emission_type)
 
     @staticmethod
     def name():
         return 'afterWindow'
 
 
-class EmitAfterMaxEvent(EmitBase):
+class EmitAfterMaxEvent(EmitPolicy):
     """
     Emit the Nth event
 
     :param max_events: Which number of event to emit
     :param timeout_secs: Emit event after timeout expires even if it didn't reach max_events event (Optional)
     """
+
     def __init__(self, max_events: int, timeout_secs: Optional[int] = None, emission_type=EmissionType.All):
         self.max_events = max_events
         self.timeout_secs = timeout_secs
-        EmitBase.__init__(self, emission_type)
+        EmitPolicy.__init__(self, emission_type)
 
     @staticmethod
     def name():
         return 'maxEvents'
 
 
-class EmitAfterDelay(EmitBase):
+class EmitAfterDelay(EmitPolicy):
     def __init__(self, delay_in_seconds, emission_type=EmissionType.All):
         self.delay_in_seconds = delay_in_seconds
-        EmitBase.__init__(self, emission_type)
+        EmitPolicy.__init__(self, emission_type)
 
     @staticmethod
     def name():
         return 'afterDelay'
 
 
-class EmitEveryEvent(EmitBase):
+class EmitEveryEvent(EmitPolicy):
     """
     Emit every event
     """
+
     @staticmethod
     def name():
         return 'everyEvent'

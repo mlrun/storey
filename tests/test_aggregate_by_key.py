@@ -3,7 +3,7 @@ import queue
 from datetime import datetime, timedelta
 
 from storey import build_flow, Source, Reduce, Table, AggregateByKey, FieldAggregator, NoopDriver
-from storey.dtypes import SlidingWindows, FixedWindows, EmitAfterMaxEvent
+from storey.dtypes import SlidingWindows, FixedWindows, EmitAfterMaxEvent, EmitEveryEvent
 
 test_base_time = datetime.fromisoformat("2020-07-21T21:40:00+00:00")
 
@@ -602,6 +602,14 @@ def test_emit_max_event_sliding_window_multiple_keys_aggregation_flow():
 
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
+
+
+def test_error_on_bad_emit_policy():
+    try:
+        AggregateByKey([], Table("test", NoopDriver()), emit_policy=EmitEveryEvent),
+        assert False
+    except TypeError:
+        pass
 
 
 def test_emit_delay_aggregation_flow():

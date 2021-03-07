@@ -34,6 +34,9 @@ class _Writer:
         self._retain_dict = retain_dict
         self._storage_options = storage_options
 
+        self._field_extractor = lambda event_body, field_name: event_body[field_name]
+        self._write_missing_fields = False
+
         def parse_notation(columns, metadata_columns, rename_columns):
             result = []
             if columns:
@@ -57,17 +60,20 @@ class _Writer:
         self._columns = copy.copy(self._initial_columns)
         self._index_cols = copy.copy(self._initial_index_cols)
 
-    @staticmethod
-    def _get_column_data_from_dict(new_data, event, columns, metadata_columns, rename_columns):
+    def _get_column_data_from_dict(self, new_data, event, columns, metadata_columns, rename_columns):
         if columns:
             for column in columns:
                 if column in metadata_columns:
                     metadata_attr = metadata_columns[column]
                     new_value = getattr(event, metadata_attr)
                 elif column in rename_columns:
-                    new_value = event.body[rename_columns[column]]
+                    new_value = self._field_extractor(event.body, rename_columns[column])
                 else:
-                    new_value = event.body[column]
+                    new_value = self._field_extractor(event.body, column)
+
+                if new_value is None and not self._write_missing_fields:
+                    continue
+
                 if isinstance(new_data, list):
                     new_data.append(new_value)
                 else:
@@ -157,6 +163,9 @@ class WriteToCSV(_Batching, _Writer):
 
         self._path = path
         self._write_header = header
+
+        self._field_extractor = lambda event_body, field_name: event_body.get(field_name, '')
+        self._write_missing_fields = True
 
     def _init(self):
         _Batching._init(self)
@@ -259,6 +268,9 @@ class WriteToParquet(_Batching, _Writer):
 
         self._path = path
         self._partition_cols = partition_cols
+
+        self._field_extractor = lambda event_body, field_name: event_body.get(field_name)
+        self._write_missing_fields = True
 
     def _init(self):
         _Batching._init(self)
@@ -552,6 +564,9 @@ class WriteToTable(_ConcurrentByKeyJobExecution, _Writer):
                 raise TypeError("Table can not be string if no context was provided to the step")
             self._table = self.context.get_table(table)
         self._closeables = [self._table]
+
+        self._field_extractor = lambda event_body, field_name: event_body.get(field_name)
+        self._write_missing_fields = False
 
     def _init(self):
         _ConcurrentByKeyJobExecution._init(self)

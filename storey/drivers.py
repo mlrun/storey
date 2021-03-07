@@ -13,6 +13,7 @@ from .utils import schema_file_name
 
 class Driver:
     """Abstract class for database connection"""
+
     async def _save_schema(self, container, table_path, schema):
         pass
 
@@ -43,6 +44,7 @@ class NeedsV3ioAccess:
     :param access_key: V3IO access key. If not set, the V3IO_ACCESS_KEY environment variable will be used.
 
     """
+
     def __init__(self, webapi=None, access_key=None):
         webapi = webapi or os.getenv('V3IO_API')
         if not webapi:
@@ -159,7 +161,9 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
 
         if should_raise_error:
             raise V3ioError(
-                f'Failed to save aggregation for {table_path}/{key}. Response status code was {response.status_code}: {response.body}')
+                f'Failed to save aggregation for {table_path}/{key}. Response status code was {response.status_code}: {response.body}\n'
+                f'Update expression was: {update_expression}'
+            )
 
     async def _fetch_state_by_key(self, aggr_item, container, table_path, key):
         attributes_to_get = self._get_time_attributes_from_aggregations(aggr_item)
