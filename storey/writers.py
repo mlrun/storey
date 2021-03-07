@@ -549,15 +549,15 @@ class WriteToTable(_ConcurrentByKeyJobExecution, _Writer):
     :type storage_options: dict
     """
 
-    def __init__(self, table: Union[Table, str], write_key_as: str = 'patient_id=$key', columns: Optional[List[str]] = None,
-                 infer_columns_from_data: Optional[bool] = None, **kwargs):
+    def __init__(self, table: Union[Table, str], columns: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None,
+                 **kwargs):
         kwargs['table'] = table
         if columns:
             kwargs['columns'] = columns
         if infer_columns_from_data:
             kwargs['infer_columns_from_data'] = infer_columns_from_data
         _ConcurrentByKeyJobExecution.__init__(self, **kwargs)
-        _Writer.__init__(self, columns, infer_columns_from_data, index_cols=[write_key_as], retain_dict=True)
+        _Writer.__init__(self, columns, infer_columns_from_data, retain_dict=True)
         self._table = table
         if isinstance(table, str):
             if not self.context:
