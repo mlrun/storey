@@ -318,10 +318,6 @@ class WriteToParquet(_Batching, _Writer):
         storage_options = kwargs.get('storage_options')
         self._file_system, self._path = url_to_file_system(path, storage_options)
 
-        if isinstance(partition_cols, str):
-            partition_cols = [partition_cols]
-        self._partition_cols = partition_cols
-
         path_from_event = self._path_from_event if partition_cols else None
 
         _Batching.__init__(self, max_events=max_events, flush_after_seconds=flush_after_seconds, key=path_from_event, **kwargs)
