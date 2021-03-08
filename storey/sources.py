@@ -370,7 +370,6 @@ class AsyncSource(Flow):
 
 
 class _IterableSource(Flow):
-
     _legal_first_step = True
 
     def __init__(self, **kwargs):
@@ -655,6 +654,7 @@ class ReadParquet(DataframeSource):
     :parameter paths: paths to Parquet files
     :parameter columns : list, default=None. If not None, only these columns will be read from the file.
     """
+
     def __init__(self, paths: Union[str, Iterable[str]], columns=None, **kwargs):
         if isinstance(paths, str):
             paths = [paths]

@@ -1772,13 +1772,15 @@ def test_csv_reader_parquet_write_ns(tmpdir):
     out_file = f'{tmpdir}/test_csv_reader_parquet_write_ns_{uuid.uuid4().hex}/'
     columns = ['k', 't']
 
+    time_format = '%d/%m/%Y %H:%M:%S.%f'
     controller = build_flow([
         ReadCSV('tests/test-with-timestamp-ns.csv', header=True, key_field='k',
-                time_field='t', timestamp_format='%d/%m/%Y %H:%M:%S.%f'),
+                time_field='t', timestamp_format=time_format),
         WriteToParquet(out_file, columns=columns, max_events=2)
     ]).run()
 
-    expected = pd.DataFrame([['m1', "15/02/2020 02:03:04.12345678"], ['m2', "16/02/2020 02:03:04.12345678"]],
+    expected = pd.DataFrame([['m1', datetime.strptime("15/02/2020 02:03:04.123456", time_format)],
+                             ['m2', datetime.strptime("16/02/2020 02:03:04.123456", time_format)]],
                             columns=columns)
     controller.await_termination()
     read_back_df = pd.read_parquet(out_file, columns=columns)

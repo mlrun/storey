@@ -20,8 +20,8 @@ from .utils import url_to_file_system
 
 class _Writer:
     def __init__(self, columns: Union[str, List[str], None], infer_columns_from_data: Optional[bool],
-                 index_cols: Union[str, List[str], None] = None, retain_dict: bool = False,
-                 storage_options: Optional[dict] = None):
+                 index_cols: Union[str, List[str], None] = None, partition_cols: Union[str, List[str], None] = None,
+                 retain_dict: bool = False, storage_options: Optional[dict] = None):
         if infer_columns_from_data is None:
             infer_columns_from_data = not bool(columns)
         self._infer_columns_from_data = infer_columns_from_data
@@ -57,9 +57,44 @@ class _Writer:
         self._initial_columns = parse_notation(columns, self._metadata_columns, self._rename_columns)
         self._initial_index_cols = parse_notation(index_cols, self._metadata_index_columns, self._rename_index_columns)
 
+        if isinstance(partition_cols, str):
+            partition_cols = [partition_cols]
+        self._partition_cols = partition_cols
+
     def _init(self):
         self._columns = copy.copy(self._initial_columns)
         self._index_cols = copy.copy(self._initial_index_cols)
+        self._init_partition_col_indices()
+
+    def _init_partition_col_indices(self):
+        self._partition_col_indices = {}
+        if self._partition_cols is not None and self._columns is not None:
+            for index, col in enumerate(self._columns):
+                if col in self._partition_cols:
+                    self._partition_col_indices[col] = index
+
+    def _path_from_event(self, event):
+        res = '/'
+        for col in self._partition_cols:
+            if col == '$key':
+                val = event.key
+            elif col == '$date':
+                val = f'{event.time.year()}-{event.time.month()}-{event.time.day()}'
+            elif col == '$year':
+                val = event.time.year
+            elif col == '$month':
+                val = event.time.month
+            elif col == '$day':
+                val = event.time.day
+            elif col == '$hour':
+                val = event.time.hour
+            else:
+                if isinstance(event.body, list):
+                    val = event.body[self._partition_col_indices[col]]
+                else:
+                    val = event.body[col]
+            res += f'{val}/'
+        return res
 
     def _get_column_data_from_dict(self, new_data, event, columns, metadata_columns, rename_columns):
         if columns:
@@ -100,6 +135,7 @@ class _Writer:
                 self._columns.extend(data.keys() - self._index_cols)
                 self._columns.sort()
                 self._infer_columns_from_data = False
+                self._init_partition_col_indices()
             data = {} if self._retain_dict else []
             self._get_column_data_from_dict(data, event, self._index_cols, self._metadata_index_columns, self._rename_index_columns)
             self._get_column_data_from_dict(data, event, self._columns, self._metadata_columns, self._rename_columns)
@@ -255,7 +291,15 @@ class WriteToParquet(_Batching, _Writer):
     def __init__(self, path: str, index_cols: Union[str, List[str], None] = None, columns: Union[str, List[str], None] = None,
                  partition_cols: Union[str, List[str], None] = None, infer_columns_from_data: Optional[bool] = None,
                  max_events: Optional[int] = None, flush_after_seconds: Optional[int] = None, **kwargs):
-        self._single_file_mode = (path.endswith('.parquet') or path.endswith('.pq')) and partition_cols is None
+        self._single_file_mode = False
+        if partition_cols is None:
+            if path.endswith('.parquet') or path.endswith('.pq'):
+                self._single_file_mode = True
+            else:
+                partition_cols = ['$key', '$year', '$month', '$day', '$hour']
+        else:
+            kwargs['partition_cols'] = partition_cols
+
         if max_events is None and not self._single_file_mode:
             max_events = 10000
         if flush_after_seconds is None and not self._single_file_mode:
@@ -268,8 +312,6 @@ class WriteToParquet(_Batching, _Writer):
             kwargs['index_cols'] = index_cols
         if columns is not None:
             kwargs['columns'] = columns
-        if partition_cols is not None:
-            kwargs['partition_cols'] = partition_cols
         if infer_columns_from_data is not None:
             kwargs['infer_columns_from_data'] = infer_columns_from_data
 
@@ -280,35 +322,10 @@ class WriteToParquet(_Batching, _Writer):
             partition_cols = [partition_cols]
         self._partition_cols = partition_cols
 
-        partition_col_indices = {}
-        if partition_cols is not None:
-            for index, col in enumerate(columns):
-                if col in self._partition_cols:
-                    partition_col_indices[col] = index
-
-        def path_from_event(event):
-            res = '/'
-            for col in partition_cols:
-                if col == '$date':
-                    val = f'{event.time.year()}-{event.time.month()}-{event.time.day()}'
-                elif col == '$year':
-                    val = event.time.year()
-                elif col == '$month':
-                    val = event.time.month()
-                elif col == '$day':
-                    val = event.time.day()
-                else:
-                    if isinstance(event.body, list):
-                        val = event.body[partition_col_indices[col]]
-                    else:
-                        val = event.body[col]
-                res += f'{val}/'
-            return res
-
-        path_from_event = path_from_event if partition_cols else None
+        path_from_event = self._path_from_event if partition_cols else None
 
         _Batching.__init__(self, max_events=max_events, flush_after_seconds=flush_after_seconds, key=path_from_event, **kwargs)
-        _Writer.__init__(self, columns, infer_columns_from_data, index_cols, storage_options=storage_options)
+        _Writer.__init__(self, columns, infer_columns_from_data, index_cols, partition_cols, storage_options=storage_options)
 
         self._field_extractor = lambda event_body, field_name: event_body.get(field_name)
         self._write_missing_fields = True
