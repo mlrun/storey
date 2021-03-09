@@ -1776,13 +1776,13 @@ def test_write_to_tsdb_with_key_index_and_default_time():
         i += 1
 
 
-def test_csv_reader_parquet_write_ns(tmpdir):
-    out_file = f'{tmpdir}/test_csv_reader_parquet_write_ns_{uuid.uuid4().hex}/'
+def test_csv_reader_parquet_write_microsecs(tmpdir):
+    out_file = f'{tmpdir}/test_csv_reader_parquet_write_microsecs_{uuid.uuid4().hex}/'
     columns = ['k', 't']
 
     time_format = '%d/%m/%Y %H:%M:%S.%f'
     controller = build_flow([
-        ReadCSV('tests/test-with-timestamp-ns.csv', header=True, key_field='k',
+        ReadCSV('tests/test-with-timestamp-microsecs.csv', header=True, key_field='k',
                 time_field='t', timestamp_format=time_format),
         WriteToParquet(out_file, columns=columns, max_events=2)
     ]).run()
@@ -1794,6 +1794,18 @@ def test_csv_reader_parquet_write_ns(tmpdir):
     read_back_df = pd.read_parquet(out_file, columns=columns)
 
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+
+
+def test_csv_reader_bad_timestamp(tmpdir):
+    controller = build_flow([
+        ReadCSV('tests/test-with-timestamp-bad.csv', header=True, key_field='k',
+                time_field='t', timestamp_format='%d/%m/%Y %H:%M:%S.%f')
+    ]).run()
+    try:
+        controller.await_termination()
+        assert False
+    except TypeError:
+        pass
 
 
 def test_error_in_concurrent_by_key_task():
@@ -1999,7 +2011,7 @@ def test_flow_reuse():
 
 
 def test_flow_to_dict_read_csv():
-    step = ReadCSV('tests/test-with-timestamp-ns.csv', header=True, key_field='k', time_field='t',
+    step = ReadCSV('tests/test-with-timestamp-microsecs.csv', header=True, key_field='k', time_field='t',
                    timestamp_format='%d/%m/%Y %H:%M:%S.%f')
     assert step.to_dict() == {
         'class_name': 'storey.sources.ReadCSV',
@@ -2007,7 +2019,7 @@ def test_flow_to_dict_read_csv():
             'build_dict': False,
             'header': True,
             'key_field': 'k',
-            'paths': 'tests/test-with-timestamp-ns.csv',
+            'paths': 'tests/test-with-timestamp-microsecs.csv',
             'time_field': 't',
             'timestamp_format': '%d/%m/%Y %H:%M:%S.%f',
             'type_inference': True
