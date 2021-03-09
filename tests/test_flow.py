@@ -1470,7 +1470,7 @@ def test_write_to_parquet(tmpdir):
     for i in range(10):
         controller.emit([i, f'this is {i}'])
         expected.append([i, f'this is {i}'])
-    expected = pd.DataFrame(expected, columns=columns)
+    expected = pd.DataFrame(expected, columns=columns, dtype='int32')
     controller.terminate()
     controller.await_termination()
 
@@ -1563,10 +1563,10 @@ def test_write_to_parquet_with_indices(tmpdir):
 
 
 def test_write_to_parquet_with_inference(tmpdir):
-    out_file = f'{tmpdir}/test_write_to_parquet_with_inference{uuid.uuid4().hex}/'
+    out_dir = f'{tmpdir}/test_write_to_parquet_with_inference{uuid.uuid4().hex}/'
     controller = build_flow([
         Source(),
-        WriteToParquet(out_file, index_cols='$key')
+        WriteToParquet(out_dir, index_cols='$key', partition_cols=[])
     ]).run()
 
     expected = []
@@ -1578,8 +1578,16 @@ def test_write_to_parquet_with_inference(tmpdir):
     controller.terminate()
     controller.await_termination()
 
-    read_back_df = pd.read_parquet(out_file)
+    read_back_df = pd.read_parquet(out_dir)
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+
+
+def test_write_to_parquet_with_inference_error_on_partition_index_collision(tmpdir):
+    try:
+        WriteToParquet('out/', index_cols='$key')
+        assert False
+    except ValueError:
+        pass
 
 
 def test_join_by_key():

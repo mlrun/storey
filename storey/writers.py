@@ -61,17 +61,30 @@ class _Writer:
             partition_cols = [partition_cols]
         self._partition_cols = partition_cols
 
+        if partition_cols is not None and index_cols is not None:
+            cols_both_partition_and_index = set(partition_cols).intersection(set(index_cols))
+            if cols_both_partition_and_index:
+                raise ValueError(f'The following columns are used both for partitioning and indexing, which is not allowed: '
+                                 f'{list(cols_both_partition_and_index)}')
+
     def _init(self):
         self._columns = copy.copy(self._initial_columns)
         self._index_cols = copy.copy(self._initial_index_cols)
         self._init_partition_col_indices()
 
     def _init_partition_col_indices(self):
-        self._partition_col_indices = {}
+        self._partition_col_to_index = {}
+        self._partition_col_indices = []
+        self._non_partition_columns = self._columns
+
         if self._partition_cols is not None and self._columns is not None:
+            self._non_partition_columns = []
             for index, col in enumerate(self._columns):
                 if col in self._partition_cols:
-                    self._partition_col_indices[col] = index
+                    self._partition_col_to_index[col] = index
+                    self._partition_col_indices.append(index)
+                else:
+                    self._non_partition_columns.append(col)
 
     def _path_from_event(self, event):
         res = '/'
@@ -90,10 +103,12 @@ class _Writer:
                 val = event.time.hour
             else:
                 if isinstance(event.body, list):
-                    val = event.body[self._partition_col_indices[col]]
+                    val = event.body[self._partition_col_to_index[col]]
                 else:
                     val = event.body[col]
-            res += f'{val}/'
+            if col.startswith('$'):
+                col = col[1:]
+            res += f'{col}={val}/'
         return res
 
     def _get_column_data_from_dict(self, new_data, event, columns, metadata_columns, rename_columns):
@@ -138,8 +153,10 @@ class _Writer:
                 self._init_partition_col_indices()
             data = {} if self._retain_dict else []
             self._get_column_data_from_dict(data, event, self._index_cols, self._metadata_index_columns, self._rename_index_columns)
-            self._get_column_data_from_dict(data, event, self._columns, self._metadata_columns, self._rename_columns)
+            self._get_column_data_from_dict(data, event, self._non_partition_columns, self._metadata_columns, self._rename_columns)
         elif isinstance(data, list):
+            for index in self._partition_col_indices:
+                del data[index]
             if self._infer_columns_from_data:
                 raise TypeError('Cannot infer_columns_from_data when event type is list. Inference is only possible from dict.')
             sub_metadata = bool(self._columns) and bool(self._metadata_columns)
@@ -337,7 +354,7 @@ class WriteToParquet(_Batching, _Writer):
         df_columns = []
         if self._index_cols:
             df_columns.extend(self._index_cols)
-        df_columns.extend(self._columns)
+        df_columns.extend(self._non_partition_columns)
         df = pd.DataFrame(batch, columns=df_columns)
         if self._index_cols:
             df.set_index(self._index_cols, inplace=True)
