@@ -563,6 +563,9 @@ class WriteToTable(_Writer, Flow):
         if event is _termination_obj:
             await self._table._terminate()
             return await self._do_downstream(_termination_obj)
-        else:
+        elif self._table._flush_interval_milli == 0:
             data_to_persist = self._event_to_writer_entry(event)
             await self._table._persist(_PersistJob(event.key, data_to_persist, self._handle_completed, event))
+        else:
+            # TODO add to cache?
+            await self._do_downstream(event)

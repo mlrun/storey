@@ -18,7 +18,8 @@ class Table():
      can optimize writes. Defaults to True.
      """
 
-    def __init__(self, table_path: str, storage: Driver, partitioned_by_key: bool = True, max_updates_in_flight: int = 8):
+    def __init__(self, table_path: str, storage: Driver, partitioned_by_key: bool = True, cache_size: int = 10000,
+                 flush_interval_milli: int = 1000, max_updates_in_flight: int = 8):
         self._container, self._table_path = _split_path(table_path)
         self._storage = storage
         self._partitioned_by_key = partitioned_by_key
@@ -30,6 +31,10 @@ class Table():
         self._q = None
         self._max_updates_in_flight = max_updates_in_flight
         self._pending_by_key = {}
+        self._flush_interval_milli = flush_interval_milli
+        self._cache_size = cache_size
+        self._terminated = False
+        self._flush_task = None
 
     def __str__(self):
         return f'{self._container}/{self._table_path}'
@@ -55,6 +60,8 @@ class Table():
                 self._update_static_attrs(key, additional_data)
 
     async def _get_or_load_static_attributes_by_key(self, key, attributes='*'):
+        if self._flush_task is None and self._flush_interval_milli > 0:
+            self._flush_task = asyncio.get_running_loop().create_task(self._flush_worker())
         attrs = self._get_static_attrs(key)
         if not attrs:
             res = await self._storage._load_by_key(self._container, self._table_path, key, attributes)
@@ -85,8 +92,9 @@ class Table():
     async def _aggregate(self, key, data, timestamp):
         if not self._schema:
             await self._get_or_save_schema()
-
-        self._get_aggregations_attrs(key).aggregate(data, timestamp)
+        cache_item = self._get_aggregations_attrs(key)
+        cache_item.last_changed = datetime.now().timestamp()
+        cache_item.aggregate(data, timestamp)
 
     async def _get_features(self, key, timestamp):
         if not self._schema:
@@ -206,7 +214,10 @@ class Table():
     def _set_aggregations_attrs(self, key, element):
         if key in self._attrs_cache:
             self._attrs_cache[key].aggregations = element
+            self._attrs_cache[key].last_changed = datetime.now().timestamp()
         else:
+            if self._flush_task is None and self._flush_interval_milli > 0:
+                self._flush_task = asyncio.get_running_loop().create_task(self._flush_worker())
             self._attrs_cache[key] = _CacheElement({}, element)
 
     def _get_static_attrs(self, key):
@@ -218,8 +229,15 @@ class Table():
     def _set_static_attrs(self, key, value):
         if key in self._attrs_cache:
             self._attrs_cache[key].static_attrs = value
+            self._attrs_cache[key].last_changed = datetime.now().timestamp()
         else:
             self._attrs_cache[key] = _CacheElement(value, None)
+            try:
+                #static attrs can be set before creating a running loop
+                if self._flush_task is None and self._flush_interval_milli > 0:
+                    self._flush_task = asyncio.get_running_loop().create_task(self._flush_worker())
+            except RuntimeError:
+                pass
 
     def _get_keys(self):
         return self._attrs_cache.keys()
@@ -238,6 +256,15 @@ class Table():
         :param key: attribute to get
          """
         return self._get_static_attrs(key)
+
+    async def _flush_worker(self):
+        while not self._terminated:
+            current_time = datetime.now().timestamp()
+            last_flush = current_time - (self._flush_interval_milli * 1000)
+            for key, item in self._attrs_cache.items():
+                if item.last_change > last_flush:
+                    await self._persist(_PersistJob(key, None, None))
+            await asyncio.sleep(self._flush_interval_milli / 1000)
 
     async def _worker(self):
         task = None
@@ -261,14 +288,16 @@ class Table():
                             if pending_event.pending and not pending_event.in_flight:
                                 for job in pending_event.pending:
                                     resp = await self._persist_key(key, job.data)
-                                    await job.callback(job.extra_data, resp)
+                                    if job.callback:
+                                        await job.callback(job.extra_data, resp)
                         break
 
                 job = task[0]
                 completed = await task[1]
 
                 for done_job in self._pending_by_key[job.key].in_flight:
-                    await done_job.callback(done_job.extra_data, completed)
+                    if done_job.callback:
+                        await done_job.callback(done_job.extra_data, completed)
                 self._pending_by_key[job.key].in_flight = []
 
                 # If we got more pending events for the same key process them
@@ -291,12 +320,17 @@ class Table():
             raise ex
 
     async def _terminate(self):
-        await self._q.put(_termination_obj)
-        await self._worker_awaitable
-        self._q = None
+        if not self._terminated and self._q:
+            self._terminated = True
+            for key, item in self._attrs_cache.items():
+                await self._persist(_PersistJob(key, None, None))
+            await self._q.put(_termination_obj)
+            await self._worker_awaitable
+            self._q = None
 
     async def _persist(self, job):
         if not self._q:
+            self._terminated = False
             self._q = asyncio.queues.Queue(self._max_updates_in_flight)
             self._worker_awaitable = asyncio.get_running_loop().create_task(self._worker())
 
@@ -336,6 +370,7 @@ class _CacheElement:
     def __init__(self, static_attrs, aggregations):
         self.static_attrs = static_attrs
         self.aggregations = aggregations
+        self.last_change = datetime.now().timestamp()
 
 
 class ReadOnlyAggregatedStoreElement:
