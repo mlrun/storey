@@ -296,8 +296,10 @@ class WriteToParquet(_Batching, _Writer):
         If True, columns will be inferred from data and used in place of explicit columns list if none was provided, or appended to the
         provided list. If header is True and columns is not provided, infer_columns_from_data=True is implied.
         Optional. Default to False if columns is provided, True otherwise.
-    :param partition_cols: Columns by which to partition the data into separate parquet files. If None (default), data will be written
-        to a single file at path. This parameter is forwarded as-is to pandas.DataFrame.to_parquet().
+    :param partition_cols: Columns by which to partition the data into directories. The following metadata columns are also supported:
+        $key, $date (e.g. 2020-02-09), $year, $month, $day, $hour, $minute, $second.
+        If None (the default), the data will not be partitioned, and will be written to a single directory or file (when path ends in
+        .parquet or .pq).
     :param max_events: Maximum number of events to write at a time. If None (default), all events will be written on flow termination,
         or after timeout_secs (if timeout_secs is set).
     :type max_events: int
