@@ -92,15 +92,19 @@ class _Writer:
             if col == '$key':
                 val = event.key
             elif col == '$date':
-                val = f'{event.time.year()}-{event.time.month()}-{event.time.day()}'
+                val = f'{event.time.year:02}-{event.time.month:02}-{event.time.day:02}'
             elif col == '$year':
-                val = event.time.year
+                val = f'{event.time.year:02}'
             elif col == '$month':
-                val = event.time.month
+                val = f'{event.time.month:02}'
             elif col == '$day':
-                val = event.time.day
+                val = f'{event.time.day:02}'
             elif col == '$hour':
-                val = event.time.hour
+                val = f'{event.time.hour:02}'
+            elif col == '$minute':
+                val = f'{event.time.minute:02}'
+            elif col == '$second':
+                val = f'{event.time.second:02}'
             else:
                 if isinstance(event.body, list):
                     val = event.body[self._partition_col_to_index[col]]

@@ -1562,6 +1562,29 @@ def test_write_to_parquet_with_indices(tmpdir):
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
 
 
+def test_write_to_parquet_partition_by_date(tmpdir):
+    out_file = f'{tmpdir}/test_write_to_parquet_partition_by_date{uuid.uuid4().hex}'
+    controller = build_flow([
+        Source(),
+        WriteToParquet(out_file, partition_cols=['$date'], columns=['my_int', 'my_string'])
+    ]).run()
+
+    my_time = datetime(2020, 2, 15)
+
+    expected = []
+    for i in range(10):
+        controller.emit([i, f'this is {i}'], event_time=my_time)
+        expected.append(['2020-02-15', i, f'this is {i}'])
+    columns = ['date', 'my_int', 'my_string']
+    expected = pd.DataFrame(expected, columns=columns, dtype='int64')
+    expected['date'] = expected['date'].astype("category")
+    controller.terminate()
+    controller.await_termination()
+
+    read_back_df = pd.read_parquet(out_file, columns=columns)
+    assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+
+
 def test_write_to_parquet_with_inference(tmpdir):
     out_dir = f'{tmpdir}/test_write_to_parquet_with_inference{uuid.uuid4().hex}/'
     controller = build_flow([
