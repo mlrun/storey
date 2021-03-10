@@ -233,7 +233,7 @@ class Table():
         else:
             self._attrs_cache[key] = _CacheElement(value, None)
             try:
-                #static attrs can be set before creating a running loop
+                # static attrs can be set before creating a running loop
                 if self._flush_task is None and self._flush_interval_milli > 0:
                     self._flush_task = asyncio.get_running_loop().create_task(self._flush_worker())
             except RuntimeError:
@@ -322,7 +322,7 @@ class Table():
     async def _terminate(self):
         if not self._terminated and self._q:
             self._terminated = True
-            for key, item in self._attrs_cache.items():
+            for key in self._attrs_cache.keys():
                 await self._persist(_PersistJob(key, None, None))
             await self._q.put(_termination_obj)
             await self._worker_awaitable
