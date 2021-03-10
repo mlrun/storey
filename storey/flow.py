@@ -824,7 +824,7 @@ class _Batching(Flow):
             kwargs['key'] = key
         super().__init__(**kwargs)
 
-        self._max_events: int = max_events
+        self._max_events = max_events
         self._timeout_secs = timeout_secs
 
         if self._timeout_secs is not None and self._timeout_secs <= 0:
@@ -852,7 +852,7 @@ class _Batching(Flow):
         else:
             raise ValueError(f'Unsupported key type {type(key)}')
 
-    async def _emit(self, batch, batch_time):
+    async def _emit(self, batch, batch_key, batch_time):
         raise NotImplementedError
 
     async def _terminate(self):
@@ -900,7 +900,7 @@ class _Batching(Flow):
             return
         batch_time = self._batch_first_event_time.pop(batch_key)
         del self._batch_start_time[batch_key]
-        await self._emit(batch_to_emit, batch_time)
+        await self._emit(batch_to_emit, batch_key, batch_time)
 
     async def _emit_all(self):
         for key in list(self._batch.keys()):
@@ -923,7 +923,7 @@ class Batch(_Batching):
     """
     _do_downstream_per_event = False
 
-    async def _emit(self, batch, batch_time):
+    async def _emit(self, batch, batch_key, batch_time):
         event = Event(batch, time=batch_time)
         return await self._do_downstream(event)
 

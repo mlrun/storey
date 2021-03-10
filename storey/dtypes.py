@@ -29,6 +29,8 @@ class Event:
                  content_type=None, awaitable_result=None):
         self.body = body
         self.key = key
+        if time is not None and not isinstance(time, datetime):
+            raise TypeError(f'Event time parameter must be a datetime. Got {type(time)} instead.')
         self.time = time or datetime.now(timezone.utc)
         self.id = id
         self.headers = headers
