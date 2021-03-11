@@ -261,6 +261,54 @@ def test_read_parquet_files():
     assert termination_result == expected
 
 
+def test_write_parquet_read_parquet(tmpdir):
+    out_dir = f'{tmpdir}/test_write_parquet_read_parquet/{uuid.uuid4().hex}/'
+    columns = ['my_int', 'my_string']
+    controller = build_flow([
+        Source(),
+        WriteToParquet(out_dir, columns=columns, partition_cols=[])
+    ]).run()
+
+    expected = []
+    for i in range(10):
+        controller.emit([i, f'this is {i}'])
+        expected.append({'my_int': i, 'my_string': f'this is {i}'})
+    controller.terminate()
+    controller.await_termination()
+
+    controller = build_flow([
+        ReadParquet(out_dir),
+        Reduce([], append_and_return),
+    ]).run()
+    read_back_result = controller.await_termination()
+
+    assert read_back_result == expected
+
+
+def test_write_parquet_read_parquet_partitioned(tmpdir):
+    out_dir = f'{tmpdir}/test_write_parquet_read_parquet_partitioned/{uuid.uuid4().hex}/'
+    columns = ['my_int', 'my_string']
+    controller = build_flow([
+        Source(),
+        WriteToParquet(out_dir, partition_cols='my_int', columns=columns)
+    ]).run()
+
+    expected = []
+    for i in range(10):
+        controller.emit([i, f'this is {i}'])
+        expected.append({'my_int': i, 'my_string': f'this is {i}'})
+    controller.terminate()
+    controller.await_termination()
+
+    controller = build_flow([
+        ReadParquet(out_dir),
+        Reduce([], append_and_return),
+    ]).run()
+    read_back_result = controller.await_termination()
+
+    assert read_back_result == expected
+
+
 def test_error_flow():
     controller = build_flow([
         Source(),
