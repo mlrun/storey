@@ -1931,15 +1931,28 @@ def test_metadata_fields():
         Reduce([], append_and_return, full_event=True)
     ]).run()
 
-    body = {'mykey': 'k1', 'mytime': datetime(2020, 2, 15, 2, 0), 'otherfield': 'x'}
-    controller.emit(body)
+    t1 = datetime(2020, 2, 15, 2, 0)
+    t2 = datetime(2020, 2, 15, 2, 1)
+    body1 = {'mykey': 'k1', 'mytime': t1, 'otherfield': 'x'}
+    body2 = {'mykey': 'k2', 'mytime': t2, 'otherfield': 'x'}
+
+    controller.emit(body1)
+    controller.emit(Event(body2, 'k2', t2))
+
     controller.terminate()
     result = controller.await_termination()
-    assert len(result) == 1
-    result = result[0]
-    assert result.key == 'k1'
-    assert result.time == datetime(2020, 2, 15, 2, 0)
-    assert result.body == body
+
+    assert len(result) == 2
+
+    result1 = result[0]
+    assert result1.key == 'k1'
+    assert result1.time == t1
+    assert result1.body == body1
+
+    result2 = result[1]
+    assert result2.key == 'k2'
+    assert result2.time == t2
+    assert result2.body == body2
 
 
 async def async_test_async_metadata_fields():
