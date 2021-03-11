@@ -7,6 +7,7 @@ import queue
 import random
 import uuid
 from typing import Optional, Union, List, Callable
+from urllib.parse import urlparse
 
 import pandas as pd
 import v3io_frames as frames
@@ -408,7 +409,7 @@ class WriteToTSDB(_Batching, _Writer):
 
     def __init__(self, path: str, time_col: str = '$time', columns: Union[str, List[str], None] = None,
                  infer_columns_from_data: Optional[bool] = None, index_cols: Union[str, List[str], None] = None,
-                 v3io_frames: Optional[str] = None, access_key: Optional[str] = None, container: str = "", rate: str = "", aggr: str = "",
+                 v3io_frames: Optional[str] = None, access_key: Optional[str] = None, rate: str = "", aggr: str = "",
                  aggr_granularity: str = "", frames_client=None, **kwargs):
         kwargs['path'] = path
         kwargs['time_col'] = time_col
@@ -420,8 +421,6 @@ class WriteToTSDB(_Batching, _Writer):
             kwargs['index_cols'] = index_cols
         if v3io_frames is not None:
             kwargs['v3io_frames'] = v3io_frames
-        if container:
-            kwargs['container'] = container
         if rate:
             kwargs['rate'] = rate
         if aggr:
@@ -435,8 +434,11 @@ class WriteToTSDB(_Batching, _Writer):
                 index_cols = [index_cols]
             new_index_cols.extend(index_cols)
         _Writer.__init__(self, columns, infer_columns_from_data, index_cols=new_index_cols)
-
-        self._path = path
+        parts = urlparse(path)
+        self._path = parts.path
+        container = parts.netloc
+        if not parts.scheme:
+            container, self._path = _split_path(self._path)
         self._rate = rate
         self._aggr = aggr
         self.aggr_granularity = aggr_granularity

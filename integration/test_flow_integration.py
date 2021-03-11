@@ -2,7 +2,7 @@ import asyncio
 import base64
 import json
 import time
-from _datetime import datetime, timedelta
+from datetime import datetime, timedelta
 
 import aiohttp
 import pandas as pd
@@ -180,7 +180,8 @@ def test_write_to_v3io_stream_unbalanced(setup_stream_teardown_test):
 
 
 def test_write_to_tsdb():
-    tsdb_path = f'tsdb_path-{int(time.time_ns() / 1000)}'
+    table_name = f'tsdb_path-{int(time.time_ns() / 1000)}'
+    tsdb_path = f'v3io://bigdata/{table_name}'
     controller = build_flow([
         Source(),
         WriteToTSDB(path=tsdb_path, time_col='time', index_cols='node', columns=['cpu', 'disk'], rate='1/h', max_events=2)
@@ -197,7 +198,7 @@ def test_write_to_tsdb():
     controller.await_termination()
 
     client = frames.Client()
-    res = client.read('tsdb', tsdb_path, start='0', end='now', multi_index=True)
+    res = client.read('tsdb', table_name, start='0', end='now', multi_index=True)
     res = res.sort_values(['time'])
     df = pd.DataFrame(expected, columns=['time', 'node', 'cpu', 'disk'])
     df.set_index(keys=['time', 'node'], inplace=True)
@@ -205,7 +206,8 @@ def test_write_to_tsdb():
 
 
 def test_write_to_tsdb_with_metadata_label():
-    tsdb_path = f'tsdb_path-{int(time.time_ns() / 1000)}'
+    table_name = f'tsdb_path-{int(time.time_ns() / 1000)}'
+    tsdb_path = f'projects/{table_name}'
     controller = build_flow([
         Source(),
         WriteToTSDB(path=tsdb_path, index_cols='node', columns=['cpu', 'disk'], rate='1/h',
@@ -222,8 +224,8 @@ def test_write_to_tsdb_with_metadata_label():
     controller.terminate()
     controller.await_termination()
 
-    client = frames.Client()
-    res = client.read('tsdb', tsdb_path, start='0', end='now', multi_index=True)
+    client = frames.Client(container='projects')
+    res = client.read('tsdb', table_name, start='0', end='now', multi_index=True)
     res = res.sort_values(['time'])
     df = pd.DataFrame(expected, columns=['time', 'node', 'cpu', 'disk'])
     df.set_index(keys=['time', 'node'], inplace=True)

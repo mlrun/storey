@@ -1746,7 +1746,7 @@ def test_write_to_tsdb():
 
     controller = build_flow([
         Source(),
-        WriteToTSDB(path='some/path', time_col='time', index_cols='node', columns=['cpu', 'disk'], rate='1/h',
+        WriteToTSDB(path='container/some/path', time_col='time', index_cols='node', columns=['cpu', 'disk'], rate='1/h',
                     max_events=1,
                     frames_client=mock_frames_client)
     ]).run()
@@ -1763,7 +1763,7 @@ def test_write_to_tsdb():
 
     expected_create = (
         'create', {'if_exists': 1, 'rate': '1/h', 'aggregates': '', 'aggregation_granularity': '', 'backend': 'tsdb',
-                   'table': 'some/path'})
+                   'table': '/some/path'})
     assert mock_frames_client.call_log[0] == expected_create
     i = 0
     for write_call in mock_frames_client.call_log[1:]:
@@ -1773,7 +1773,7 @@ def test_write_to_tsdb():
         res = write_call[1]['dfs']
         assert expected.equals(res), f"result{res}\n!=\nexpected{expected}"
         del write_call[1]['dfs']
-        assert write_call[1] == {'backend': 'tsdb', 'table': 'some/path'}
+        assert write_call[1] == {'backend': 'tsdb', 'table': '/some/path'}
         i += 1
 
 
@@ -1782,7 +1782,7 @@ def test_write_to_tsdb_with_key_index():
 
     controller = build_flow([
         Source(),
-        WriteToTSDB(path='some/path', time_col='time', index_cols='node=$key', columns=['cpu', 'disk'], rate='1/h',
+        WriteToTSDB(path='container/some/path', time_col='time', index_cols='node=$key', columns=['cpu', 'disk'], rate='1/h',
                     max_events=1, frames_client=mock_frames_client)
     ]).run()
 
@@ -1798,7 +1798,7 @@ def test_write_to_tsdb_with_key_index():
 
     expected_create = (
         'create', {'if_exists': 1, 'rate': '1/h', 'aggregates': '', 'aggregation_granularity': '', 'backend': 'tsdb',
-                   'table': 'some/path'})
+                   'table': '/some/path'})
     assert mock_frames_client.call_log[0] == expected_create
     i = 0
     for write_call in mock_frames_client.call_log[1:]:
@@ -1808,7 +1808,7 @@ def test_write_to_tsdb_with_key_index():
         res = write_call[1]['dfs']
         assert expected.equals(res), f"result{res}\n!=\nexpected{expected}"
         del write_call[1]['dfs']
-        assert write_call[1] == {'backend': 'tsdb', 'table': 'some/path'}
+        assert write_call[1] == {'backend': 'tsdb', 'table': '/some/path'}
         i += 1
 
 
@@ -1817,7 +1817,7 @@ def test_write_to_tsdb_with_key_index_and_default_time():
 
     controller = build_flow([
         Source(),
-        WriteToTSDB(path='some/path', index_cols='node=$key', columns=['cpu', 'disk'], rate='1/h',
+        WriteToTSDB(path='container/some/path', index_cols='node=$key', columns=['cpu', 'disk'], rate='1/h',
                     max_events=1, frames_client=mock_frames_client)
     ]).run()
 
@@ -1833,7 +1833,7 @@ def test_write_to_tsdb_with_key_index_and_default_time():
 
     expected_create = (
         'create', {'if_exists': 1, 'rate': '1/h', 'aggregates': '', 'aggregation_granularity': '', 'backend': 'tsdb',
-                   'table': 'some/path'})
+                   'table': '/some/path'})
     assert mock_frames_client.call_log[0] == expected_create
     i = 0
     for write_call in mock_frames_client.call_log[1:]:
@@ -1843,7 +1843,7 @@ def test_write_to_tsdb_with_key_index_and_default_time():
         res = write_call[1]['dfs']
         assert expected.equals(res), f"result{res}\n!=\nexpected{expected}"
         del write_call[1]['dfs']
-        assert write_call[1] == {'backend': 'tsdb', 'table': 'some/path'}
+        assert write_call[1] == {'backend': 'tsdb', 'table': '/some/path'}
         i += 1
 
 
