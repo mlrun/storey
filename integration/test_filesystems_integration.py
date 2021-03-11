@@ -8,7 +8,7 @@ import v3io
 import uuid
 import v3io_frames as frames
 import time
-from _datetime import datetime
+from datetime import datetime
 
 
 @pytest.fixture()
