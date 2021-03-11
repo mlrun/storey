@@ -1,16 +1,17 @@
 import asyncio
 import base64
 import json
-from datetime import timedelta
+import time
+from datetime import datetime, timedelta
 
 import aiohttp
 import pandas as pd
 import v3io
 import v3io.aio.dataplane
-
+import v3io_frames as frames
 
 from storey import Filter, JoinWithV3IOTable, SendToHttp, Map, Reduce, Source, HttpRequest, build_flow, \
-    WriteToV3IOStream, V3ioDriver, Table, JoinWithTable, MapWithState, WriteToTable, DataframeSource
+    WriteToV3IOStream, V3ioDriver, WriteToTSDB, Table, JoinWithTable, MapWithState, WriteToTable, DataframeSource
 from .integration_test_utils import V3ioHeaders, append_return, test_base_time, setup_kv_teardown_test, setup_teardown_test, \
     setup_stream_teardown_test
 
@@ -176,6 +177,59 @@ def test_write_to_v3io_stream_unbalanced(setup_stream_teardown_test):
     assert shard0_data == [b'0', b'1', b'2', b'3', b'4', b'5', b'6', b'7', b'8', b'9']
     shard1_data = asyncio.run(GetShardData().get_shard_data(f'{stream_path}/1'))
     assert shard1_data == []
+
+
+def test_write_to_tsdb():
+    table_name = f'tsdb_path-{int(time.time_ns() / 1000)}'
+    tsdb_path = f'v3io://bigdata/{table_name}'
+    controller = build_flow([
+        Source(),
+        WriteToTSDB(path=tsdb_path, time_col='time', index_cols='node', columns=['cpu', 'disk'], rate='1/h', max_events=2)
+    ]).run()
+
+    expected = []
+    date_time_str = '18/09/19 01:55:1'
+    for i in range(9):
+        now = datetime.strptime(date_time_str + str(i) + ' UTC-0000', '%d/%m/%y %H:%M:%S UTC%z')
+        controller.emit([now, i, i + 1, i + 2])
+        expected.append([now, f'{i}', float(i + 1), float(i + 2)])
+
+    controller.terminate()
+    controller.await_termination()
+
+    client = frames.Client()
+    res = client.read('tsdb', table_name, start='0', end='now', multi_index=True)
+    res = res.sort_values(['time'])
+    df = pd.DataFrame(expected, columns=['time', 'node', 'cpu', 'disk'])
+    df.set_index(keys=['time', 'node'], inplace=True)
+    assert res.equals(df), f"result{res}\n!=\nexpected{df}"
+
+
+def test_write_to_tsdb_with_metadata_label():
+    table_name = f'tsdb_path-{int(time.time_ns() / 1000)}'
+    tsdb_path = f'projects/{table_name}'
+    controller = build_flow([
+        Source(),
+        WriteToTSDB(path=tsdb_path, index_cols='node', columns=['cpu', 'disk'], rate='1/h',
+                    max_events=2)
+    ]).run()
+
+    expected = []
+    date_time_str = '18/09/19 01:55:1'
+    for i in range(9):
+        now = datetime.strptime(date_time_str + str(i) + ' UTC-0000', '%d/%m/%y %H:%M:%S UTC%z')
+        controller.emit([i, i + 1, i + 2], event_time=now)
+        expected.append([now, f'{i}', float(i + 1), float(i + 2)])
+
+    controller.terminate()
+    controller.await_termination()
+
+    client = frames.Client(container='projects')
+    res = client.read('tsdb', table_name, start='0', end='now', multi_index=True)
+    res = res.sort_values(['time'])
+    df = pd.DataFrame(expected, columns=['time', 'node', 'cpu', 'disk'])
+    df.set_index(keys=['time', 'node'], inplace=True)
+    assert res.equals(df), f"result{res}\n!=\nexpected{df}"
 
 
 def test_join_by_key(setup_kv_teardown_test):

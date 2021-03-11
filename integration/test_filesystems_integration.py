@@ -1,14 +1,11 @@
 import asyncio
 from .integration_test_utils import setup_teardown_test, _generate_table_name, V3ioHeaders, V3ioError
-from storey import build_flow, ReadCSV, WriteToCSV, Source, Reduce, Map, FlatMap, AsyncSource, WriteToParquet, WriteToTSDB
+from storey import build_flow, ReadCSV, WriteToCSV, Source, Reduce, Map, FlatMap, AsyncSource, WriteToParquet
 import pandas as pd
 import aiohttp
 import pytest
 import v3io
 import uuid
-import v3io_frames as frames
-import time
-from datetime import datetime
 
 
 @pytest.fixture()
@@ -249,56 +246,3 @@ def test_write_to_parquet_to_v3io_with_indices(setup_teardown_test):
 
     read_back_df = pd.read_parquet(out_file, columns=columns)
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
-
-
-def test_write_to_tsdb():
-    table_name = f'tsdb_path-{int(time.time_ns() / 1000)}'
-    tsdb_path = f'v3io://bigdata/{table_name}'
-    controller = build_flow([
-        Source(),
-        WriteToTSDB(path=tsdb_path, time_col='time', index_cols='node', columns=['cpu', 'disk'], rate='1/h', max_events=2)
-    ]).run()
-
-    expected = []
-    date_time_str = '18/09/19 01:55:1'
-    for i in range(9):
-        now = datetime.strptime(date_time_str + str(i) + ' UTC-0000', '%d/%m/%y %H:%M:%S UTC%z')
-        controller.emit([now, i, i + 1, i + 2])
-        expected.append([now, f'{i}', float(i + 1), float(i + 2)])
-
-    controller.terminate()
-    controller.await_termination()
-
-    client = frames.Client()
-    res = client.read('tsdb', table_name, start='0', end='now', multi_index=True)
-    res = res.sort_values(['time'])
-    df = pd.DataFrame(expected, columns=['time', 'node', 'cpu', 'disk'])
-    df.set_index(keys=['time', 'node'], inplace=True)
-    assert res.equals(df), f"result{res}\n!=\nexpected{df}"
-
-
-def test_write_to_tsdb_with_metadata_label():
-    table_name = f'tsdb_path-{int(time.time_ns() / 1000)}'
-    tsdb_path = f'/projects/{table_name}'
-    controller = build_flow([
-        Source(),
-        WriteToTSDB(path=tsdb_path, index_cols='node', columns=['cpu', 'disk'], rate='1/h',
-                    max_events=2)
-    ]).run()
-
-    expected = []
-    date_time_str = '18/09/19 01:55:1'
-    for i in range(9):
-        now = datetime.strptime(date_time_str + str(i) + ' UTC-0000', '%d/%m/%y %H:%M:%S UTC%z')
-        controller.emit([i, i + 1, i + 2], event_time=now)
-        expected.append([now, f'{i}', float(i + 1), float(i + 2)])
-
-    controller.terminate()
-    controller.await_termination()
-
-    client = frames.Client(container='projects')
-    res = client.read('tsdb', table_name, start='0', end='now', multi_index=True)
-    res = res.sort_values(['time'])
-    df = pd.DataFrame(expected, columns=['time', 'node', 'cpu', 'disk'])
-    df.set_index(keys=['time', 'node'], inplace=True)
-    assert res.equals(df), f"result{res}\n!=\nexpected{df}"
