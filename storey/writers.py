@@ -568,4 +568,8 @@ class WriteToTable(_Writer, Flow):
             await self._table._persist(_PersistJob(event.key, data_to_persist, self._handle_completed, event))
         else:
             # TODO add to cache?
+            data_to_persist = self._event_to_writer_entry(event)
+            item = self._table[event.key]
+            if item:
+                item.update(data_to_persist)
             await self._do_downstream(event)
