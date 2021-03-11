@@ -1,8 +1,7 @@
 import asyncio
 import base64
 import json
-import time
-from _datetime import timedelta
+from datetime import timedelta
 
 import aiohttp
 import pandas as pd
