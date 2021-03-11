@@ -180,7 +180,7 @@ def get_values_for_keys(list_keys, dictionary):
 
 def get_key_from_data(data_dict, key_field):
     key = None
-    if key_field:
+    if key_field is not None:
         if isinstance(key_field, list):
             if len(key_field) >= 3:
                 list_values = get_values_for_keys(key_field[1:], data_dict)
