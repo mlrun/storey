@@ -11,7 +11,8 @@ import v3io.aio.dataplane
 import v3io_frames as frames
 
 from storey import Filter, JoinWithV3IOTable, SendToHttp, Map, Reduce, Source, HttpRequest, build_flow, \
-    WriteToV3IOStream, V3ioDriver, WriteToTSDB, Table, JoinWithTable, MapWithState, WriteToTable, DataframeSource
+    WriteToV3IOStream, V3ioDriver, WriteToTSDB, Table, JoinWithTable, MapWithState, WriteToTable, DataframeSource, ReadCSV
+from storey.utils import hash_list
 from .integration_test_utils import V3ioHeaders, append_return, test_base_time, setup_kv_teardown_test, setup_teardown_test, \
     setup_stream_teardown_test
 
@@ -378,6 +379,11 @@ def test_write_table_metadata_columns(setup_teardown_test):
 
 async def get_kv_item(full_path, key):
     try:
+        if isinstance(key, list):
+            if len(key) >= 3:
+                key = key[0] + "." + str(hash_list(key[1:]))
+            else:
+                key = key[0] + "." + key[1]
         headers = V3ioHeaders()
         container, path = full_path.split('/', 1)
 
@@ -401,3 +407,66 @@ def test_writing_int_key(setup_teardown_test):
     ]).run()
     controller.await_termination()
 
+
+def test_write_multiple_keys_to_v3io_from_df(setup_teardown_test):
+    table = Table(setup_teardown_test, V3ioDriver())
+    data = pd.DataFrame(
+        {
+            "first_name": ["moshe", "yosi"],
+            "last_name": ["cohen", "levi"],
+            "city": ["tel aviv", "ramat gan"],
+        }
+    )
+
+    controller = build_flow([
+        DataframeSource(data, key_field=['first_name', 'last_name']),
+        WriteToTable(table),
+    ]).run()
+    controller.await_termination()
+
+    response = asyncio.run(get_kv_item(setup_teardown_test, ['moshe', 'cohen']))
+
+    expected = {'city': 'tel aviv', 'first_name': 'moshe', 'last_name': 'cohen'}
+
+    assert response.status_code == 200
+    assert expected == response.output.item
+
+
+def test_write_multiple_keys_to_v3io_from_csv(setup_teardown_test):
+    table = Table(setup_teardown_test, V3ioDriver())
+
+    controller = build_flow([
+        ReadCSV('tests/test.csv', header=True, key_field=['n1', 'n2'], build_dict=True),
+        WriteToTable(table),
+    ]).run()
+    controller.await_termination()
+
+    response = asyncio.run(get_kv_item(setup_teardown_test, '1.2'))
+
+    expected = {'n1': 1, 'n2': 2, 'n3': 3}
+
+    assert response.status_code == 200
+    assert expected == response.output.item
+
+
+def test_write_multiple_keys_to_v3io_from_source(setup_teardown_test):
+    table = Table(setup_teardown_test, V3ioDriver())
+
+    controller = build_flow([
+        Source(key_field=['col1', 'col2', 'col3']),
+        WriteToTable(table),
+    ]).run()
+    controller.emit({'col1': 'a', 'col2': 'b', 'col3': 'green', 'col4': 'data1'})
+    controller.emit({'col1': 'c', 'col2': 'd', 'col3': 'yellow', 'col4': 'data2'})
+
+    controller.terminate()
+    controller.await_termination()
+
+    response = asyncio.run(get_kv_item(setup_teardown_test, ['a', 'b', 'green']))
+
+    print(response.output.item)
+
+    expected = {'col1': 'a', 'col2': 'b', 'col3': 'green', 'col4': 'data1'}
+
+    assert response.status_code == 200
+    assert expected == response.output.item

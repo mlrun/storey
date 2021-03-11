@@ -11,7 +11,7 @@ import pandas
 
 from .dtypes import _termination_obj, Event
 from .flow import Flow, Complete
-from .utils import url_to_file_system
+from .utils import url_to_file_system, get_key_from_data
 
 
 class AwaitableResult:
@@ -63,14 +63,14 @@ class FlowControllerBase:
             if key:
                 event.key = key
             elif self._key_field:
-                event.key = event[self._key_field]
+                event.key = get_key_from_data(event, self._key_field)
             if event_time:
                 event.time = event_time
             elif self._time_field:
                 event.time = event[self._time_field]
         else:
             if not key and self._key_field:
-                key = element[self._key_field]
+                key = get_key_from_data(element, self._key_field)
             if not event_time and self._time_field:
                 event_time = element[self._time_field]
             event = Event(element, id=self._get_uuid(), key=key, time=event_time)
@@ -149,7 +149,7 @@ class Source(Flow):
     """
     _legal_first_step = True
 
-    def __init__(self, buffer_size: Optional[int] = None, key_field: Optional[str] = None, time_field: Optional[str] = None,
+    def __init__(self, buffer_size: Optional[int] = None, key_field: Optional[Union[str, List[str]]] = None, time_field: Optional[str] = None,
                  **kwargs):
         if buffer_size is None:
             buffer_size = 1024
@@ -430,8 +430,8 @@ class ReadCSV(_IterableSource):
     :parameter header: whether CSV files have a header or not. Defaults to False.
     :parameter build_dict: whether to format each record produced from the input file as a dictionary (as opposed to a list).
         Default to False.
-    :parameter key_field: the CSV field to be use as the key for events. May be an int (field index) or string (field name) if
-        with_header is True. Defaults to None (no key).
+    :parameter key_field: the CSV field to be use as the key for events. May be an int (field index) or string (field name) or a tuple
+        if with_header is True. Defaults to None (no key).
     :parameter time_field: the CSV field to be parsed as the timestamp for events. May be an int (field index) or string (field name)
         if with_header is True. Defaults to None (no timestamp field).
     :parameter timestamp_format: timestamp format as defined in datetime.strptime(). Default to ISO-8601 as defined in
@@ -443,7 +443,7 @@ class ReadCSV(_IterableSource):
     """
 
     def __init__(self, paths: Union[List[str], str], header: bool = False, build_dict: bool = False,
-                 key_field: Union[int, str, None] = None, time_field: Union[int, str, None] = None,
+                 key_field: Optional[Union[str, int, tuple]] = None, time_field: Union[int, str, None] = None,
                  timestamp_format: Optional[str] = None, type_inference: bool = True, **kwargs):
         kwargs['paths'] = paths
         kwargs['header'] = header
@@ -558,11 +558,21 @@ class ReadCSV(_IterableSource):
                                 element = {}
                                 for i in range(len(parsed_line)):
                                     element[header[i]] = parsed_line[i]
-                        if self._key_field:
+                        if self._key_field: #<----- here
                             key_field = self._key_field
-                            if self._with_header and isinstance(key_field, str):
-                                key_field = field_name_to_index[key_field]
-                            key = parsed_line[key_field]
+                            if self._with_header:
+                                if isinstance(self._key_field, str):
+                                    key_field = field_name_to_index[key_field]
+                                if isinstance(self._key_field, list):
+                                    key_field = []
+                                    for key_f in self._key_field:
+                                        if isinstance(key_f, str):
+                                            key_field.append(field_name_to_index[key_f])
+                                        else:
+                                            key_field.append(key_f)
+                            #call here the method
+                            key = get_key_from_data(parsed_line, key_field)
+#                            key = parsed_line[key_field]
                         if self._time_field:
                             time_field = self._time_field
                             if self._with_header and isinstance(time_field, str):
@@ -570,7 +580,7 @@ class ReadCSV(_IterableSource):
                             time_as_datetime = parsed_line[time_field]
                         else:
                             time_as_datetime = datetime.now()
-                        self._event_buffer.put(Event(element, key=key, time=time_as_datetime))
+                        self._event_buffer.put(Event(element, key=key, time=time_as_datetime)) #change needs to be done here as well
         except BaseException as ex:
             self._event_buffer.put(ex)
         self._event_buffer.put(_termination_obj)
@@ -602,14 +612,14 @@ class DataframeSource(_IterableSource):
     """Use pandas dataframe as input source for a flow.
 
     :param dfs: A pandas dataframe, or dataframes, to be used as input source for the flow.
-    :param key_field: column to be used as key for events.
+    :param key_field: column to be used as key for events. can be list of columns
     :param time_field: column to be used as time for events.
     :param id_field: column to be used as ID for events.
 
     for additional params, see documentation of  :class:`~storey.flow.Flow`
     """
 
-    def __init__(self, dfs: Union[pandas.DataFrame, Iterable[pandas.DataFrame]], key_field: Optional[str] = None,
+    def __init__(self, dfs: Union[pandas.DataFrame, Iterable[pandas.DataFrame]], key_field: Optional[Union[str, List[str]]] = None,
                  time_field: Optional[str] = None, id_field: Optional[str] = None, **kwargs):
         if key_field is not None:
             kwargs['key_field'] = key_field
@@ -636,9 +646,12 @@ class DataframeSource(_IterableSource):
                 elif df.index.names[0] is not None:
                     body[df.index.names[0]] = index
 
-                key = None
-                if self._key_field:
-                    key = body[self._key_field]
+                key = get_key_from_data(body, self._key_field)
+                # if self._key_field:
+                #     if isinstance(self._key_field, list): # add hash
+                #         key = body[self._key_field[0]] + "." + body[self._key_field[1]]
+                #     else:
+                #         key = body[self._key_field]
                 time = None
                 if self._time_field:
                     time = body[self._time_field]

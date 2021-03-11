@@ -3,6 +3,7 @@ import struct
 from array import array
 from urllib.parse import urlparse
 import fsspec
+import xxhash
 
 bucketPerWindow = 10
 schema_file_name = '.schema'
@@ -158,3 +159,31 @@ def update_in(obj, key, value):
 
     last_key = parts[-1]
     obj[last_key] = value
+
+
+def hash_list(list_to_hash):
+    str_concatted = ''.join(list_to_hash)
+    arr = bytearray(str_concatted, 'utf-8')
+    hash_value = xxhash.xxh64(arr).hexdigest()
+    return hash_value
+
+
+def get_values_for_keys(list_keys, dictionary):
+    ret_val_list = []
+    for key in list_keys:
+        ret_val_list.append(dictionary[key])
+    return ret_val_list
+
+
+def get_key_from_data(data_dict, key_field):
+    key = None
+    if key_field:
+        if isinstance(key_field, list):
+            if len(key_field) >= 3:
+                list_values = get_values_for_keys(key_field[1:], data_dict)
+                key = str(data_dict[key_field[0]]) + "." + hash_list(list_values)
+            else:
+                key = str(data_dict[key_field[0]]) + "." + str(data_dict[key_field[1]])
+        else:
+            key = data_dict[key_field]
+    return key
