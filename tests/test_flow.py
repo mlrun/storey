@@ -1,4 +1,5 @@
 import asyncio
+import os
 import queue
 import uuid
 from datetime import datetime
@@ -1478,7 +1479,7 @@ def test_write_to_parquet(tmpdir):
 
 
 def test_write_sparse_data_to_parquet(tmpdir):
-    out_dir = f'{tmpdir}/test_write_sparse_data_to_parquet/{uuid.uuid4().hex}.parquet'
+    out_dir = f'{tmpdir}/test_write_sparse_data_to_parquet/{uuid.uuid4().hex}'
     columns = ['my_int', 'my_string']
     controller = build_flow([
         Source(),
@@ -1515,12 +1516,13 @@ def test_write_to_parquet_single_file_on_termination(tmpdir):
     controller.terminate()
     controller.await_termination()
 
+    assert os.path.isfile(out_file)
     read_back_df = pd.read_parquet(out_file, columns=columns)
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
 
 
 def test_write_to_parquet_with_metadata(tmpdir):
-    out_file = f'{tmpdir}/test_write_to_parquet_with_metadata{uuid.uuid4().hex}.parquet'
+    out_file = f'{tmpdir}/test_write_to_parquet_with_metadata{uuid.uuid4().hex}/'
     columns = ['event_key', 'my_int', 'my_string']
     controller = build_flow([
         Source(),
@@ -1540,7 +1542,7 @@ def test_write_to_parquet_with_metadata(tmpdir):
 
 
 def test_write_to_parquet_with_indices(tmpdir):
-    out_file = f'{tmpdir}/test_write_to_parquet_with_indices{uuid.uuid4().hex}.parquet'
+    out_file = f'{tmpdir}/test_write_to_parquet_with_indices{uuid.uuid4().hex}'
     controller = build_flow([
         Source(),
         WriteToParquet(out_file, index_cols='event_key=$key', columns=['my_int', 'my_string'])
@@ -1560,11 +1562,34 @@ def test_write_to_parquet_with_indices(tmpdir):
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
 
 
-def test_write_to_parquet_with_inference(tmpdir):
-    out_file = f'{tmpdir}/test_write_to_parquet_with_inference{uuid.uuid4().hex}.parquet'
+def test_write_to_parquet_partition_by_date(tmpdir):
+    out_file = f'{tmpdir}/test_write_to_parquet_partition_by_date{uuid.uuid4().hex}'
     controller = build_flow([
         Source(),
-        WriteToParquet(out_file, index_cols='$key')
+        WriteToParquet(out_file, partition_cols=['$date'], columns=['my_int', 'my_string'])
+    ]).run()
+
+    my_time = datetime(2020, 2, 15)
+
+    expected = []
+    for i in range(10):
+        controller.emit([i, f'this is {i}'], event_time=my_time)
+        expected.append(['2020-02-15', i, f'this is {i}'])
+    columns = ['date', 'my_int', 'my_string']
+    expected = pd.DataFrame(expected, columns=columns, dtype='int64')
+    expected['date'] = expected['date'].astype("category")
+    controller.terminate()
+    controller.await_termination()
+
+    read_back_df = pd.read_parquet(out_file, columns=columns)
+    assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+
+
+def test_write_to_parquet_with_inference(tmpdir):
+    out_dir = f'{tmpdir}/test_write_to_parquet_with_inference{uuid.uuid4().hex}/'
+    controller = build_flow([
+        Source(),
+        WriteToParquet(out_dir, index_cols='$key', partition_cols=[])
     ]).run()
 
     expected = []
@@ -1576,8 +1601,16 @@ def test_write_to_parquet_with_inference(tmpdir):
     controller.terminate()
     controller.await_termination()
 
-    read_back_df = pd.read_parquet(out_file)
+    read_back_df = pd.read_parquet(out_dir)
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+
+
+def test_write_to_parquet_with_inference_error_on_partition_index_collision(tmpdir):
+    try:
+        WriteToParquet('out/', index_cols='$key')
+        assert False
+    except ValueError:
+        pass
 
 
 def test_join_by_key():
@@ -1766,22 +1799,36 @@ def test_write_to_tsdb_with_key_index_and_default_time():
         i += 1
 
 
-def test_csv_reader_parquet_write_ns(tmpdir):
-    out_file = f'{tmpdir}/test_csv_reader_parquet_write_ns_{uuid.uuid4().hex}/out.parquet'
+def test_csv_reader_parquet_write_microsecs(tmpdir):
+    out_file = f'{tmpdir}/test_csv_reader_parquet_write_microsecs_{uuid.uuid4().hex}/'
     columns = ['k', 't']
 
+    time_format = '%d/%m/%Y %H:%M:%S.%f'
     controller = build_flow([
-        ReadCSV('tests/test-with-timestamp-ns.csv', header=True, key_field='k',
-                time_field='t', timestamp_format='%d/%m/%Y %H:%M:%S.%f'),
+        ReadCSV('tests/test-with-timestamp-microsecs.csv', header=True, key_field='k',
+                time_field='t', timestamp_format=time_format),
         WriteToParquet(out_file, columns=columns, max_events=2)
     ]).run()
 
-    expected = pd.DataFrame([['m1', "15/02/2020 02:03:04.12345678"], ['m2', "16/02/2020 02:03:04.12345678"]],
+    expected = pd.DataFrame([['m1', datetime.strptime("15/02/2020 02:03:04.123456", time_format)],
+                             ['m2', datetime.strptime("16/02/2020 02:03:04.123456", time_format)]],
                             columns=columns)
     controller.await_termination()
     read_back_df = pd.read_parquet(out_file, columns=columns)
 
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+
+
+def test_csv_reader_bad_timestamp(tmpdir):
+    controller = build_flow([
+        ReadCSV('tests/test-with-timestamp-bad.csv', header=True, key_field='k',
+                time_field='t', timestamp_format='%d/%m/%Y %H:%M:%S.%f')
+    ]).run()
+    try:
+        controller.await_termination()
+        assert False
+    except TypeError:
+        pass
 
 
 def test_error_in_concurrent_by_key_task():
@@ -1884,15 +1931,28 @@ def test_metadata_fields():
         Reduce([], append_and_return, full_event=True)
     ]).run()
 
-    body = {'mykey': 'k1', 'mytime': datetime(2020, 2, 15, 2, 0), 'otherfield': 'x'}
-    controller.emit(body)
+    t1 = datetime(2020, 2, 15, 2, 0)
+    t2 = datetime(2020, 2, 15, 2, 1)
+    body1 = {'mykey': 'k1', 'mytime': t1, 'otherfield': 'x'}
+    body2 = {'mykey': 'k2', 'mytime': t2, 'otherfield': 'x'}
+
+    controller.emit(body1)
+    controller.emit(Event(body2, 'k2', t2))
+
     controller.terminate()
     result = controller.await_termination()
-    assert len(result) == 1
-    result = result[0]
-    assert result.key == 'k1'
-    assert result.time == datetime(2020, 2, 15, 2, 0)
-    assert result.body == body
+
+    assert len(result) == 2
+
+    result1 = result[0]
+    assert result1.key == 'k1'
+    assert result1.time == t1
+    assert result1.body == body1
+
+    result2 = result[1]
+    assert result2.key == 'k2'
+    assert result2.time == t2
+    assert result2.body == body2
 
 
 async def async_test_async_metadata_fields():
@@ -1987,7 +2047,7 @@ def test_flow_reuse():
 
 
 def test_flow_to_dict_read_csv():
-    step = ReadCSV('tests/test-with-timestamp-ns.csv', header=True, key_field='k', time_field='t',
+    step = ReadCSV('tests/test-with-timestamp-microsecs.csv', header=True, key_field='k', time_field='t',
                    timestamp_format='%d/%m/%Y %H:%M:%S.%f')
     assert step.to_dict() == {
         'class_name': 'storey.sources.ReadCSV',
@@ -1995,7 +2055,7 @@ def test_flow_to_dict_read_csv():
             'build_dict': False,
             'header': True,
             'key_field': 'k',
-            'paths': 'tests/test-with-timestamp-ns.csv',
+            'paths': 'tests/test-with-timestamp-microsecs.csv',
             'time_field': 't',
             'timestamp_format': '%d/%m/%Y %H:%M:%S.%f',
             'type_inference': True
@@ -2005,13 +2065,14 @@ def test_flow_to_dict_read_csv():
 
 
 def test_flow_to_dict_write_to_parquet():
-    step = WriteToParquet('outfile', columns=['col1', 'col2'], max_events=2)
+    step = WriteToParquet('outdir', columns=['col1', 'col2'], max_events=2)
     assert step.to_dict() == {
         'class_name': 'storey.writers.WriteToParquet',
         'class_args': {
-            'path': 'outfile',
+            'path': 'outdir',
             'columns': ['col1', 'col2'],
-            'max_events': 2
+            'max_events': 2,
+            'flush_after_seconds': 60,
         },
         'full_event': False
     }
@@ -2103,13 +2164,13 @@ to_data_frame0.to(reduce1)
 def test_reader_writer_to_code():
     flow = build_flow([
         ReadCSV('mycsv.csv'),
-        WriteToParquet('mypq.pq')
+        WriteToParquet('mypq')
     ])
 
     reconstructed_code = flow.to_code()
     print(reconstructed_code)
     expected = """read_c_s_v0 = ReadCSV(paths='mycsv.csv', header=False, build_dict=False, type_inference=True)
-write_to_parquet0 = WriteToParquet(path='mypq.pq')
+write_to_parquet0 = WriteToParquet(flush_after_seconds=60, path='mypq', max_events=10000)
 
 read_c_s_v0.to(write_to_parquet0)
 """
@@ -2128,7 +2189,7 @@ def test_illegal_step_source_not_first_step():
     df = pd.DataFrame([['hello', 1, 1.5], ['world', 2, 2.5]], columns=['string', 'int', 'float'])
     try:
         build_flow([
-            ReadParquet('tests/test.parquet'),
+            ReadParquet('tests'),
             DataframeSource(df),
             Reduce([], append_and_return),
         ]).run()

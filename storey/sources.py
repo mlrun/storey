@@ -63,11 +63,11 @@ class FlowControllerBase:
             if key:
                 event.key = key
             elif self._key_field:
-                event.key = get_key_from_data(event, self._key_field)
+                event.key = get_key_from_data(event.body, self._key_field)
             if event_time:
                 event.time = event_time
             elif self._time_field:
-                event.time = event[self._time_field]
+                event.time = event.body[self._time_field]
         else:
             if not key and self._key_field:
                 key = get_key_from_data(element, self._key_field)
@@ -370,7 +370,6 @@ class AsyncSource(Flow):
 
 
 class _IterableSource(Flow):
-
     _legal_first_step = True
 
     def __init__(self, **kwargs):
@@ -668,6 +667,7 @@ class ReadParquet(DataframeSource):
     :parameter paths: paths to Parquet files
     :parameter columns : list, default=None. If not None, only these columns will be read from the file.
     """
+
     def __init__(self, paths: Union[str, Iterable[str]], columns=None, **kwargs):
         if isinstance(paths, str):
             paths = [paths]

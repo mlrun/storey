@@ -104,13 +104,16 @@ def _split_path(path):
 
 
 def url_to_file_system(url, storage_options):
-    parsed_url = urlparse(url)
-    schema = parsed_url.scheme.lower()
-    load_fs_dependencies(schema)
+    schema = ""
+    if "://" in url:
+        parsed_url = urlparse(url)
+        schema = parsed_url.scheme.lower()
+        load_fs_dependencies(schema)
+        url = parsed_url.path
     if storage_options:
-        return fsspec.filesystem(schema, **storage_options), parsed_url.path
+        return fsspec.filesystem(schema, **storage_options), url
     else:
-        return fsspec.filesystem(schema), parsed_url.path
+        return fsspec.filesystem(schema), url
 
 
 def load_fs_dependencies(schema):
