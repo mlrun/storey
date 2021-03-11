@@ -140,7 +140,7 @@ class Source(Flow):
     for use from inside an async context.
 
     :param buffer_size: size of the incoming event buffer. Defaults to 1024.
-    :param key_field: Field to extract and use as the key. Optional.
+    :param key_field: Field to extract and use as the key. Optional. Can be list of keys
     :param time_field: Field to extract and use as the time. Optional.
     :param name: Name of this step, as it should appear in logs. Defaults to class name (Source).
     :type name: string
@@ -149,8 +149,8 @@ class Source(Flow):
     """
     _legal_first_step = True
 
-    def __init__(self, buffer_size: Optional[int] = None, key_field: Optional[Union[str, List[str]]] = None, time_field: Optional[str] = None,
-                 **kwargs):
+    def __init__(self, buffer_size: Optional[int] = None, key_field: Optional[Union[str, List[str]]] = None,
+                 time_field: Optional[str] = None, **kwargs):
         if buffer_size is None:
             buffer_size = 1024
         else:
@@ -557,7 +557,7 @@ class ReadCSV(_IterableSource):
                                 element = {}
                                 for i in range(len(parsed_line)):
                                     element[header[i]] = parsed_line[i]
-                        if self._key_field: #<----- here
+                        if self._key_field:
                             key_field = self._key_field
                             if self._with_header:
                                 if isinstance(self._key_field, str):
@@ -569,9 +569,7 @@ class ReadCSV(_IterableSource):
                                             key_field.append(field_name_to_index[key_f])
                                         else:
                                             key_field.append(key_f)
-                            #call here the method
                             key = get_key_from_data(parsed_line, key_field)
-#                            key = parsed_line[key_field]
                         if self._time_field:
                             time_field = self._time_field
                             if self._with_header and isinstance(time_field, str):
@@ -579,7 +577,7 @@ class ReadCSV(_IterableSource):
                             time_as_datetime = parsed_line[time_field]
                         else:
                             time_as_datetime = datetime.now()
-                        self._event_buffer.put(Event(element, key=key, time=time_as_datetime)) #change needs to be done here as well
+                        self._event_buffer.put(Event(element, key=key, time=time_as_datetime))
         except BaseException as ex:
             self._event_buffer.put(ex)
         self._event_buffer.put(_termination_obj)
@@ -646,11 +644,6 @@ class DataframeSource(_IterableSource):
                     body[df.index.names[0]] = index
 
                 key = get_key_from_data(body, self._key_field)
-                # if self._key_field:
-                #     if isinstance(self._key_field, list): # add hash
-                #         key = body[self._key_field[0]] + "." + body[self._key_field[1]]
-                #     else:
-                #         key = body[self._key_field]
                 time = None
                 if self._time_field:
                     time = body[self._time_field]
