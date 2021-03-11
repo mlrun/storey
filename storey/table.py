@@ -1,6 +1,7 @@
 from typing import List
 import copy
 import asyncio
+import time
 from datetime import datetime
 from .drivers import Driver
 from .utils import _split_path
@@ -19,7 +20,7 @@ class Table:
      """
 
     def __init__(self, table_path: str, storage: Driver, partitioned_by_key: bool = True, cache_size: int = 10000,
-                 flush_interval_milli: int = 1000, max_updates_in_flight: int = 8):
+                 flush_interval_milli: int = 10000, max_updates_in_flight: int = 8):
         self._container, self._table_path = _split_path(table_path)
         self._storage = storage
         self._partitioned_by_key = partitioned_by_key
@@ -93,7 +94,7 @@ class Table:
         if not self._schema:
             await self._get_or_save_schema()
         cache_item = self._get_aggregations_attrs(key)
-        cache_item.last_changed = datetime.now().timestamp()
+        cache_item.last_changed = time.monotonic()
         cache_item.aggregate(data, timestamp)
 
     async def _get_features(self, key, timestamp):
@@ -214,7 +215,7 @@ class Table:
     def _set_aggregations_attrs(self, key, element):
         if key in self._attrs_cache:
             self._attrs_cache[key].aggregations = element
-            self._attrs_cache[key].last_changed = datetime.now().timestamp()
+            self._attrs_cache[key].last_changed = time.monotonic()
         else:
             if self._flush_task is None and self._flush_interval_milli > 0:
                 self._flush_task = asyncio.get_running_loop().create_task(self._flush_worker())
@@ -229,7 +230,7 @@ class Table:
     def _set_static_attrs(self, key, value):
         if key in self._attrs_cache:
             self._attrs_cache[key].static_attrs = value
-            self._attrs_cache[key].last_changed = datetime.now().timestamp()
+            self._attrs_cache[key].last_changed = time.monotonic()
         else:
             self._attrs_cache[key] = _CacheElement(value, None)
             try:
@@ -259,8 +260,7 @@ class Table:
 
     async def _flush_worker(self):
         while not self._terminated:
-            current_time = datetime.now().timestamp()
-            last_flush = current_time - (self._flush_interval_milli * 1000)
+            last_flush = time.monotonic() - (self._flush_interval_milli * 1000)
             for key, item in self._attrs_cache.items():
                 if item.last_change > last_flush:
                     await self._persist(_PersistJob(key, None, None))
@@ -322,7 +322,7 @@ class Table:
     async def _terminate(self):
         if self._q:
             self._terminated = True
-            last_flush = datetime.now().timestamp() - (self._flush_interval_milli * 1000)
+            last_flush = time.monotonic() - (self._flush_interval_milli * 1000)
             for key, item in self._attrs_cache.items():
                 if item.last_change > last_flush:
                     await self._persist(_PersistJob(key, None, None))
@@ -373,7 +373,7 @@ class _CacheElement:
     def __init__(self, static_attrs, aggregations):
         self.static_attrs = static_attrs
         self.aggregations = aggregations
-        self.last_change = datetime.now().timestamp()
+        self.last_change = time.monotonic()
 
 
 class ReadOnlyAggregatedStoreElement:
