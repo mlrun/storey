@@ -9,7 +9,7 @@ from .aggregation_utils import is_raw_aggregate, get_virtual_aggregation_func, g
     get_all_raw_aggregates_with_hidden
 
 
-class Table():
+class Table:
     """Table object, represents a single table in a specific storage.
 
     :param table_path: Path to the table in the storage.
@@ -19,7 +19,7 @@ class Table():
      """
 
     def __init__(self, table_path: str, storage: Driver, partitioned_by_key: bool = True, cache_size: int = 10000,
-                 flush_interval_milli: int = 1000, max_updates_in_flight: int = 8):
+                 flush_interval_milli: int = 10000, max_updates_in_flight: int = 8):
         self._container, self._table_path = _split_path(table_path)
         self._storage = storage
         self._partitioned_by_key = partitioned_by_key
@@ -33,8 +33,8 @@ class Table():
         self._pending_by_key = {}
         self._flush_interval_milli = flush_interval_milli
         self._cache_size = cache_size
-        self._terminated = False
         self._flush_task = None
+        self._terminated = False
 
     def __str__(self):
         return f'{self._container}/{self._table_path}'
@@ -320,10 +320,13 @@ class Table():
             raise ex
 
     async def _terminate(self):
-        if not self._terminated and self._q:
+        if self._q:
             self._terminated = True
-            for key in self._attrs_cache.keys():
-                await self._persist(_PersistJob(key, None, None))
+            last_flush = datetime.now().timestamp() - (self._flush_interval_milli * 1000)
+            for key, item in self._attrs_cache.items():
+                if item.last_change > last_flush:
+                    await self._persist(_PersistJob(key, None, None))
+
             await self._q.put(_termination_obj)
             await self._worker_awaitable
             self._q = None
