@@ -63,11 +63,11 @@ class FlowControllerBase:
             if key:
                 event.key = key
             elif self._key_field:
-                event.key = event[self._key_field]
+                event.key = event.body[self._key_field]
             if event_time:
                 event.time = event_time
             elif self._time_field:
-                event.time = event[self._time_field]
+                event.time = event.body[self._time_field]
         else:
             if not key and self._key_field:
                 key = element[self._key_field]
