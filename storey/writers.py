@@ -436,11 +436,14 @@ class WriteToTSDB(_Batching, _Writer):
         _Writer.__init__(self, columns, infer_columns_from_data, index_cols=new_index_cols)
         parts = urlparse(path)
         self._path = parts.path
+        container = parts.netloc
+        if not parts.scheme:
+            container, self._path = _split_path(self._path)
         self._rate = rate
         self._aggr = aggr
         self.aggr_granularity = aggr_granularity
         self._created = False
-        self._frames_client = frames_client or frames.Client(address=v3io_frames, token=access_key, container=parts.netloc)
+        self._frames_client = frames_client or frames.Client(address=v3io_frames, token=access_key, container=container)
 
     def _init(self):
         _Batching._init(self)
