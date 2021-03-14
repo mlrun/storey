@@ -1,15 +1,16 @@
 import pandas as pd
-from typing import Optional, List
+from typing import Optional, List, Union
 
 from .flow import _termination_obj, Flow
+from .utils import hash_list
 
 
 class ReduceToDataFrame(Flow):
     """Builds a pandas DataFrame from events and returns that DataFrame on flow termination.
 
-    :param index: Name of the column to be used as index. Optional. If not set, DataFrame will be range indexed.
+    :param index: Name of the column(s) to be used as index. Optional. If not set, DataFrame will be range indexed.
     :param columns: List of column names to be passed as-is to the DataFrame constructor. Optional.
-    :param insert_key_column_as: Name of the column to be inserted for event keys. Optional.
+    :param insert_key_column_as: Name of the column(s) to be inserted for event keys. Optional.
         If not set, event keys will not be inserted into the DataFrame.
     :param insert_time_column_as: Name of the column to be inserted for event times. Optional.
         If not set, event times will not be inserted into the DataFrame.
@@ -20,7 +21,8 @@ class ReduceToDataFrame(Flow):
 
     """
 
-    def __init__(self, index: Optional[str] = None, columns: Optional[List[str]] = None, insert_key_column_as: Optional[str] = None,
+    def __init__(self, index: Optional[Union[str, List[str]]] = None, columns: Optional[List[str]] = None,
+                 insert_key_column_as: Optional[Union[str, List[str]]] = None,
                  insert_time_column_as: Optional[str] = None, insert_id_column_as: Optional[str] = None, **kwargs):
         super().__init__(**kwargs)
         self._index = index
@@ -44,13 +46,27 @@ class ReduceToDataFrame(Flow):
         if event is _termination_obj:
             df = pd.DataFrame(self._data, columns=self._columns)
             if self._insert_key_column_as:
-                df[self._insert_key_column_as] = self._key_column
+                if isinstance(self._insert_key_column_as, list):
+                    if len(self._insert_key_column_as) > 2:
+                        key = self._insert_key_column_as[0] + "." + hash_list(self._insert_key_column_as[1:])
+                    else:
+                        key = self._insert_key_column_as[0] + "." + self._insert_key_column_as[1]
+                else:
+                    key = self._insert_key_column_as
+                df[key] = self._key_column
             if self._insert_time_column_as:
                 df[self._insert_time_column_as] = self._time_column
             if self._insert_id_column_as:
                 df[self._insert_id_column_as] = self._id_column
             if self._index:
-                df.set_index(self._index, inplace=True)
+                if isinstance(self._index, list):
+                    if len(self._index) > 2:
+                        ind = self._index[0] + "." + hash_list(self._index[1:])
+                    else:
+                        ind = self._index[0] + "." + self._index[1]
+                else:
+                    ind = self._index
+                df.set_index(ind, inplace=True)
             return df
         else:
             body = event.body

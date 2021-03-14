@@ -11,7 +11,8 @@ import v3io.aio.dataplane
 import v3io_frames as frames
 
 from storey import Filter, JoinWithV3IOTable, SendToHttp, Map, Reduce, Source, HttpRequest, build_flow, \
-    WriteToV3IOStream, V3ioDriver, WriteToTSDB, Table, JoinWithTable, MapWithState, WriteToTable, DataframeSource, ReadCSV
+    WriteToV3IOStream, V3ioDriver, WriteToTSDB, Table, JoinWithTable, MapWithState, WriteToTable, DataframeSource, ReadCSV, \
+    ReduceToDataFrame
 from storey.utils import hash_list
 from .integration_test_utils import V3ioHeaders, append_return, test_base_time, setup_kv_teardown_test, setup_teardown_test, \
     setup_stream_teardown_test
@@ -418,16 +419,27 @@ def test_write_multiple_keys_to_v3io_from_df(setup_teardown_test):
         }
     )
 
+    keys = ['first_name', 'last_name']
     controller = build_flow([
-        DataframeSource(data, key_field=['first_name', 'last_name']),
+        DataframeSource(data, key_field=keys),
         WriteToTable(table),
+        ReduceToDataFrame(index=keys, insert_key_column_as=keys)
     ]).run()
-    controller.await_termination()
+    df = controller.await_termination()
+    expected = pd.DataFrame(
+        {
+            "first_name": ["moshe", "yosi"],
+            "last_name": ["cohen", "levi"],
+            "city": ["tel aviv", "ramat gan"],
+            "first_name.last_name": ["moshe.cohen", "yosi.levi"]
+        }
+    )
+
+    expected.set_index("first_name.last_name", inplace=True)
+    assert df.equals(expected), f"{df}\n!=\n{expected}"
 
     response = asyncio.run(get_kv_item(setup_teardown_test, ['moshe', 'cohen']))
-
     expected = {'city': 'tel aviv', 'first_name': 'moshe', 'last_name': 'cohen'}
-
     assert response.status_code == 200
     assert expected == response.output.item
 
