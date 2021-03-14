@@ -1,7 +1,7 @@
 import base64
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 import v3io
@@ -357,6 +357,8 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
             secs = int(timestamp)
             nanosecs = int((timestamp - secs) * 1e+9)
             return f'{secs}:{nanosecs}'
+        elif isinstance(value, timedelta):
+            return str(value.value)
         else:
             raise V3ioError(f'Type {type(value)} in UpdateItem request is not supported')
 
