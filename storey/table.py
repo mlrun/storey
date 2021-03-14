@@ -61,8 +61,7 @@ class Table:
                 self._update_static_attrs(key, additional_data)
 
     async def _get_or_load_static_attributes_by_key(self, key, attributes='*'):
-        if self._flush_task is None and self._flush_interval_milli > 0:
-            self._flush_task = asyncio.get_running_loop().create_task(self._flush_worker())
+        self._init_flush_task()
         attrs = self._get_static_attrs(key)
         if not attrs:
             res = await self._storage._load_by_key(self._container, self._table_path, key, attributes)
@@ -87,6 +86,10 @@ class Table:
         self._use_windows_from_schema = use_windows_from_schema
         self._aggregates = aggregates
 
+    def _init_flush_task(self):
+        if self._flush_task is None and self._flush_interval_milli > 0:
+            self._flush_task = asyncio.get_running_loop().create_task(self._flush_worker())
+
     async def close(self):
         await self._storage.close()
 
@@ -102,14 +105,6 @@ class Table:
             await self._get_or_save_schema()
 
         return self._get_aggregations_attrs(key).get_features(timestamp)
-
-    async def _get_or_load_aggregations_by_key(self, key, timestamp=None):
-        if self._aggregations_read_only or not self._get_aggregations_attrs(key):
-            # Try load from the store, and create a new one only if the key really is new
-            initial_data = await self._storage._load_aggregates_by_key(self._container, self._table_path, key)
-            self._set_aggregations_attrs(key, self._new_aggregated_store_element()(key, self._aggregates, timestamp, initial_data))
-
-        return self._get_aggregations_attrs(key)
 
     def _new_aggregated_store_element(self):
         if self._aggregations_read_only:
@@ -217,8 +212,7 @@ class Table:
             self._attrs_cache[key].aggregations = element
             self._attrs_cache[key].last_changed = time.monotonic()
         else:
-            if self._flush_task is None and self._flush_interval_milli > 0:
-                self._flush_task = asyncio.get_running_loop().create_task(self._flush_worker())
+            self._init_flush_task()
             self._attrs_cache[key] = _CacheElement({}, element)
 
     def _get_static_attrs(self, key):
@@ -235,8 +229,7 @@ class Table:
             self._attrs_cache[key] = _CacheElement(value, None)
             try:
                 # static attrs can be set before creating a running loop
-                if self._flush_task is None and self._flush_interval_milli > 0:
-                    self._flush_task = asyncio.get_running_loop().create_task(self._flush_worker())
+                self._init_flush_task()
             except RuntimeError:
                 pass
 
@@ -266,7 +259,7 @@ class Table:
                     await self._persist(_PersistJob(key, None, None))
             await asyncio.sleep(self._flush_interval_milli / 1000)
 
-    async def _worker(self):
+    async def _persist_worker(self):
         task = None
         received_job_count = 0
         self_sent_jobs = {}
@@ -335,7 +328,7 @@ class Table:
         if not self._q:
             self._terminated = False
             self._q = asyncio.queues.Queue(self._max_updates_in_flight)
-            self._worker_awaitable = asyncio.get_running_loop().create_task(self._worker())
+            self._worker_awaitable = asyncio.get_running_loop().create_task(self._persist_worker())
 
         if self._worker_awaitable.done():
             await self._worker_awaitable
