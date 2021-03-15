@@ -47,26 +47,17 @@ class ReduceToDataFrame(Flow):
             df = pd.DataFrame(self._data, columns=self._columns)
             if self._insert_key_column_as:
                 if isinstance(self._insert_key_column_as, list):
-                    if len(self._insert_key_column_as) > 2:
-                        key = self._insert_key_column_as[0] + "." + hash_list(self._insert_key_column_as[1:])
-                    else:
-                        key = self._insert_key_column_as[0] + "." + self._insert_key_column_as[1]
+                    split_key_columns = [item.split('.') for item in self._key_column]
+                    for index, key in enumerate(self._insert_key_column_as):
+                        df[key] = [row[index] for row in split_key_columns]
                 else:
-                    key = self._insert_key_column_as
-                df[key] = self._key_column
+                    df.set_index(self._index, inplace=True)
             if self._insert_time_column_as:
                 df[self._insert_time_column_as] = self._time_column
             if self._insert_id_column_as:
                 df[self._insert_id_column_as] = self._id_column
             if self._index:
-                if isinstance(self._index, list):
-                    if len(self._index) > 2:
-                        ind = self._index[0] + "." + hash_list(self._index[1:])
-                    else:
-                        ind = self._index[0] + "." + self._index[1]
-                else:
-                    ind = self._index
-                df.set_index(ind, inplace=True)
+                df.set_index(self._index, inplace=True)
             return df
         else:
             body = event.body

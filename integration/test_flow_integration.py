@@ -426,17 +426,9 @@ def test_write_multiple_keys_to_v3io_from_df(setup_teardown_test):
         ReduceToDataFrame(index=keys, insert_key_column_as=keys)
     ]).run()
     df = controller.await_termination()
-    expected = pd.DataFrame(
-        {
-            "first_name": ["moshe", "yosi"],
-            "last_name": ["cohen", "levi"],
-            "city": ["tel aviv", "ramat gan"],
-            "first_name.last_name": ["moshe.cohen", "yosi.levi"]
-        }
-    )
 
-    expected.set_index("first_name.last_name", inplace=True)
-    assert df.equals(expected), f"{df}\n!=\n{expected}"
+    data.set_index(keys, inplace=True)
+    assert df.equals(data), f"{df}\n!=\n{data}"
 
     response = asyncio.run(get_kv_item(setup_teardown_test, ['moshe', 'cohen']))
     expected = {'city': 'tel aviv', 'first_name': 'moshe', 'last_name': 'cohen'}
