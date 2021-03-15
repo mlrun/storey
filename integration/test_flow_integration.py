@@ -403,3 +403,15 @@ def test_writing_int_key(setup_teardown_test):
     ]).run()
     controller.await_termination()
 
+def test_writing_timedelta_key(setup_teardown_test):
+    table = Table(setup_teardown_test, V3ioDriver())
+
+    df = pd.DataFrame({"key": ['a', 'b'], "timedelta": [pd.Timedelta("-1 days 2 min 3us"), pd.Timedelta("P0DT0H1M0S")]})
+
+    controller = build_flow([
+        DataframeSource(df, key_field='key'),
+        WriteToTable(table),
+
+    ]).run()
+    controller.await_termination()
+
