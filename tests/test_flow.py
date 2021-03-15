@@ -734,8 +734,7 @@ def test_async_awaitable_result_error_in_async_downstream():
     asyncio.run(async_test_async_awaitable_result_error_in_async_downstream())
 
 
-# TODO
-def _awaitable_result_error_in_by_key_async_downstream():
+def test_awaitable_result_error_in_by_key_async_downstream():
     class DriverBoom(Driver):
         async def _save_key(self, container, table_path, key, aggr_item, partitioned_by_key, additional_data):
             raise ValueError('boom')
@@ -746,7 +745,9 @@ def _awaitable_result_error_in_by_key_async_downstream():
         Complete()
     ]).run()
     try:
-        controller.emit(1).await_result()
+        controller.emit({'col1': 0}, 'key').await_result()
+        controller.terminate()
+        controller.await_termination()
         assert False
     except ValueError:
         pass
@@ -2160,7 +2161,7 @@ def test_non_existing_key_query_by_key():
     df = pd.DataFrame([['katya', 'green'], ['dina', 'blue']], columns=['name', 'color'])
     table = Table('table', NoopDriver())
     controller = build_flow([
-        DataframeSource(df),
+        DataframeSource(df, key_field='name'),
         WriteToTable(table),
     ]).run()
     controller.await_termination()
@@ -2170,6 +2171,6 @@ def test_non_existing_key_query_by_key():
         QueryByKey(["color"], table, key="name"),
     ]).run()
 
-    controller.emit({'nameeeee': 'katya'})
+    controller.emit({'nameeeee': 'katya'}, 'katya')
     controller.terminate()
     controller.await_termination()

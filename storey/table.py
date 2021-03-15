@@ -20,7 +20,7 @@ class Table:
      """
 
     def __init__(self, table_path: str, storage: Driver, partitioned_by_key: bool = True, cache_size: int = 10000,
-                 flush_interval_milli: int = 10000, max_updates_in_flight: int = 8):
+                 flush_interval_milli: int = 0, max_updates_in_flight: int = 8):
         self._container, self._table_path = _split_path(table_path)
         self._storage = storage
         self._partitioned_by_key = partitioned_by_key
@@ -36,6 +36,7 @@ class Table:
         self._cache_size = cache_size
         self._flush_task = None
         self._terminated = False
+        self._flush_exception = None
 
     def __str__(self):
         return f'{self._container}/{self._table_path}'
@@ -49,6 +50,8 @@ class Table:
             self._set_static_attrs(key, data)
 
     async def _lazy_load_key_with_aggregates(self, key, timestamp=None):
+        if self._flush_exception is not None:
+            raise self._flush_exception
         if self._aggregations_read_only or not self._get_aggregations_attrs(key):
             # Try load from the store, and create a new one only if the key really is new
             aggregate_initial_data, additional_data = await self._storage._load_aggregates_by_key(self._container, self._table_path, key)
@@ -61,6 +64,8 @@ class Table:
                 self._update_static_attrs(key, additional_data)
 
     async def _get_or_load_static_attributes_by_key(self, key, attributes='*'):
+        if self._flush_exception is not None:
+            raise self._flush_exception
         self._init_flush_task()
         attrs = self._get_static_attrs(key)
         if not attrs:
@@ -71,7 +76,7 @@ class Table:
                 self._set_static_attrs(key, {})
         return self._get_static_attrs(key)
 
-    async def _persist_key(self, key, event_data_to_persist):
+    async def _internal_persist_key(self, key, event_data_to_persist):
         aggr_by_key = self._get_aggregations_attrs(key)
         additional_data_persist = self._get_static_attrs(key)
         if event_data_to_persist:
@@ -88,12 +93,16 @@ class Table:
 
     def _init_flush_task(self):
         if self._flush_task is None and self._flush_interval_milli > 0:
-            self._flush_task = asyncio.get_running_loop().create_task(self._flush_worker())
+            self._flush_task = asyncio.get_event_loop().create_task(self._flush_worker())
 
     async def close(self):
+        if self._flush_exception is not None:
+            raise self._flush_exception
         await self._storage.close()
 
     async def _aggregate(self, key, data, timestamp):
+        if self._flush_exception is not None:
+            raise self._flush_exception
         if not self._schema:
             await self._get_or_save_schema()
         cache_item = self._get_aggregations_attrs(key)
@@ -101,6 +110,8 @@ class Table:
         cache_item.aggregate(data, timestamp)
 
     async def _get_features(self, key, timestamp):
+        if self._flush_exception is not None:
+            raise self._flush_exception
         if not self._schema:
             await self._get_or_save_schema()
 
@@ -185,9 +196,6 @@ class Table:
 
         return should_update
 
-    async def _save_aggregations_by_key(self, key):
-        await self._storage._save_key(self._container, self._table_path, key, self._get_aggregations_attrs(key))
-
     def _aggregates_to_schema(self):
         schema = {}
         for aggr in self._aggregates:
@@ -252,12 +260,16 @@ class Table:
         return self._get_static_attrs(key)
 
     async def _flush_worker(self):
-        while not self._terminated:
-            last_flush = time.monotonic() - (self._flush_interval_milli * 1000)
-            for key, item in self._attrs_cache.items():
-                if item.last_change > last_flush:
-                    await self._persist(_PersistJob(key, None, None))
-            await asyncio.sleep(self._flush_interval_milli / 1000)
+        try:
+            while not self._terminated:
+                last_flush = time.monotonic() - (self._flush_interval_milli * 1000)
+                for key, item in self._attrs_cache.items():
+                    if item.last_change > last_flush:
+                        await self._persist(_PersistJob(key, None, None))
+                await asyncio.sleep(self._flush_interval_milli / 1000)
+        except BaseException as ex:
+            if ex is isinstance(ex, asyncio.CancelledError):
+                self._flush_exception = ex
 
     async def _persist_worker(self):
         task = None
@@ -280,7 +292,7 @@ class Table:
                         for key, pending_event in self._pending_by_key.items():
                             if pending_event.pending and not pending_event.in_flight:
                                 for job in pending_event.pending:
-                                    resp = await self._persist_key(key, job.data)
+                                    resp = await self._internal_persist_key(key, job.data)
                                     if job.callback:
                                         await job.callback(job.extra_data, resp)
                         break
@@ -313,18 +325,24 @@ class Table:
             raise ex
 
     async def _terminate(self):
-        if self._q:
-            self._terminated = True
-            last_flush = time.monotonic() - (self._flush_interval_milli * 1000)
-            for key, item in self._attrs_cache.items():
-                if item.last_change > last_flush:
-                    await self._persist(_PersistJob(key, None, None))
+        if self._flush_exception is not None:
+            raise self._flush_exception
 
-            await self._q.put(_termination_obj)
-            await self._worker_awaitable
-            self._q = None
+        self._terminated = True
+        last_flush = time.monotonic() - (self._flush_interval_milli * 1000)
+        for key, item in self._attrs_cache.items():
+            if item.last_change > last_flush:
+                await self._persist(_PersistJob(key, None, None))
+
+        await self._q.put(_termination_obj)
+        await self._worker_awaitable
+        self._q = None
+        self._flush_task = None
+        self._flush_exception = None
 
     async def _persist(self, job):
+        if self._flush_exception is not None:
+            raise self._flush_exception
         if not self._q:
             self._terminated = False
             self._q = asyncio.queues.Queue(self._max_updates_in_flight)
@@ -332,7 +350,7 @@ class Table:
 
         if self._worker_awaitable.done():
             await self._worker_awaitable
-            raise FlowError("ConcurrentByKeyJobExecution worker has already terminated")
+            raise FlowError("Persist worker has already terminated")
         else:
             # Initializing the key with 2 lists. One for pending requests and one for requests that an update request has been issued for.
             if job.key not in self._pending_by_key:
@@ -350,9 +368,10 @@ class Table:
 
     async def _safe_process_events(self, jobs):
         try:
-            # TODO only last??
+            # TODO using only last event might not work correctly if
+            #  there are different non aggregation attrs in each event
             job = jobs[-1]
-            return await self._persist_key(job.key, job.data)
+            return await self._internal_persist_key(job.key, job.data)
         except BaseException as ex:
             for job in jobs:
                 if job.extra_data and job.extra_data._awaitable_result:
