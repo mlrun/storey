@@ -1,7 +1,8 @@
 import base64
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
+from typing import Optional
 
 import v3io
 import v3io.aio.dataplane
@@ -11,6 +12,8 @@ from .utils import schema_file_name
 
 
 class Driver:
+    """Abstract class for database connection"""
+
     async def _save_schema(self, container, table_path, schema):
         pass
 
@@ -35,6 +38,13 @@ class NoopDriver(Driver):
 
 
 class NeedsV3ioAccess:
+    """Checks that params for access to V3IO exist and are legal
+
+    :param webapi: URL to the web API (https or http). If not set, the V3IO_API environment variable will be used.
+    :param access_key: V3IO access key. If not set, the V3IO_ACCESS_KEY environment variable will be used.
+
+    """
+
     def __init__(self, webapi=None, access_key=None):
         webapi = webapi or os.getenv('V3IO_API')
         if not webapi:
@@ -56,12 +66,10 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
     """
     Database connection to V3IO.
     :param webapi: URL to the web API (https or http). If not set, the V3IO_API environment variable will be used.
-    :type webapi: string
     :param access_key: V3IO access key. If not set, the V3IO_ACCESS_KEY environment variable will be used.
-    :type access_key: string
     """
 
-    def __init__(self, webapi=None, access_key=None):
+    def __init__(self, webapi: Optional[str] = None, access_key: Optional[str] = None):
         NeedsV3ioAccess.__init__(self, webapi, access_key)
         self._v3io_client = None
         self._closed = True
@@ -79,6 +87,7 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
             self._v3io_client = v3io.aio.dataplane.Client(endpoint=self._webapi_url, access_key=self._access_key)
 
     async def close(self):
+        """Closes database connection to V3IO"""
         if self._v3io_client and not self._closed:
             self._closed = True
             await self._v3io_client.close()
@@ -127,6 +136,7 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
         if not update_expression:
             return
 
+        key = str(key)
         response = await self._v3io_client.kv.update(container, table_path, key, expression=update_expression,
                                                      condition=condition_expression,
                                                      raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
@@ -151,7 +161,9 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
 
         if should_raise_error:
             raise V3ioError(
-                f'Failed to save aggregation for {table_path}/{key}. Response status code was {response.status_code}: {response.body}')
+                f'Failed to save aggregation for {table_path}/{key}. Response status code was {response.status_code}: {response.body}\n'
+                f'Update expression was: {update_expression}'
+            )
 
     async def _fetch_state_by_key(self, aggr_item, container, table_path, key):
         attributes_to_get = self._get_time_attributes_from_aggregations(aggr_item)
@@ -345,6 +357,8 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
             secs = int(timestamp)
             nanosecs = int((timestamp - secs) * 1e+9)
             return f'{secs}:{nanosecs}'
+        elif isinstance(value, timedelta):
+            return str(value.value)
         else:
             raise V3ioError(f'Type {type(value)} in UpdateItem request is not supported')
 

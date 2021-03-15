@@ -11,14 +11,13 @@ from .utils import _split_path
 
 
 class Table:
-    """
-        Table object, represents a single table in a specific storage.
+    """Table object, represents a single table in a specific storage.
 
-        :param table_path: Path to the table in the storage.
-        :param storage: Storage driver
-        :param partitioned_by_key: Whether that data is partitioned by the key or not, based on this indication storage drivers
-         can optimize writes. Defaults to True.
-        """
+    :param table_path: Path to the table in the storage.
+    :param storage: Storage driver
+    :param partitioned_by_key: Whether that data is partitioned by the key or not, based on this indication storage drivers
+     can optimize writes. Defaults to True.
+     """
 
     def __init__(self, table_path: str, storage: Driver, partitioned_by_key: bool = True):
         self._container, self._table_path = _split_path(table_path)
@@ -114,15 +113,6 @@ class Table:
 
         async with self._get_lock(key):
             return self._get_aggregations_attrs(key).get_features(timestamp)
-
-    async def _get_or_load_aggregations_by_key(self, key, timestamp=None):
-        async with self._get_lock(key):
-            if self._aggregations_read_only or not self._get_aggregations_attrs(key):
-                # Try load from the store, and create a new one only if the key really is new
-                initial_data = await self._storage._load_aggregates_by_key(self._container, self._table_path, key)
-                self._set_aggregations_attrs(key, self._new_aggregated_store_element()(key, self._aggregates, timestamp, initial_data))
-
-            return self._get_aggregations_attrs(key)
 
     def _new_aggregated_store_element(self):
         if self._aggregations_read_only:
@@ -250,9 +240,18 @@ class Table:
         return self._attrs_cache.keys()
 
     def __setitem__(self, key, value):
+        """Sets attribute in table.
+
+        :param key: attribute name
+        :param value: attribute value
+         """
         self._set_static_attrs(key, value)
 
     def __getitem__(self, key):
+        """Gets attribute from table.
+
+        :param key: attribute to get
+         """
         return self._get_static_attrs(key)
 
 
@@ -316,6 +315,8 @@ class ReadOnlyAggregatedStoreElement:
         for aggregation_metadata in self.aggregates:
             if aggregation_metadata.should_aggregate(data):
                 curr_value = aggregation_metadata.value_extractor(data)
+                if curr_value is None:
+                    continue
                 for aggr in aggregation_metadata.get_all_raw_aggregates():
                     self.aggregation_buckets[f'{aggregation_metadata.name}_{aggr}'].aggregate(timestamp, curr_value)
 
@@ -897,6 +898,8 @@ class AggregatedStoreElement:
         for aggregation_metadata in self.aggregates:
             if aggregation_metadata.should_aggregate(data):
                 curr_value = aggregation_metadata.value_extractor(data)
+                if curr_value is None:
+                    continue
                 # for aggr in aggregation_metadata.get_all_raw_aggregates():
                 self.aggregation_buckets[f'{aggregation_metadata.name}'].aggregate(timestamp, curr_value)
 
@@ -1017,7 +1020,7 @@ class AggregationBuckets:
                 self.initialize_column()
                 self._need_to_recalculate_pre_aggregates = True
             else:
-                # Updating the pre aggreagted data per window
+                # Updating the pre-aggregated data per window
                 self.remove_old_values_from_pre_aggregations(advance_to)
                 buckets_to_reuse = self.buckets[:buckets_to_advance]
                 self.buckets = self.buckets[buckets_to_advance:]

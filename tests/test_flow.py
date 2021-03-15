@@ -1,4 +1,5 @@
 import asyncio
+import os
 import queue
 import uuid
 from datetime import datetime
@@ -10,7 +11,7 @@ from aiohttp import InvalidURL
 from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, MapWithState, ReadCSV, Complete, \
     AsyncSource, Choice, \
     Event, Batch, Table, WriteToCSV, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, \
-    WriteToParquet, \
+    WriteToParquet, QueryByKey, \
     WriteToTSDB, Extend, SendToHttp, HttpRequest, WriteToTable, NoopDriver, Driver, Recover, V3ioDriver, ReadParquet
 
 
@@ -132,7 +133,7 @@ def append_and_return(lst, x):
 def test_csv_reader_as_dict_with_key_and_timestamp():
     controller = build_flow([
         ReadCSV('tests/test-with-timestamp.csv', header=True, build_dict=True, key_field='k',
-                timestamp_field='t', timestamp_format='%d/%m/%Y %H:%M:%S'),
+                time_field='t', timestamp_format='%d/%m/%Y %H:%M:%S'),
         Reduce([], append_and_return, full_event=True),
     ]).run()
 
@@ -150,7 +151,7 @@ def test_csv_reader_as_dict_with_key_and_timestamp():
 def test_csv_reader_with_key_and_timestamp():
     controller = build_flow([
         ReadCSV('tests/test-with-timestamp.csv', header=True, key_field='k',
-                timestamp_field='t', timestamp_format='%d/%m/%Y %H:%M:%S'),
+                time_field='t', timestamp_format='%d/%m/%Y %H:%M:%S'),
         Reduce([], append_and_return, full_event=True),
     ]).run()
 
@@ -258,6 +259,54 @@ def test_read_parquet_files():
         {'string': 'hello', 'int': 1, 'float': 1.5}, {'string': 'world', 'int': 2, 'float': 2.5}
     ]
     assert termination_result == expected
+
+
+def test_write_parquet_read_parquet(tmpdir):
+    out_dir = f'{tmpdir}/test_write_parquet_read_parquet/{uuid.uuid4().hex}/'
+    columns = ['my_int', 'my_string']
+    controller = build_flow([
+        Source(),
+        WriteToParquet(out_dir, columns=columns, partition_cols=[])
+    ]).run()
+
+    expected = []
+    for i in range(10):
+        controller.emit([i, f'this is {i}'])
+        expected.append({'my_int': i, 'my_string': f'this is {i}'})
+    controller.terminate()
+    controller.await_termination()
+
+    controller = build_flow([
+        ReadParquet(out_dir),
+        Reduce([], append_and_return),
+    ]).run()
+    read_back_result = controller.await_termination()
+
+    assert read_back_result == expected
+
+
+def test_write_parquet_read_parquet_partitioned(tmpdir):
+    out_dir = f'{tmpdir}/test_write_parquet_read_parquet_partitioned/{uuid.uuid4().hex}/'
+    columns = ['my_int', 'my_string']
+    controller = build_flow([
+        Source(),
+        WriteToParquet(out_dir, partition_cols='my_int', columns=columns)
+    ]).run()
+
+    expected = []
+    for i in range(10):
+        controller.emit([i, f'this is {i}'])
+        expected.append({'my_int': i, 'my_string': f'this is {i}'})
+    controller.terminate()
+    controller.await_termination()
+
+    controller = build_flow([
+        ReadParquet(out_dir),
+        Reduce([], append_and_return),
+    ]).run()
+    read_back_result = controller.await_termination()
+
+    assert read_back_result == expected
 
 
 def test_error_flow():
@@ -581,7 +630,7 @@ def test_awaitable_result():
     ]).run()
 
     for i in range(10):
-        awaitable_result = controller.emit(i, return_awaitable_result=True)
+        awaitable_result = controller.emit(i)
         assert awaitable_result.await_result() == i + 1
     controller.terminate()
     termination_result = controller.await_termination()
@@ -597,7 +646,7 @@ def test_double_completion():
     ]).run()
 
     for i in range(10):
-        awaitable_result = controller.emit(i, return_awaitable_result=True)
+        awaitable_result = controller.emit(i)
         assert awaitable_result.await_result() == i
     controller.terminate()
     termination_result = controller.await_termination()
@@ -613,7 +662,7 @@ async def async_test_async_double_completion():
     ]).run()
 
     for i in range(10):
-        result = await controller.emit(i, await_result=True)
+        result = await controller.emit(i)
         assert result == i
     await controller.terminate()
     termination_result = await controller.await_termination()
@@ -634,7 +683,7 @@ def test_awaitable_result_error():
         Complete()
     ]).run()
 
-    awaitable_result = controller.emit(0, return_awaitable_result=True)
+    awaitable_result = controller.emit(0)
     try:
         awaitable_result.await_result()
         assert False
@@ -652,7 +701,7 @@ async def async_test_async_awaitable_result_error():
         Complete()
     ]).run()
 
-    awaitable_result = controller.emit(0, await_result=True)
+    awaitable_result = controller.emit(0)
     try:
         await awaitable_result
         assert False
@@ -677,7 +726,7 @@ async def async_test_async_source():
     ]).run()
 
     for i in range(10):
-        result = await controller.emit(i, await_result=True)
+        result = await controller.emit(i)
         assert result == i + 1
     await controller.terminate()
     termination_result = await controller.await_termination()
@@ -711,7 +760,7 @@ def test_awaitable_result_error_in_async_downstream():
         Complete()
     ]).run()
     try:
-        controller.emit(1, return_awaitable_result=True).await_result()
+        controller.emit(1).await_result()
         assert False
     except InvalidURL:
         pass
@@ -724,7 +773,7 @@ async def async_test_async_awaitable_result_error_in_async_downstream():
         Complete()
     ]).run()
     try:
-        await controller.emit(1, await_result=True)
+        await controller.emit(1)
         assert False
     except InvalidURL:
         pass
@@ -745,7 +794,7 @@ def test_awaitable_result_error_in_by_key_async_downstream():
         Complete()
     ]).run()
     try:
-        controller.emit(1, return_awaitable_result=True).await_result()
+        controller.emit(1).await_result()
         assert False
     except ValueError:
         pass
@@ -815,7 +864,7 @@ def test_metadata_immutability():
     ]).run()
 
     event = Event('original body', key='original key')
-    result = controller.emit(event, return_awaitable_result=True).await_result()
+    result = controller.emit(event).await_result()
     controller.terminate()
     controller.await_termination()
 
@@ -1477,6 +1526,28 @@ def test_write_to_parquet(tmpdir):
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
 
 
+def test_write_sparse_data_to_parquet(tmpdir):
+    out_dir = f'{tmpdir}/test_write_sparse_data_to_parquet/{uuid.uuid4().hex}'
+    columns = ['my_int', 'my_string']
+    controller = build_flow([
+        Source(),
+        WriteToParquet(out_dir, columns=columns)
+    ]).run()
+
+    expected = []
+    for i in range(10):
+        expected.append({'my_int': i})
+        controller.emit({'my_int': i})
+        expected.append({'my_string': f'this is {i}'})
+        controller.emit({'my_string': f'this is {i}'})
+    expected = pd.DataFrame(expected, columns=columns)
+    controller.terminate()
+    controller.await_termination()
+
+    read_back_df = pd.read_parquet(out_dir, columns=columns)
+    assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+
+
 def test_write_to_parquet_single_file_on_termination(tmpdir):
     out_file = f'{tmpdir}/test_write_to_parquet_single_file_on_termination_{uuid.uuid4().hex}/out.parquet'
     columns = ['my_int', 'my_string']
@@ -1493,12 +1564,13 @@ def test_write_to_parquet_single_file_on_termination(tmpdir):
     controller.terminate()
     controller.await_termination()
 
+    assert os.path.isfile(out_file)
     read_back_df = pd.read_parquet(out_file, columns=columns)
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
 
 
 def test_write_to_parquet_with_metadata(tmpdir):
-    out_file = f'{tmpdir}/test_write_to_parquet_with_metadata{uuid.uuid4().hex}.parquet'
+    out_file = f'{tmpdir}/test_write_to_parquet_with_metadata{uuid.uuid4().hex}/'
     columns = ['event_key', 'my_int', 'my_string']
     controller = build_flow([
         Source(),
@@ -1518,7 +1590,7 @@ def test_write_to_parquet_with_metadata(tmpdir):
 
 
 def test_write_to_parquet_with_indices(tmpdir):
-    out_file = f'{tmpdir}/test_write_to_parquet_with_indices{uuid.uuid4().hex}.parquet'
+    out_file = f'{tmpdir}/test_write_to_parquet_with_indices{uuid.uuid4().hex}'
     controller = build_flow([
         Source(),
         WriteToParquet(out_file, index_cols='event_key=$key', columns=['my_int', 'my_string'])
@@ -1538,11 +1610,34 @@ def test_write_to_parquet_with_indices(tmpdir):
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
 
 
-def test_write_to_parquet_with_inference(tmpdir):
-    out_file = f'{tmpdir}/test_write_to_parquet_with_inference{uuid.uuid4().hex}.parquet'
+def test_write_to_parquet_partition_by_date(tmpdir):
+    out_file = f'{tmpdir}/test_write_to_parquet_partition_by_date{uuid.uuid4().hex}'
     controller = build_flow([
         Source(),
-        WriteToParquet(out_file, index_cols='$key')
+        WriteToParquet(out_file, partition_cols=['$date'], columns=['my_int', 'my_string'])
+    ]).run()
+
+    my_time = datetime(2020, 2, 15)
+
+    expected = []
+    for i in range(10):
+        controller.emit([i, f'this is {i}'], event_time=my_time)
+        expected.append(['2020-02-15', i, f'this is {i}'])
+    columns = ['date', 'my_int', 'my_string']
+    expected = pd.DataFrame(expected, columns=columns, dtype='int64')
+    expected['date'] = expected['date'].astype("category")
+    controller.terminate()
+    controller.await_termination()
+
+    read_back_df = pd.read_parquet(out_file, columns=columns)
+    assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+
+
+def test_write_to_parquet_with_inference(tmpdir):
+    out_dir = f'{tmpdir}/test_write_to_parquet_with_inference{uuid.uuid4().hex}/'
+    controller = build_flow([
+        Source(),
+        WriteToParquet(out_dir, index_cols='$key', partition_cols=[])
     ]).run()
 
     expected = []
@@ -1554,8 +1649,16 @@ def test_write_to_parquet_with_inference(tmpdir):
     controller.terminate()
     controller.await_termination()
 
-    read_back_df = pd.read_parquet(out_file)
+    read_back_df = pd.read_parquet(out_dir)
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+
+
+def test_write_to_parquet_with_inference_error_on_partition_index_collision(tmpdir):
+    try:
+        WriteToParquet('out/', index_cols='$key')
+        assert False
+    except ValueError:
+        pass
 
 
 def test_join_by_key():
@@ -1643,7 +1746,7 @@ def test_write_to_tsdb():
 
     controller = build_flow([
         Source(),
-        WriteToTSDB(path='some/path', time_col='time', index_cols='node', columns=['cpu', 'disk'], rate='1/h',
+        WriteToTSDB(path='container/some/path', time_col='time', index_cols='node', columns=['cpu', 'disk'], rate='1/h',
                     max_events=1,
                     frames_client=mock_frames_client)
     ]).run()
@@ -1660,7 +1763,7 @@ def test_write_to_tsdb():
 
     expected_create = (
         'create', {'if_exists': 1, 'rate': '1/h', 'aggregates': '', 'aggregation_granularity': '', 'backend': 'tsdb',
-                   'table': 'some/path'})
+                   'table': '/some/path'})
     assert mock_frames_client.call_log[0] == expected_create
     i = 0
     for write_call in mock_frames_client.call_log[1:]:
@@ -1670,7 +1773,7 @@ def test_write_to_tsdb():
         res = write_call[1]['dfs']
         assert expected.equals(res), f"result{res}\n!=\nexpected{expected}"
         del write_call[1]['dfs']
-        assert write_call[1] == {'backend': 'tsdb', 'table': 'some/path'}
+        assert write_call[1] == {'backend': 'tsdb', 'table': '/some/path'}
         i += 1
 
 
@@ -1679,7 +1782,7 @@ def test_write_to_tsdb_with_key_index():
 
     controller = build_flow([
         Source(),
-        WriteToTSDB(path='some/path', time_col='time', index_cols='node=$key', columns=['cpu', 'disk'], rate='1/h',
+        WriteToTSDB(path='container/some/path', time_col='time', index_cols='node=$key', columns=['cpu', 'disk'], rate='1/h',
                     max_events=1, frames_client=mock_frames_client)
     ]).run()
 
@@ -1695,7 +1798,7 @@ def test_write_to_tsdb_with_key_index():
 
     expected_create = (
         'create', {'if_exists': 1, 'rate': '1/h', 'aggregates': '', 'aggregation_granularity': '', 'backend': 'tsdb',
-                   'table': 'some/path'})
+                   'table': '/some/path'})
     assert mock_frames_client.call_log[0] == expected_create
     i = 0
     for write_call in mock_frames_client.call_log[1:]:
@@ -1705,7 +1808,7 @@ def test_write_to_tsdb_with_key_index():
         res = write_call[1]['dfs']
         assert expected.equals(res), f"result{res}\n!=\nexpected{expected}"
         del write_call[1]['dfs']
-        assert write_call[1] == {'backend': 'tsdb', 'table': 'some/path'}
+        assert write_call[1] == {'backend': 'tsdb', 'table': '/some/path'}
         i += 1
 
 
@@ -1714,7 +1817,7 @@ def test_write_to_tsdb_with_key_index_and_default_time():
 
     controller = build_flow([
         Source(),
-        WriteToTSDB(path='some/path', index_cols='node=$key', columns=['cpu', 'disk'], rate='1/h',
+        WriteToTSDB(path='container/some/path', index_cols='node=$key', columns=['cpu', 'disk'], rate='1/h',
                     max_events=1, frames_client=mock_frames_client)
     ]).run()
 
@@ -1730,7 +1833,7 @@ def test_write_to_tsdb_with_key_index_and_default_time():
 
     expected_create = (
         'create', {'if_exists': 1, 'rate': '1/h', 'aggregates': '', 'aggregation_granularity': '', 'backend': 'tsdb',
-                   'table': 'some/path'})
+                   'table': '/some/path'})
     assert mock_frames_client.call_log[0] == expected_create
     i = 0
     for write_call in mock_frames_client.call_log[1:]:
@@ -1740,26 +1843,40 @@ def test_write_to_tsdb_with_key_index_and_default_time():
         res = write_call[1]['dfs']
         assert expected.equals(res), f"result{res}\n!=\nexpected{expected}"
         del write_call[1]['dfs']
-        assert write_call[1] == {'backend': 'tsdb', 'table': 'some/path'}
+        assert write_call[1] == {'backend': 'tsdb', 'table': '/some/path'}
         i += 1
 
 
-def test_csv_reader_parquet_write_ns(tmpdir):
-    out_file = f'{tmpdir}/test_csv_reader_parquet_write_ns_{uuid.uuid4().hex}/out.parquet'
+def test_csv_reader_parquet_write_microsecs(tmpdir):
+    out_file = f'{tmpdir}/test_csv_reader_parquet_write_microsecs_{uuid.uuid4().hex}/'
     columns = ['k', 't']
 
+    time_format = '%d/%m/%Y %H:%M:%S.%f'
     controller = build_flow([
-        ReadCSV('tests/test-with-timestamp-ns.csv', header=True, key_field='k',
-                timestamp_field='t', timestamp_format='%d/%m/%Y %H:%M:%S.%f'),
+        ReadCSV('tests/test-with-timestamp-microsecs.csv', header=True, key_field='k',
+                time_field='t', timestamp_format=time_format),
         WriteToParquet(out_file, columns=columns, max_events=2)
     ]).run()
 
-    expected = pd.DataFrame([['m1', "15/02/2020 02:03:04.12345678"], ['m2', "16/02/2020 02:03:04.12345678"]],
+    expected = pd.DataFrame([['m1', datetime.strptime("15/02/2020 02:03:04.123456", time_format)],
+                             ['m2', datetime.strptime("16/02/2020 02:03:04.123456", time_format)]],
                             columns=columns)
     controller.await_termination()
     read_back_df = pd.read_parquet(out_file, columns=columns)
 
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+
+
+def test_csv_reader_bad_timestamp(tmpdir):
+    controller = build_flow([
+        ReadCSV('tests/test-with-timestamp-bad.csv', header=True, key_field='k',
+                time_field='t', timestamp_format='%d/%m/%Y %H:%M:%S.%f')
+    ]).run()
+    try:
+        controller.await_termination()
+        assert False
+    except TypeError:
+        pass
 
 
 def test_error_in_concurrent_by_key_task():
@@ -1770,12 +1887,12 @@ def test_error_in_concurrent_by_key_task():
         WriteToTable(table, columns=['twice_total_activities']),
     ]).run()
 
-    controller.emit({'col1': 0}, 'tal')
+    controller.emit(None)
 
     controller.terminate()
     try:
         controller.await_termination()
-    except KeyError:
+    except TypeError:
         pass
 
 
@@ -1789,7 +1906,7 @@ def test_async_task_error_and_complete():
         Complete()
     ]).run()
 
-    awaitable_result = controller.emit({'col1': 0}, 'tal', return_awaitable_result=True)
+    awaitable_result = controller.emit({'col1': 0}, 'tal')
     try:
         awaitable_result.await_result()
         assert False
@@ -1815,7 +1932,7 @@ def test_async_task_error_and_complete_repeated_emits():
     ]).run()
     for i in range(3):
         try:
-            awaitable_result = controller.emit({'col1': 0}, 'tal', return_awaitable_result=True)
+            awaitable_result = controller.emit({'col1': 0}, 'tal')
         except ATestException:
             continue
         try:
@@ -1862,15 +1979,28 @@ def test_metadata_fields():
         Reduce([], append_and_return, full_event=True)
     ]).run()
 
-    body = {'mykey': 'k1', 'mytime': datetime(2020, 2, 15, 2, 0), 'otherfield': 'x'}
-    controller.emit(body)
+    t1 = datetime(2020, 2, 15, 2, 0)
+    t2 = datetime(2020, 2, 15, 2, 1)
+    body1 = {'mykey': 'k1', 'mytime': t1, 'otherfield': 'x'}
+    body2 = {'mykey': 'k2', 'mytime': t2, 'otherfield': 'x'}
+
+    controller.emit(body1)
+    controller.emit(Event(body2, 'k2', t2))
+
     controller.terminate()
     result = controller.await_termination()
-    assert len(result) == 1
-    result = result[0]
-    assert result.key == 'k1'
-    assert result.time == datetime(2020, 2, 15, 2, 0)
-    assert result.body == body
+
+    assert len(result) == 2
+
+    result1 = result[0]
+    assert result1.key == 'k1'
+    assert result1.time == t1
+    assert result1.body == body1
+
+    result2 = result[1]
+    assert result2.key == 'k2'
+    assert result2.time == t2
+    assert result2.body == body2
 
 
 async def async_test_async_metadata_fields():
@@ -1947,8 +2077,9 @@ def test_result_path():
 def test_to_dict():
     source = Source(name='my_source', buffer_size=5)
     identity = Map(lambda x: x, full_event=False)
-    assert source.to_dict() == {'class_name': 'Source', 'parameters': {'name': 'my_source', 'buffer_size': 5}}
-    assert identity.to_dict() == {'class_name': 'Map', 'parameters': {'full_event': False}}
+    assert source.to_dict() == {'class_name': 'storey.sources.Source', 'class_args': {'buffer_size': 5}, 'name': 'my_source',
+                                'full_event': False}
+    assert identity.to_dict() == {'class_name': 'storey.flow.Map', 'class_args': {}, 'full_event': False}
 
 
 def test_flow_reuse():
@@ -1964,31 +2095,34 @@ def test_flow_reuse():
 
 
 def test_flow_to_dict_read_csv():
-    step = ReadCSV('tests/test-with-timestamp-ns.csv', header=True, key_field='k', timestamp_field='t',
+    step = ReadCSV('tests/test-with-timestamp-microsecs.csv', header=True, key_field='k', time_field='t',
                    timestamp_format='%d/%m/%Y %H:%M:%S.%f')
     assert step.to_dict() == {
-        'class_name': 'ReadCSV',
-        'parameters': {
+        'class_name': 'storey.sources.ReadCSV',
+        'class_args': {
             'build_dict': False,
             'header': True,
             'key_field': 'k',
-            'paths': 'tests/test-with-timestamp-ns.csv',
-            'timestamp_field': 't',
+            'paths': 'tests/test-with-timestamp-microsecs.csv',
+            'time_field': 't',
             'timestamp_format': '%d/%m/%Y %H:%M:%S.%f',
             'type_inference': True
-        }
+        },
+        'full_event': False
     }
 
 
 def test_flow_to_dict_write_to_parquet():
-    step = WriteToParquet('outfile', columns=['col1', 'col2'], max_events=2)
+    step = WriteToParquet('outdir', columns=['col1', 'col2'], max_events=2)
     assert step.to_dict() == {
-        'class_name': 'WriteToParquet',
-        'parameters': {
-            'path': 'outfile',
+        'class_name': 'storey.writers.WriteToParquet',
+        'class_args': {
+            'path': 'outdir',
             'columns': ['col1', 'col2'],
-            'max_events': 2
-        }
+            'max_events': 2,
+            'flush_after_seconds': 60,
+        },
+        'full_event': False
     }
 
 
@@ -1997,15 +2131,16 @@ def test_flow_to_dict_write_to_tsdb():
                        max_events=1, frames_client=MockFramesClient())
 
     assert step.to_dict() == {
-        'class_name': 'WriteToTSDB',
-        'parameters': {
+        'class_name': 'storey.writers.WriteToTSDB',
+        'class_args': {
             'columns': ['cpu', 'disk'],
             'index_cols': 'node',
             'max_events': 1,
             'path': 'some/path',
             'rate': '1/h',
             'time_col': 'time'
-        }
+        },
+        'full_event': False
     }
 
 
@@ -2014,12 +2149,13 @@ def test_flow_to_dict_dataframe_source():
     step = DataframeSource(df, key_field='my_key', time_field='my_time', id_field='my_id')
 
     assert step.to_dict() == {
-        'class_name': 'DataframeSource',
-        'parameters': {
+        'class_name': 'storey.sources.DataframeSource',
+        'class_args': {
             'id_field': 'my_id',
             'key_field': 'my_key',
             'time_field': 'my_time'
-        }
+        },
+        'full_event': False
     }
 
 
@@ -2035,7 +2171,7 @@ def test_to_code():
     expected = """source0 = Source()
 batch0 = Batch(max_events=5)
 to_data_frame0 = ToDataFrame()
-reduce0 = Reduce(full_event=True, initial_value=[])
+reduce0 = Reduce(initial_value=[], full_event=True)
 
 source0.to(batch0)
 batch0.to(to_data_frame0)
@@ -2062,13 +2198,29 @@ batch0 = Batch(max_events=5)
 reduce0 = Reduce(initial_value=[])
 batch1 = Batch(max_events=5)
 to_data_frame0 = ToDataFrame()
-reduce1 = Reduce(full_event=True, initial_value=[])
+reduce1 = Reduce(initial_value=[], full_event=True)
 
 source0.to(batch0)
 batch0.to(reduce0)
 source0.to(batch1)
 batch1.to(to_data_frame0)
 to_data_frame0.to(reduce1)
+"""
+    assert reconstructed_code == expected
+
+
+def test_reader_writer_to_code():
+    flow = build_flow([
+        ReadCSV('mycsv.csv'),
+        WriteToParquet('mypq')
+    ])
+
+    reconstructed_code = flow.to_code()
+    print(reconstructed_code)
+    expected = """read_c_s_v0 = ReadCSV(paths='mycsv.csv', header=False, build_dict=False, type_inference=True)
+write_to_parquet0 = WriteToParquet(flush_after_seconds=60, path='mypq', max_events=10000)
+
+read_c_s_v0.to(write_to_parquet0)
 """
     assert reconstructed_code == expected
 
@@ -2085,7 +2237,7 @@ def test_illegal_step_source_not_first_step():
     df = pd.DataFrame([['hello', 1, 1.5], ['world', 2, 2.5]], columns=['string', 'int', 'float'])
     try:
         build_flow([
-            ReadParquet('tests/test.parquet'),
+            ReadParquet('tests'),
             DataframeSource(df),
             Reduce([], append_and_return),
         ]).run()
@@ -2108,3 +2260,46 @@ def test_writer_downstream(tmpdir):
     controller.terminate()
     result = controller.await_termination()
     assert result == 45
+
+
+def test_complete_in_error_flow():
+    reduce = build_flow([
+        Complete(),
+        Reduce(0, lambda acc, x: acc + x)
+    ])
+    controller = build_flow([
+        Source(),
+        Map(lambda x: x + 1),
+        Map(RaiseEx(5).raise_ex, recovery_step=reduce),
+        Map(lambda x: x * 100),
+        reduce
+    ]).run()
+
+    for i in range(10):
+        awaitable_result = controller.emit(i)
+        if i == 4:
+            assert awaitable_result.await_result() == i + 1
+        else:
+            assert awaitable_result.await_result() == (i + 1) * 100
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == 5005
+
+
+def test_non_existing_key_query_by_key():
+    df = pd.DataFrame([['katya', 'green'], ['dina', 'blue']], columns=['name', 'color'])
+    table = Table('table', NoopDriver())
+    controller = build_flow([
+        DataframeSource(df),
+        WriteToTable(table),
+    ]).run()
+    controller.await_termination()
+
+    controller = build_flow([
+        Source(),
+        QueryByKey(["color"], table, key="name"),
+    ]).run()
+
+    controller.emit({'nameeeee': 'katya'})
+    controller.terminate()
+    controller.await_termination()

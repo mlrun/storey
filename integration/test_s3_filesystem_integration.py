@@ -199,7 +199,7 @@ def test_write_to_parquet_to_s3(s3_setup_teardown_test):
 
 @pytest.mark.skipif(not has_s3_credentials, reason='No s3 credentials found')
 def test_write_to_parquet_to_s3_single_file_on_termination(s3_setup_teardown_test):
-    out_file = f's3:///{s3_setup_teardown_test}/out.parquet'
+    out_file = f's3:///{s3_setup_teardown_test}/'
     columns = ['my_int', 'my_string']
     controller = build_flow([
         Source(),
@@ -220,7 +220,7 @@ def test_write_to_parquet_to_s3_single_file_on_termination(s3_setup_teardown_tes
 
 @pytest.mark.skipif(not has_s3_credentials, reason='No s3 credentials found')
 def test_write_to_parquet_to_s3_with_indices(s3_setup_teardown_test):
-    out_file = f's3:///{s3_setup_teardown_test}/test_write_to_parquet_with_indices{uuid.uuid4().hex}.parquet'
+    out_file = f's3:///{s3_setup_teardown_test}/test_write_to_parquet_with_indices{uuid.uuid4().hex}/'
     controller = build_flow([
         Source(),
         WriteToParquet(out_file, index_cols='event_key=$key', columns=['my_int', 'my_string'])

@@ -188,7 +188,7 @@ def test_write_csv_from_lists_with_metadata_and_column_pruning_to_v3io(v3io_tear
 
 
 def test_write_to_parquet_to_v3io(setup_teardown_test):
-    out_dir = f'v3io:///{setup_teardown_test}/'
+    out_dir = f'v3io:///{setup_teardown_test}'
     columns = ['my_int', 'my_string']
     controller = build_flow([
         Source(),

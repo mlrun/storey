@@ -5,7 +5,7 @@ import re
 from typing import Optional, Union, Callable, List, Dict
 
 from .dtypes import EmitEveryEvent, FixedWindows, SlidingWindows, EmitAfterPeriod, EmitAfterWindow, EmitAfterMaxEvent, \
-    _dict_to_emit_policy, FieldAggregator
+    _dict_to_emit_policy, FieldAggregator, EmitPolicy
 from .table import Table
 from .flow import Flow, _termination_obj, Event
 
@@ -19,20 +19,20 @@ class AggregateByKey(Flow):
     Persistence is done via the `WriteToTable` step and based on the Cache object persistence settings.
 
     :param aggregates: List of aggregates to apply for each event.
-    :param table: A Table object or name for persistence of aggregations. If a table name is provided, it will be looked up in the context.
+        accepts either list of FieldAggregators or a dictionary describing FieldAggregators.
+    :param table: A Table object or name for persistence of aggregations.
+        If a table name is provided, it will be looked up in the context object passed in kwargs.
     :param key: Key field to aggregate by, accepts either a string representing the key field or a key extracting function.
      Defaults to the key in the event's metadata. (Optional)
-    :param emit_policy: Policy indicating when the data will be emitted. Defaults to EmitEveryEvent. (Optional)
+    :param emit_policy: Policy indicating when the data will be emitted. Defaults to EmitEveryEvent
     :param augmentation_fn: Function that augments the features into the event's body. Defaults to updating a dict. (Optional)
     :param enrich_with: List of attributes names from the associated storage object to be fetched and added to every event. (Optional)
     :param aliases: Dictionary specifying aliases to the enriched columns, of the format `{'col_name': 'new_col_name'}`. (Optional)
-    :param context: Context object that holds global configurations and secrets.
     """
 
     def __init__(self, aggregates: Union[List[FieldAggregator], List[Dict[str, object]]], table: Union[Table, str],
                  key: Union[str, Callable[[Event], object], None] = None,
-                 emit_policy: Union[EmitEveryEvent, FixedWindows, SlidingWindows, EmitAfterPeriod, EmitAfterWindow,
-                                    EmitAfterMaxEvent, Dict[str, object]] = _default_emit_policy,
+                 emit_policy: Union[EmitPolicy, Dict[str, object]] = _default_emit_policy,
                  augmentation_fn: Optional[Callable[[Event, Dict[str, object]], Event]] = None, enrich_with: Optional[List[str]] = None,
                  aliases: Optional[Dict[str, str]] = None, use_windows_from_schema: bool = False, **kwargs):
         Flow.__init__(self, **kwargs)
@@ -51,6 +51,10 @@ class AggregateByKey(Flow):
 
         self._enrich_with = enrich_with or []
         self._aliases = aliases or {}
+
+        if not isinstance(emit_policy, EmitPolicy) and not isinstance(emit_policy, Dict):
+            raise TypeError(f'emit_policy parameter must be of type EmitPolicy, or dict. Found {type(emit_policy)} instead.')
+
         self._emit_policy = emit_policy
         if isinstance(self._emit_policy, dict):
             self._emit_policy = _dict_to_emit_policy(self._emit_policy)
@@ -68,7 +72,7 @@ class AggregateByKey(Flow):
             if callable(key):
                 self.key_extractor = key
             elif isinstance(key, str):
-                self.key_extractor = lambda element: element[key]
+                self.key_extractor = lambda element: element.get(key)
             else:
                 raise TypeError(f'key is expected to be either a callable or string but got {type(key)}')
 
@@ -211,12 +215,12 @@ class QueryByKey(AggregateByKey):
     Query features by name
 
     :param features: List of features to get.
-    :param table: A Table object or name for persistence of aggregations. If a table name is provided, it will be looked up in the context.
+    :param table: A Table object or name for persistence of aggregations.
+        If a table name is provided, it will be looked up in the context object passed in kwargs.
     :param key: Key field to aggregate by, accepts either a string representing the key field or a key extracting function.
      Defaults to the key in the event's metadata. (Optional)
     :param augmentation_fn: Function that augments the features into the event's body. Defaults to updating a dict. (Optional)
     :param aliases: Dictionary specifying aliases to the enriched columns, of the format `{'col_name': 'new_col_name'}`. (Optional)
-    :param context: Context object that holds global configurations and secrets.
     """
 
     def __init__(self, features: List[str], table: Union[Table, str], key: Union[str, Callable[[Event], object], None] = None,
@@ -247,15 +251,15 @@ class QueryByKey(AggregateByKey):
             self._terminate_worker = True
             return await self._do_downstream(_termination_obj)
 
-        try:
-            element = event.body
-            key = event.key
-            if self.key_extractor:
-                key = self.key_extractor(element)
-            await self._emit_event(key, event)
-
-        except Exception as ex:
-            raise ex
+        element = event.body
+        key = event.key
+        if self.key_extractor:
+            key = self.key_extractor(element)
+            if key is None:
+                event.body = None
+                await self._do_downstream(event)
+                return
+        await self._emit_event(key, event)
 
     def _check_unique_names(self, aggregates):
         pass

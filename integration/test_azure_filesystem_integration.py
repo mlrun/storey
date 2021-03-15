@@ -176,26 +176,26 @@ def test_write_csv_from_lists_with_metadata_and_column_pruning_to_azure(azure_te
     expected = "event_key,n*10\nkey0,0\nkey1,10\nkey2,20\nkey3,30\nkey4,40\nkey5,50\nkey6,60\nkey7,70\nkey8,80\nkey9,90\n"
     assert actual.decode("utf-8") == expected
 
-#
-#@pytest.mark.skipif(not has_azure_credentials, reason='No azure credentials found')
-#def test_write_to_parquet_to_azure(azure_setup_teardown_test):
-#    out_dir = f'az:///{azure_setup_teardown_test}/'
-#    columns = ['my_int', 'my_string']
-#    controller = build_flow([
-#        Source(),
-#        WriteToParquet(out_dir, partition_cols='my_int', columns=columns, max_events=1, storage_options=storage_options)
-#    ]).run()
 
-#    expected = []
-#    for i in range(10):
-#        controller.emit([i, f'this is {i}'])
-#        expected.append([i, f'this is {i}'])
-#    expected = pd.DataFrame(expected, columns=columns, dtype='int32')
-#    controller.terminate()
-#    controller.await_termination()
+@pytest.mark.skipif(not has_azure_credentials, reason='No azure credentials found')
+def test_write_to_parquet_to_azure(azure_setup_teardown_test):
+    out_dir = f'az:///{azure_setup_teardown_test}'
+    columns = ['my_int', 'my_string']
+    controller = build_flow([
+        Source(),
+        WriteToParquet(out_dir, partition_cols='my_int', columns=columns, max_events=1, storage_options=storage_options)
+    ]).run()
 
-#    read_back_df = pd.read_parquet(out_dir, columns=columns, storage_options=storage_options)
-#    assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+    expected = []
+    for i in range(10):
+        controller.emit([i, f'this is {i}'])
+        expected.append([i, f'this is {i}'])
+    expected = pd.DataFrame(expected, columns=columns, dtype='int32')
+    controller.terminate()
+    controller.await_termination()
+
+    read_back_df = pd.read_parquet(out_dir, columns=columns, storage_options=storage_options)
+    assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
 
 
 @pytest.mark.skipif(not has_azure_credentials, reason='No azure credentials found')
