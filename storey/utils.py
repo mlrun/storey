@@ -185,8 +185,10 @@ def get_key_from_data(data_dict, key_field):
             if len(key_field) >= 3:
                 list_values = get_values_for_keys(key_field[1:], data_dict)
                 key = str(data_dict[key_field[0]]) + "." + hash_list(list_values)
-            else:
+            elif len(key_field) == 2:
                 key = str(data_dict[key_field[0]]) + "." + str(data_dict[key_field[1]])
+            else:
+                key = data_dict[key_field[0]]
         else:
             key = data_dict[key_field]
     return key
