@@ -51,7 +51,7 @@ class ReduceToDataFrame(Flow):
                     for index, key in enumerate(self._insert_key_column_as):
                         df[key] = [row[index] for row in split_key_columns]
                 else:
-                    df.set_index(self._index, inplace=True)
+                    df[self._insert_key_column_as] = self._key_column
             if self._insert_time_column_as:
                 df[self._insert_time_column_as] = self._time_column
             if self._insert_id_column_as:
