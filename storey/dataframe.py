@@ -2,7 +2,6 @@ import pandas as pd
 from typing import Optional, List, Union
 
 from .flow import _termination_obj, Flow
-from .utils import hash_list
 
 
 class ReduceToDataFrame(Flow):
