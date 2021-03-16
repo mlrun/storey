@@ -261,6 +261,54 @@ def test_read_parquet_files():
     assert termination_result == expected
 
 
+def test_write_parquet_read_parquet(tmpdir):
+    out_dir = f'{tmpdir}/test_write_parquet_read_parquet/{uuid.uuid4().hex}/'
+    columns = ['my_int', 'my_string']
+    controller = build_flow([
+        Source(),
+        WriteToParquet(out_dir, columns=columns, partition_cols=[])
+    ]).run()
+
+    expected = []
+    for i in range(10):
+        controller.emit([i, f'this is {i}'])
+        expected.append({'my_int': i, 'my_string': f'this is {i}'})
+    controller.terminate()
+    controller.await_termination()
+
+    controller = build_flow([
+        ReadParquet(out_dir),
+        Reduce([], append_and_return),
+    ]).run()
+    read_back_result = controller.await_termination()
+
+    assert read_back_result == expected
+
+
+def test_write_parquet_read_parquet_partitioned(tmpdir):
+    out_dir = f'{tmpdir}/test_write_parquet_read_parquet_partitioned/{uuid.uuid4().hex}/'
+    columns = ['my_int', 'my_string']
+    controller = build_flow([
+        Source(),
+        WriteToParquet(out_dir, partition_cols='my_int', columns=columns)
+    ]).run()
+
+    expected = []
+    for i in range(10):
+        controller.emit([i, f'this is {i}'])
+        expected.append({'my_int': i, 'my_string': f'this is {i}'})
+    controller.terminate()
+    controller.await_termination()
+
+    controller = build_flow([
+        ReadParquet(out_dir),
+        Reduce([], append_and_return),
+    ]).run()
+    read_back_result = controller.await_termination()
+
+    assert read_back_result == expected
+
+
 def test_error_flow():
     controller = build_flow([
         Source(),
@@ -1698,7 +1746,7 @@ def test_write_to_tsdb():
 
     controller = build_flow([
         Source(),
-        WriteToTSDB(path='some/path', time_col='time', index_cols='node', columns=['cpu', 'disk'], rate='1/h',
+        WriteToTSDB(path='container/some/path', time_col='time', index_cols='node', columns=['cpu', 'disk'], rate='1/h',
                     max_events=1,
                     frames_client=mock_frames_client)
     ]).run()
@@ -1715,7 +1763,7 @@ def test_write_to_tsdb():
 
     expected_create = (
         'create', {'if_exists': 1, 'rate': '1/h', 'aggregates': '', 'aggregation_granularity': '', 'backend': 'tsdb',
-                   'table': 'some/path'})
+                   'table': '/some/path'})
     assert mock_frames_client.call_log[0] == expected_create
     i = 0
     for write_call in mock_frames_client.call_log[1:]:
@@ -1725,7 +1773,7 @@ def test_write_to_tsdb():
         res = write_call[1]['dfs']
         assert expected.equals(res), f"result{res}\n!=\nexpected{expected}"
         del write_call[1]['dfs']
-        assert write_call[1] == {'backend': 'tsdb', 'table': 'some/path'}
+        assert write_call[1] == {'backend': 'tsdb', 'table': '/some/path'}
         i += 1
 
 
@@ -1734,7 +1782,7 @@ def test_write_to_tsdb_with_key_index():
 
     controller = build_flow([
         Source(),
-        WriteToTSDB(path='some/path', time_col='time', index_cols='node=$key', columns=['cpu', 'disk'], rate='1/h',
+        WriteToTSDB(path='container/some/path', time_col='time', index_cols='node=$key', columns=['cpu', 'disk'], rate='1/h',
                     max_events=1, frames_client=mock_frames_client)
     ]).run()
 
@@ -1750,7 +1798,7 @@ def test_write_to_tsdb_with_key_index():
 
     expected_create = (
         'create', {'if_exists': 1, 'rate': '1/h', 'aggregates': '', 'aggregation_granularity': '', 'backend': 'tsdb',
-                   'table': 'some/path'})
+                   'table': '/some/path'})
     assert mock_frames_client.call_log[0] == expected_create
     i = 0
     for write_call in mock_frames_client.call_log[1:]:
@@ -1760,7 +1808,7 @@ def test_write_to_tsdb_with_key_index():
         res = write_call[1]['dfs']
         assert expected.equals(res), f"result{res}\n!=\nexpected{expected}"
         del write_call[1]['dfs']
-        assert write_call[1] == {'backend': 'tsdb', 'table': 'some/path'}
+        assert write_call[1] == {'backend': 'tsdb', 'table': '/some/path'}
         i += 1
 
 
@@ -1769,7 +1817,7 @@ def test_write_to_tsdb_with_key_index_and_default_time():
 
     controller = build_flow([
         Source(),
-        WriteToTSDB(path='some/path', index_cols='node=$key', columns=['cpu', 'disk'], rate='1/h',
+        WriteToTSDB(path='container/some/path', index_cols='node=$key', columns=['cpu', 'disk'], rate='1/h',
                     max_events=1, frames_client=mock_frames_client)
     ]).run()
 
@@ -1785,7 +1833,7 @@ def test_write_to_tsdb_with_key_index_and_default_time():
 
     expected_create = (
         'create', {'if_exists': 1, 'rate': '1/h', 'aggregates': '', 'aggregation_granularity': '', 'backend': 'tsdb',
-                   'table': 'some/path'})
+                   'table': '/some/path'})
     assert mock_frames_client.call_log[0] == expected_create
     i = 0
     for write_call in mock_frames_client.call_log[1:]:
@@ -1795,7 +1843,7 @@ def test_write_to_tsdb_with_key_index_and_default_time():
         res = write_call[1]['dfs']
         assert expected.equals(res), f"result{res}\n!=\nexpected{expected}"
         del write_call[1]['dfs']
-        assert write_call[1] == {'backend': 'tsdb', 'table': 'some/path'}
+        assert write_call[1] == {'backend': 'tsdb', 'table': '/some/path'}
         i += 1
 
 

@@ -2,7 +2,7 @@ import asyncio
 import base64
 import json
 import time
-from _datetime import datetime, timedelta
+from datetime import datetime, timedelta
 
 import aiohttp
 import pandas as pd
@@ -182,7 +182,8 @@ def test_write_to_v3io_stream_unbalanced(setup_stream_teardown_test):
 
 
 def test_write_to_tsdb():
-    tsdb_path = f'tsdb_path-{int(time.time_ns() / 1000)}'
+    table_name = f'tsdb_path-{int(time.time_ns() / 1000)}'
+    tsdb_path = f'v3io://bigdata/{table_name}'
     controller = build_flow([
         Source(),
         WriteToTSDB(path=tsdb_path, time_col='time', index_cols='node', columns=['cpu', 'disk'], rate='1/h', max_events=2)
@@ -199,7 +200,7 @@ def test_write_to_tsdb():
     controller.await_termination()
 
     client = frames.Client()
-    res = client.read('tsdb', tsdb_path, start='0', end='now', multi_index=True)
+    res = client.read('tsdb', table_name, start='0', end='now', multi_index=True)
     res = res.sort_values(['time'])
     df = pd.DataFrame(expected, columns=['time', 'node', 'cpu', 'disk'])
     df.set_index(keys=['time', 'node'], inplace=True)
@@ -207,7 +208,8 @@ def test_write_to_tsdb():
 
 
 def test_write_to_tsdb_with_metadata_label():
-    tsdb_path = f'tsdb_path-{int(time.time_ns() / 1000)}'
+    table_name = f'tsdb_path-{int(time.time_ns() / 1000)}'
+    tsdb_path = f'projects/{table_name}'
     controller = build_flow([
         Source(),
         WriteToTSDB(path=tsdb_path, index_cols='node', columns=['cpu', 'disk'], rate='1/h',
@@ -224,8 +226,8 @@ def test_write_to_tsdb_with_metadata_label():
     controller.terminate()
     controller.await_termination()
 
-    client = frames.Client()
-    res = client.read('tsdb', tsdb_path, start='0', end='now', multi_index=True)
+    client = frames.Client(container='projects')
+    res = client.read('tsdb', table_name, start='0', end='now', multi_index=True)
     res = res.sort_values(['time'])
     df = pd.DataFrame(expected, columns=['time', 'node', 'cpu', 'disk'])
     df.set_index(keys=['time', 'node'], inplace=True)
@@ -407,7 +409,7 @@ def test_writing_int_key(setup_teardown_test):
 
     ]).run()
     controller.await_termination()
-
+    
 
 def test_write_multiple_keys_to_v3io_from_df(setup_teardown_test):
     table = Table(setup_teardown_test, V3ioDriver())
@@ -474,3 +476,18 @@ def test_write_multiple_keys_to_v3io_from_source(setup_teardown_test):
 
     assert response.status_code == 200
     assert expected == response.output.item
+
+
+def test_writing_timedelta_key(setup_teardown_test):
+    table = Table(setup_teardown_test, V3ioDriver())
+
+    df = pd.DataFrame({"key": ['a', 'b'], "timedelta": [pd.Timedelta("-1 days 2 min 3us"), pd.Timedelta("P0DT0H1M0S")]})
+
+    controller = build_flow([
+        DataframeSource(df, key_field='key'),
+        WriteToTable(table),
+
+    ]).run()
+    controller.await_termination()
+
+
