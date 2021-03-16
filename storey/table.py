@@ -10,6 +10,15 @@ from .dtypes import FieldAggregator, SlidingWindows, FixedWindows
 from .utils import _split_path
 
 
+class _NoOpLock:
+
+    async def __aenter__(self):
+        pass
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+
 class Table:
     """Table object, represents a single table in a specific storage.
 
@@ -18,6 +27,8 @@ class Table:
     :param partitioned_by_key: Whether that data is partitioned by the key or not, based on this indication storage drivers
      can optimize writes. Defaults to True.
      """
+
+    _no_op_lock = _NoOpLock()
 
     def __init__(self, table_path: str, storage: Driver, partitioned_by_key: bool = True):
         self._container, self._table_path = _split_path(table_path)
@@ -29,11 +40,18 @@ class Table:
         self._schema_lock = None
         self._aggregations_read_only = False
         self._use_windows_from_schema = False
+        self._callers = set()
+
+    def _register_caller(self, caller):
+        """Inform this Table of a caller, to enable locking when more than one caller accesses the Table."""
+        self._callers.add(caller)
 
     def __str__(self):
         return f'{self._container}/{self._table_path}'
 
     def _get_lock(self, key):
+        if len(self._callers) < 2:
+            return self._no_op_lock
         cache_element = self._attrs_cache.get(key)
         if cache_element is None:
             cache_element = _CacheElement({}, None)
@@ -42,6 +60,8 @@ class Table:
         return cache_element.lock
 
     def _get_schema_lock(self):
+        if len(self._callers) < 2:
+            return self._no_op_lock
         if self._schema_lock is None:
             self._schema_lock = Lock()
         return self._schema_lock
