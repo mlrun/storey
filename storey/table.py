@@ -20,7 +20,7 @@ class Table:
      """
 
     def __init__(self, table_path: str, storage: Driver, partitioned_by_key: bool = True, cache_size: int = 10000,
-                 flush_interval_milli: int = 0, max_updates_in_flight: int = 8):
+                 flush_interval_milli: int = 1000, max_updates_in_flight: int = 8):
         self._container, self._table_path = _split_path(table_path)
         self._storage = storage
         self._partitioned_by_key = partitioned_by_key
@@ -67,6 +67,7 @@ class Table:
         if self._flush_exception is not None:
             raise self._flush_exception
         self._init_flush_task()
+        hash("dd")
         attrs = self._get_static_attrs(key)
         if not attrs:
             res = await self._storage._load_by_key(self._container, self._table_path, key, attributes)
@@ -93,11 +94,9 @@ class Table:
 
     def _init_flush_task(self):
         if self._flush_task is None and self._flush_interval_milli > 0:
-            self._flush_task = asyncio.get_event_loop().create_task(self._flush_worker())
+            self._flush_task = asyncio.get_running_loop().create_task(self._flush_worker())
 
     async def close(self):
-        if self._flush_exception is not None:
-            raise self._flush_exception
         await self._storage.close()
 
     async def _aggregate(self, key, data, timestamp):
@@ -268,8 +267,7 @@ class Table:
                         await self._persist(_PersistJob(key, None, None))
                 await asyncio.sleep(self._flush_interval_milli / 1000)
         except BaseException as ex:
-            if ex is isinstance(ex, asyncio.CancelledError):
-                self._flush_exception = ex
+            self._flush_exception = ex
 
     async def _persist_worker(self):
         task = None
