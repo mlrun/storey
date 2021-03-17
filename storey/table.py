@@ -20,7 +20,7 @@ class Table:
      """
 
     def __init__(self, table_path: str, storage: Driver, partitioned_by_key: bool = True, cache_size: int = 10000,
-                 flush_interval_milli: int = 1000, max_updates_in_flight: int = 8):
+                 flush_interval_milli: int = 0, max_updates_in_flight: int = 8):
         self._container, self._table_path = _split_path(table_path)
         self._storage = storage
         self._partitioned_by_key = partitioned_by_key
@@ -334,6 +334,8 @@ class Table:
 
         await self._q.put(_termination_obj)
         await self._worker_awaitable
+        if self._flush_task:
+            await self._flush_task
         self._q = None
         self._flush_task = None
         self._flush_exception = None
