@@ -41,7 +41,7 @@ class AwaitableResult:
 
 
 class FlowControllerBase:
-    def __init__(self, key_field: Optional[str], time_field: Optional[str]):
+    def __init__(self, key_field: Optional[Union[str, List[str]]], time_field: Optional[str]):
         self._key_field = key_field
         self._time_field = time_field
         self._current_uuid_base = None
@@ -90,12 +90,12 @@ class FlowController(FlowControllerBase):
         self._await_termination_fn = await_termination_fn
         self._return_awaitable_result = return_awaitable_result
 
-    def emit(self, element: object, key: Optional[str] = None, event_time: Optional[datetime] = None,
+    def emit(self, element: object, key: Optional[Union[str, List[str]]] = None, event_time: Optional[datetime] = None,
              return_awaitable_result: Optional[bool] = None):
         """Emits an event into the associated flow.
 
         :param element: The event data, or payload. To set metadata as well, pass an Event object.
-        :param key: The event key (optional)
+        :param key: The event key(s) (optional) #add to async
         :param event_time: The event time (default to current time, UTC).
         :param return_awaitable_result: Deprecated! An awaitable result object will be returned if a Complete step appears in the flow.
 
@@ -266,12 +266,12 @@ class AsyncFlowController(FlowControllerBase):
         self._time_field = time_field
         self._await_result = await_result
 
-    async def emit(self, element: object, key: Optional[str] = None, event_time: Optional[datetime] = None,
+    async def emit(self, element: object, key: Optional[Union[str, List[str]]] = None, event_time: Optional[datetime] = None,
                    await_result: Optional[bool] = None) -> object:
         """Emits an event into the associated flow.
 
         :param element: The event data, or payload. To set metadata as well, pass an Event object.
-        :param key: The event key (optional)
+        :param key: The event key(s) (optional)
         :param event_time: The event time (default to current time, UTC).
         :param await_result: Deprecated. Will await a result if a Complete step appears in the flow.
 
@@ -430,7 +430,7 @@ class ReadCSV(_IterableSource):
     :parameter build_dict: whether to format each record produced from the input file as a dictionary (as opposed to a list).
         Default to False.
     :parameter key_field: the CSV field to be use as the key for events. May be an int (field index) or string (field name) if
-        with_header is True. Defaults to None (no key).
+        with_header is True. Defaults to None (no key). Can be a list of keys
     :parameter time_field: the CSV field to be parsed as the timestamp for events. May be an int (field index) or string (field name)
         if with_header is True. Defaults to None (no timestamp field).
     :parameter timestamp_format: timestamp format as defined in datetime.strptime(). Default to ISO-8601 as defined in
@@ -442,7 +442,7 @@ class ReadCSV(_IterableSource):
     """
 
     def __init__(self, paths: Union[List[str], str], header: bool = False, build_dict: bool = False,
-                 key_field: Union[int, str, None] = None, time_field: Union[int, str, None] = None,
+                 key_field: Union[int, str, List[int], List[str], None] = None, time_field: Union[int, str, None] = None,
                  timestamp_format: Optional[str] = None, type_inference: bool = True, **kwargs):
         kwargs['paths'] = paths
         kwargs['header'] = header
@@ -558,10 +558,17 @@ class ReadCSV(_IterableSource):
                                 for i in range(len(parsed_line)):
                                     element[header[i]] = parsed_line[i]
                         if self._key_field:
-                            key_field = self._key_field
-                            if self._with_header and isinstance(key_field, str):
-                                key_field = field_name_to_index[key_field]
-                            key = parsed_line[key_field]
+                            if isinstance(self._key_field, list):
+                                key = []
+                                for single_key_field in self._key_field:
+                                    if isinstance(single_key_field, str):
+                                        single_key_field = field_name_to_index[single_key_field]
+                                    key.append(parsed_line[single_key_field])
+                            else:
+                                key_field = self._key_field
+                                if self._with_header and isinstance(key_field, str):
+                                    key_field = field_name_to_index[key_field]
+                                key = parsed_line[key_field]
                         if self._time_field:
                             time_field = self._time_field
                             if self._with_header and isinstance(time_field, str):
@@ -601,14 +608,14 @@ class DataframeSource(_IterableSource):
     """Use pandas dataframe as input source for a flow.
 
     :param dfs: A pandas dataframe, or dataframes, to be used as input source for the flow.
-    :param key_field: column to be used as key for events.
+    :param key_field: column to be used as key for events. can be list of columns
     :param time_field: column to be used as time for events.
     :param id_field: column to be used as ID for events.
 
     for additional params, see documentation of  :class:`~storey.flow.Flow`
     """
 
-    def __init__(self, dfs: Union[pandas.DataFrame, Iterable[pandas.DataFrame]], key_field: Optional[str] = None,
+    def __init__(self, dfs: Union[pandas.DataFrame, Iterable[pandas.DataFrame]], key_field: Optional[Union[str, List[str]]] = None,
                  time_field: Optional[str] = None, id_field: Optional[str] = None, **kwargs):
         if key_field is not None:
             kwargs['key_field'] = key_field
@@ -637,7 +644,12 @@ class DataframeSource(_IterableSource):
 
                 key = None
                 if self._key_field:
-                    key = body[self._key_field]
+                    if isinstance(self._key_field, list):
+                        key = []
+                        for key_field in self._key_field:
+                            key.append(body[key_field])
+                    else:
+                        key = body[self._key_field]
                 time = None
                 if self._time_field:
                     time = body[self._time_field]
