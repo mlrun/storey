@@ -5,6 +5,7 @@ import json
 import os
 import queue
 import random
+import time
 from typing import Optional, Union, List, Callable
 
 import pandas as pd
@@ -567,7 +568,7 @@ class WriteToTable(_Writer, Flow):
         if event.key is None:
             raise ValueError("Can't write to table without a key")
 
-        if self._table._flush_interval_milli == 0:
+        if self._table._flush_interval_secs == 0:
             data_to_persist = self._event_to_writer_entry(event)
             await self._table._persist(_PersistJob(event.key, data_to_persist, self._handle_completed, event))
         else:
@@ -575,6 +576,7 @@ class WriteToTable(_Writer, Flow):
             item = self._table[event.key]
             if item:
                 item.update(data_to_persist)
+                self._table._attrs_cache[event.key].last_changed = time.monotonic()
             elif event.key:
                 self._table[event.key] = data_to_persist
             await self._do_downstream(event)
