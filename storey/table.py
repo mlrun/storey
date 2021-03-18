@@ -31,7 +31,6 @@ class Table:
         return f'{self._container}/{self._table_path}'
 
     def _update_static_attrs(self, key, data):
-        key = get_hashed_key(key)
         attrs = self._get_static_attrs(key)
         if attrs:
             for name, value in data.items():
@@ -90,7 +89,6 @@ class Table:
         self._get_aggregations_attrs(key).aggregate(data, timestamp)
 
     async def _get_features(self, key, timestamp):
-        key = get_hashed_key(key)
         if not self._schema:
             await self._get_or_save_schema()
 
@@ -213,6 +211,7 @@ class Table:
             return None
 
     def _set_static_attrs(self, key, value):
+        key = get_hashed_key(key)
         if key in self._attrs_cache:
             self._attrs_cache[key].static_attrs = value
         else:

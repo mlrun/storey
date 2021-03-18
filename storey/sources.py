@@ -561,7 +561,7 @@ class ReadCSV(_IterableSource):
                             if isinstance(self._key_field, list):
                                 key = []
                                 for single_key_field in self._key_field:
-                                    if isinstance(single_key_field, str):
+                                    if self._with_header and isinstance(single_key_field, str):
                                         single_key_field = field_name_to_index[single_key_field]
                                     key.append(parsed_line[single_key_field])
                             else:
