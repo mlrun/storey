@@ -43,6 +43,9 @@ class Table:
             # Try load from the store, and create a new one only if the key really is new
             aggregate_initial_data, additional_data = await self._storage._load_aggregates_by_key(self._container, self._table_path, key)
 
+            if not self._get_aggregations_attrs(key) and self._aggregations_read_only:
+                return
+
             # Create new aggregation element
             await self.add_aggregation_by_key(key, timestamp, aggregate_initial_data)
 
@@ -88,7 +91,11 @@ class Table:
         if not self._schema:
             await self._get_or_save_schema()
 
-        return self._get_aggregations_attrs(key).get_features(timestamp)
+        attrs = self._get_aggregations_attrs(key)
+        if attrs:
+            return attrs.get_features(timestamp)
+        else:
+            return {}
 
     def _new_aggregated_store_element(self):
         if self._aggregations_read_only:

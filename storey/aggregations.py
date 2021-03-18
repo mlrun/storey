@@ -173,8 +173,11 @@ class AggregateByKey(Flow):
             event_timestamp = event_timestamp.timestamp() * 1000
 
         await self._table._lazy_load_key_with_aggregates(key, event_timestamp)
-        features = await self._table._get_features(key, event_timestamp)
-        features = self._augmentation_fn(event.body, features)
+        if not self._table._get_aggregations_attrs(key) and self._table._aggregations_read_only:
+            features = await self._table._get_features(key, event_timestamp)
+            features = self._augmentation_fn(event.body, features)
+        else:
+            features = {}
 
         for col in self._enrich_with:
             emitted_attr_name = self._aliases.get(col, None) or col

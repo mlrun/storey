@@ -2,9 +2,10 @@ import asyncio
 from datetime import datetime, timedelta
 import pytest
 import math
+import pandas as pd
 
 from storey import build_flow, Source, Reduce, Table, V3ioDriver, MapWithState, AggregateByKey, FieldAggregator, \
-    QueryByKey, WriteToTable, Context
+    QueryByKey, WriteToTable, Context, DataframeSource
 
 from storey.dtypes import SlidingWindows, FixedWindows
 from storey.utils import _split_path
@@ -1129,3 +1130,45 @@ def test_write_to_table_reuse(setup_teardown_test):
         controller.terminate()
         actual = controller.await_termination()
         assert actual == expected_results[iteration]
+
+
+def test_read_non_existing_key(setup_teardown_test):
+    current_time = pd.Timestamp.now()
+    data = pd.DataFrame(
+        {
+            "first_name": ["moshe", "yosi", "yosi"],
+            "last_name": ["cohen", "levi", "levi"],
+            "some_data": [1, 2, 3],
+            "time": [current_time - pd.Timedelta(minutes=25), current_time - pd.Timedelta(minutes=30), current_time - pd.Timedelta(minutes=35)]
+        }
+    )
+
+    keys = 'first_name'
+    table = Table(setup_teardown_test, V3ioDriver())
+    controller = build_flow([
+        DataframeSource(data, key_field=keys),
+        AggregateByKey([FieldAggregator("number_of_stuff", "some_data", ["sum"],
+                                        SlidingWindows(['1h'], '10m'))],
+                       table),
+        WriteToTable(table),
+    ]).run()
+
+    actual = controller.await_termination()
+
+    other_table = Table(setup_teardown_test, V3ioDriver())
+    controller = build_flow([
+        Source(),
+        QueryByKey(["number_of_stuff_sum_1h"],
+                   other_table, keys="first_name"),
+        Reduce([], lambda acc, x: append_return(acc, x)),
+    ]).run()
+
+    controller.emit({'last_name': 'levi', 'some_data': 5}, 'non_existing_key')
+
+    controller.terminate()
+    actual = controller.await_termination()
+
+    print(actual[0])
+
+    assert "number_of_stuff_sum_1h" not in actual[0]
+
