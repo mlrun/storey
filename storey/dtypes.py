@@ -13,7 +13,7 @@ class Event:
     """The basic unit of data in storey. All steps receive and emit events.
 
     :param body: the event payload, or data
-    :param key: Event key. Used by steps that aggregate events by key, such as AggregateByKey. (Optional)
+    :param key: Event key. Used by steps that aggregate events by key, such as AggregateByKey. (Optional). Can be list
     :param time: Event time. Defaults to the time the event was created, UTC. (Optional)
     :param id: Event identifier. Usually a unique identifier. (Optional)
     :param headers: Request headers (HTTP only) (Optional)
@@ -24,7 +24,7 @@ class Event:
     :type awaitable_result: AwaitableResult (Optional)
     """
 
-    def __init__(self, body: object, key: Optional[str] = None, time: Optional[datetime] = None, id: Optional[str] = None,
+    def __init__(self, body: object, key: Optional[Union[str, List[str]]] = None, time: Optional[datetime] = None, id: Optional[str] = None,
                  headers: Optional[dict] = None, method: Optional[str] = None, path: Optional[str] = '/',
                  content_type=None, awaitable_result=None):
         self.body = body
@@ -48,7 +48,7 @@ class Event:
                self.method == other.method and self.path == other.path and self.content_type == other.content_type  # noqa: E127
 
     def __str__(self):
-        return f'Event(id={self.id}, key={self.key}, time={self.time}, body={self.body})'
+        return f'Event(id={self.id}, key={str(self.key)}, time={self.time}, body={self.body})'
 
     def copy(self, body=None, key=None, time=None, id=None, headers=None, method=None, path=None, content_type=None,
              awaitable_result=None,

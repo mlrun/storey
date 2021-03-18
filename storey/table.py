@@ -2,7 +2,7 @@ from typing import List
 import copy
 from datetime import datetime
 from .drivers import Driver
-from .utils import _split_path
+from .utils import _split_path, get_hashed_key
 from .dtypes import FieldAggregator, SlidingWindows, FixedWindows
 from .aggregation_utils import is_raw_aggregate, get_virtual_aggregation_func, get_implied_aggregates, get_all_raw_aggregates, \
     get_all_raw_aggregates_with_hidden
@@ -39,6 +39,7 @@ class Table:
             self._set_static_attrs(key, data)
 
     async def _lazy_load_key_with_aggregates(self, key, timestamp=None):
+        key = get_hashed_key(key)
         if self._aggregations_read_only or not self._get_aggregations_attrs(key):
             # Try load from the store, and create a new one only if the key really is new
             aggregate_initial_data, additional_data = await self._storage._load_aggregates_by_key(self._container, self._table_path, key)
@@ -51,6 +52,7 @@ class Table:
                 self._update_static_attrs(key, additional_data)
 
     async def _get_or_load_static_attributes_by_key(self, key, attributes='*'):
+        key = get_hashed_key(key)
         attrs = self._get_static_attrs(key)
         if not attrs:
             res = await self._storage._load_by_key(self._container, self._table_path, key, attributes)
@@ -65,6 +67,7 @@ class Table:
         self._aggregates = aggregates
 
     async def _persist_key(self, key, event_data_to_persist):
+        key = get_hashed_key(key)
         aggr_by_key = self._get_aggregations_attrs(key)
         additional_data_persist = self._get_static_attrs(key)
         if event_data_to_persist:
@@ -186,24 +189,28 @@ class Table:
         return schema
 
     def _get_aggregations_attrs(self, key):
+        key = get_hashed_key(key)
         if key in self._attrs_cache:
             return self._attrs_cache[key].aggregations
         else:
             return None
 
     def _set_aggregations_attrs(self, key, element):
+        key = get_hashed_key(key)
         if key in self._attrs_cache:
             self._attrs_cache[key].aggregations = element
         else:
             self._attrs_cache[key] = _CacheElement({}, element)
 
     def _get_static_attrs(self, key):
+        key = get_hashed_key(key)
         if key in self._attrs_cache:
             return self._attrs_cache[key].static_attrs
         else:
             return None
 
     def _set_static_attrs(self, key, value):
+        key = get_hashed_key(key)
         if key in self._attrs_cache:
             self._attrs_cache[key].static_attrs = value
         else:
