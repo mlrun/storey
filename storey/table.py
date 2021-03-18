@@ -82,7 +82,6 @@ class Table:
         await self._storage.close()
 
     async def _aggregate(self, key, data, timestamp):
-        key = get_hashed_key(key)
         if not self._schema:
             await self._get_or_save_schema()
 
