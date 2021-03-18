@@ -1,5 +1,6 @@
 from typing import List
 import copy
+import math
 from datetime import datetime
 from .drivers import Driver
 from .utils import _split_path, get_hashed_key
@@ -723,11 +724,13 @@ class MinValue(AggregationValue):
     default_value = float('inf')
 
     def __init__(self, max_value=None, set_data=None):
-        self.value = max_value or self.default_value
+        self.value = math.nan
         super().__init__(max_value, set_data)
 
     def aggregate(self, time, value):
-        if value < self.value:
+        if self.value is math.nan:
+            self.value = value
+        elif value < self.value:
             self.value = value  # bypass _set_value because there's no need to check max_value each time
 
     def get_update_expression(self, old):
@@ -736,7 +739,7 @@ class MinValue(AggregationValue):
     def reset(self, value=None):
         self.time = datetime.min
         if value is None:
-            self.value = self._max_value or self.default_value
+            self.value = self._max_value or math.nan
         else:
             self.value = value
 
@@ -746,15 +749,24 @@ class MaxValue(AggregationValue):
     default_value = float('-inf')
 
     def __init__(self, max_value=None, set_data=None):
-        self.value = self.default_value
+        self.value = math.nan
         super().__init__(max_value, set_data)
 
     def aggregate(self, time, value):
-        if value > self.value:
+        if self.value is math.nan:
+            self.value = value
+        elif value > self.value:
             self._set_value(value)
 
     def get_update_expression(self, old):
         return f'max({old}, {self.value})'
+
+    def reset(self, value=None):
+        self.time = datetime.min
+        if value is None:
+            self.value = math.nan
+        else:
+            self.value = value
 
 
 class SumValue(AggregationValue):
@@ -795,7 +807,7 @@ class SqrValue(AggregationValue):
 
 class LastValue(AggregationValue):
     name = 'last'
-    default_value = None
+    default_value = math.nan
 
     def __init__(self, max_value=None, set_data=None):
         self.value = self.default_value
@@ -812,7 +824,7 @@ class LastValue(AggregationValue):
 
 class FirstValue(AggregationValue):
     name = 'first'
-    default_value = None
+    default_value = math.nan
 
     def __init__(self, max_value=None, set_data=None):
         self.value = self.default_value

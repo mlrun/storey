@@ -123,7 +123,7 @@ def test_query_virtual_aggregations_flow(setup_teardown_test):
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [
-        {'col1': 0, 'number_of_stuff_avg_24h': 0.0, 'number_of_stuff_stddev_24h': 0, 'number_of_stuff_stdvar_24h': 0},
+        {'col1': 0, 'number_of_stuff_avg_24h': 0.0, 'number_of_stuff_stddev_24h': math.nan, 'number_of_stuff_stdvar_24h': math.nan},
         {'col1': 1, 'number_of_stuff_avg_24h': 0.5, 'number_of_stuff_stddev_24h': math.sqrt(0.5), 'number_of_stuff_stdvar_24h': 0.5},
         {'col1': 2, 'number_of_stuff_avg_24h': 1.0, 'number_of_stuff_stddev_24h': 1.0, 'number_of_stuff_stdvar_24h': 1.0},
         {'col1': 3, 'number_of_stuff_avg_24h': 1.5, 'number_of_stuff_stddev_24h': math.sqrt(1.6666666666666667),
@@ -1139,7 +1139,8 @@ def test_aggregate_multiple_keys(setup_teardown_test):
             "first_name": ["moshe", "yosi", "yosi"],
             "last_name": ["cohen", "levi", "levi"],
             "some_data": [1, 2, 3],
-            "time": [current_time - pd.Timedelta(minutes=25), current_time - pd.Timedelta(minutes=30), current_time - pd.Timedelta(minutes=35)]
+            "time": [current_time - pd.Timedelta(minutes=25), current_time - pd.Timedelta(minutes=30),
+                     current_time - pd.Timedelta(minutes=35)]
         }
     )
 
