@@ -235,6 +235,25 @@ async def async_dataframe_source():
 def test_async_dataframe_source():
     asyncio.run(async_test_async_source())
 
+def test_write_parquet_timestamp_nanosecs(tmpdir):
+    out_dir = f'{tmpdir}/test_write_parquet_timestamp_nanosecs/{uuid.uuid4().hex}/'
+    columns=['string', 'timestamp1', 'timestamp2']
+    df = pd.DataFrame([['hello', pd.Timestamp('2020-01-26 14:52:37.12325679'), pd.Timestamp('2020-01-26 12:41:37.123456789')], ['world', pd.Timestamp('2018-05-11 13:52:37.333421789'), pd.Timestamp('2020-01-14 14:52:37.987654321')]], columns=columns)
+    df.set_index(keys=['timestamp1'], inplace=True)
+    controller = build_flow([
+        DataframeSource(df),
+        WriteToParquet(out_dir, columns=columns, partition_cols=[])
+    ]).run()
+    controller.await_termination()
+
+    controller = build_flow([
+        ReadParquet(out_dir),
+        Reduce([], append_and_return),
+    ]).run()
+
+    termination_result = controller.await_termination()
+    expected = [{'string': 'hello', 'timestamp1': pd.Timestamp('2020-01-26 14:52:37.123256'), 'timestamp2': pd.Timestamp('2020-01-26 12:41:37.123456')}, {'string': 'world', 'timestamp1': pd.Timestamp('2018-05-11 13:52:37.333421'), 'timestamp2': pd.Timestamp('2020-01-14 14:52:37.987654')}]
+    assert termination_result == expected
 
 def test_read_parquet():
     controller = build_flow([
@@ -1866,17 +1885,24 @@ def test_csv_reader_parquet_write_microsecs(tmpdir):
 
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
 
+def test_csv_reader_parquet_write_nanosecs(tmpdir):
+    out_file = f'{tmpdir}/test_csv_reader_parquet_write_nanosecs_{uuid.uuid4().hex}/'
+    columns = ['k', 't']
 
-def test_csv_reader_bad_timestamp(tmpdir):
+    time_format = '%d/%m/%Y %H:%M:%S.%f'
     controller = build_flow([
-        ReadCSV('tests/test-with-timestamp-bad.csv', header=True, key_field='k',
-                time_field='t', timestamp_format='%d/%m/%Y %H:%M:%S.%f')
+        ReadCSV('tests/test-with-timestamp-nanosecs.csv', header=True, key_field='k',
+                time_field='t', timestamp_format=time_format),
+        WriteToParquet(out_file, columns=columns, max_events=2)
     ]).run()
-    try:
-        controller.await_termination()
-        assert False
-    except TypeError:
-        pass
+
+    expected = pd.DataFrame([['m1', datetime.strptime("15/02/2020 02:03:04.123456", time_format)],
+                             ['m2', datetime.strptime("16/02/2020 02:03:04.123456", time_format)]],
+                            columns=columns)
+    controller.await_termination()
+    read_back_df = pd.read_parquet(out_file, columns=columns)
+
+    assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
 
 
 def test_error_in_concurrent_by_key_task():

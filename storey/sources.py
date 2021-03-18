@@ -521,7 +521,7 @@ class ReadCSV(_IterableSource):
 
     def _datetime_from_timestamp(self, timestamp):
         if self._timestamp_format:
-            return datetime.strptime(timestamp, self._timestamp_format)
+            return pandas.to_datetime(timestamp, format=self._timestamp_format).floor('u').to_pydatetime()
         else:
             return datetime.fromisoformat(timestamp)
 
