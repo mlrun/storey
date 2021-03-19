@@ -668,9 +668,10 @@ class VirtualAggregationBuckets:
 
 
 class AggregationValue:
-    default_value = None
+    default_value = math.nan
 
     def __init__(self, max_value=None, set_data=None):
+        self.value = self.default_value
         self.time = datetime.min
         self._max_value = max_value
         self._set_value = self._set_value_with_max if max_value else self._set_value_without_max
@@ -721,15 +722,13 @@ class AggregationValue:
 
 class MinValue(AggregationValue):
     name = 'min'
-    default_value = float('inf')
 
     def __init__(self, max_value=None, set_data=None):
-        self.value = math.nan
         super().__init__(max_value, set_data)
 
     def aggregate(self, time, value):
         if self.value is math.nan:
-            self.value = value
+            self.value = self._max_value or value
         elif value < self.value:
             self.value = value  # bypass _set_value because there's no need to check max_value each time
 
@@ -746,27 +745,16 @@ class MinValue(AggregationValue):
 
 class MaxValue(AggregationValue):
     name = 'max'
-    default_value = float('-inf')
 
     def __init__(self, max_value=None, set_data=None):
-        self.value = math.nan
         super().__init__(max_value, set_data)
 
     def aggregate(self, time, value):
-        if self.value is math.nan:
-            self.value = value
-        elif value > self.value:
+        if self.value is math.nan or value > self.value:
             self._set_value(value)
 
     def get_update_expression(self, old):
         return f'max({old}, {self.value})'
-
-    def reset(self, value=None):
-        self.time = datetime.min
-        if value is None:
-            self.value = math.nan
-        else:
-            self.value = value
 
 
 class SumValue(AggregationValue):
@@ -774,7 +762,6 @@ class SumValue(AggregationValue):
     default_value = 0
 
     def __init__(self, max_value=None, set_data=None):
-        self.value = self.default_value
         super().__init__(max_value, set_data)
 
     def aggregate(self, time, value):
@@ -786,7 +773,6 @@ class CountValue(AggregationValue):
     default_value = 0
 
     def __init__(self, max_value=None, set_data=None):
-        self.value = self.default_value
         super().__init__(max_value, set_data)
 
     def aggregate(self, time, value):
@@ -798,7 +784,6 @@ class SqrValue(AggregationValue):
     default_value = 0
 
     def __init__(self, max_value=None, set_data=None):
-        self.value = self.default_value
         super().__init__(max_value, set_data)
 
     def aggregate(self, time, value):
@@ -807,10 +792,8 @@ class SqrValue(AggregationValue):
 
 class LastValue(AggregationValue):
     name = 'last'
-    default_value = math.nan
 
     def __init__(self, max_value=None, set_data=None):
-        self.value = self.default_value
         super().__init__(max_value, set_data)
 
     def aggregate(self, time, value):
@@ -824,10 +807,8 @@ class LastValue(AggregationValue):
 
 class FirstValue(AggregationValue):
     name = 'first'
-    default_value = math.nan
 
     def __init__(self, max_value=None, set_data=None):
-        self.value = self.default_value
         super().__init__(max_value, set_data)
         self._first_time = datetime.max
 
