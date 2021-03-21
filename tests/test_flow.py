@@ -242,13 +242,12 @@ def test_write_parquet_timestamp_nanosecs(tmpdir):
     df.set_index(keys=['timestamp1'], inplace=True)
     controller = build_flow([
         DataframeSource(df),
-        WriteToParquet(out_dir, columns=columns, partition_cols=[])
+        WriteToParquet(out_dir, columns=['string', 'timestamp2'], partition_cols=[], index_cols='timestamp1')
     ]).run()
     controller.await_termination()
 
     controller = build_flow([
-        ReadParquet(out_dir),
-        Reduce([], append_and_return),
+        ReadParquet(out_dir),        Reduce([], append_and_return),
     ]).run()
 
     termination_result = controller.await_termination()
