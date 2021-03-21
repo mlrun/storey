@@ -378,7 +378,7 @@ class WriteToParquet(_Batching, _Writer):
             if pd.core.dtypes.common.is_datetime64_dtype(df[name]):
                 df[name] = df[name].astype('datetime64[us]')
         if pd.core.dtypes.common.is_datetime64_dtype(df.index):
-             df.index = df.index.floor('u')
+            df.index = df.index.floor('u')
         with self._file_system.open(file_path, 'wb') as file:
             df.to_parquet(path=file, index=bool(self._index_cols))
 
