@@ -148,6 +148,23 @@ def test_csv_reader_as_dict_with_key_and_timestamp():
     assert termination_result[1].body == {'k': 'm2', 't': datetime(2020, 2, 16, 2, 0), 'v': 14, 'b': False}
 
 
+def test_csv_reader_as_dict_with_compact_timestamp():
+    controller = build_flow([
+        ReadCSV('tests/test-with-compact-timestamp.csv', header=True, build_dict=True, time_field='t', timestamp_format='%Y%m%d%H'),
+        Reduce([], append_and_return, full_event=True),
+    ]).run()
+
+    termination_result = controller.await_termination()
+
+    assert len(termination_result) == 2
+    assert termination_result[0].key is None
+    assert termination_result[0].time == datetime(2020, 2, 15, 2, 0)
+    assert termination_result[0].body == {'k': 'm1', 't': datetime(2020, 2, 15, 2, 0), 'v': 8, 'b': True}
+    assert termination_result[1].key is None
+    assert termination_result[1].time == datetime(2020, 2, 16, 2, 0)
+    assert termination_result[1].body == {'k': 'm2', 't': datetime(2020, 2, 16, 2, 0), 'v': 14, 'b': False}
+
+
 def test_csv_reader_with_key_and_timestamp():
     controller = build_flow([
         ReadCSV('tests/test-with-timestamp.csv', header=True, key_field='k',
@@ -235,10 +252,13 @@ async def async_dataframe_source():
 def test_async_dataframe_source():
     asyncio.run(async_test_async_source())
 
+
 def test_write_parquet_timestamp_nanosecs(tmpdir):
     out_dir = f'{tmpdir}/test_write_parquet_timestamp_nanosecs/{uuid.uuid4().hex}/'
-    columns=['string', 'timestamp1', 'timestamp2']
-    df = pd.DataFrame([['hello', pd.Timestamp('2020-01-26 14:52:37.12325679'), pd.Timestamp('2020-01-26 12:41:37.123456789')], ['world', pd.Timestamp('2018-05-11 13:52:37.333421789'), pd.Timestamp('2020-01-14 14:52:37.987654321')]], columns=columns)
+    columns = ['string', 'timestamp1', 'timestamp2']
+    df = pd.DataFrame([['hello', pd.Timestamp('2020-01-26 14:52:37.12325679'), pd.Timestamp('2020-01-26 12:41:37.123456789')],
+                       ['world', pd.Timestamp('2018-05-11 13:52:37.333421789'), pd.Timestamp('2020-01-14 14:52:37.987654321')]],
+                      columns=columns)
     df.set_index(keys=['timestamp1'], inplace=True)
     controller = build_flow([
         DataframeSource(df),
@@ -247,12 +267,16 @@ def test_write_parquet_timestamp_nanosecs(tmpdir):
     controller.await_termination()
 
     controller = build_flow([
-        ReadParquet(out_dir),        Reduce([], append_and_return),
+        ReadParquet(out_dir), Reduce([], append_and_return),
     ]).run()
 
     termination_result = controller.await_termination()
-    expected = [{'string': 'hello', 'timestamp1': pd.Timestamp('2020-01-26 14:52:37.123256'), 'timestamp2': pd.Timestamp('2020-01-26 12:41:37.123456')}, {'string': 'world', 'timestamp1': pd.Timestamp('2018-05-11 13:52:37.333421'), 'timestamp2': pd.Timestamp('2020-01-14 14:52:37.987654')}]
+    expected = [{'string': 'hello', 'timestamp1': pd.Timestamp('2020-01-26 14:52:37.123256'),
+                 'timestamp2': pd.Timestamp('2020-01-26 12:41:37.123456')},
+                {'string': 'world', 'timestamp1': pd.Timestamp('2018-05-11 13:52:37.333421'),
+                 'timestamp2': pd.Timestamp('2020-01-14 14:52:37.987654')}]
     assert termination_result == expected
+
 
 def test_read_parquet():
     controller = build_flow([
@@ -1883,6 +1907,7 @@ def test_csv_reader_parquet_write_microsecs(tmpdir):
     read_back_df = pd.read_parquet(out_file, columns=columns)
 
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+
 
 def test_csv_reader_parquet_write_nanosecs(tmpdir):
     out_file = f'{tmpdir}/test_csv_reader_parquet_write_nanosecs_{uuid.uuid4().hex}/'

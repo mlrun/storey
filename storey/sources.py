@@ -481,6 +481,12 @@ class ReadCSV(_IterableSource):
             return 'b'
 
         try:
+            self._datetime_from_timestamp(value)
+            return 't'
+        except ValueError:
+            pass
+
+        try:
             int(value)
             return 'i'
         except ValueError:
@@ -489,12 +495,6 @@ class ReadCSV(_IterableSource):
         try:
             float(value)
             return 'f'
-        except ValueError:
-            pass
-
-        try:
-            self._datetime_from_timestamp(value)
-            return 't'
         except ValueError:
             pass
 
