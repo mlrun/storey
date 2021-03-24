@@ -91,7 +91,12 @@ class Table:
         if not self._schema:
             await self._get_or_save_schema()
 
-        return self._get_aggregations_attrs(key).get_features(timestamp)
+        attrs = self._get_aggregations_attrs(key)
+
+        if attrs is None:
+            return {}
+
+        return attrs.get_features(timestamp)
 
     def _new_aggregated_store_element(self):
         if self._aggregations_read_only:
@@ -101,7 +106,10 @@ class Table:
     async def add_aggregation_by_key(self, key, base_timestamp, initial_data):
         if not self._schema:
             await self._get_or_save_schema()
-        self._set_aggregations_attrs(key, self._new_aggregated_store_element()(key, self._aggregates, base_timestamp, initial_data))
+        if self._aggregations_read_only and initial_data is None:
+            self._set_aggregations_attrs(key, None)
+        else:
+            self._set_aggregations_attrs(key, self._new_aggregated_store_element()(key, self._aggregates, base_timestamp, initial_data))
 
     async def _get_or_save_schema(self):
         self._schema = await self._storage._load_schema(self._container, self._table_path)
