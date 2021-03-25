@@ -2353,3 +2353,20 @@ def test_non_existing_key_query_by_key():
     controller.emit({'nameeeee': 'katya'})
     controller.terminate()
     controller.await_termination()
+
+
+def test_csv_reader_with_none_values():
+    controller = build_flow([
+        ReadCSV('tests/test-with-none-values.csv', header=True, key_field='string'),
+        Reduce([], append_and_return, full_event=True),
+    ]).run()
+
+    termination_result = controller.await_termination()
+
+    print(termination_result)
+
+    assert len(termination_result) == 2
+    assert termination_result[0].key == 'a'
+    assert termination_result[0].body == ['a', True, False]
+    assert termination_result[1].key == 'b'
+    assert termination_result[1].body == ['b', True, None]
