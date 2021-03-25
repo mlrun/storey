@@ -1,12 +1,13 @@
-from typing import List
 import copy
 import math
 from datetime import datetime
-from .drivers import Driver
-from .utils import _split_path, get_hashed_key
-from .dtypes import FieldAggregator, SlidingWindows, FixedWindows
+from typing import List
+
 from .aggregation_utils import is_raw_aggregate, get_virtual_aggregation_func, get_implied_aggregates, get_all_raw_aggregates, \
     get_all_raw_aggregates_with_hidden
+from .drivers import Driver
+from .dtypes import FieldAggregator, SlidingWindows, FixedWindows
+from .utils import _split_path, get_hashed_key
 
 
 class Table:
@@ -722,14 +723,13 @@ class AggregationValue:
 
 class MinValue(AggregationValue):
     name = 'min'
+    default_value = float('inf')
 
     def __init__(self, max_value=None, set_data=None):
         super().__init__(max_value, set_data)
 
     def aggregate(self, time, value):
-        if self.value is math.nan:
-            self.value = self._max_value or value
-        elif value < self.value:
+        if value < self.value:
             self.value = value  # bypass _set_value because there's no need to check max_value each time
 
     def get_update_expression(self, old):
@@ -738,19 +738,20 @@ class MinValue(AggregationValue):
     def reset(self, value=None):
         self.time = datetime.min
         if value is None:
-            self.value = self._max_value or math.nan
+            self.value = self._max_value or self.default_value
         else:
             self.value = value
 
 
 class MaxValue(AggregationValue):
     name = 'max'
+    default_value = float('-inf')
 
     def __init__(self, max_value=None, set_data=None):
         super().__init__(max_value, set_data)
 
     def aggregate(self, time, value):
-        if self.value is math.nan or value > self.value:
+        if value > self.value:
             self._set_value(value)
 
     def get_update_expression(self, old):
@@ -1069,8 +1070,10 @@ class AggregationBuckets:
             # In case our pre aggregates already have the answer
             for aggregation_name in self._explicit_raw_aggregations:
                 for (window_millis, window_str) in self.explicit_windows.windows:
-                    result[f'{self.name}_{aggregation_name}_{window_str}'] = \
-                        self._current_aggregate_values[(aggregation_name, window_millis)].value
+                    value = self._current_aggregate_values[(aggregation_name, window_millis)].value
+                    if value == math.inf or value == -math.inf:
+                        value = math.nan
+                    result[f'{self.name}_{aggregation_name}_{window_str}'] = value
 
         self.augment_virtual_features(result)
         return result
