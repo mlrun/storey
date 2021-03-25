@@ -514,6 +514,8 @@ class ReadCSV(_IterableSource):
                 return True
             if lowercase == 'false':
                 return False
+            if lowercase == '':
+                return None
             raise TypeError(f'Expected boolean, got {field}')
         if typ == 't':
             return self._datetime_from_timestamp(field)

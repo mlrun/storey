@@ -1,0 +1,3 @@
+string,bool,bool_with_nan
+a,True,False
+b,True,
