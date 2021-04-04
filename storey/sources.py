@@ -481,6 +481,12 @@ class ReadCSV(_IterableSource):
             return 'b'
 
         try:
+            self._datetime_from_timestamp(value)
+            return 't'
+        except ValueError:
+            pass
+
+        try:
             int(value)
             return 'i'
         except ValueError:
@@ -489,12 +495,6 @@ class ReadCSV(_IterableSource):
         try:
             float(value)
             return 'f'
-        except ValueError:
-            pass
-
-        try:
-            self._datetime_from_timestamp(value)
-            return 't'
         except ValueError:
             pass
 
@@ -514,6 +514,8 @@ class ReadCSV(_IterableSource):
                 return True
             if lowercase == 'false':
                 return False
+            if lowercase == '':
+                return None
             raise TypeError(f'Expected boolean, got {field}')
         if typ == 't':
             return self._datetime_from_timestamp(field)
