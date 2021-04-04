@@ -462,3 +462,27 @@ def test_write_multiple_keys_to_v3io_from_csv(setup_teardown_test):
     assert response.status_code == 200
     assert expected == response.output.item
 
+
+def test_write_none_time(setup_teardown_test):
+
+    table = Table(setup_teardown_test, V3ioDriver())
+    current_time = pd.Timestamp.now()
+
+    data = pd.DataFrame(
+        {
+            "first_name": ["moshe", "yosi"],
+            "color": ['blue', 'yellow'],
+            "time": [current_time - pd.Timedelta(minutes=25), None,]
+        }
+    )
+
+    controller = build_flow([
+        DataframeSource(data, key_field='first_name'),
+        WriteToTable(table),
+    ]).run()
+    controller.await_termination()
+
+    response = asyncio.run(get_kv_item(setup_teardown_test, 'yosi'))
+    expected = {'first_name': 'yosi', 'color': 'yellow'}
+    assert response.status_code == 200
+    assert expected == response.output.item
