@@ -1172,9 +1172,51 @@ def test_aggregate_multiple_keys(setup_teardown_test):
     actual = controller.await_termination()
     expected_results = [
         {'number_of_stuff_sum_1h': 1.0, 'first_name': 'moshe', 'last_name': 'cohen', 'some_data': 4},
-        {'number_of_stuff_sum_1h': 0, 'first_name': 'moshe', 'last_name': 'levi', 'some_data': 5},
+        {'first_name': 'moshe', 'last_name': 'levi', 'some_data': 5},
         {'number_of_stuff_sum_1h': 5.0, 'first_name': 'yosi', 'last_name': 'levi', 'some_data': 6}
     ]
 
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
+
+
+def test_read_non_existing_key(setup_teardown_test):
+    data = pd.DataFrame(
+        {
+            "first_name": ["moshe", "yosi", "yosi"],
+            "last_name": ["cohen", "levi", "levi"],
+            "some_data": [1, 2, 3],
+            "time": [test_base_time - pd.Timedelta(minutes=25), test_base_time - pd.Timedelta(minutes=30),
+                     test_base_time - pd.Timedelta(minutes=35)]
+        }
+    )
+
+    keys = 'first_name'
+    table = Table(setup_teardown_test, V3ioDriver())
+    controller = build_flow([
+        DataframeSource(data, key_field=keys),
+        AggregateByKey([FieldAggregator("number_of_stuff", "some_data", ["sum"],
+                                        SlidingWindows(['1h'], '10m'))],
+                       table),
+        WriteToTable(table),
+    ]).run()
+
+    actual = controller.await_termination()
+
+    other_table = Table(setup_teardown_test, V3ioDriver())
+    controller = build_flow([
+        Source(),
+        QueryByKey(["number_of_stuff_sum_1h"],
+                   other_table, keys="first_name"),
+        Reduce([], lambda acc, x: append_return(acc, x)),
+    ]).run()
+
+    controller.emit({'last_name': 'levi', 'some_data': 5}, 'non_existing_key')
+
+    controller.terminate()
+    actual = controller.await_termination()
+
+    print(actual[0])
+
+    assert "number_of_stuff_sum_1h" not in actual[0]
+
