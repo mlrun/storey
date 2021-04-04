@@ -1180,13 +1180,13 @@ def test_aggregate_multiple_keys(setup_teardown_test):
 
 
 def test_read_non_existing_key(setup_teardown_test):
-    current_time = pd.Timestamp.now()
     data = pd.DataFrame(
         {
             "first_name": ["moshe", "yosi", "yosi"],
             "last_name": ["cohen", "levi", "levi"],
             "some_data": [1, 2, 3],
-            "time": [current_time - pd.Timedelta(minutes=25), current_time - pd.Timedelta(minutes=30), current_time - pd.Timedelta(minutes=35)]
+            "time": [test_base_time - pd.Timedelta(minutes=25), test_base_time - pd.Timedelta(minutes=30),
+                     test_base_time - pd.Timedelta(minutes=35)]
         }
     )
 
