@@ -1,11 +1,13 @@
-from typing import List
 import copy
+import math
 from datetime import datetime
-from .drivers import Driver
-from .utils import _split_path, get_hashed_key
-from .dtypes import FieldAggregator, SlidingWindows, FixedWindows
+from typing import List
+
 from .aggregation_utils import is_raw_aggregate, get_virtual_aggregation_func, get_implied_aggregates, get_all_raw_aggregates, \
     get_all_raw_aggregates_with_hidden
+from .drivers import Driver
+from .dtypes import FieldAggregator, SlidingWindows, FixedWindows
+from .utils import _split_path, get_hashed_key
 
 
 class Table:
@@ -667,9 +669,10 @@ class VirtualAggregationBuckets:
 
 
 class AggregationValue:
-    default_value = None
+    default_value = math.nan
 
     def __init__(self, max_value=None, set_data=None):
+        self.value = self.default_value
         self.time = datetime.min
         self._max_value = max_value
         self._set_value = self._set_value_with_max if max_value else self._set_value_without_max
@@ -723,7 +726,6 @@ class MinValue(AggregationValue):
     default_value = float('inf')
 
     def __init__(self, max_value=None, set_data=None):
-        self.value = max_value or self.default_value
         super().__init__(max_value, set_data)
 
     def aggregate(self, time, value):
@@ -746,7 +748,6 @@ class MaxValue(AggregationValue):
     default_value = float('-inf')
 
     def __init__(self, max_value=None, set_data=None):
-        self.value = self.default_value
         super().__init__(max_value, set_data)
 
     def aggregate(self, time, value):
@@ -762,7 +763,6 @@ class SumValue(AggregationValue):
     default_value = 0
 
     def __init__(self, max_value=None, set_data=None):
-        self.value = self.default_value
         super().__init__(max_value, set_data)
 
     def aggregate(self, time, value):
@@ -774,7 +774,6 @@ class CountValue(AggregationValue):
     default_value = 0
 
     def __init__(self, max_value=None, set_data=None):
-        self.value = self.default_value
         super().__init__(max_value, set_data)
 
     def aggregate(self, time, value):
@@ -786,7 +785,6 @@ class SqrValue(AggregationValue):
     default_value = 0
 
     def __init__(self, max_value=None, set_data=None):
-        self.value = self.default_value
         super().__init__(max_value, set_data)
 
     def aggregate(self, time, value):
@@ -795,10 +793,8 @@ class SqrValue(AggregationValue):
 
 class LastValue(AggregationValue):
     name = 'last'
-    default_value = None
 
     def __init__(self, max_value=None, set_data=None):
-        self.value = self.default_value
         super().__init__(max_value, set_data)
 
     def aggregate(self, time, value):
@@ -812,10 +808,8 @@ class LastValue(AggregationValue):
 
 class FirstValue(AggregationValue):
     name = 'first'
-    default_value = None
 
     def __init__(self, max_value=None, set_data=None):
-        self.value = self.default_value
         super().__init__(max_value, set_data)
         self._first_time = datetime.max
 
@@ -1076,8 +1070,10 @@ class AggregationBuckets:
             # In case our pre aggregates already have the answer
             for aggregation_name in self._explicit_raw_aggregations:
                 for (window_millis, window_str) in self.explicit_windows.windows:
-                    result[f'{self.name}_{aggregation_name}_{window_str}'] = \
-                        self._current_aggregate_values[(aggregation_name, window_millis)].value
+                    value = self._current_aggregate_values[(aggregation_name, window_millis)].value
+                    if value == math.inf or value == -math.inf:
+                        value = math.nan
+                    result[f'{self.name}_{aggregation_name}_{window_str}'] = value
 
         self.augment_virtual_features(result)
         return result
