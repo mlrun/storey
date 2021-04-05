@@ -154,11 +154,11 @@ class Table:
         if not self._schema:
             async with self._get_schema_lock():
                 await self._get_or_save_schema()
-        async with self._get_lock(key):
-            if self._aggregations_read_only and initial_data is None:
-                self._set_aggregations_attrs(key, None)
-            else:
-                self._set_aggregations_attrs(key, self._new_aggregated_store_element()(key, self._aggregates, base_timestamp, initial_data))
+
+        if self._aggregations_read_only and initial_data is None:
+            self._set_aggregations_attrs(key, None)
+        else:
+            self._set_aggregations_attrs(key, self._new_aggregated_store_element()(key, self._aggregates, base_timestamp, initial_data))
 
     async def _get_or_save_schema(self):
         self._schema = await self._storage._load_schema(self._container, self._table_path)
