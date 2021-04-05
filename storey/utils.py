@@ -3,9 +3,11 @@ import struct
 from array import array
 from urllib.parse import urlparse
 import fsspec
+from datetime import datetime
 
 bucketPerWindow = 10
 schema_file_name = '.schema'
+local_time_zone = datetime.now().astimezone().tzinfo
 
 
 def parse_duration(string_time):
