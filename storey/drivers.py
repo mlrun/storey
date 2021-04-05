@@ -227,6 +227,9 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
                 expression_value = self._convert_python_obj_to_expression_value(value)
                 if expression_value:
                     expressions.append(f'{name}={self._convert_python_obj_to_expression_value(value)}')
+                else:
+                    expressions.append(f'REMOVE {name}')
+
 
         update_expression = ';'.join(expressions)
         return update_expression, condition_expression, pending_updates
