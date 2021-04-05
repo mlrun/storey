@@ -161,3 +161,20 @@ def update_in(obj, key, value):
 
     last_key = parts[-1]
     obj[last_key] = value
+
+
+def hash_list(list_to_hash):
+    str_concatted = ''.join(list_to_hash)
+    hash_value = hash(str_concatted)
+    return hash_value
+
+
+def get_hashed_key(key_list):
+    if isinstance(key_list, list):
+        if len(key_list) >= 3:
+            return str(key_list[0]) + "." + str(hash_list(key_list[1:]))
+        if len(key_list) == 2:
+            return str(key_list[0]) + "." + str(key_list[1])
+        return key_list[0]
+    else:
+        return key_list

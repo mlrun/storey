@@ -1,4 +1,5 @@
 import copy
+import math
 from asyncio import Lock
 from datetime import datetime
 from typing import List
@@ -7,7 +8,7 @@ from .aggregation_utils import is_raw_aggregate, get_virtual_aggregation_func, g
     get_all_raw_aggregates_with_hidden
 from .drivers import Driver
 from .dtypes import FieldAggregator, SlidingWindows, FixedWindows
-from .utils import _split_path
+from .utils import _split_path, get_hashed_key
 
 
 class _NoOpLock:
@@ -75,6 +76,7 @@ class Table:
             self._set_static_attrs(key, data)
 
     async def _lazy_load_key_with_aggregates(self, key, timestamp=None):
+        key = get_hashed_key(key)
         if self._aggregations_read_only or not self._get_aggregations_attrs(key):
             async with self._get_lock(key):
                 # Try load from the store, and create a new one only if the key really is new
@@ -89,6 +91,7 @@ class Table:
                     self._update_static_attrs(key, additional_data)
 
     async def _get_or_load_static_attributes_by_key(self, key, attributes='*'):
+        key = get_hashed_key(key)
         async with self._get_lock(key):
             attrs = self._get_static_attrs(key)
             if not attrs:
@@ -104,6 +107,7 @@ class Table:
         self._aggregates = aggregates
 
     async def _persist_key(self, key, event_data_to_persist):
+        key = get_hashed_key(key)
         async with self._get_lock(key):
             aggr_by_key = self._get_aggregations_attrs(key)
             additional_data_persist = self._get_static_attrs(key)
@@ -132,7 +136,12 @@ class Table:
                 await self._get_or_save_schema()
 
         async with self._get_lock(key):
-            return self._get_aggregations_attrs(key).get_features(timestamp)
+            attrs = self._get_aggregations_attrs(key)
+
+            if attrs is None:
+                return {}
+
+            return attrs.get_features(timestamp)
 
     def _new_aggregated_store_element(self):
         if self._aggregations_read_only:
@@ -144,7 +153,10 @@ class Table:
             async with self._get_schema_lock():
                 await self._get_or_save_schema()
         async with self._get_lock(key):
-            self._set_aggregations_attrs(key, self._new_aggregated_store_element()(key, self._aggregates, base_timestamp, initial_data))
+            if self._aggregations_read_only and initial_data is None:
+                self._set_aggregations_attrs(key, None)
+            else:
+                self._set_aggregations_attrs(key, self._new_aggregated_store_element()(key, self._aggregates, base_timestamp, initial_data))
 
     async def _get_or_save_schema(self):
         self._schema = await self._storage._load_schema(self._container, self._table_path)
@@ -233,24 +245,28 @@ class Table:
         return schema
 
     def _get_aggregations_attrs(self, key):
+        key = get_hashed_key(key)
         if key in self._attrs_cache:
             return self._attrs_cache[key].aggregations
         else:
             return None
 
     def _set_aggregations_attrs(self, key, element):
+        key = get_hashed_key(key)
         if key in self._attrs_cache:
             self._attrs_cache[key].aggregations = element
         else:
             self._attrs_cache[key] = _CacheElement({}, element)
 
     def _get_static_attrs(self, key):
+        key = get_hashed_key(key)
         if key in self._attrs_cache:
             return self._attrs_cache[key].static_attrs
         else:
             return None
 
     def _set_static_attrs(self, key, value):
+        key = get_hashed_key(key)
         if key in self._attrs_cache:
             self._attrs_cache[key].static_attrs = value
         else:
@@ -708,9 +724,10 @@ class VirtualAggregationBuckets:
 
 
 class AggregationValue:
-    default_value = None
+    default_value = math.nan
 
     def __init__(self, max_value=None, set_data=None):
+        self.value = self.default_value
         self.time = datetime.min
         self._max_value = max_value
         self._set_value = self._set_value_with_max if max_value else self._set_value_without_max
@@ -764,7 +781,6 @@ class MinValue(AggregationValue):
     default_value = float('inf')
 
     def __init__(self, max_value=None, set_data=None):
-        self.value = max_value or self.default_value
         super().__init__(max_value, set_data)
 
     def aggregate(self, time, value):
@@ -787,7 +803,6 @@ class MaxValue(AggregationValue):
     default_value = float('-inf')
 
     def __init__(self, max_value=None, set_data=None):
-        self.value = self.default_value
         super().__init__(max_value, set_data)
 
     def aggregate(self, time, value):
@@ -803,7 +818,6 @@ class SumValue(AggregationValue):
     default_value = 0
 
     def __init__(self, max_value=None, set_data=None):
-        self.value = self.default_value
         super().__init__(max_value, set_data)
 
     def aggregate(self, time, value):
@@ -815,7 +829,6 @@ class CountValue(AggregationValue):
     default_value = 0
 
     def __init__(self, max_value=None, set_data=None):
-        self.value = self.default_value
         super().__init__(max_value, set_data)
 
     def aggregate(self, time, value):
@@ -827,7 +840,6 @@ class SqrValue(AggregationValue):
     default_value = 0
 
     def __init__(self, max_value=None, set_data=None):
-        self.value = self.default_value
         super().__init__(max_value, set_data)
 
     def aggregate(self, time, value):
@@ -836,10 +848,8 @@ class SqrValue(AggregationValue):
 
 class LastValue(AggregationValue):
     name = 'last'
-    default_value = None
 
     def __init__(self, max_value=None, set_data=None):
-        self.value = self.default_value
         super().__init__(max_value, set_data)
 
     def aggregate(self, time, value):
@@ -853,10 +863,8 @@ class LastValue(AggregationValue):
 
 class FirstValue(AggregationValue):
     name = 'first'
-    default_value = None
 
     def __init__(self, max_value=None, set_data=None):
-        self.value = self.default_value
         super().__init__(max_value, set_data)
         self._first_time = datetime.max
 
@@ -1117,8 +1125,10 @@ class AggregationBuckets:
             # In case our pre aggregates already have the answer
             for aggregation_name in self._explicit_raw_aggregations:
                 for (window_millis, window_str) in self.explicit_windows.windows:
-                    result[f'{self.name}_{aggregation_name}_{window_str}'] = \
-                        self._current_aggregate_values[(aggregation_name, window_millis)].value
+                    value = self._current_aggregate_values[(aggregation_name, window_millis)].value
+                    if value == math.inf or value == -math.inf:
+                        value = math.nan
+                    result[f'{self.name}_{aggregation_name}_{window_str}'] = value
 
         self.augment_virtual_features(result)
         return result

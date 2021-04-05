@@ -74,6 +74,8 @@ class AggregateByKey(Flow):
                 self.key_extractor = key
             elif isinstance(key, str):
                 self.key_extractor = lambda element: element.get(key)
+            elif isinstance(key, list):
+                self.key_extractor = lambda element: [element.get(single_key) for single_key in key]
             else:
                 raise TypeError(f'key is expected to be either a callable or string but got {type(key)}')
 
@@ -219,12 +221,12 @@ class QueryByKey(AggregateByKey):
     :param table: A Table object or name for persistence of aggregations.
         If a table name is provided, it will be looked up in the context object passed in kwargs.
     :param key: Key field to aggregate by, accepts either a string representing the key field or a key extracting function.
-     Defaults to the key in the event's metadata. (Optional)
+     Defaults to the key in the event's metadata. (Optional). Can be list of keys
     :param augmentation_fn: Function that augments the features into the event's body. Defaults to updating a dict. (Optional)
     :param aliases: Dictionary specifying aliases to the enriched columns, of the format `{'col_name': 'new_col_name'}`. (Optional)
     """
 
-    def __init__(self, features: List[str], table: Union[Table, str], key: Union[str, Callable[[Event], object], None] = None,
+    def __init__(self, features: List[str], table: Union[Table, str], key: Union[str, List[str], Callable[[Event], object], None] = None,
                  augmentation_fn: Optional[Callable[[Event, Dict[str, object]], Event]] = None,
                  aliases: Optional[Dict[str, str]] = None, **kwargs):
         self._aggrs = []

@@ -688,22 +688,27 @@ class _ConcurrentByKeyJobExecution(Flow):
                 event = job[0]
                 completed = await job[1]
 
-                for event in self._pending_by_key[event.key].in_flight:
+                if isinstance(event.key, list):
+                    event_key = str(event.key)
+                else:
+                    event_key = event.key
+
+                for event in self._pending_by_key[event_key].in_flight:
                     await self._handle_completed(event, completed)
-                self._pending_by_key[event.key].in_flight = []
+                self._pending_by_key[event_key].in_flight = []
 
                 # If we got more pending events for the same key process them
-                if self._pending_by_key[event.key].pending:
-                    self._pending_by_key[event.key].in_flight = self._pending_by_key[event.key].pending
-                    self._pending_by_key[event.key].pending = []
+                if self._pending_by_key[event_key].pending:
+                    self._pending_by_key[event_key].in_flight = self._pending_by_key[event_key].pending
+                    self._pending_by_key[event_key].pending = []
 
-                    task = self._safe_process_events(self._pending_by_key[event.key].in_flight)
+                    task = self._safe_process_events(self._pending_by_key[event_key].in_flight)
                     tail_position = received_job_count + self._q.qsize()
                     jobs_at_tail = self_sent_jobs.get(tail_position, [])
                     jobs_at_tail.append((event, asyncio.get_running_loop().create_task(task)))
                     self_sent_jobs[tail_position] = jobs_at_tail
                 else:
-                    del self._pending_by_key[event.key]
+                    del self._pending_by_key[event_key]
         except BaseException as ex:
             if event and event is not _termination_obj and event._awaitable_result:
                 event._awaitable_result._set_error(ex)
@@ -729,16 +734,22 @@ class _ConcurrentByKeyJobExecution(Flow):
             return await self._do_downstream(_termination_obj)
         else:
             # Initializing the key with 2 lists. One for pending requests and one for requests that an update request has been issued for.
-            if event.key not in self._pending_by_key:
-                self._pending_by_key[event.key] = _PendingEvent()
+            if isinstance(event.key, list):
+                # list can't be key in a dictionary
+                event_key = str(event.key)
+            else:
+                event_key = event.key
+
+            if event_key not in self._pending_by_key:
+                self._pending_by_key[event_key] = _PendingEvent()
 
             # If there is a current update in flight for the key, add the event to the pending list. Otherwise update the key.
-            self._pending_by_key[event.key].pending.append(event)
-            if len(self._pending_by_key[event.key].in_flight) == 0:
-                self._pending_by_key[event.key].in_flight = self._pending_by_key[event.key].pending
-                self._pending_by_key[event.key].pending = []
+            self._pending_by_key[event_key].pending.append(event)
+            if len(self._pending_by_key[event_key].in_flight) == 0:
+                self._pending_by_key[event_key].in_flight = self._pending_by_key[event_key].pending
+                self._pending_by_key[event_key].pending = []
 
-                task = self._safe_process_events(self._pending_by_key[event.key].in_flight)
+                task = self._safe_process_events(self._pending_by_key[event_key].in_flight)
                 await self._q.put((event, asyncio.get_running_loop().create_task(task)))
                 if self._worker_awaitable.done():
                     await self._worker_awaitable

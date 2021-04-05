@@ -373,6 +373,12 @@ class WriteToParquet(_Batching, _Writer):
         if dir_path:
             self._file_system.makedirs(dir_path, exist_ok=True)
         file_path = self._path if self._single_file_mode else f'{dir_path}{uuid.uuid4()}.parquet'
+        # Remove nanosecs from timestamp columns & index
+        for name, _ in df.items():
+            if pd.core.dtypes.common.is_datetime64_dtype(df[name]):
+                df[name] = df[name].astype('datetime64[us]')
+        if pd.core.dtypes.common.is_datetime64_dtype(df.index):
+            df.index = df.index.floor('u')
         with self._file_system.open(file_path, 'wb') as file:
             df.to_parquet(path=file, index=bool(self._index_cols))
 
