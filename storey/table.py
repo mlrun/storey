@@ -123,6 +123,7 @@ class Table:
         await self._storage.close()
 
     async def _aggregate(self, key, data, timestamp):
+        key = get_hashed_key(key)
         if not self._schema:
             async with self._get_schema_lock():
                 await self._get_or_save_schema()
@@ -131,6 +132,7 @@ class Table:
             self._get_aggregations_attrs(key).aggregate(data, timestamp)
 
     async def _get_features(self, key, timestamp):
+        key = get_hashed_key(key)
         if not self._schema:
             async with self._get_schema_lock():
                 await self._get_or_save_schema()
