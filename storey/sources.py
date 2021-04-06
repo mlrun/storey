@@ -1,5 +1,6 @@
 import asyncio
 import csv
+import math
 import queue
 import threading
 import uuid
@@ -505,9 +506,9 @@ class ReadCSV(_IterableSource):
         if typ == 's':
             return field
         if typ == 'f':
-            return float(field)
+            return float(field) if field != '' else math.nan
         if typ == 'i':
-            return int(field)
+            return int(field) if field != '' else math.nan
         if typ == 'b':
             lowercase = field.lower()
             if lowercase == 'true':
