@@ -410,6 +410,7 @@ def test_writing_int_key(setup_teardown_test):
     ]).run()
     controller.await_termination()
 
+
 def test_writing_timedelta_key(setup_teardown_test):
     table = Table(setup_teardown_test, V3ioDriver())
 
@@ -464,7 +465,6 @@ def test_write_multiple_keys_to_v3io_from_csv(setup_teardown_test):
 
 
 def test_write_none_time(setup_teardown_test):
-
     table = Table(setup_teardown_test, V3ioDriver())
     data = pd.DataFrame(
         {
@@ -496,3 +496,41 @@ def test_write_none_time(setup_teardown_test):
     expected = {'first_name': 'moshe', 'color': 'blue'}
     assert response.status_code == 200
     assert expected == response.output.item
+
+
+def test_concurrent_write_to_table(setup_teardown_test):
+    table = Table(setup_teardown_test, V3ioDriver())
+
+    controller = build_flow([
+        Source(),
+        [
+            Map(lambda n: {'attr1': n}),
+            WriteToTable(table)
+        ],
+        [
+            Map(lambda n: {'attr2': n}),
+            WriteToTable(table)
+        ]
+    ]).run()
+
+    for i in range(100):
+        controller.emit(i, key=i)
+
+    controller.terminate()
+    controller.await_termination()
+
+    table = Table(setup_teardown_test, V3ioDriver())
+
+    controller = build_flow([
+        Source(),
+        JoinWithTable(table, lambda x: x, join_function=lambda event, aug: aug),
+        Reduce([], append_return)
+    ]).run()
+
+    for i in range(100):
+        controller.emit(i)
+
+    controller.terminate()
+    result = controller.await_termination()
+
+    assert result == [{'attr1': i, 'attr2': i} for i in range(100)]
