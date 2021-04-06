@@ -3,6 +3,7 @@ from datetime import datetime
 import time
 import re
 from typing import Optional, Union, Callable, List, Dict
+import pandas as pd
 
 from .dtypes import EmitEveryEvent, FixedWindows, SlidingWindows, EmitAfterPeriod, EmitAfterWindow, EmitAfterMaxEvent, \
     _dict_to_emit_policy, FieldAggregator, EmitPolicy
@@ -115,6 +116,16 @@ class AggregateByKey(Flow):
 
         raise TypeError('aggregates should be a list of FieldAggregator/dictionaries')
 
+    def _get_timestamp(self, event):
+        event_timestamp = event.time
+        if isinstance(event_timestamp, datetime):
+            if isinstance(event_timestamp, pd.Timestamp) and event_timestamp.tzinfo is None:
+                # timestamp for pandas timestamp gives the wrong result in case there is no timezone (ML-313)
+                local_time_zone = datetime.now().astimezone().tzinfo
+                event_timestamp = event_timestamp.replace(tzinfo=local_time_zone)
+            event_timestamp = event_timestamp.timestamp() * 1000
+        return event_timestamp
+
     async def _do(self, event):
         if event == _termination_obj:
             self._terminate_worker = True
@@ -132,9 +143,7 @@ class AggregateByKey(Flow):
             if self.key_extractor:
                 key = self.key_extractor(element)
 
-            event_timestamp = event.time
-            if isinstance(event_timestamp, datetime):
-                event_timestamp = event_timestamp.timestamp() * 1000
+            event_timestamp = self._get_timestamp(event)
 
             await self._table._lazy_load_key_with_aggregates(key, event_timestamp)
             await self._table._aggregate(key, element, event_timestamp)
@@ -171,9 +180,7 @@ class AggregateByKey(Flow):
 
     # Emit a single event for the requested key
     async def _emit_event(self, key, event):
-        event_timestamp = event.time
-        if isinstance(event_timestamp, datetime):
-            event_timestamp = event_timestamp.timestamp() * 1000
+        event_timestamp = self._get_timestamp(event)
 
         await self._table._lazy_load_key_with_aggregates(key, event_timestamp)
         features = await self._table._get_features(key, event_timestamp)

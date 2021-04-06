@@ -1,4 +1,5 @@
 import asyncio
+import math
 import os
 import queue
 import uuid
@@ -2367,6 +2368,6 @@ def test_csv_reader_with_none_values():
 
     assert len(termination_result) == 2
     assert termination_result[0].key == 'a'
-    assert termination_result[0].body == ['a', True, False]
+    assert termination_result[0].body == ['a', True, False, 1, 2.3]
     assert termination_result[1].key == 'b'
-    assert termination_result[1].body == ['b', True, None]
+    assert termination_result[1].body == ['b', True, None, math.nan, math.nan]
