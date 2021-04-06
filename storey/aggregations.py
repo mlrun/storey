@@ -3,6 +3,7 @@ from datetime import datetime
 import time
 import re
 from typing import Optional, Union, Callable, List, Dict
+import pandas as pd
 
 from .dtypes import EmitEveryEvent, FixedWindows, SlidingWindows, EmitAfterPeriod, EmitAfterWindow, EmitAfterMaxEvent, \
     _dict_to_emit_policy, FieldAggregator, EmitPolicy
@@ -133,6 +134,9 @@ class AggregateByKey(Flow):
 
             event_timestamp = event.time
             if isinstance(event_timestamp, datetime):
+                if isinstance(event_timestamp, pd.Timestamp) and event_timestamp.tzinfo is None:
+                    local_time_zone = datetime.now().astimezone().tzinfo
+                    event_timestamp = event_timestamp.replace(tzinfo=local_time_zone)
                 event_timestamp = event_timestamp.timestamp() * 1000
 
             await self._table._lazy_load_key_with_aggregates(key, event_timestamp)
@@ -172,6 +176,9 @@ class AggregateByKey(Flow):
     async def _emit_event(self, key, event):
         event_timestamp = event.time
         if isinstance(event_timestamp, datetime):
+            if isinstance(event_timestamp, pd.Timestamp) and event_timestamp.tzinfo is None:
+                local_time_zone = datetime.now().astimezone().tzinfo
+                event_timestamp = event_timestamp.replace(tzinfo=local_time_zone)
             event_timestamp = event_timestamp.timestamp() * 1000
 
         await self._table._lazy_load_key_with_aggregates(key, event_timestamp)

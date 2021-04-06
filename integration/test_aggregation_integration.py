@@ -1147,7 +1147,7 @@ def test_aggregate_multiple_keys(setup_teardown_test):
     keys = ['first_name', 'last_name']
     table = Table(setup_teardown_test, V3ioDriver())
     controller = build_flow([
-        DataframeSource(data, key_field=keys),
+        DataframeSource(data, key_field=keys, time_field='time'),
         AggregateByKey([FieldAggregator("number_of_stuff", "some_data", ["sum"],
                                         SlidingWindows(['1h'], '10m'))],
                        table),
