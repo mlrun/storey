@@ -14,6 +14,7 @@ from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, MapWithStat
     WriteToParquet, QueryByKey, \
     WriteToTSDB, Extend, SendToHttp, HttpRequest, WriteToTable, NoopDriver, Driver, Recover, V3ioDriver, ReadParquet
 
+local_time_zone = datetime.now().astimezone().tzinfo
 
 class ATestException(Exception):
     pass
@@ -141,10 +142,10 @@ def test_csv_reader_as_dict_with_key_and_timestamp():
 
     assert len(termination_result) == 2
     assert termination_result[0].key == 'm1'
-    assert termination_result[0].time == datetime(2020, 2, 15, 2, 0)
+    assert termination_result[0].time == datetime(2020, 2, 15, 2, 0, tzinfo=local_time_zone)
     assert termination_result[0].body == {'k': 'm1', 't': datetime(2020, 2, 15, 2, 0), 'v': 8, 'b': True}
     assert termination_result[1].key == 'm2'
-    assert termination_result[1].time == datetime(2020, 2, 16, 2, 0)
+    assert termination_result[1].time == datetime(2020, 2, 16, 2, 0, tzinfo=local_time_zone)
     assert termination_result[1].body == {'k': 'm2', 't': datetime(2020, 2, 16, 2, 0), 'v': 14, 'b': False}
 
 
@@ -158,10 +159,10 @@ def test_csv_reader_as_dict_with_compact_timestamp():
 
     assert len(termination_result) == 2
     assert termination_result[0].key is None
-    assert termination_result[0].time == datetime(2020, 2, 15, 2, 0)
+    assert termination_result[0].time == datetime(2020, 2, 15, 2, 0, tzinfo=local_time_zone)
     assert termination_result[0].body == {'k': 'm1', 't': datetime(2020, 2, 15, 2, 0), 'v': 8, 'b': True}
     assert termination_result[1].key is None
-    assert termination_result[1].time == datetime(2020, 2, 16, 2, 0)
+    assert termination_result[1].time == datetime(2020, 2, 16, 2, 0, tzinfo=local_time_zone)
     assert termination_result[1].body == {'k': 'm2', 't': datetime(2020, 2, 16, 2, 0), 'v': 14, 'b': False}
 
 
@@ -176,10 +177,10 @@ def test_csv_reader_with_key_and_timestamp():
 
     assert len(termination_result) == 2
     assert termination_result[0].key == 'm1'
-    assert termination_result[0].time == datetime(2020, 2, 15, 2, 0)
+    assert termination_result[0].time == datetime(2020, 2, 15, 2, 0, tzinfo=local_time_zone)
     assert termination_result[0].body == ['m1', datetime(2020, 2, 15, 2, 0), 8, True]
     assert termination_result[1].key == 'm2'
-    assert termination_result[1].time == datetime(2020, 2, 16, 2, 0)
+    assert termination_result[1].time == datetime(2020, 2, 16, 2, 0, tzinfo=local_time_zone)
     assert termination_result[1].body == ['m2', datetime(2020, 2, 16, 2, 0), 14, False]
 
 
@@ -221,8 +222,9 @@ def test_indexed_dataframe_source():
 
 
 def test_dataframe_source_with_metadata():
-    t1 = datetime(2020, 2, 15)
-    t2 = datetime(2020, 2, 16)
+    t1 = datetime(2020, 2, 15, tzinfo=local_time_zone)
+    t2 = datetime(2020, 2, 16, tzinfo=local_time_zone)
+
     df = pd.DataFrame([['key1', t1, 'id1', 1.1], ['key2', t2, 'id2', 2.2]],
                       columns=['my_key', 'my_time', 'my_id', 'my_value'])
     controller = build_flow([
@@ -234,7 +236,10 @@ def test_dataframe_source_with_metadata():
     expected = [
         Event({'my_key': 'key1', 'my_time': t1, 'my_id': 'id1', 'my_value': 1.1}, key='key1', time=t1, id='id1'),
         Event({'my_key': 'key2', 'my_time': t2, 'my_id': 'id2', 'my_value': 2.2}, key='key2', time=t2, id='id2')]
+    print (termination_result)
+
     assert termination_result == expected
+
 
 
 async def async_dataframe_source():
@@ -2044,7 +2049,7 @@ def test_metadata_fields():
 
     result1 = result[0]
     assert result1.key == 'k1'
-    assert result1.time == t1
+    assert result1.time == t1.replace(tzinfo=local_time_zone)
     assert result1.body == body1
 
     result2 = result[1]
@@ -2066,7 +2071,7 @@ async def async_test_async_metadata_fields():
     assert len(result) == 1
     result = result[0]
     assert result.key == 'k1'
-    assert result.time == datetime(2020, 2, 15, 2, 0)
+    assert result.time == datetime(2020, 2, 15, 2, 0, tzinfo=local_time_zone)
     assert result.body == body
 
 

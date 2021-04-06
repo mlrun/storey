@@ -2,7 +2,6 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Union, Optional, Callable, List
 from copy import deepcopy
-from pandas import Timestamp
 
 from .utils import parse_duration, bucketPerWindow, get_one_unit_of_duration, local_time_zone
 from .aggregation_utils import get_all_raw_aggregates
@@ -33,7 +32,7 @@ class Event:
         if time is not None and not isinstance(time, datetime):
             raise TypeError(f'Event time parameter must be a datetime. Got {type(time)} instead.')
         self.time = time or datetime.now(timezone.utc)
-        if isinstance(self.time, Timestamp) and self.time.tzinfo is None:
+        if isinstance(self.time, datetime) and self.time.tzinfo is None:
             self.time = self.time.replace(tzinfo=local_time_zone)
         self.id = id
         self.headers = headers
