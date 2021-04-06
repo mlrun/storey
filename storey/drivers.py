@@ -3,6 +3,7 @@ import json
 import os
 from datetime import datetime, timedelta
 from typing import Optional
+import pandas as pd
 
 import v3io
 import v3io.aio.dataplane
@@ -223,7 +224,11 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
             for name, value in additional_data.items():
                 if name.casefold() in self.saved_engine_words.keys():
                     name = f'`{name}`'
-                expressions.append(f'{name}={self._convert_python_obj_to_expression_value(value)}')
+                expression_value = self._convert_python_obj_to_expression_value(value)
+                if expression_value:
+                    expressions.append(f'{name}={self._convert_python_obj_to_expression_value(value)}')
+                else:
+                    expressions.append(f'REMOVE {name}')
 
         update_expression = ';'.join(expressions)
         return update_expression, condition_expression, pending_updates
@@ -352,6 +357,8 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
         elif isinstance(value, bytes):
             return f"blob('{base64.b64encode(value).decode('ascii')}')"
         elif isinstance(value, datetime):
+            if pd.isnull(value):
+                return None
             timestamp = value.timestamp()
 
             secs = int(timestamp)
