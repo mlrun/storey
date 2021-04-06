@@ -230,7 +230,6 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
                 else:
                     expressions.append(f'REMOVE {name}')
 
-
         update_expression = ';'.join(expressions)
         return update_expression, condition_expression, pending_updates
 
