@@ -118,7 +118,7 @@ class AggregateByKey(Flow):
     def _get_timestamp(self, event):
         event_timestamp = event.time
         if isinstance(event_timestamp, datetime):
-            if isinstance(event_timestamp, pd.Timestamp) and event_timestamp.tzinfo is None
+            if isinstance(event_timestamp, pd.Timestamp) and event_timestamp.tzinfo is None:
                 # timestamp for pandas timestamp gives the wrong result in case there is no timezone (ML-313)
                 local_time_zone = datetime.now().astimezone().tzinfo
                 event_timestamp = event_timestamp.replace(tzinfo=local_time_zone)
