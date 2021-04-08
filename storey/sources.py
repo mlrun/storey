@@ -5,7 +5,7 @@ import queue
 import threading
 import uuid
 import warnings
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import List, Optional, Union, Callable, Coroutine, Iterable
 
 import pandas
@@ -57,25 +57,29 @@ class FlowControllerBase:
         return result
 
     def _build_event(self, element, key, event_time):
-        if event_time is None and self._time_field is None:
-            event_time = datetime.now(timezone.utc)
-        if hasattr(element, 'id'):
-            event = element
+        body = element
+        element_is_event = hasattr(element, 'id')
+        if element_is_event:
+            body = element.body
+
+        if not key and self._key_field:
+            if isinstance(self._key_field, str):
+                key = body[self._key_field]
+            else:
+                key = []
+                for field in self._key_field:
+                    key.append(body[field])
+        if not event_time and self._time_field:
+            event_time = body[self._time_field]
+
+        if element_is_event:
             if key:
-                event.key = key
-            elif self._key_field:
-                event.key = event.body[self._key_field]
+                element.key = key
             if event_time:
-                event.time = event_time
-            elif self._time_field:
-                event.time = event.body[self._time_field]
+                element.time = event_time
+            return element
         else:
-            if not key and self._key_field:
-                key = element[self._key_field]
-            if not event_time and self._time_field:
-                event_time = element[self._time_field]
-            event = Event(element, id=self._get_uuid(), key=key, time=event_time)
-        return event
+            return Event(body, id=self._get_uuid(), key=key, time=event_time)
 
 
 class FlowController(FlowControllerBase):
@@ -150,7 +154,7 @@ class Source(Flow):
     """
     _legal_first_step = True
 
-    def __init__(self, buffer_size: Optional[int] = None, key_field: Optional[str] = None, time_field: Optional[str] = None,
+    def __init__(self, buffer_size: Optional[int] = None, key_field: Union[list, str, None] = None, time_field: Optional[str] = None,
                  **kwargs):
         if buffer_size is None:
             buffer_size = 1024
@@ -317,8 +321,7 @@ class AsyncSource(Flow):
     """
     _legal_first_step = True
 
-    def __init__(self, buffer_size: int = 1024, key_field: Optional[str] = None, time_field: Optional[str] = None,
-                 **kwargs):
+    def __init__(self, buffer_size: int = 1024, key_field: Union[list, str, None] = None, time_field: Optional[str] = None, **kwargs):
         super().__init__(**kwargs)
         if buffer_size <= 0:
             raise ValueError('Buffer size must be positive')
