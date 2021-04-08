@@ -3,6 +3,8 @@ import struct
 from array import array
 from urllib.parse import urlparse
 import fsspec
+from datetime import datetime, timezone
+import calendar
 
 bucketPerWindow = 10
 schema_file_name = '.schema'
@@ -178,3 +180,61 @@ def get_hashed_key(key_list):
         return key_list[0]
     else:
         return key_list
+
+
+def analyze_date(dir_name):
+    last = dir_name['name'].split('/')[-1]
+    exp = last.split("=")
+    attr = exp[0]
+    value = int(exp[1])
+    if attr not in ['year', 'month', 'day', 'hour', 'minute', 'second']:
+        raise TypeError(f'{attr} is not part of datetime attributes"')
+    return last, attr, value
+
+
+def get_dummy_date(date, attr, new_value):
+    date_values = {'year': date.year, 'month': date.month, 'day': date.day, 'hour': date.hour, 'minute': date.minute,
+                   'second': date.second, 'microsecond': date.microsecond}
+    if attr == 'month' and date.day == 31:
+        # this should be the max num of days for this month:
+        date_values['day'] = calendar.monthrange(date.year, new_value)[1]
+    date_values[attr] = new_value
+    new_date = datetime(date_values['year'], date_values['month'], date_values['day'], hour=date_values['hour'],
+                        minute=date_values['minute'], second=date_values['second'], microsecond=date_values['microsecond'])
+    return new_date
+
+
+def get_filtered_path(dir_path, before, after, storage_options, dummy_date_first, dummy_date_last, filtered_paths):
+    fs, file_path = url_to_file_system(dir_path, storage_options)
+    dirs = fs.ls(file_path)
+    # first and last must be directories
+    first_dir = 0
+    last_dir = len(dirs) - 1
+    while dirs[first_dir]['type'] != 'directory':
+        first_dir += 1
+        if first_dir == len(dirs):
+            return filtered_paths
+    while dirs[last_dir]['type'] != 'directory' and last_dir > first_dir:
+        last_dir -= 1
+    exp, attr, value_first = analyze_date(dirs[first_dir])
+    exp, attr, value_last = analyze_date(dirs[last_dir])
+    if value_first != value_last and get_dummy_date(dummy_date_first, attr, value_first) >= after and \
+            get_dummy_date(dummy_date_last, attr, value_last) <= before:
+        print("all range " + attr + str(value_first) + " " + str(value_last) + "dir path is " + dir_path)
+        if len(filtered_paths) == 0:
+            filtered_paths.append(dir_path)
+        return filtered_paths
+    for directory in dirs:
+        if directory['type'] == 'directory':
+            exp, attr, value = analyze_date(directory)
+            date_in_range_low = get_dummy_date(dummy_date_first, attr, value)
+            date_in_range_high = get_dummy_date(dummy_date_last, attr, value)
+            if date_in_range_high >= after and date_in_range_low <= before:
+                print("diving into " + attr + " " + str(value))
+                new_path = dir_path + exp + "/"
+                filtered_paths.append(new_path)
+                get_filtered_path(new_path, before, after, storage_options, date_in_range_low, date_in_range_high, filtered_paths)
+    # only some of the subdirs of dir_path are relevant so dir_path needs to be removed
+    if dir_path in filtered_paths:
+        filtered_paths.remove(dir_path)
+    return filtered_paths

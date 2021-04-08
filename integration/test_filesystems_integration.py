@@ -1,11 +1,15 @@
 import asyncio
+import sys
+import random as rand
+
 from .integration_test_utils import setup_teardown_test, _generate_table_name, V3ioHeaders, V3ioError
-from storey import build_flow, ReadCSV, WriteToCSV, Source, Reduce, Map, FlatMap, AsyncSource, WriteToParquet
+from storey import build_flow, ReadCSV, WriteToCSV, Source, Reduce, Map, FlatMap, AsyncSource, WriteToParquet, ReadParquet, DataframeSource
 import pandas as pd
 import aiohttp
 import pytest
 import v3io
 import uuid
+import datetime
 
 
 @pytest.fixture()
@@ -246,3 +250,141 @@ def test_write_to_parquet_to_v3io_with_indices(setup_teardown_test):
 
     read_back_df = pd.read_parquet(out_file, columns=columns)
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+
+
+def append_and_return(lst, x):
+    lst.append(x)
+    return lst
+
+
+def test_filter_before_after_non_partitioned(setup_teardown_test):
+    columns = ['my_string', 'my_time']
+
+    df = pd.DataFrame([['good', pd.Timestamp('2018-05-07 13:52:37')],
+                       ['hello', pd.Timestamp('2019-01-26 14:52:37')],
+                       ['world', pd.Timestamp('2020-05-11 13:52:37')]],
+                      columns=columns)
+    df.set_index('my_string')
+
+    out_file = f'v3io:///{setup_teardown_test}/'
+    controller = build_flow([
+        DataframeSource(df),
+        WriteToParquet(out_file, columns=columns, partition_cols=[]),
+    ]).run()
+    controller.await_termination()
+
+    before = pd.Timestamp('2019-12-01 00:00:00')
+    after = pd.Timestamp('2019-01-01 23:59:59.999999')
+
+    controller = build_flow([
+        ReadParquet(out_file, before=before, after=after, filter_column='my_time'),
+        Reduce([], append_and_return)
+    ]).run()
+    read_back_result = controller.await_termination()
+
+    assert len(read_back_result) == 1
+
+
+def test_bla2(setup_teardown_test):
+    current_time = pd.Timestamp.now()
+    columns = ['my_string', 'my_time']
+
+    df = pd.DataFrame([['b0', pd.Timestamp('2020-12-31 14:00:00')],
+                       ['b1', pd.Timestamp('2020-12-31')],
+                       ['b2', pd.Timestamp('2020-12-29')],
+                       ['b9', pd.Timestamp('2020-12-30')]],
+                      columns=columns)
+    df.set_index('my_time')
+
+    out_file = f'v3io:///{setup_teardown_test}/'
+    controller = build_flow([
+        DataframeSource(df, time_field='my_time'),
+        WriteToParquet(out_file, columns=columns, partition_cols=['$year', '$month', '$day', '$hour']), #year, month, day, hour, minute, second, microsecond
+    ]).run()
+    controller.await_termination()
+
+    before = pd.Timestamp('2020-12-31 14:00:00')
+    after = pd.Timestamp('2020-12-29')
+
+    controller = build_flow([
+        ReadParquet(out_file, after=after, before=before),
+        Reduce([], append_and_return)
+    ]).run()
+    read_back_result = controller.await_termination()
+
+    assert len(read_back_result) == 10
+
+
+def test_filter_before_after_partitioned_random(setup_teardown_test):
+    low_limit = pd.Timestamp('2018-01-01')
+    high_limit = pd.Timestamp('2020-12-31 23:59:59.999999')
+
+    delta = high_limit - low_limit
+    int_delta = (delta.days * 24 * 60 * 60) + delta.seconds
+
+    seed_value = rand.randrange(sys.maxsize)
+#    seed_value = 1795533437429965381
+    print('Seed value:', seed_value)
+
+    rand.seed(seed_value)
+
+    random_second = rand.randrange(int_delta)
+    middle_limit = low_limit + datetime.timedelta(seconds=random_second)
+
+    print("middle_limit is " + str(middle_limit))
+
+    number_below_middle_limit = rand.randrange(0, 10)
+
+    def create_rand_data(num_elements, low_limit, high_limit, char):
+        import datetime
+        from collections import defaultdict
+        delta = high_limit - low_limit
+        int_delta = (delta.days * 24 * 60 * 60) + delta.seconds
+
+        data = []
+        for i in range(0, num_elements):
+            # data['time_stamp'].append(choice([datetime.datetime.now(), datetime.datetime.now()]))
+            element = {}
+            element['string'] = char + str(i)
+            random_second = rand.randrange(int_delta)
+            element['datetime'] = low_limit + datetime.timedelta(seconds=random_second)
+            data.append(element)
+        return data
+
+    dict1 = create_rand_data(number_below_middle_limit, low_limit, middle_limit, 'a')
+    dict2 = create_rand_data(10-number_below_middle_limit, middle_limit, high_limit, 'b')
+    combined_list = dict1 + dict2
+
+    df = pd.DataFrame(combined_list)
+    print("data frame is " + str(df))
+
+    all_partition_columns = ['$year', '$month', '$day', '$hour', '$minute', '$second']
+    num_part_columns = rand.randrange(1, 6)
+    partition_columns = all_partition_columns[:num_part_columns]
+    print("partitioned by " + str(partition_columns))
+
+    out_file = f'v3io:///{setup_teardown_test}/'
+    controller = build_flow([
+        DataframeSource(df, time_field='datetime'),
+        WriteToParquet(out_file, columns=['string', 'datetime'], partition_cols=partition_columns),
+    ]).run()
+
+    controller.await_termination()
+
+    controller = build_flow([
+        ReadParquet(out_file, before=high_limit, after=middle_limit, filter_column='datetime'),
+        Reduce([], append_and_return)
+    ]).run()
+    read_back_result = controller.await_termination()
+    print("expecting " + str(10 - number_below_middle_limit) + " to be above middle limit")
+    assert(len(read_back_result)) == 10 - number_below_middle_limit
+
+    controller = build_flow([
+        ReadParquet(out_file, before=middle_limit, after=low_limit, filter_column='datetime'),
+        Reduce([], append_and_return)
+    ]).run()
+    read_back_result = controller.await_termination()
+    print("expecting " + str(number_below_middle_limit) + " to be below middle limit")
+
+    assert (len(read_back_result)) == number_below_middle_limit
+
