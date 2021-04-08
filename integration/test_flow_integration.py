@@ -504,7 +504,6 @@ def test_cache_flushing(setup_teardown_test):
     controller = build_flow([
         Source(),
         WriteToTable(table),
-
     ]).run()
 
     controller.emit({'col1': 0}, 'dina', test_base_time + timedelta(minutes=25))
@@ -516,4 +515,5 @@ def test_cache_flushing(setup_teardown_test):
     assert response == {'col1': 0}
 
     controller.terminate()
+    controller.await_termination()
 

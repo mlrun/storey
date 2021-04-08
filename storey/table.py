@@ -32,7 +32,7 @@ class Table:
     :param storage: Storage driver
     :param partitioned_by_key: Whether that data is partitioned by the key or not, based on this indication storage drivers
      can optimize writes. Defaults to True.
-    :param flush_interval: interval in seconds to flush the cache to storage
+    :param flush_interval: Policy indication when to flush the cache. default is after 300 secs
     :param max_updates_in_flight: max concurrent number of io requests
      """
 
