@@ -499,18 +499,20 @@ def test_write_none_time(setup_teardown_test):
 
 
 def test_cache_flushing(setup_teardown_test):
-    table = Table(setup_teardown_test, V3ioDriver(), flush_interval_secs=1)
-
-    df = pd.DataFrame({"num": ["0", "1", "2"], "color": ["green", "blue", "red"]})
-
+    table = Table(setup_teardown_test, V3ioDriver(), flush_interval_secs=3)
     controller = build_flow([
-        DataframeSource(df, key_field='num'),
+        Source(),
         WriteToTable(table),
 
     ]).run()
 
-    response = asyncio.run(get_kv_item(setup_teardown_test, '1')).output.item
+    controller.emit({'col1': 0}, 'dina', test_base_time + timedelta(minutes=25))
+    response = asyncio.run(get_kv_item(setup_teardown_test, 'dina')).output.item
     assert response == {}
-    asyncio.sleep(2)
-    response = asyncio.run(get_kv_item(setup_teardown_test, '1')).output.item
-    assert response == {'color': 'blue', 'num': '1'}
+    time.sleep(4)
+
+    response = asyncio.run(get_kv_item(setup_teardown_test, 'dina')).output.item
+    assert response == {'col1': 0}
+
+    controller.terminate()
+

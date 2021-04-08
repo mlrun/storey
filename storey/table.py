@@ -278,9 +278,9 @@ class Table:
     async def _flush_worker(self):
         try:
             while not self._terminated:
+                await asyncio.sleep(self._flush_interval_secs)
                 for key in self._changed_keys:
                     await self._persist(_PersistJob(key, None, None))
-                await asyncio.sleep(self._flush_interval_secs)
         except BaseException as ex:
             self._flush_exception = ex
 
