@@ -1,7 +1,7 @@
+from contextlib import suppress
 from typing import List
 import copy
 import asyncio
-import time
 from datetime import datetime
 from .drivers import Driver
 from .utils import _split_path
@@ -39,6 +39,7 @@ class Table:
         self._flush_task = None
         self._terminated = False
         self._flush_exception = None
+        self._changed_keys = set()
 
     def __str__(self):
         return f'{self._container}/{self._table_path}'
@@ -50,7 +51,7 @@ class Table:
                 attrs[name] = value
         else:
             self._set_static_attrs(key, data)
-        self._attrs_cache[key].last_changed = time.monotonic()
+        self._changed_keys.add(key)
 
     async def _lazy_load_key_with_aggregates(self, key, timestamp=None):
         if self._flush_exception is not None:
@@ -89,7 +90,6 @@ class Table:
                 additional_data_persist.update(event_data_to_persist)
         await self._storage._save_key(self._container, self._table_path, key, aggr_by_key,
                                       self._partitioned_by_key, additional_data_persist)
-        self._attrs_cache[key].last_flush = time.monotonic()
 
     def _set_aggregation_metadata(self, aggregates: List[FieldAggregator], use_windows_from_schema: bool = False):
         self._use_windows_from_schema = use_windows_from_schema
@@ -108,8 +108,8 @@ class Table:
         if not self._schema:
             await self._get_or_save_schema()
         cache_item = self._get_aggregations_attrs(key)
-        cache_item.last_changed = time.monotonic()
         cache_item.aggregate(data, timestamp)
+        self._changed_keys.add(key)
 
     async def _get_features(self, key, timestamp):
         if self._flush_exception is not None:
@@ -220,7 +220,7 @@ class Table:
     def _set_aggregations_attrs(self, key, element):
         if key in self._attrs_cache:
             self._attrs_cache[key].aggregations = element
-            self._attrs_cache[key].last_changed = time.monotonic()
+            self._changed_keys.add(key)
         else:
             self._init_flush_task()
             self._attrs_cache[key] = _CacheElement({}, element)
@@ -234,7 +234,7 @@ class Table:
     def _set_static_attrs(self, key, value):
         if key in self._attrs_cache:
             self._attrs_cache[key].static_attrs = value
-            self._attrs_cache[key].last_changed = time.monotonic()
+            self._changed_keys.add(key)
         else:
             self._attrs_cache[key] = _CacheElement(value, None)
             try:
@@ -264,9 +264,8 @@ class Table:
     async def _flush_worker(self):
         try:
             while not self._terminated:
-                for key, item in self._attrs_cache.items():
-                    if item.last_changed > item.last_flush:
-                        await self._persist(_PersistJob(key, None, None))
+                for key in self._changed_keys:
+                    await self._persist(_PersistJob(key, None, None))
                 await asyncio.sleep(self._flush_interval_secs)
         except BaseException as ex:
             self._flush_exception = ex
@@ -293,6 +292,7 @@ class Table:
                             if pending_event.pending and not pending_event.in_flight:
                                 for job in pending_event.pending:
                                     resp = await self._internal_persist_key(key, job.data)
+                                    self._changed_keys.discard(key)
                                     if job.callback:
                                         await job.callback(job.extra_data, resp)
                         break
@@ -301,6 +301,8 @@ class Table:
                 completed = await task[1]
 
                 for done_job in self._pending_by_key[job.key].in_flight:
+                    if len(self._pending_by_key[job.key].pending) == 0:
+                        self._changed_keys.discard(job.key)
                     if done_job.callback:
                         await done_job.callback(done_job.extra_data, completed)
                 self._pending_by_key[job.key].in_flight = []
@@ -318,8 +320,10 @@ class Table:
                 else:
                     del self._pending_by_key[job.key]
         except BaseException as ex:
-            if task and task is not _termination_obj and task[0].extra_data and task[0].extra_data._awaitable_result:
-                task[0].extra_data._awaitable_result._set_error(ex)
+            if task and task is not _termination_obj:
+                self._changed_keys.discard(task[0].key)
+                if task[0].extra_data and task[0].extra_data._awaitable_result:
+                    task[0].extra_data._awaitable_result._set_error(ex)
             if not self._q.empty():
                 await self._q.get()
             raise ex
@@ -329,14 +333,15 @@ class Table:
             raise self._flush_exception
 
         self._terminated = True
-        for key, item in self._attrs_cache.items():
-            if item.last_changed > item.last_flush:
-                await self._persist(_PersistJob(key, None, None), from_terminate=True)
+        for key in self._changed_keys:
+            await self._persist(_PersistJob(key, None, None), from_terminate=True)
 
         await self._q.put(_termination_obj)
         await self._worker_awaitable
         if self._flush_task:
-            await self._flush_task
+            self._flush_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._flush_task
         self._q = None
         self._flush_task = None
         self._flush_exception = None
@@ -347,8 +352,8 @@ class Table:
         if not self._q:
             self._q = asyncio.queues.Queue(self._max_updates_in_flight)
             self._worker_awaitable = asyncio.get_running_loop().create_task(self._persist_worker())
-            # for flow reuse
             if not from_terminate:
+                # for flow reuse
                 self._terminated = False
 
         if self._worker_awaitable.done():
@@ -388,8 +393,6 @@ class _CacheElement:
     def __init__(self, static_attrs, aggregations):
         self.static_attrs = static_attrs
         self.aggregations = aggregations
-        self.last_flush = 0
-        self.last_changed = time.monotonic()
 
 
 class ReadOnlyAggregatedStoreElement:
