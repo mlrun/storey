@@ -3,7 +3,7 @@ import queue
 from datetime import datetime, timedelta
 
 from storey import build_flow, Source, Reduce, Table, AggregateByKey, FieldAggregator, NoopDriver
-from storey.dtypes import SlidingWindows, FixedWindows, EmitAfterMaxEvent
+from storey.dtypes import SlidingWindows, FixedWindows, EmitAfterMaxEvent, EmitEveryEvent
 
 test_base_time = datetime.fromisoformat("2020-07-21T21:40:00+00:00")
 
@@ -85,9 +85,9 @@ def test_sliding_window_sparse_data():
                          'number_of_stuff1_max_1h': 0, 'number_of_stuff1_max_24h': 0, 'number_of_stuff1_max_2h': 0,
                          'number_of_stuff1_min_1h': 0, 'number_of_stuff1_min_24h': 0, 'number_of_stuff1_min_2h': 0,
                          'number_of_stuff1_sum_1h': 0, 'number_of_stuff1_sum_24h': 0, 'number_of_stuff1_sum_2h': 0,
-                         'number_of_stuff2_avg_1h': 0, 'number_of_stuff2_avg_24h': 0, 'number_of_stuff2_avg_2h': 0,
-                         'number_of_stuff2_max_1h': -math.inf, 'number_of_stuff2_max_24h': -math.inf, 'number_of_stuff2_max_2h': -math.inf,
-                         'number_of_stuff2_min_1h': math.inf, 'number_of_stuff2_min_24h': math.inf, 'number_of_stuff2_min_2h': math.inf,
+                         'number_of_stuff2_avg_1h': math.nan, 'number_of_stuff2_avg_24h': math.nan, 'number_of_stuff2_avg_2h': math.nan,
+                         'number_of_stuff2_max_1h': math.nan, 'number_of_stuff2_max_24h': math.nan, 'number_of_stuff2_max_2h': math.nan,
+                         'number_of_stuff2_min_1h': math.nan, 'number_of_stuff2_min_24h': math.nan, 'number_of_stuff2_min_2h': math.nan,
                          'number_of_stuff2_sum_1h': 0, 'number_of_stuff2_sum_24h': 0, 'number_of_stuff2_sum_2h': 0},
                         {'col2': 0, 'number_of_stuff1_avg_1h': 0.0, 'number_of_stuff1_avg_24h': 0.0, 'number_of_stuff1_avg_2h': 0.0,
                          'number_of_stuff1_max_1h': 0, 'number_of_stuff1_max_24h': 0, 'number_of_stuff1_max_2h': 0,
@@ -266,9 +266,9 @@ def test_sliding_window_sparse_data_uneven_feature_occurrence():
                          'number_of_stuff1_max_1h': 0, 'number_of_stuff1_max_24h': 0, 'number_of_stuff1_max_2h': 0,
                          'number_of_stuff1_min_1h': 0, 'number_of_stuff1_min_24h': 0, 'number_of_stuff1_min_2h': 0,
                          'number_of_stuff1_sum_1h': 0, 'number_of_stuff1_sum_24h': 0, 'number_of_stuff1_sum_2h': 0,
-                         'number_of_stuff2_avg_1h': 0, 'number_of_stuff2_avg_24h': 0, 'number_of_stuff2_avg_2h': 0,
-                         'number_of_stuff2_max_1h': -math.inf, 'number_of_stuff2_max_24h': -math.inf, 'number_of_stuff2_max_2h': -math.inf,
-                         'number_of_stuff2_min_1h': math.inf, 'number_of_stuff2_min_24h': math.inf, 'number_of_stuff2_min_2h': math.inf,
+                         'number_of_stuff2_avg_1h': math.nan, 'number_of_stuff2_avg_24h': math.nan, 'number_of_stuff2_avg_2h': math.nan,
+                         'number_of_stuff2_max_1h': math.nan, 'number_of_stuff2_max_24h': math.nan, 'number_of_stuff2_max_2h': math.nan,
+                         'number_of_stuff2_min_1h': math.nan, 'number_of_stuff2_min_24h': math.nan, 'number_of_stuff2_min_2h': math.nan,
                          'number_of_stuff2_sum_1h': 0, 'number_of_stuff2_sum_24h': 0, 'number_of_stuff2_sum_2h': 0},
                         {'col2': 0, 'number_of_stuff1_avg_1h': 0.0, 'number_of_stuff1_avg_24h': 0.0, 'number_of_stuff1_avg_2h': 0.0,
                          'number_of_stuff1_max_1h': 0, 'number_of_stuff1_max_24h': 0, 'number_of_stuff1_max_2h': 0,
@@ -602,6 +602,14 @@ def test_emit_max_event_sliding_window_multiple_keys_aggregation_flow():
 
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
+
+
+def test_error_on_bad_emit_policy():
+    try:
+        AggregateByKey([], Table("test", NoopDriver()), emit_policy=EmitEveryEvent),
+        assert False
+    except TypeError:
+        pass
 
 
 def test_emit_delay_aggregation_flow():

@@ -2,12 +2,14 @@ from contextlib import suppress
 from typing import List
 import copy
 import asyncio
+import math
 from datetime import datetime
 from .drivers import Driver
-from .utils import _split_path
 from .dtypes import FieldAggregator, SlidingWindows, FixedWindows, FlowError, _termination_obj
+
 from .aggregation_utils import is_raw_aggregate, get_virtual_aggregation_func, get_implied_aggregates, get_all_raw_aggregates, \
     get_all_raw_aggregates_with_hidden
+from .utils import _split_path, get_hashed_key
 
 
 class Table:
@@ -51,11 +53,12 @@ class Table:
                 attrs[name] = value
         else:
             self._set_static_attrs(key, data)
-        self._changed_keys.add(key)
+        self._changed_keys.add(get_hashed_key(key))
 
     async def _lazy_load_key_with_aggregates(self, key, timestamp=None):
         if self._flush_exception is not None:
             raise self._flush_exception
+        key = get_hashed_key(key)
         if self._aggregations_read_only or not self._get_aggregations_attrs(key):
             # Try load from the store, and create a new one only if the key really is new
             aggregate_initial_data, additional_data = await self._storage._load_aggregates_by_key(self._container, self._table_path, key)
@@ -70,6 +73,7 @@ class Table:
     async def _get_or_load_static_attributes_by_key(self, key, attributes='*'):
         if self._flush_exception is not None:
             raise self._flush_exception
+        key = get_hashed_key(key)
         self._init_flush_task()
         attrs = self._get_static_attrs(key)
         if not attrs:
@@ -111,7 +115,7 @@ class Table:
             await self._get_or_save_schema()
         cache_item = self._get_aggregations_attrs(key)
         cache_item.aggregate(data, timestamp)
-        self._changed_keys.add(key)
+        self._changed_keys.add(get_hashed_key(key))
 
     async def _get_features(self, key, timestamp):
         if self._flush_exception is not None:
@@ -119,7 +123,12 @@ class Table:
         if not self._schema:
             await self._get_or_save_schema()
 
-        return self._get_aggregations_attrs(key).get_features(timestamp)
+        attrs = self._get_aggregations_attrs(key)
+
+        if attrs is None:
+            return {}
+
+        return attrs.get_features(timestamp)
 
     def _new_aggregated_store_element(self):
         if self._aggregations_read_only:
@@ -129,7 +138,10 @@ class Table:
     async def add_aggregation_by_key(self, key, base_timestamp, initial_data):
         if not self._schema:
             await self._get_or_save_schema()
-        self._set_aggregations_attrs(key, self._new_aggregated_store_element()(key, self._aggregates, base_timestamp, initial_data))
+        if self._aggregations_read_only and initial_data is None:
+            self._set_aggregations_attrs(key, None)
+        else:
+            self._set_aggregations_attrs(key, self._new_aggregated_store_element()(key, self._aggregates, base_timestamp, initial_data))
 
     async def _get_or_save_schema(self):
         self._schema = await self._storage._load_schema(self._container, self._table_path)
@@ -214,12 +226,14 @@ class Table:
         return schema
 
     def _get_aggregations_attrs(self, key):
+        key = get_hashed_key(key)
         if key in self._attrs_cache:
             return self._attrs_cache[key].aggregations
         else:
             return None
 
     def _set_aggregations_attrs(self, key, element):
+        key = get_hashed_key(key)
         if key in self._attrs_cache:
             self._attrs_cache[key].aggregations = element
             self._changed_keys.add(key)
@@ -228,12 +242,14 @@ class Table:
             self._attrs_cache[key] = _CacheElement({}, element)
 
     def _get_static_attrs(self, key):
+        key = get_hashed_key(key)
         if key in self._attrs_cache:
             return self._attrs_cache[key].static_attrs
         else:
             return None
 
     def _set_static_attrs(self, key, value):
+        key = get_hashed_key(key)
         if key in self._attrs_cache:
             self._attrs_cache[key].static_attrs = value
             self._changed_keys.add(key)
@@ -298,25 +314,30 @@ class Table:
                 job = task[0]
                 completed = await task[1]
 
-                for done_job in self._pending_by_key[job.key].in_flight:
-                    if len(self._pending_by_key[job.key].pending) == 0:
-                        self._changed_keys.discard(job.key)
+                if isinstance(job.key, list):
+                    job_key = str(job.key)
+                else:
+                    job_key = job.key
+
+                for done_job in self._pending_by_key[job_key].in_flight:
+                    if len(self._pending_by_key[job_key].pending) == 0:
+                        self._changed_keys.discard(job_key)
                     if done_job.callback:
                         await done_job.callback(done_job.extra_data, completed)
-                self._pending_by_key[job.key].in_flight = []
+                self._pending_by_key[job_key].in_flight = []
 
                 # If we got more pending events for the same key process them
-                if self._pending_by_key[job.key].pending:
-                    self._pending_by_key[job.key].in_flight = self._pending_by_key[job.key].pending
-                    self._pending_by_key[job.key].pending = []
+                if self._pending_by_key[job_key].pending:
+                    self._pending_by_key[job_key].in_flight = self._pending_by_key[job_key].pending
+                    self._pending_by_key[job_key].pending = []
 
-                    future_task = self._safe_process_events(self._pending_by_key[job.key].in_flight)
+                    future_task = self._safe_process_events(self._pending_by_key[job_key].in_flight)
                     tail_position = received_job_count + self._q.qsize()
                     jobs_at_tail = self_sent_jobs.get(tail_position, [])
                     jobs_at_tail.append((job, asyncio.get_running_loop().create_task(future_task)))
                     self_sent_jobs[tail_position] = jobs_at_tail
                 else:
-                    del self._pending_by_key[job.key]
+                    del self._pending_by_key[job_key]
         except BaseException as ex:
             if task and task is not _termination_obj:
                 self._changed_keys.discard(task[0].key)
@@ -329,20 +350,20 @@ class Table:
     async def _terminate(self):
         if self._flush_exception is not None:
             raise self._flush_exception
+        if not self._terminated:
+            self._terminated = True
+            for key in self._changed_keys:
+                await self._persist(_PersistJob(key, None, None), from_terminate=True)
 
-        self._terminated = True
-        for key in self._changed_keys:
-            await self._persist(_PersistJob(key, None, None), from_terminate=True)
-
-        await self._q.put(_termination_obj)
-        await self._worker_awaitable
-        if self._flush_task:
-            self._flush_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await self._flush_task
-        self._q = None
-        self._flush_task = None
-        self._flush_exception = None
+            await self._q.put(_termination_obj)
+            await self._worker_awaitable
+            if self._flush_task:
+                self._flush_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await self._flush_task
+            self._q = None
+            self._flush_task = None
+            self._flush_exception = None
 
     async def _persist(self, job, from_terminate=False):
         if self._flush_exception is not None:
@@ -359,15 +380,20 @@ class Table:
             raise FlowError("Persist worker has already terminated")
         else:
             # Initializing the key with 2 lists. One for pending requests and one for requests that an update request has been issued for.
-            if job.key not in self._pending_by_key:
-                self._pending_by_key[job.key] = _PendingEvent()
+            if isinstance(job.key, list):
+                # list can't be key in a dictionary
+                job_key = str(job.key)
+            else:
+                job_key = job.key
+            if job_key not in self._pending_by_key:
+                self._pending_by_key[job_key] = _PendingEvent()
 
             # If there is a current update in flight for the key, add the event to the pending list. Otherwise update the key.
-            self._pending_by_key[job.key].pending.append(job)
-            if len(self._pending_by_key[job.key].in_flight) == 0:
-                self._pending_by_key[job.key].in_flight = self._pending_by_key[job.key].pending
-                self._pending_by_key[job.key].pending = []
-                task = self._safe_process_events(self._pending_by_key[job.key].in_flight)
+            self._pending_by_key[job_key].pending.append(job)
+            if len(self._pending_by_key[job_key].in_flight) == 0:
+                self._pending_by_key[job_key].in_flight = self._pending_by_key[job_key].pending
+                self._pending_by_key[job_key].pending = []
+                task = self._safe_process_events(self._pending_by_key[job_key].in_flight)
                 await self._q.put((job, asyncio.get_running_loop().create_task(task)))
                 if self._worker_awaitable.done():
                     await self._worker_awaitable
@@ -377,7 +403,12 @@ class Table:
             # TODO using only last event might not work correctly if
             #  there are different non aggregation attrs in each event
             job = jobs[-1]
-            return await self._internal_persist_key(job.key, job.data)
+            if isinstance(job.key, list):
+                # list can't be key in a dictionary
+                job_key = str(job.key)
+            else:
+                job_key = job.key
+            return await self._internal_persist_key(job_key, job.data)
         except BaseException as ex:
             for job in jobs:
                 if job.extra_data and job.extra_data._awaitable_result:
@@ -819,9 +850,10 @@ class VirtualAggregationBuckets:
 
 
 class AggregationValue:
-    default_value = None
+    default_value = math.nan
 
     def __init__(self, max_value=None, set_data=None):
+        self.value = self.default_value
         self.time = datetime.min
         self._max_value = max_value
         self._set_value = self._set_value_with_max if max_value else self._set_value_without_max
@@ -875,7 +907,6 @@ class MinValue(AggregationValue):
     default_value = float('inf')
 
     def __init__(self, max_value=None, set_data=None):
-        self.value = max_value or self.default_value
         super().__init__(max_value, set_data)
 
     def aggregate(self, time, value):
@@ -898,7 +929,6 @@ class MaxValue(AggregationValue):
     default_value = float('-inf')
 
     def __init__(self, max_value=None, set_data=None):
-        self.value = self.default_value
         super().__init__(max_value, set_data)
 
     def aggregate(self, time, value):
@@ -914,7 +944,6 @@ class SumValue(AggregationValue):
     default_value = 0
 
     def __init__(self, max_value=None, set_data=None):
-        self.value = self.default_value
         super().__init__(max_value, set_data)
 
     def aggregate(self, time, value):
@@ -926,7 +955,6 @@ class CountValue(AggregationValue):
     default_value = 0
 
     def __init__(self, max_value=None, set_data=None):
-        self.value = self.default_value
         super().__init__(max_value, set_data)
 
     def aggregate(self, time, value):
@@ -938,7 +966,6 @@ class SqrValue(AggregationValue):
     default_value = 0
 
     def __init__(self, max_value=None, set_data=None):
-        self.value = self.default_value
         super().__init__(max_value, set_data)
 
     def aggregate(self, time, value):
@@ -947,10 +974,8 @@ class SqrValue(AggregationValue):
 
 class LastValue(AggregationValue):
     name = 'last'
-    default_value = None
 
     def __init__(self, max_value=None, set_data=None):
-        self.value = self.default_value
         super().__init__(max_value, set_data)
 
     def aggregate(self, time, value):
@@ -964,10 +989,8 @@ class LastValue(AggregationValue):
 
 class FirstValue(AggregationValue):
     name = 'first'
-    default_value = None
 
     def __init__(self, max_value=None, set_data=None):
-        self.value = self.default_value
         super().__init__(max_value, set_data)
         self._first_time = datetime.max
 
@@ -1228,8 +1251,10 @@ class AggregationBuckets:
             # In case our pre aggregates already have the answer
             for aggregation_name in self._explicit_raw_aggregations:
                 for (window_millis, window_str) in self.explicit_windows.windows:
-                    result[f'{self.name}_{aggregation_name}_{window_str}'] = \
-                        self._current_aggregate_values[(aggregation_name, window_millis)].value
+                    value = self._current_aggregate_values[(aggregation_name, window_millis)].value
+                    if value == math.inf or value == -math.inf:
+                        value = math.nan
+                    result[f'{self.name}_{aggregation_name}_{window_str}'] = value
 
         self.augment_virtual_features(result)
         return result

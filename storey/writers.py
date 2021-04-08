@@ -5,7 +5,9 @@ import json
 import os
 import queue
 import random
+import uuid
 from typing import Optional, Union, List, Callable
+from urllib.parse import urlparse
 
 import pandas as pd
 import v3io_frames as frames
@@ -19,8 +21,8 @@ from .utils import url_to_file_system
 
 class _Writer:
     def __init__(self, columns: Union[str, List[str], None], infer_columns_from_data: Optional[bool],
-                 index_cols: Union[str, List[str], None] = None, retain_dict: bool = False,
-                 storage_options: Optional[dict] = None):
+                 index_cols: Union[str, List[str], None] = None, partition_cols: Union[str, List[str], None] = None,
+                 retain_dict: bool = False, storage_options: Optional[dict] = None):
         if infer_columns_from_data is None:
             infer_columns_from_data = not bool(columns)
         self._infer_columns_from_data = infer_columns_from_data
@@ -33,6 +35,9 @@ class _Writer:
         index_cols = [index_cols] if isinstance(index_cols, str) else index_cols
         self._retain_dict = retain_dict
         self._storage_options = storage_options
+
+        self._field_extractor = lambda event_body, field_name: event_body[field_name]
+        self._write_missing_fields = False
 
         def parse_notation(columns, metadata_columns, rename_columns):
             result = []
@@ -53,21 +58,78 @@ class _Writer:
         self._initial_columns = parse_notation(columns, self._metadata_columns, self._rename_columns)
         self._initial_index_cols = parse_notation(index_cols, self._metadata_index_columns, self._rename_index_columns)
 
+        if isinstance(partition_cols, str):
+            partition_cols = [partition_cols]
+        self._partition_cols = partition_cols
+
+        if partition_cols is not None and index_cols is not None:
+            cols_both_partition_and_index = set(partition_cols).intersection(set(index_cols))
+            if cols_both_partition_and_index:
+                raise ValueError(f'The following columns are used both for partitioning and indexing, which is not allowed: '
+                                 f'{list(cols_both_partition_and_index)}')
+
     def _init(self):
         self._columns = copy.copy(self._initial_columns)
         self._index_cols = copy.copy(self._initial_index_cols)
+        self._init_partition_col_indices()
 
-    @staticmethod
-    def _get_column_data_from_dict(new_data, event, columns, metadata_columns, rename_columns):
+    def _init_partition_col_indices(self):
+        self._partition_col_to_index = {}
+        self._partition_col_indices = []
+        self._non_partition_columns = self._columns
+
+        if self._partition_cols is not None and self._columns is not None:
+            self._non_partition_columns = []
+            for index, col in enumerate(self._columns):
+                if col in self._partition_cols:
+                    self._partition_col_to_index[col] = index
+                    self._partition_col_indices.append(index)
+                else:
+                    self._non_partition_columns.append(col)
+
+    def _path_from_event(self, event):
+        res = '/'
+        for col in self._partition_cols:
+            if col == '$key':
+                val = event.key
+            elif col == '$date':
+                val = f'{event.time.year:02}-{event.time.month:02}-{event.time.day:02}'
+            elif col == '$year':
+                val = f'{event.time.year:02}'
+            elif col == '$month':
+                val = f'{event.time.month:02}'
+            elif col == '$day':
+                val = f'{event.time.day:02}'
+            elif col == '$hour':
+                val = f'{event.time.hour:02}'
+            elif col == '$minute':
+                val = f'{event.time.minute:02}'
+            elif col == '$second':
+                val = f'{event.time.second:02}'
+            else:
+                if isinstance(event.body, list):
+                    val = event.body[self._partition_col_to_index[col]]
+                else:
+                    val = event.body[col]
+            if col.startswith('$'):
+                col = col[1:]
+            res += f'{col}={val}/'
+        return res
+
+    def _get_column_data_from_dict(self, new_data, event, columns, metadata_columns, rename_columns):
         if columns:
             for column in columns:
                 if column in metadata_columns:
                     metadata_attr = metadata_columns[column]
                     new_value = getattr(event, metadata_attr)
                 elif column in rename_columns:
-                    new_value = event.body[rename_columns[column]]
+                    new_value = self._field_extractor(event.body, rename_columns[column])
                 else:
-                    new_value = event.body[column]
+                    new_value = self._field_extractor(event.body, column)
+
+                if new_value is None and not self._write_missing_fields:
+                    continue
+
                 if isinstance(new_data, list):
                     new_data.append(new_value)
                 else:
@@ -93,10 +155,13 @@ class _Writer:
                 self._columns.extend(data.keys() - self._index_cols)
                 self._columns.sort()
                 self._infer_columns_from_data = False
+                self._init_partition_col_indices()
             data = {} if self._retain_dict else []
             self._get_column_data_from_dict(data, event, self._index_cols, self._metadata_index_columns, self._rename_index_columns)
-            self._get_column_data_from_dict(data, event, self._columns, self._metadata_columns, self._rename_columns)
+            self._get_column_data_from_dict(data, event, self._non_partition_columns, self._metadata_columns, self._rename_columns)
         elif isinstance(data, list):
+            for index in self._partition_col_indices:
+                del data[index]
             if self._infer_columns_from_data:
                 raise TypeError('Cannot infer_columns_from_data when event type is list. Inference is only possible from dict.')
             sub_metadata = bool(self._columns) and bool(self._metadata_columns)
@@ -158,6 +223,9 @@ class WriteToCSV(_Batching, _Writer):
         self._path = path
         self._write_header = header
 
+        self._field_extractor = lambda event_body, field_name: event_body.get(field_name, '')
+        self._write_missing_fields = True
+
     def _init(self):
         _Batching._init(self)
         _Writer._init(self)
@@ -205,7 +273,7 @@ class WriteToCSV(_Batching, _Writer):
         asyncio.get_running_loop().run_in_executor(None, lambda: self._data_buffer.put(_termination_obj))
         await self._blocking_io_loop_future
 
-    async def _emit(self, batch, batch_time):
+    async def _emit(self, batch, batch_key, batch_time):
         if not self._blocking_io_loop_future:
             self._blocking_io_loop_future = asyncio.get_running_loop().run_in_executor(None, self._blocking_io_loop)
 
@@ -229,8 +297,10 @@ class WriteToParquet(_Batching, _Writer):
         If True, columns will be inferred from data and used in place of explicit columns list if none was provided, or appended to the
         provided list. If header is True and columns is not provided, infer_columns_from_data=True is implied.
         Optional. Default to False if columns is provided, True otherwise.
-    :param partition_cols: Columns by which to partition the data into separate parquet files. If None (default), data will be written
-        to a single file at path. This parameter is forwarded as-is to pandas.DataFrame.to_parquet().
+    :param partition_cols: Columns by which to partition the data into directories. The following metadata columns are also supported:
+        $key, $date (e.g. 2020-02-09), $year, $month, $day, $hour, $minute, $second.
+        If None (the default), the data will not be partitioned, and will be written to a single directory or file (when path ends in
+        .parquet or .pq).
     :param max_events: Maximum number of events to write at a time. If None (default), all events will be written on flow termination,
         or after timeout_secs (if timeout_secs is set).
     :type max_events: int
@@ -243,50 +313,74 @@ class WriteToParquet(_Batching, _Writer):
     """
 
     def __init__(self, path: str, index_cols: Union[str, List[str], None] = None, columns: Union[str, List[str], None] = None,
-                 partition_cols: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None, **kwargs):
+                 partition_cols: Union[str, List[str], None] = None, infer_columns_from_data: Optional[bool] = None,
+                 max_events: Optional[int] = None, flush_after_seconds: Optional[int] = None, **kwargs):
+        self._single_file_mode = False
+        if partition_cols is None:
+            if path.endswith('.parquet') or path.endswith('.pq'):
+                self._single_file_mode = True
+            else:
+                partition_cols = ['$key', '$year', '$month', '$day', '$hour']
+        else:
+            kwargs['partition_cols'] = partition_cols
+
+        if max_events is None and not self._single_file_mode:
+            max_events = 10000
+        if flush_after_seconds is None and not self._single_file_mode:
+            flush_after_seconds = 60
+
         kwargs['path'] = path
+        if not self._single_file_mode and path.endswith('/'):
+            path = path[:-1]
         if index_cols is not None:
             kwargs['index_cols'] = index_cols
         if columns is not None:
             kwargs['columns'] = columns
-        if partition_cols is not None:
-            kwargs['partition_cols'] = partition_cols
         if infer_columns_from_data is not None:
             kwargs['infer_columns_from_data'] = infer_columns_from_data
 
-        _Batching.__init__(self, **kwargs)
-        _Writer.__init__(self, columns, infer_columns_from_data, index_cols, storage_options=kwargs.get('storage_options'))
+        storage_options = kwargs.get('storage_options')
+        self._file_system, self._path = url_to_file_system(path, storage_options)
 
-        self._path = path
-        self._partition_cols = partition_cols
+        path_from_event = self._path_from_event if partition_cols else None
+
+        _Batching.__init__(self, max_events=max_events, flush_after_seconds=flush_after_seconds, key=path_from_event, **kwargs)
+        _Writer.__init__(self, columns, infer_columns_from_data, index_cols, partition_cols, storage_options=storage_options)
+
+        self._field_extractor = lambda event_body, field_name: event_body.get(field_name)
+        self._write_missing_fields = True
 
     def _init(self):
         _Batching._init(self)
         _Writer._init(self)
-        self._first_event = True
 
     def _event_to_batch_entry(self, event):
         return self._event_to_writer_entry(event)
 
-    def _makedirs(self):
-        fs, file_path = url_to_file_system(self._path, self._storage_options)
-        dirname = os.path.dirname(self._path)
-        if dirname:
-            fs.makedirs(dirname, exist_ok=True)
-
-    async def _emit(self, batch, batch_time):
-        if self._first_event:
-            await asyncio.get_running_loop().run_in_executor(None, self._makedirs)
-            self._first_event = False
+    async def _emit(self, batch, batch_key, batch_time):
         df_columns = []
         if self._index_cols:
             df_columns.extend(self._index_cols)
-        df_columns.extend(self._columns)
+        df_columns.extend(self._non_partition_columns)
         df = pd.DataFrame(batch, columns=df_columns)
         if self._index_cols:
             df.set_index(self._index_cols, inplace=True)
-        df.to_parquet(path=self._path, index=bool(self._index_cols), partition_cols=self._partition_cols,
-                      storage_options=self._storage_options)
+        dir_path = os.path.dirname(self._path) if self._single_file_mode else self._path
+        if self._partition_cols:
+            dir_path = f'{dir_path}{batch_key}'
+        else:
+            dir_path += '/'
+        if dir_path:
+            self._file_system.makedirs(dir_path, exist_ok=True)
+        file_path = self._path if self._single_file_mode else f'{dir_path}{uuid.uuid4()}.parquet'
+        # Remove nanosecs from timestamp columns & index
+        for name, _ in df.items():
+            if pd.core.dtypes.common.is_datetime64_dtype(df[name]):
+                df[name] = df[name].astype('datetime64[us]')
+        if pd.core.dtypes.common.is_datetime64_dtype(df.index):
+            df.index = df.index.floor('u')
+        with self._file_system.open(file_path, 'wb') as file:
+            df.to_parquet(path=file, index=bool(self._index_cols))
 
 
 class WriteToTSDB(_Batching, _Writer):
@@ -321,7 +415,7 @@ class WriteToTSDB(_Batching, _Writer):
 
     def __init__(self, path: str, time_col: str = '$time', columns: Union[str, List[str], None] = None,
                  infer_columns_from_data: Optional[bool] = None, index_cols: Union[str, List[str], None] = None,
-                 v3io_frames: Optional[str] = None, access_key: Optional[str] = None, container: str = "", rate: str = "", aggr: str = "",
+                 v3io_frames: Optional[str] = None, access_key: Optional[str] = None, rate: str = "", aggr: str = "",
                  aggr_granularity: str = "", frames_client=None, **kwargs):
         kwargs['path'] = path
         kwargs['time_col'] = time_col
@@ -333,8 +427,6 @@ class WriteToTSDB(_Batching, _Writer):
             kwargs['index_cols'] = index_cols
         if v3io_frames is not None:
             kwargs['v3io_frames'] = v3io_frames
-        if container:
-            kwargs['container'] = container
         if rate:
             kwargs['rate'] = rate
         if aggr:
@@ -348,8 +440,11 @@ class WriteToTSDB(_Batching, _Writer):
                 index_cols = [index_cols]
             new_index_cols.extend(index_cols)
         _Writer.__init__(self, columns, infer_columns_from_data, index_cols=new_index_cols)
-
-        self._path = path
+        parts = urlparse(path)
+        self._path = parts.path
+        container = parts.netloc
+        if not parts.scheme:
+            container, self._path = _split_path(self._path)
         self._rate = rate
         self._aggr = aggr
         self.aggr_granularity = aggr_granularity
@@ -363,7 +458,7 @@ class WriteToTSDB(_Batching, _Writer):
     def _event_to_batch_entry(self, event):
         return self._event_to_writer_entry(event)
 
-    async def _emit(self, batch, batch_time):
+    async def _emit(self, batch, batch_key, batch_time):
         df_columns = []
         if self._index_cols:
             df_columns.extend(self._index_cols)
@@ -552,6 +647,9 @@ class WriteToTable(_Writer, Flow):
                 raise TypeError("Table can not be string if no context was provided to the step")
             self._table = self.context.get_table(table)
         self._closeables = [self._table]
+
+        self._field_extractor = lambda event_body, field_name: event_body.get(field_name)
+        self._write_missing_fields = False
 
     def _init(self):
         _Writer._init(self)
