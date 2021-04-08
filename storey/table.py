@@ -97,7 +97,9 @@ class Table:
 
     def _init_flush_task(self):
         if self._flush_task is None and self._flush_interval_secs > 0:
-            self._flush_task = asyncio.get_running_loop().create_task(self._flush_worker())
+            loop = asyncio._get_running_loop()
+            if loop:
+                self._flush_task = loop.create_task(self._flush_worker())
 
     async def close(self):
         await self._storage.close()
@@ -237,11 +239,7 @@ class Table:
             self._changed_keys.add(key)
         else:
             self._attrs_cache[key] = _CacheElement(value, None)
-            try:
-                # static attrs can be set before creating a running loop
-                self._init_flush_task()
-            except RuntimeError:
-                pass
+            self._init_flush_task()
 
     def _get_keys(self):
         return self._attrs_cache.keys()
