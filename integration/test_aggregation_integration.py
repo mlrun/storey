@@ -3,6 +3,8 @@ from datetime import datetime, timedelta
 import pytest
 import math
 import pandas as pd
+import v3io
+import v3io.aio.dataplane
 
 from storey import build_flow, Source, Reduce, Table, V3ioDriver, MapWithState, AggregateByKey, FieldAggregator, \
     QueryByKey, WriteToTable, Context, DataframeSource
@@ -10,7 +12,7 @@ from storey import build_flow, Source, Reduce, Table, V3ioDriver, MapWithState, 
 from storey.dtypes import SlidingWindows, FixedWindows
 from storey.utils import _split_path
 
-from .integration_test_utils import setup_teardown_test, append_return, test_base_time
+from .integration_test_utils import setup_teardown_test, append_return, test_base_time, V3ioHeaders
 
 
 @pytest.mark.parametrize('partitioned_by_key', [True, False])
