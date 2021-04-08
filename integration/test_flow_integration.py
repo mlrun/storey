@@ -410,6 +410,7 @@ def test_writing_int_key(setup_teardown_test):
     ]).run()
     controller.await_termination()
 
+
 def test_writing_timedelta_key(setup_teardown_test):
     table = Table(setup_teardown_test, V3ioDriver())
 
@@ -456,15 +457,42 @@ def test_write_multiple_keys_to_v3io_from_csv(setup_teardown_test):
     controller.await_termination()
 
     response = asyncio.run(get_kv_item(setup_teardown_test, '1.2'))
-
     expected = {'n1': 1, 'n2': 2, 'n3': 3}
+    assert response.status_code == 200
+    assert expected == response.output.item
 
+    response = asyncio.run(get_kv_item(setup_teardown_test, '4.5'))
+    expected = {'n1': 4, 'n2': 5, 'n3': 6}
+    assert response.status_code == 200
+    assert expected == response.output.item
+
+
+def test_write_multiple_keys_to_v3io(setup_teardown_test):
+    table = Table(setup_teardown_test, V3ioDriver())
+
+    controller = build_flow([
+        Source(key_field=['n1', 'n2']),
+        WriteToTable(table),
+    ]).run()
+
+    controller.emit({'n1': 1, 'n2': 2, 'n3': 3})
+    controller.emit({'n1': 4, 'n2': 5, 'n3': 6})
+
+    controller.terminate()
+    controller.await_termination()
+
+    response = asyncio.run(get_kv_item(setup_teardown_test, '1.2'))
+    expected = {'n1': 1, 'n2': 2, 'n3': 3}
+    assert response.status_code == 200
+    assert expected == response.output.item
+
+    response = asyncio.run(get_kv_item(setup_teardown_test, '4.5'))
+    expected = {'n1': 4, 'n2': 5, 'n3': 6}
     assert response.status_code == 200
     assert expected == response.output.item
 
 
 def test_write_none_time(setup_teardown_test):
-
     table = Table(setup_teardown_test, V3ioDriver())
     data = pd.DataFrame(
         {
