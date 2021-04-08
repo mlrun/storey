@@ -12,6 +12,19 @@ from .aggregation_utils import is_raw_aggregate, get_virtual_aggregation_func, g
 from .utils import _split_path, get_hashed_key
 
 
+class FlushInterval:
+    def __init__(self, interval_secs=300):
+        self.interval_secs = interval_secs
+
+
+class FlushAfterEveryEvent(FlushInterval):
+    def __init__(self):
+        FlushInterval.__init__(self, 0)
+
+
+_default_flush_interval = FlushInterval()
+
+
 class Table:
     """Table object, represents a single table in a specific storage.
 
@@ -19,12 +32,12 @@ class Table:
     :param storage: Storage driver
     :param partitioned_by_key: Whether that data is partitioned by the key or not, based on this indication storage drivers
      can optimize writes. Defaults to True.
-    :param flush_interval_secs: interval in seconds to flush the cache to storage
+    :param flush_interval: interval in seconds to flush the cache to storage
     :param max_updates_in_flight: max concurrent number of io requests
      """
 
     def __init__(self, table_path: str, storage: Driver, partitioned_by_key: bool = True, cache_size: int = 10000,
-                 flush_interval_secs: int = 1, max_updates_in_flight: int = 8):
+                 flush_interval: FlushInterval = _default_flush_interval, max_updates_in_flight: int = 8):
         self._container, self._table_path = _split_path(table_path)
         self._storage = storage
         self._partitioned_by_key = partitioned_by_key
@@ -36,7 +49,7 @@ class Table:
         self._q = None
         self._max_updates_in_flight = max_updates_in_flight
         self._pending_by_key = {}
-        self._flush_interval_secs = flush_interval_secs
+        self._flush_interval_secs = flush_interval.interval_secs
         self._cache_size = cache_size
         self._flush_task = None
         self._terminated = False
@@ -416,6 +429,9 @@ class Table:
                     if none_or_coroutine:
                         await none_or_coroutine
             raise ex
+
+    def update_interval(self, flush_interval: FlushInterval):
+        self._flush_interval_secs = flush_interval.interval_secs
 
 
 class _CacheElement:
