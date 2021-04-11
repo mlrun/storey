@@ -18,8 +18,7 @@ class Table:
     :param storage: Storage driver
     :param partitioned_by_key: Whether that data is partitioned by the key or not, based on this indication storage drivers
      can optimize writes. Defaults to True.
-    :param flush_interval_secs: How often the cache will be flushed is seconds. None for flush every event. default is 5 minutes
-     default is FlushInterval(300) - flush every 5 minutes
+    :param flush_interval_secs: How often the cache will be flushed in seconds. None for flush every event. Default is 300 (5 minutes)
     :param max_updates_in_flight: Maximum number of concurrent updates.
      """
 
