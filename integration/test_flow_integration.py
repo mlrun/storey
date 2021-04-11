@@ -13,7 +13,6 @@ import v3io_frames as frames
 from storey import Filter, JoinWithV3IOTable, SendToHttp, Map, Reduce, Source, HttpRequest, build_flow, \
     WriteToV3IOStream, V3ioDriver, WriteToTSDB, Table, JoinWithTable, MapWithState, WriteToTable, DataframeSource, \
     ReadCSV
-from storey.table import FlushInterval
 from storey.utils import hash_list
 from .integration_test_utils import V3ioHeaders, append_return, test_base_time, setup_kv_teardown_test, setup_teardown_test, \
     setup_stream_teardown_test
@@ -500,7 +499,7 @@ def test_write_none_time(setup_teardown_test):
 
 
 def test_cache_flushing(setup_teardown_test):
-    table = Table(setup_teardown_test, V3ioDriver(), flush_interval=FlushInterval(3))
+    table = Table(setup_teardown_test, V3ioDriver(), flush_interval_secs=3)
     controller = build_flow([
         Source(),
         WriteToTable(table),

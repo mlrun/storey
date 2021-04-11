@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 import copy
 import asyncio
 import math
@@ -11,19 +11,6 @@ from .aggregation_utils import is_raw_aggregate, get_virtual_aggregation_func, g
 from .utils import _split_path, get_hashed_key
 
 
-class FlushInterval:
-    def __init__(self, interval_secs=300):
-        self.interval_secs = interval_secs
-
-
-class FlushAfterEveryEvent(FlushInterval):
-    def __init__(self):
-        FlushInterval.__init__(self, 0)
-
-
-_default_flush_interval = FlushInterval()
-
-
 class Table:
     """Table object, represents a single table in a specific storage.
 
@@ -31,13 +18,13 @@ class Table:
     :param storage: Storage driver
     :param partitioned_by_key: Whether that data is partitioned by the key or not, based on this indication storage drivers
      can optimize writes. Defaults to True.
-    :param flush_interval: How often the cache will be flushed. Accepts FlushInterval(seconds) or FlushAfterEveryEvent.
+    :param flush_interval_secs: How often the cache will be flushed is seconds. None for flush every event. default is 5 minutes
      default is FlushInterval(300) - flush every 5 minutes
     :param max_updates_in_flight: Maximum number of concurrent updates.
      """
 
     def __init__(self, table_path: str, storage: Driver, partitioned_by_key: bool = True,
-                 flush_interval: FlushInterval = _default_flush_interval, max_updates_in_flight: int = 8):
+                 flush_interval_secs: Optional[int] = 300, max_updates_in_flight: int = 8):
         self._container, self._table_path = _split_path(table_path)
         self._storage = storage
         self._partitioned_by_key = partitioned_by_key
@@ -49,7 +36,7 @@ class Table:
         self._q = None
         self._max_updates_in_flight = max_updates_in_flight
         self._pending_by_key = {}
-        self._flush_interval_secs = flush_interval.interval_secs
+        self._flush_interval_secs = flush_interval_secs
         self._flush_task = None
         self._terminated = False
         self._flush_exception = None
@@ -112,10 +99,8 @@ class Table:
         self._aggregates = aggregates
 
     def _init_flush_task(self):
-        if self._flush_task is None and self._flush_interval_secs > 0:
-            loop = asyncio._get_running_loop()
-            if loop:
-                self._flush_task = loop.create_task(self._flush_worker())
+        if not self._flush_task and self._flush_interval_secs:
+            self._flush_task = asyncio.get_running_loop().create_task(self._flush_worker())
 
     async def close(self):
         await self._storage.close()
@@ -267,7 +252,6 @@ class Table:
             self._changed_keys.add(key)
         else:
             self._attrs_cache[key] = _CacheElement(value, None)
-            self._init_flush_task()
 
     def _get_keys(self):
         return self._attrs_cache.keys()
@@ -426,9 +410,6 @@ class Table:
                     if none_or_coroutine:
                         await none_or_coroutine
             raise ex
-
-    def update_interval(self, flush_interval: FlushInterval):
-        self._flush_interval_secs = flush_interval.interval_secs
 
 
 class _CacheElement:

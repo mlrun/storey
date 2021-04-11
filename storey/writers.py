@@ -665,10 +665,11 @@ class WriteToTable(_Writer, Flow):
         if event.key is None:
             raise ValueError("Event could not be written to table because it has no key")
 
-        if self._table._flush_interval_secs == 0:
+        if not self._table._flush_interval_secs:
             data_to_persist = self._event_to_writer_entry(event)
             await self._table._persist(_PersistJob(event.key, data_to_persist, self._handle_completed, event))
         else:
             data_to_persist = self._event_to_writer_entry(event)
             self._table._update_static_attrs(event.key, data_to_persist)
+            self._table._init_flush_task()
             await self._do_downstream(event)
