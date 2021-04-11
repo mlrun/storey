@@ -634,12 +634,12 @@ class WriteToTable(_Writer, Flow):
 
     def __init__(self, table: Union[Table, str], columns: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None,
                  **kwargs):
-        Flow.__init__(self, **kwargs)
         kwargs['table'] = table
         if columns:
             kwargs['columns'] = columns
         if infer_columns_from_data:
             kwargs['infer_columns_from_data'] = infer_columns_from_data
+        Flow.__init__(self, **kwargs)
         _Writer.__init__(self, columns, infer_columns_from_data, retain_dict=True)
         self._table = table
         if isinstance(table, str):
@@ -663,7 +663,7 @@ class WriteToTable(_Writer, Flow):
             return await self._do_downstream(_termination_obj)
 
         if event.key is None:
-            raise ValueError("Can't write to table without a key")
+            raise ValueError("Event could not be written to table because it has no key")
 
         if self._table._flush_interval_secs == 0:
             data_to_persist = self._event_to_writer_entry(event)

@@ -1,4 +1,3 @@
-from contextlib import suppress
 from typing import List
 import copy
 import asyncio
@@ -32,11 +31,12 @@ class Table:
     :param storage: Storage driver
     :param partitioned_by_key: Whether that data is partitioned by the key or not, based on this indication storage drivers
      can optimize writes. Defaults to True.
-    :param flush_interval: Policy indication when to flush the cache. default is after 300 secs
-    :param max_updates_in_flight: max concurrent number of io requests
+    :param flush_interval: How often the cache will be flushed. Accepts FlushInterval(seconds) or FlushAfterEveryEvent.
+     default is FlushInterval(300) - flush every 5 minutes
+    :param max_updates_in_flight: Maximum number of concurrent updates.
      """
 
-    def __init__(self, table_path: str, storage: Driver, partitioned_by_key: bool = True, cache_size: int = 10000,
+    def __init__(self, table_path: str, storage: Driver, partitioned_by_key: bool = True,
                  flush_interval: FlushInterval = _default_flush_interval, max_updates_in_flight: int = 8):
         self._container, self._table_path = _split_path(table_path)
         self._storage = storage
@@ -50,7 +50,6 @@ class Table:
         self._max_updates_in_flight = max_updates_in_flight
         self._pending_by_key = {}
         self._flush_interval_secs = flush_interval.interval_secs
-        self._cache_size = cache_size
         self._flush_task = None
         self._terminated = False
         self._flush_exception = None
@@ -295,7 +294,8 @@ class Table:
                 for key in self._changed_keys:
                     await self._persist(_PersistJob(key, None, None))
         except BaseException as ex:
-            self._flush_exception = ex
+            if not isinstance(ex, asyncio.CancelledError):
+                self._flush_exception = ex
 
     async def _persist_worker(self):
         task = None
@@ -361,19 +361,16 @@ class Table:
             raise ex
 
     async def _terminate(self):
-        if self._flush_exception is not None:
-            raise self._flush_exception
+        if self._flush_task:
+            self._flush_task.cancel()
+            if self._flush_exception is not None:
+                raise self._flush_exception
         if not self._terminated:
             self._terminated = True
             for key in self._changed_keys:
                 await self._persist(_PersistJob(key, None, None), from_terminate=True)
-
             await self._q.put(_termination_obj)
             await self._worker_awaitable
-            if self._flush_task:
-                self._flush_task.cancel()
-                with suppress(asyncio.CancelledError):
-                    await self._flush_task
             self._q = None
             self._flush_task = None
             self._flush_exception = None
