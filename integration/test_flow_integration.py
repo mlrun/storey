@@ -11,8 +11,8 @@ import v3io.aio.dataplane
 import v3io_frames as frames
 
 from storey import Filter, JoinWithV3IOTable, SendToHttp, Map, Reduce, Source, HttpRequest, build_flow, \
-    WriteToV3IOStream, V3ioDriver, WriteToTSDB, Table, JoinWithTable, MapWithState, WriteToTable, DataframeSource, ReduceToDataFrame, \
-    QueryByKey, AggregateByKey, ReadCSV
+    WriteToV3IOStream, V3ioDriver, WriteToTSDB, Table, JoinWithTable, MapWithState, WriteToTable, DataframeSource, \
+    ReadCSV
 from storey.utils import hash_list
 from .integration_test_utils import V3ioHeaders, append_return, test_base_time, setup_kv_teardown_test, setup_teardown_test, \
     setup_stream_teardown_test
@@ -524,3 +524,23 @@ def test_write_none_time(setup_teardown_test):
     expected = {'first_name': 'moshe', 'color': 'blue'}
     assert response.status_code == 200
     assert expected == response.output.item
+
+
+def test_cache_flushing(setup_teardown_test):
+    table = Table(setup_teardown_test, V3ioDriver(), flush_interval_secs=3)
+    controller = build_flow([
+        Source(),
+        WriteToTable(table),
+    ]).run()
+
+    controller.emit({'col1': 0}, 'dina', test_base_time + timedelta(minutes=25))
+    response = asyncio.run(get_kv_item(setup_teardown_test, 'dina')).output.item
+    assert response == {}
+    time.sleep(4)
+
+    response = asyncio.run(get_kv_item(setup_teardown_test, 'dina')).output.item
+    assert response == {'col1': 0}
+
+    controller.terminate()
+    controller.await_termination()
+

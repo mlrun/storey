@@ -401,6 +401,7 @@ class _FunctionWithStateFlow(Flow):
                 key_data = self._state[event.key]
             res, new_state = self._fn(element, key_data)
             self._state._set_static_attrs(event.key, new_state)
+            self._state._init_flush_task()
         else:
             res, self._state = self._fn(element, self._state)
         if self._is_async:
@@ -638,141 +639,6 @@ class _ConcurrentJobExecution(Flow):
             await self._q.put((event, asyncio.get_running_loop().create_task(task)))
             if self._worker_awaitable.done():
                 await self._worker_awaitable
-
-
-class _PendingEvent:
-    def __init__(self):
-        self.in_flight = []
-        self.pending = []
-
-
-class _ConcurrentByKeyJobExecution(Flow):
-    def __init__(self, max_in_flight=8, **kwargs):
-        kwargs['max_in_flight'] = max_in_flight
-        Flow.__init__(self, **kwargs)
-        self._max_in_flight = max_in_flight
-
-    def _init(self):
-        super()._init()
-        self._q = None
-        self._pending_by_key = {}
-
-    async def _worker(self):
-        event = None
-        received_job_count = 0
-        self_sent_jobs = {}
-        try:
-            while True:
-                jobs = self_sent_jobs.pop(received_job_count, None)
-                if jobs:
-                    job = jobs[0]
-                    if len(jobs) > 1:
-                        self_sent_jobs[received_job_count] = jobs[1:]
-                else:
-                    job = await self._q.get()
-                    received_job_count += 1
-                    if job is _termination_obj:
-                        if received_job_count in self_sent_jobs:
-                            await self._q.put(_termination_obj)
-                            continue
-                        for pending_event in self._pending_by_key.values():
-                            if pending_event.pending and not pending_event.in_flight:
-                                resp = await self._safe_process_events(pending_event.pending)
-                                for event in pending_event.pending:
-                                    await self._handle_completed(event, resp)
-                        break
-
-                event = job[0]
-                completed = await job[1]
-
-                if isinstance(event.key, list):
-                    event_key = str(event.key)
-                else:
-                    event_key = event.key
-
-                for event in self._pending_by_key[event_key].in_flight:
-                    await self._handle_completed(event, completed)
-                self._pending_by_key[event_key].in_flight = []
-
-                # If we got more pending events for the same key process them
-                if self._pending_by_key[event_key].pending:
-                    self._pending_by_key[event_key].in_flight = self._pending_by_key[event_key].pending
-                    self._pending_by_key[event_key].pending = []
-
-                    task = self._safe_process_events(self._pending_by_key[event_key].in_flight)
-                    tail_position = received_job_count + self._q.qsize()
-                    jobs_at_tail = self_sent_jobs.get(tail_position, [])
-                    jobs_at_tail.append((event, asyncio.get_running_loop().create_task(task)))
-                    self_sent_jobs[tail_position] = jobs_at_tail
-                else:
-                    del self._pending_by_key[event_key]
-        except BaseException as ex:
-            if event and event is not _termination_obj and event._awaitable_result:
-                event._awaitable_result._set_error(ex)
-            if not self._q.empty():
-                await self._q.get()
-            raise ex
-        finally:
-            await self._cleanup()
-
-    async def _do(self, event):
-        if not self._q:
-            await self._lazy_init()
-            self._q = asyncio.queues.Queue(self._max_in_flight)
-            self._worker_awaitable = asyncio.get_running_loop().create_task(self._worker())
-
-        if self._worker_awaitable.done():
-            await self._worker_awaitable
-            raise FlowError("ConcurrentByKeyJobExecution worker has already terminated")
-
-        if event is _termination_obj:
-            await self._q.put(_termination_obj)
-            await self._worker_awaitable
-            return await self._do_downstream(_termination_obj)
-        else:
-            # Initializing the key with 2 lists. One for pending requests and one for requests that an update request has been issued for.
-            if isinstance(event.key, list):
-                # list can't be key in a dictionary
-                event_key = str(event.key)
-            else:
-                event_key = event.key
-
-            if event_key not in self._pending_by_key:
-                self._pending_by_key[event_key] = _PendingEvent()
-
-            # If there is a current update in flight for the key, add the event to the pending list. Otherwise update the key.
-            self._pending_by_key[event_key].pending.append(event)
-            if len(self._pending_by_key[event_key].in_flight) == 0:
-                self._pending_by_key[event_key].in_flight = self._pending_by_key[event_key].pending
-                self._pending_by_key[event_key].pending = []
-
-                task = self._safe_process_events(self._pending_by_key[event_key].in_flight)
-                await self._q.put((event, asyncio.get_running_loop().create_task(task)))
-                if self._worker_awaitable.done():
-                    await self._worker_awaitable
-
-    async def _safe_process_events(self, events):
-        try:
-            return await self._process_events(events)
-        except BaseException as ex:
-            for event in events:
-                if event._awaitable_result:
-                    none_or_coroutine = event._awaitable_result._set_error(ex)
-                    if none_or_coroutine:
-                        await none_or_coroutine
-            raise ex
-
-    async def _process_events(self, events):
-        raise NotImplementedError()
-
-    async def _handle_completed(self, event, response):
-        raise NotImplementedError()
-
-    async def _cleanup(self):
-        pass
-
-    async def _lazy_init(self):
-        pass
 
 
 class SendToHttp(_ConcurrentJobExecution):
