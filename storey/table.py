@@ -275,7 +275,8 @@ class Table:
             while not self._terminated:
                 await asyncio.sleep(self._flush_interval_secs)
                 for key in self._changed_keys.copy():
-                    await self._persist(_PersistJob(key, None, None))
+                    if key not in self._pending_by_key:
+                        await self._persist(_PersistJob(key, None, None))
         except BaseException as ex:
             if not isinstance(ex, asyncio.CancelledError):
                 self._flush_exception = ex
@@ -351,7 +352,8 @@ class Table:
         if not self._terminated:
             self._terminated = True
             for key in self._changed_keys.copy():
-                await self._persist(_PersistJob(key, None, None), from_terminate=True)
+                if key not in self._pending_by_key:
+                    await self._persist(_PersistJob(key, None, None), from_terminate=True)
             await self._q.put(_termination_obj)
             await self._worker_awaitable
             self._q = None
