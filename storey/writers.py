@@ -14,8 +14,8 @@ import v3io_frames as frames
 
 from . import Driver
 from .dtypes import V3ioError, Event
-from .flow import Flow, _termination_obj, _split_path, _Batching, _ConcurrentByKeyJobExecution
-from .table import Table
+from .flow import Flow, _termination_obj, _split_path, _Batching
+from .table import Table, _PersistJob
 from .utils import url_to_file_system
 
 
@@ -615,7 +615,7 @@ class WriteToV3IOStream(Flow, _Writer):
                 await self._worker_awaitable
 
 
-class WriteToTable(_ConcurrentByKeyJobExecution, _Writer):
+class WriteToTable(_Writer, Flow):
     """
     Persists the data in `table` to its associated storage by key.
 
@@ -639,7 +639,7 @@ class WriteToTable(_ConcurrentByKeyJobExecution, _Writer):
             kwargs['columns'] = columns
         if infer_columns_from_data:
             kwargs['infer_columns_from_data'] = infer_columns_from_data
-        _ConcurrentByKeyJobExecution.__init__(self, **kwargs)
+        Flow.__init__(self, **kwargs)
         _Writer.__init__(self, columns, infer_columns_from_data, retain_dict=True)
         self._table = table
         if isinstance(table, str):
@@ -652,12 +652,24 @@ class WriteToTable(_ConcurrentByKeyJobExecution, _Writer):
         self._write_missing_fields = False
 
     def _init(self):
-        _ConcurrentByKeyJobExecution._init(self)
         _Writer._init(self)
-
-    async def _process_events(self, events):
-        data_to_persist = self._event_to_writer_entry(events[-1])
-        return await self._table._persist_key(events[0].key, data_to_persist)
 
     async def _handle_completed(self, event, response):
         await self._do_downstream(event)
+
+    async def _do(self, event):
+        if event is _termination_obj:
+            await self._table._terminate()
+            return await self._do_downstream(_termination_obj)
+
+        if event.key is None:
+            raise ValueError("Event could not be written to table because it has no key")
+
+        if not self._table._flush_interval_secs:
+            data_to_persist = self._event_to_writer_entry(event)
+            await self._table._persist(_PersistJob(event.key, data_to_persist, self._handle_completed, event))
+        else:
+            data_to_persist = self._event_to_writer_entry(event)
+            self._table._update_static_attrs(event.key, data_to_persist)
+            self._table._init_flush_task()
+            await self._do_downstream(event)

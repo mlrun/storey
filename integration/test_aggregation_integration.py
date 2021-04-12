@@ -10,12 +10,13 @@ from storey import build_flow, Source, Reduce, Table, V3ioDriver, MapWithState, 
 from storey.dtypes import SlidingWindows, FixedWindows
 from storey.utils import _split_path
 
-from .integration_test_utils import setup_teardown_test, append_return, test_base_time
+from .integration_test_utils import setup_teardown_test, append_return, test_base_time, V3ioHeaders
 
 
 @pytest.mark.parametrize('partitioned_by_key', [True, False])
-def test_aggregate_and_query_with_different_windows(setup_teardown_test, partitioned_by_key):
-    table = Table(setup_teardown_test, V3ioDriver(), partitioned_by_key=partitioned_by_key)
+@pytest.mark.parametrize('flush_interval', [None, 1])
+def test_aggregate_and_query_with_different_windows(setup_teardown_test, partitioned_by_key, flush_interval):
+    table = Table(setup_teardown_test, V3ioDriver(), partitioned_by_key=partitioned_by_key, flush_interval_secs=flush_interval)
 
     controller = build_flow([
         Source(),
@@ -167,8 +168,9 @@ def test_query_virtual_aggregations_flow(setup_teardown_test):
 
 
 @pytest.mark.parametrize('partitioned_by_key', [True, False])
-def test_query_aggregate_by_key(setup_teardown_test, partitioned_by_key):
-    table = Table(setup_teardown_test, V3ioDriver(), partitioned_by_key=partitioned_by_key)
+@pytest.mark.parametrize('flush_interval', [None, 1])
+def test_query_aggregate_by_key(setup_teardown_test, partitioned_by_key, flush_interval):
+    table = Table(setup_teardown_test, V3ioDriver(), partitioned_by_key=partitioned_by_key, flush_interval_secs=flush_interval)
 
     controller = build_flow([
         Source(),
@@ -330,7 +332,8 @@ def test_aggregate_and_query_with_dependent_aggrs_different_windows(setup_teardo
 
 
 @pytest.mark.parametrize('partitioned_by_key', [True, False])
-def test_aggregate_by_key_one_underlying_window(setup_teardown_test, partitioned_by_key):
+@pytest.mark.parametrize('flush_interval', [None, 1])
+def test_aggregate_by_key_one_underlying_window(setup_teardown_test, partitioned_by_key, flush_interval):
     expected = {1: [{'number_of_stuff_count_1h': 1, 'other_stuff_sum_1h': 0.0, 'col1': 0},
                     {'number_of_stuff_count_1h': 2, 'other_stuff_sum_1h': 1.0, 'col1': 1},
                     {'number_of_stuff_count_1h': 3, 'other_stuff_sum_1h': 3.0, 'col1': 2}],
@@ -346,7 +349,7 @@ def test_aggregate_by_key_one_underlying_window(setup_teardown_test, partitioned
 
     for current_expected in expected.values():
 
-        table = Table(setup_teardown_test, V3ioDriver(), partitioned_by_key=partitioned_by_key)
+        table = Table(setup_teardown_test, V3ioDriver(), partitioned_by_key=partitioned_by_key, flush_interval_secs=flush_interval)
         controller = build_flow([
             Source(),
             AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["count"],
@@ -490,8 +493,9 @@ def test_aggregate_by_key_with_extra_aliases(setup_teardown_test):
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
 
-def test_write_cache_with_aggregations(setup_teardown_test):
-    table = Table(setup_teardown_test, V3ioDriver())
+@pytest.mark.parametrize('flush_interval', [None, 1])
+def test_write_cache_with_aggregations(setup_teardown_test, flush_interval):
+    table = Table(setup_teardown_test, V3ioDriver(), flush_interval_secs=flush_interval)
 
     table['tal'] = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': test_base_time}
 
@@ -547,7 +551,7 @@ def test_write_cache_with_aggregations(setup_teardown_test):
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
-    other_table = Table(setup_teardown_test, V3ioDriver())
+    other_table = Table(setup_teardown_test, V3ioDriver(), flush_interval_secs=flush_interval)
 
     controller = build_flow([
         Source(),
@@ -570,8 +574,9 @@ def test_write_cache_with_aggregations(setup_teardown_test):
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
 
-def test_write_cache(setup_teardown_test):
-    table = Table(setup_teardown_test, V3ioDriver())
+@pytest.mark.parametrize('flush_interval', [None, 1])
+def test_write_cache(setup_teardown_test, flush_interval):
+    table = Table(setup_teardown_test, V3ioDriver(), flush_interval_secs=flush_interval)
 
     table['tal'] = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': datetime.now()}
 

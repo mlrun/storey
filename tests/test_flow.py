@@ -837,7 +837,9 @@ def test_awaitable_result_error_in_by_key_async_downstream():
         Complete()
     ]).run()
     try:
-        controller.emit(1).await_result()
+        controller.emit({'col1': 0}, 'key').await_result()
+        controller.terminate()
+        controller.await_termination()
         assert False
     except ValueError:
         pass
@@ -1938,7 +1940,7 @@ def test_error_in_concurrent_by_key_task():
         WriteToTable(table, columns=['twice_total_activities']),
     ]).run()
 
-    controller.emit(None)
+    controller.emit({'col1': 0}, 'tal')
 
     controller.terminate()
     try:
@@ -2341,7 +2343,7 @@ def test_non_existing_key_query_by_key():
     df = pd.DataFrame([['katya', 'green'], ['dina', 'blue']], columns=['name', 'color'])
     table = Table('table', NoopDriver())
     controller = build_flow([
-        DataframeSource(df),
+        DataframeSource(df, key_field='name'),
         WriteToTable(table),
     ]).run()
     controller.await_termination()
@@ -2351,7 +2353,7 @@ def test_non_existing_key_query_by_key():
         QueryByKey(["color"], table, key="name"),
     ]).run()
 
-    controller.emit({'nameeeee': 'katya'})
+    controller.emit({'nameeeee': 'katya'}, 'katya')
     controller.terminate()
     controller.await_termination()
 
