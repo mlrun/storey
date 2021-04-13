@@ -578,7 +578,7 @@ def test_write_cache_with_aggregations(setup_teardown_test, flush_interval):
 def test_write_cache(setup_teardown_test, flush_interval):
     table = Table(setup_teardown_test, V3ioDriver(), flush_interval_secs=flush_interval)
 
-    table['tal'] = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': datetime.now()}
+    table['tal'] = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': test_base_time}
 
     def enrich(event, state):
         if 'first_activity' not in state:
@@ -1138,14 +1138,14 @@ def test_write_to_table_reuse(setup_teardown_test):
 
 
 def test_aggregate_multiple_keys(setup_teardown_test):
-    current_time = pd.Timestamp.now()
+    t0 = pd.Timestamp(test_base_time)
     data = pd.DataFrame(
         {
             "first_name": ["moshe", "yosi", "yosi"],
             "last_name": ["cohen", "levi", "levi"],
             "some_data": [1, 2, 3],
-            "time": [current_time - pd.Timedelta(minutes=25), current_time - pd.Timedelta(minutes=30),
-                     current_time - pd.Timedelta(minutes=35)]
+            "time": [t0 - pd.Timedelta(minutes=25), t0 - pd.Timedelta(minutes=30),
+                     t0 - pd.Timedelta(minutes=35)]
         }
     )
 
@@ -1169,9 +1169,9 @@ def test_aggregate_multiple_keys(setup_teardown_test):
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
-    controller.emit({'first_name': 'moshe', 'last_name': 'cohen', 'some_data': 4}, ['moshe', 'cohen'])
-    controller.emit({'first_name': 'moshe', 'last_name': 'levi', 'some_data': 5}, ['moshe', 'levi'])
-    controller.emit({'first_name': 'yosi', 'last_name': 'levi', 'some_data': 6}, ['yosi', 'levi'])
+    controller.emit({'first_name': 'moshe', 'last_name': 'cohen', 'some_data': 4}, ['moshe', 'cohen'], event_time=test_base_time)
+    controller.emit({'first_name': 'moshe', 'last_name': 'levi', 'some_data': 5}, ['moshe', 'levi'], event_time=test_base_time)
+    controller.emit({'first_name': 'yosi', 'last_name': 'levi', 'some_data': 6}, ['yosi', 'levi'], event_time=test_base_time)
 
     controller.terminate()
     actual = controller.await_termination()
@@ -1224,4 +1224,3 @@ def test_read_non_existing_key(setup_teardown_test):
     print(actual[0])
 
     assert "number_of_stuff_sum_1h" not in actual[0]
-
