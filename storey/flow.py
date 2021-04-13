@@ -400,7 +400,7 @@ class _FunctionWithStateFlow(Flow):
             else:
                 key_data = self._state[event.key]
             res, new_state = self._fn(element, key_data)
-            self._state._set_static_attrs(event.key, new_state)
+            self._state._update_static_attrs(event.key, new_state)
             self._state._init_flush_task()
         else:
             res, self._state = self._fn(element, self._state)
