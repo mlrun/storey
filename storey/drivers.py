@@ -78,8 +78,7 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
         self._aggregation_attribute_prefix = 'aggr_'
         self._aggregation_time_attribute_prefix = 't_'
         self._error_code_string = "ErrorCode"
-        self._false_condition_outer_error_code = "16777244"
-        self._false_condition_inner_error_code = "16777245"
+        self._false_condition_error_code = "16777244"
         self._mtime_header_name = 'X-v3io-transaction-verifier'
 
     def _lazy_init(self):
@@ -199,8 +198,7 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
     def _is_false_condition_error(self, response):
         if response.status_code == 400:
             body = response.body.decode("utf-8")
-            if self._false_condition_inner_error_code in body and self._false_condition_outer_error_code in body and body.count(
-                    self._error_code_string) == 2:
+            if self._error_code_string in body and self._false_condition_error_code in body:
                 return True
         return False
 
