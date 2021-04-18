@@ -1,7 +1,9 @@
 import base64
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
+from typing import Optional
+import pandas as pd
 
 import v3io
 import v3io.aio.dataplane
@@ -11,6 +13,8 @@ from .utils import schema_file_name
 
 
 class Driver:
+    """Abstract class for database connection"""
+
     async def _save_schema(self, container, table_path, schema):
         pass
 
@@ -35,6 +39,13 @@ class NoopDriver(Driver):
 
 
 class NeedsV3ioAccess:
+    """Checks that params for access to V3IO exist and are legal
+
+    :param webapi: URL to the web API (https or http). If not set, the V3IO_API environment variable will be used.
+    :param access_key: V3IO access key. If not set, the V3IO_ACCESS_KEY environment variable will be used.
+
+    """
+
     def __init__(self, webapi=None, access_key=None):
         webapi = webapi or os.getenv('V3IO_API')
         if not webapi:
@@ -56,12 +67,10 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
     """
     Database connection to V3IO.
     :param webapi: URL to the web API (https or http). If not set, the V3IO_API environment variable will be used.
-    :type webapi: string
     :param access_key: V3IO access key. If not set, the V3IO_ACCESS_KEY environment variable will be used.
-    :type access_key: string
     """
 
-    def __init__(self, webapi=None, access_key=None):
+    def __init__(self, webapi: Optional[str] = None, access_key: Optional[str] = None):
         NeedsV3ioAccess.__init__(self, webapi, access_key)
         self._v3io_client = None
         self._closed = True
@@ -69,8 +78,7 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
         self._aggregation_attribute_prefix = 'aggr_'
         self._aggregation_time_attribute_prefix = 't_'
         self._error_code_string = "ErrorCode"
-        self._false_condition_outer_error_code = "16777244"
-        self._false_condition_inner_error_code = "16777245"
+        self._false_condition_error_code = "16777244"
         self._mtime_header_name = 'X-v3io-transaction-verifier'
 
     def _lazy_init(self):
@@ -79,6 +87,7 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
             self._v3io_client = v3io.aio.dataplane.Client(endpoint=self._webapi_url, access_key=self._access_key)
 
     async def close(self):
+        """Closes database connection to V3IO"""
         if self._v3io_client and not self._closed:
             self._closed = True
             await self._v3io_client.close()
@@ -127,6 +136,7 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
         if not update_expression:
             return
 
+        key = str(key)
         response = await self._v3io_client.kv.update(container, table_path, key, expression=update_expression,
                                                      condition=condition_expression,
                                                      raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
@@ -151,7 +161,9 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
 
         if should_raise_error:
             raise V3ioError(
-                f'Failed to save aggregation for {table_path}/{key}. Response status code was {response.status_code}: {response.body}')
+                f'Failed to save aggregation for {table_path}/{key}. Response status code was {response.status_code}: {response.body}\n'
+                f'Update expression was: {update_expression}'
+            )
 
     async def _fetch_state_by_key(self, aggr_item, container, table_path, key):
         attributes_to_get = self._get_time_attributes_from_aggregations(aggr_item)
@@ -186,8 +198,7 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
     def _is_false_condition_error(self, response):
         if response.status_code == 400:
             body = response.body.decode("utf-8")
-            if self._false_condition_inner_error_code in body and self._false_condition_outer_error_code in body and body.count(
-                    self._error_code_string) == 2:
+            if self._error_code_string in body and self._false_condition_error_code in body:
                 return True
         return False
 
@@ -211,7 +222,11 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
             for name, value in additional_data.items():
                 if name.casefold() in self.saved_engine_words.keys():
                     name = f'`{name}`'
-                expressions.append(f'{name}={self._convert_python_obj_to_expression_value(value)}')
+                expression_value = self._convert_python_obj_to_expression_value(value)
+                if expression_value:
+                    expressions.append(f'{name}={self._convert_python_obj_to_expression_value(value)}')
+                else:
+                    expressions.append(f'REMOVE {name}')
 
         update_expression = ';'.join(expressions)
         return update_expression, condition_expression, pending_updates
@@ -340,11 +355,15 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
         elif isinstance(value, bytes):
             return f"blob('{base64.b64encode(value).decode('ascii')}')"
         elif isinstance(value, datetime):
+            if pd.isnull(value):
+                return None
             timestamp = value.timestamp()
 
             secs = int(timestamp)
             nanosecs = int((timestamp - secs) * 1e+9)
             return f'{secs}:{nanosecs}'
+        elif isinstance(value, timedelta):
+            return str(value.value)
         else:
             raise V3ioError(f'Type {type(value)} in UpdateItem request is not supported')
 

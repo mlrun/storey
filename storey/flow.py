@@ -25,15 +25,17 @@ class Flow:
         self.verbose = context and getattr(context, 'verbose', False)
 
         self._kwargs = kwargs
-        self._full_event = kwargs.get('full_event', False)
+        self._full_event = kwargs.pop('full_event', False)
         self._input_path = kwargs.get('input_path')
         self._result_path = kwargs.get('result_path')
         self._runnable = False
-        name = kwargs.get('name')
+        name = kwargs.pop('name', None)
         if name:
             self.name = name
+            self._custom_name = True
         else:
             self.name = type(self).__name__
+            self._custom_name = False
 
         self._closeables = []
 
@@ -41,10 +43,18 @@ class Flow:
         pass
 
     def to_dict(self):
+        module = type(self).__module__
+        if module is None or module == str.__class__.__module__:
+            module = ''
+        else:
+            module += '.'
         result = {
-            'class_name': type(self).__name__,
-            'parameters': self._kwargs
+            'class_name': f'{module}{type(self).__name__}',
+            'class_args': self._kwargs,
+            'full_event': self._full_event,
         }
+        if self._custom_name:
+            result['name'] = self.name
         if self._recovery_step:
             result['recovery_step'] = self._recovery_step.to_dict()
         return result
@@ -66,7 +76,13 @@ class Flow:
         taken.add(var_name)
         param_list = []
         for key, value in self._kwargs.items():
+            if isinstance(value, str):
+                value = f"'{value}'"
             param_list.append(f'{key}={value}')
+        if self._custom_name:
+            param_list.append(f'name={self.name}')
+        if self._full_event:
+            param_list.append(f'full_event={self._full_event}')
         param_str = ', '.join(param_list)
         step = f'{var_name} = {class_name}({param_str})'
         steps = [step]
@@ -200,21 +216,36 @@ class Flow:
                 mapped_event.body = fn_result
             return mapped_event
 
+    def _check_step_in_flow(self, type_to_check):
+        if isinstance(self, type_to_check):
+            return True
+        for outlet in self._outlets:
+            if outlet._check_step_in_flow(type_to_check):
+                return True
+        if isinstance(self._recovery_step, Flow):
+            if self._recovery_step._check_step_in_flow(type_to_check):
+                return True
+        elif isinstance(self._recovery_step, dict):
+            for step in self._recovery_step.values():
+                if step._check_step_in_flow(type_to_check):
+                    return True
+        return False
+
 
 class Choice(Flow):
     """Redirects each input element into at most one of multiple downstreams.
 
     :param choice_array: a list of (downstream, condition) tuples, where downstream is a step and condition is a function. The first
-    condition in the list to evaluate as true for an input element causes that element to be redirected to that downstream step.
+        condition in the list to evaluate as true for an input element causes that element to be redirected to that downstream step.
     :type choice_array: tuple of (Flow, Function (Event=>boolean))
 
     :param default: a default step for events that did not match any condition in choice_array. If not set, elements that don't match any
-    condition will be discarded.
+        condition will be discarded.
     :type default: Flow
     :param name: Name of this step, as it should appear in logs. Defaults to class name (Choice).
     :type name: string
     :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
-    Defaults to False.
+        Defaults to False.
     :type full_event: boolean
     """
 
@@ -298,7 +329,7 @@ class Map(_UnaryFunctionFlow):
     :param name: Name of this step, as it should appear in logs. Defaults to class name (Map).
     :type name: string
     :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
-    Defaults to False.
+        Defaults to False.
     :type full_event: boolean
     """
 
@@ -315,7 +346,7 @@ class Filter(_UnaryFunctionFlow):
     :param name: Name of this step, as it should appear in logs. Defaults to class name (Filter).
     :type name: string
     :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
-    Defaults to False.
+        Defaults to False.
     :type full_event: boolean
     """
 
@@ -332,7 +363,7 @@ class FlatMap(_UnaryFunctionFlow):
     :param name: Name of this step, as it should appear in logs. Defaults to class name (FlatMap).
     :type name: string
     :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
-    Defaults to False.
+        Defaults to False.
     :type full_event: boolean
     """
 
@@ -369,7 +400,8 @@ class _FunctionWithStateFlow(Flow):
             else:
                 key_data = self._state[event.key]
             res, new_state = self._fn(element, key_data)
-            self._state._set_static_attrs(event.key, new_state)
+            self._state._update_static_attrs(event.key, new_state)
+            self._state._init_flush_task()
         else:
             res, self._state = self._fn(element, self._state)
         if self._is_async:
@@ -398,7 +430,7 @@ class MapWithState(_FunctionWithStateFlow):
     :param group_by_key: Whether the state is computed by key. Optional. Default to False.
     :type group_by_key: boolean
     :param full_event: Whether fn will receive and return an Event object or only the body (payload). Optional. Defaults to
-    False (body only).
+        False (body only).
     :type full_event: boolean
     """
 
@@ -463,6 +495,7 @@ class Complete(Flow):
 class Reduce(Flow):
     """
     Reduces incoming events into a single value which is returned upon the successful termination of the flow.
+
     :param initial_value: Starting value. When the first event is received, fn will be appled to the initial_value and that event.
     :type initial_value: object
     :param fn: Function to apply to the current value and each event.
@@ -470,7 +503,7 @@ class Reduce(Flow):
     :param name: Name of this step, as it should appear in logs. Defaults to class name (Reduce).
     :type name: string
     :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
-    Defaults to False.
+        Defaults to False.
     :type full_event: boolean
     """
 
@@ -608,130 +641,6 @@ class _ConcurrentJobExecution(Flow):
                 await self._worker_awaitable
 
 
-class _PendingEvent:
-    def __init__(self):
-        self.in_flight = []
-        self.pending = []
-
-
-class _ConcurrentByKeyJobExecution(Flow):
-    def __init__(self, max_in_flight=8, **kwargs):
-        kwargs['max_in_flight'] = max_in_flight
-        Flow.__init__(self, **kwargs)
-        self._max_in_flight = max_in_flight
-
-    def _init(self):
-        super()._init()
-        self._q = None
-        self._pending_by_key = {}
-
-    async def _worker(self):
-        event = None
-        received_job_count = 0
-        self_sent_jobs = {}
-        try:
-            while True:
-                jobs = self_sent_jobs.pop(received_job_count, None)
-                if jobs:
-                    job = jobs[0]
-                    if len(jobs) > 1:
-                        self_sent_jobs[received_job_count] = jobs[1:]
-                else:
-                    job = await self._q.get()
-                    received_job_count += 1
-                    if job is _termination_obj:
-                        if received_job_count in self_sent_jobs:
-                            await self._q.put(_termination_obj)
-                            continue
-                        for pending_event in self._pending_by_key.values():
-                            if pending_event.pending and not pending_event.in_flight:
-                                resp = await self._safe_process_events(pending_event.pending)
-                                for event in pending_event.pending:
-                                    await self._handle_completed(event, resp)
-                        break
-
-                event = job[0]
-                completed = await job[1]
-
-                for event in self._pending_by_key[event.key].in_flight:
-                    await self._handle_completed(event, completed)
-                self._pending_by_key[event.key].in_flight = []
-
-                # If we got more pending events for the same key process them
-                if self._pending_by_key[event.key].pending:
-                    self._pending_by_key[event.key].in_flight = self._pending_by_key[event.key].pending
-                    self._pending_by_key[event.key].pending = []
-
-                    task = self._safe_process_events(self._pending_by_key[event.key].in_flight)
-                    tail_position = received_job_count + self._q.qsize()
-                    jobs_at_tail = self_sent_jobs.get(tail_position, [])
-                    jobs_at_tail.append((event, asyncio.get_running_loop().create_task(task)))
-                    self_sent_jobs[tail_position] = jobs_at_tail
-                else:
-                    del self._pending_by_key[event.key]
-        except BaseException as ex:
-            if event and event is not _termination_obj and event._awaitable_result:
-                event._awaitable_result._set_error(ex)
-            if not self._q.empty():
-                await self._q.get()
-            raise ex
-        finally:
-            await self._cleanup()
-
-    async def _do(self, event):
-        if not self._q:
-            await self._lazy_init()
-            self._q = asyncio.queues.Queue(self._max_in_flight)
-            self._worker_awaitable = asyncio.get_running_loop().create_task(self._worker())
-
-        if self._worker_awaitable.done():
-            await self._worker_awaitable
-            raise FlowError("ConcurrentByKeyJobExecution worker has already terminated")
-
-        if event is _termination_obj:
-            await self._q.put(_termination_obj)
-            await self._worker_awaitable
-            return await self._do_downstream(_termination_obj)
-        else:
-            # Initializing the key with 2 lists. One for pending requests and one for requests that an update request has been issued for.
-            if event.key not in self._pending_by_key:
-                self._pending_by_key[event.key] = _PendingEvent()
-
-            # If there is a current update in flight for the key, add the event to the pending list. Otherwise update the key.
-            self._pending_by_key[event.key].pending.append(event)
-            if len(self._pending_by_key[event.key].in_flight) == 0:
-                self._pending_by_key[event.key].in_flight = self._pending_by_key[event.key].pending
-                self._pending_by_key[event.key].pending = []
-
-                task = self._safe_process_events(self._pending_by_key[event.key].in_flight)
-                await self._q.put((event, asyncio.get_running_loop().create_task(task)))
-                if self._worker_awaitable.done():
-                    await self._worker_awaitable
-
-    async def _safe_process_events(self, events):
-        try:
-            return await self._process_events(events)
-        except BaseException as ex:
-            for event in events:
-                if event._awaitable_result:
-                    none_or_coroutine = event._awaitable_result._set_error(ex)
-                    if none_or_coroutine:
-                        await none_or_coroutine
-            raise ex
-
-    async def _process_events(self, events):
-        raise NotImplementedError()
-
-    async def _handle_completed(self, event, response):
-        raise NotImplementedError()
-
-    async def _cleanup(self):
-        pass
-
-    async def _lazy_init(self):
-        pass
-
-
 class SendToHttp(_ConcurrentJobExecution):
     """Joins each event with data from any HTTP source. Used for event augmentation.
 
@@ -742,7 +651,7 @@ class SendToHttp(_ConcurrentJobExecution):
     :param name: Name of this step, as it should appear in logs. Defaults to class name (SendToHttp).
     :type name: string
     :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
-    Defaults to False.
+        Defaults to False.
     :type full_event: boolean
     """
 
@@ -792,7 +701,7 @@ class _Batching(Flow):
             kwargs['key'] = key
         super().__init__(**kwargs)
 
-        self._max_events: int = max_events
+        self._max_events = max_events
         self._timeout_secs = timeout_secs
 
         if self._timeout_secs is not None and self._timeout_secs <= 0:
@@ -820,7 +729,7 @@ class _Batching(Flow):
         else:
             raise ValueError(f'Unsupported key type {type(key)}')
 
-    async def _emit(self, batch, batch_time):
+    async def _emit(self, batch, batch_key, batch_time):
         raise NotImplementedError
 
     async def _terminate(self):
@@ -868,7 +777,7 @@ class _Batching(Flow):
             return
         batch_time = self._batch_first_event_time.pop(batch_key)
         del self._batch_start_time[batch_key]
-        await self._emit(batch_to_emit, batch_time)
+        await self._emit(batch_to_emit, batch_key, batch_time)
 
     async def _emit_all(self):
         for key in list(self._batch.keys()):
@@ -876,22 +785,22 @@ class _Batching(Flow):
 
 
 class Batch(_Batching):
-    """
-    Batches events into lists of up to max_events events. Each emitted list contained max_events events, unless
+    """Batches events into lists of up to max_events events. Each emitted list contained max_events events, unless
     timeout_secs seconds have passed since the first event in the batch was received, at which the batch is emitted with
     potentially fewer than max_events event.
+
     :param max_events: Maximum number of events per emitted batch. Set to None to emit all events in one batch on flow
-    termination.
+        termination.
     :param timeout_secs: Maximum number of seconds to wait before a batch is emitted.
     :param key: The key by which events are grouped. By default (None), events are not grouped.
-    Other options may be:
-    Set a '$key' to group events by the Event.key property.
-    set a 'str' key to group events by Event.body[str].
-    set a Callable[Any, Any] to group events by a a custom key extractor.
+        Other options may be:
+        Set a '$key' to group events by the Event.key property.
+        set a 'str' key to group events by Event.body[str].
+        set a Callable[Any, Any] to group events by a a custom key extractor.
     """
     _do_downstream_per_event = False
 
-    async def _emit(self, batch, batch_time):
+    async def _emit(self, batch, batch_key, batch_time):
         event = Event(batch, time=batch_time)
         return await self._do_downstream(event)
 
@@ -912,7 +821,7 @@ class JoinWithV3IOTable(_ConcurrentJobExecution):
     :param name: Name of this step, as it should appear in logs. Defaults to class name (JoinWithV3IOTable).
     :type name: string
     :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
-    Defaults to False.
+        Defaults to False.
     :type full_event: boolean
     """
 
@@ -956,10 +865,10 @@ class JoinWithTable(_ConcurrentJobExecution):
     :param key_extractor: Key's column name or a function for extracting the key, for table access from an event.
     :param attributes: A comma-separated list of attributes to be queried for. Defaults to all attributes.
     :param join_function: Joins the original event with relevant data received from the storage. Defaults to assume the event's body is a
-    dict-like object and updating it.
+        dict-like object and updating it.
     :param name: Name of this step, as it should appear in logs. Defaults to class name (JoinWithTable).
     :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
-    Defaults to False.
+        Defaults to False.
     :param context: Context object that holds global configurations and secrets.
     """
 

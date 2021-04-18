@@ -13,28 +13,24 @@ class Event:
     """The basic unit of data in storey. All steps receive and emit events.
 
     :param body: the event payload, or data
-    :type body: object
-    :param key: Event key. Used by steps that aggregate events by key, such as AggregateByKey.
-    :type key: string
-    :param time: Event time. Defaults to the time the event was created, UTC.
-    :type time: datetime
-    :param id: Event identifier. Usually a unique identifier.
-    :type id: string
-    :param headers: Request headers (HTTP only)
-    :type headers: dict
-    :param method: Request method (HTTP only)
-    :type method: string
-    :param path: Request path (HTTP only)
-    :type path: string
-    :param content_type: Request content type (HTTP only)
-    :param awaitable_result: Generally not passed directly.
-    :type awaitable_result: AwaitableResult
+    :param key: Event key. Used by steps that aggregate events by key, such as AggregateByKey. (Optional). Can be list
+    :param time: Event time. Defaults to the time the event was created, UTC. (Optional)
+    :param id: Event identifier. Usually a unique identifier. (Optional)
+    :param headers: Request headers (HTTP only) (Optional)
+    :param method: Request method (HTTP only) (Optional)
+    :param path: Request path (HTTP only) (Optional)
+    :param content_type: Request content type (HTTP only) (Optional)
+    :param awaitable_result: Generally not passed directly. (Optional)
+    :type awaitable_result: AwaitableResult (Optional)
     """
 
-    def __init__(self, body, key=None, time=None, id=None, headers=None, method=None, path='/', content_type=None,
-                 awaitable_result=None):
+    def __init__(self, body: object, key: Optional[Union[str, List[str]]] = None, time: Optional[datetime] = None, id: Optional[str] = None,
+                 headers: Optional[dict] = None, method: Optional[str] = None, path: Optional[str] = '/',
+                 content_type=None, awaitable_result=None):
         self.body = body
         self.key = key
+        if time is not None and not isinstance(time, datetime):
+            raise TypeError(f'Event time parameter must be a datetime. Got {type(time)} instead.')
         self.time = time or datetime.now(timezone.utc)
         self.id = id
         self.headers = headers
@@ -52,7 +48,7 @@ class Event:
                self.method == other.method and self.path == other.path and self.content_type == other.content_type  # noqa: E127
 
     def __str__(self):
-        return f'Event(id={self.id}, key={self.key}, time={self.time}, body={self.body})'
+        return f'Event(id={self.id}, key={str(self.key)}, time={self.time}, body={self.body})'
 
     def copy(self, body=None, key=None, time=None, id=None, headers=None, method=None, path=None, content_type=None,
              awaitable_result=None,
@@ -89,7 +85,13 @@ class WindowBase:
 
 
 class FixedWindow(WindowBase):
-    def __init__(self, window):
+    """
+    Time window representing fixed time interval. The interval will be divided to 10 periods
+
+    :param window: Time window in the format [0-9]+[smhd]
+    """
+
+    def __init__(self, window: str):
         window_millis = parse_duration(window)
         WindowBase.__init__(self, window_millis, window_millis / bucketPerWindow, window)
 
@@ -107,7 +109,14 @@ class FixedWindow(WindowBase):
 
 
 class SlidingWindow(WindowBase):
-    def __init__(self, window, period):
+    """
+    Time window representing sliding time interval divided to periods.
+
+    :param window: Time window in the format [0-9]+[smhd]
+    :param period: Number of buckets to use for the window [0-9]+[smhd]
+    """
+
+    def __init__(self, window: str, period: str):
         window_millis, period_millis = parse_duration(window), parse_duration(period)
         if not window_millis % period_millis == 0:
             raise ValueError('period must be a divider of the window')
@@ -224,53 +233,76 @@ class EmissionType(Enum):
     Incremental = 2
 
 
-class EmitBase:
+class EmitPolicy:
     def __init__(self, emission_type=EmissionType.All):
         self.emission_type = emission_type
 
 
-class EmitAfterPeriod(EmitBase):
-    def __init__(self, delay_in_seconds=0, emission_type=EmissionType.All):
+class EmitAfterPeriod(EmitPolicy):
+    """
+    Emit event for next step after each period ends
+
+    :param delay_in_seconds: Delay event emission by seconds (Optional)
+    """
+
+    def __init__(self, delay_in_seconds: Optional[int] = 0, emission_type=EmissionType.All):
         self.delay_in_seconds = delay_in_seconds
-        EmitBase.__init__(self, emission_type)
+        EmitPolicy.__init__(self, emission_type)
 
     @staticmethod
     def name():
         return 'afterPeriod'
 
 
-class EmitAfterWindow(EmitBase):
-    def __init__(self, delay_in_seconds=0, emission_type=EmissionType.All):
+class EmitAfterWindow(EmitPolicy):
+    """
+    Emit event for next step after each window ends
+
+    :param delay_in_seconds: Delay event emission by seconds (Optional)
+    """
+
+    def __init__(self, delay_in_seconds: Optional[int] = 0, emission_type=EmissionType.All):
         self.delay_in_seconds = delay_in_seconds
-        EmitBase.__init__(self, emission_type)
+        EmitPolicy.__init__(self, emission_type)
 
     @staticmethod
     def name():
         return 'afterWindow'
 
 
-class EmitAfterMaxEvent(EmitBase):
-    def __init__(self, max_events, timeout_secs=None, emission_type=EmissionType.All):
+class EmitAfterMaxEvent(EmitPolicy):
+    """
+    Emit the Nth event
+
+    :param max_events: Which number of event to emit
+    :param timeout_secs: Emit event after timeout expires even if it didn't reach max_events event (Optional)
+    """
+
+    def __init__(self, max_events: int, timeout_secs: Optional[int] = None, emission_type=EmissionType.All):
         self.max_events = max_events
         self.timeout_secs = timeout_secs
-        EmitBase.__init__(self, emission_type)
+        EmitPolicy.__init__(self, emission_type)
 
     @staticmethod
     def name():
         return 'maxEvents'
 
 
-class EmitAfterDelay(EmitBase):
+class EmitAfterDelay(EmitPolicy):
     def __init__(self, delay_in_seconds, emission_type=EmissionType.All):
         self.delay_in_seconds = delay_in_seconds
-        EmitBase.__init__(self, emission_type)
+        EmitPolicy.__init__(self, emission_type)
 
     @staticmethod
     def name():
         return 'afterDelay'
 
 
-class EmitEveryEvent(EmitBase):
+class EmitEveryEvent(EmitPolicy):
+    """
+    Emit every event
+    """
+
     @staticmethod
     def name():
         return 'everyEvent'
@@ -330,7 +362,7 @@ class FieldAggregator:
         if callable(field):
             self.value_extractor = field
         elif isinstance(field, str):
-            self.value_extractor = lambda element: element[field]
+            self.value_extractor = lambda element: element.get(field)
 
         self.name = name
         self.aggregations = aggr

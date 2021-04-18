@@ -1,26 +1,30 @@
+from typing import List, Optional
 import copy
 from asyncio import Lock
+import asyncio
+import math
 from datetime import datetime
-from typing import List
+from .drivers import Driver
+from .dtypes import FieldAggregator, SlidingWindows, FixedWindows, FlowError, _termination_obj
 
 from .aggregation_utils import is_raw_aggregate, get_virtual_aggregation_func, get_implied_aggregates, get_all_raw_aggregates, \
     get_all_raw_aggregates_with_hidden
-from .drivers import Driver
-from .dtypes import FieldAggregator, SlidingWindows, FixedWindows
-from .utils import _split_path
+from .utils import _split_path, get_hashed_key
 
 
 class Table:
-    """
-        Table object, represents a single table in a specific storage.
+    """Table object, represents a single table in a specific storage.
 
-        :param table_path: Path to the table in the storage.
-        :param storage: Storage driver
-        :param partitioned_by_key: Whether that data is partitioned by the key or not, based on this indication storage drivers
-         can optimize writes. Defaults to True.
-        """
+    :param table_path: Path to the table in the storage.
+    :param storage: Storage driver
+    :param partitioned_by_key: Whether that data is partitioned by the key or not, based on this indication storage drivers
+     can optimize writes. Defaults to True.
+    :param flush_interval_secs: How often the cache will be flushed in seconds. None for flush every event. Default is 300 (5 minutes)
+    :param max_updates_in_flight: Maximum number of concurrent updates.
+     """
 
-    def __init__(self, table_path: str, storage: Driver, partitioned_by_key: bool = True):
+    def __init__(self, table_path: str, storage: Driver, partitioned_by_key: bool = True,
+                 flush_interval_secs: Optional[int] = 300, max_updates_in_flight: int = 8):
         self._container, self._table_path = _split_path(table_path)
         self._storage = storage
         self._partitioned_by_key = partitioned_by_key
@@ -30,6 +34,14 @@ class Table:
         self._schema_lock = None
         self._aggregations_read_only = False
         self._use_windows_from_schema = False
+        self._q = None
+        self._max_updates_in_flight = max_updates_in_flight
+        self._pending_by_key = {}
+        self._flush_interval_secs = flush_interval_secs
+        self._flush_task = None
+        self._terminated = False
+        self._flush_exception = None
+        self._changed_keys = set()
 
     def __str__(self):
         return f'{self._container}/{self._table_path}'
@@ -54,8 +66,12 @@ class Table:
                 attrs[name] = value
         else:
             self._set_static_attrs(key, data)
+        self._changed_keys.add(get_hashed_key(key))
 
     async def _lazy_load_key_with_aggregates(self, key, timestamp=None):
+        if self._flush_exception is not None:
+            raise self._flush_exception
+        key = get_hashed_key(key)
         if self._aggregations_read_only or not self._get_aggregations_attrs(key):
             async with self._get_lock(key):
                 # Try load from the store, and create a new one only if the key really is new
@@ -70,59 +86,64 @@ class Table:
                     self._update_static_attrs(key, additional_data)
 
     async def _get_or_load_static_attributes_by_key(self, key, attributes='*'):
-        async with self._get_lock(key):
-            attrs = self._get_static_attrs(key)
-            if not attrs:
-                res = await self._storage._load_by_key(self._container, self._table_path, key, attributes)
-                if res:
-                    self._set_static_attrs(key, res)
-                else:
-                    self._set_static_attrs(key, {})
-            return self._get_static_attrs(key)
+        if self._flush_exception is not None:
+            raise self._flush_exception
+        key = get_hashed_key(key)
+        self._init_flush_task()
+        attrs = self._get_static_attrs(key)
+        if not attrs:
+            res = await self._storage._load_by_key(self._container, self._table_path, key, attributes)
+            if res:
+                self._set_static_attrs(key, res)
+            else:
+                self._set_static_attrs(key, {})
+        return self._get_static_attrs(key)
+
+    async def _internal_persist_key(self, key, event_data_to_persist):
+        aggr_by_key = self._get_aggregations_attrs(key)
+        additional_data_persist = self._get_static_attrs(key)
+        if event_data_to_persist:
+            if not additional_data_persist:
+                additional_data_persist = event_data_to_persist
+            else:
+                additional_data_persist.update(event_data_to_persist)
+        await self._storage._save_key(self._container, self._table_path, key, aggr_by_key,
+                                      self._partitioned_by_key, additional_data_persist)
 
     def _set_aggregation_metadata(self, aggregates: List[FieldAggregator], use_windows_from_schema: bool = False):
         self._use_windows_from_schema = use_windows_from_schema
         self._aggregates = aggregates
 
-    async def _persist_key(self, key, event_data_to_persist):
-        async with self._get_lock(key):
-            aggr_by_key = self._get_aggregations_attrs(key)
-            additional_data_persist = self._get_static_attrs(key)
-            if event_data_to_persist:
-                if not additional_data_persist:
-                    additional_data_persist = event_data_to_persist
-                else:
-                    additional_data_persist.update(event_data_to_persist)
-            await self._storage._save_key(self._container, self._table_path, key, aggr_by_key, self._partitioned_by_key,
-                                          additional_data_persist)
+    def _init_flush_task(self):
+        if not self._flush_task and self._flush_interval_secs:
+            self._flush_task = asyncio.get_running_loop().create_task(self._flush_worker())
 
     async def close(self):
         await self._storage.close()
 
     async def _aggregate(self, key, data, timestamp):
+        if self._flush_exception is not None:
+            raise self._flush_exception
         if not self._schema:
-            async with self._get_schema_lock():
-                await self._get_or_save_schema()
-
-        async with self._get_lock(key):
-            self._get_aggregations_attrs(key).aggregate(data, timestamp)
+            await self._get_or_save_schema()
+        cache_item = self._get_aggregations_attrs(key)
+        cache_item.aggregate(data, timestamp)
+        self._changed_keys.add(get_hashed_key(key))
 
     async def _get_features(self, key, timestamp):
+        if self._flush_exception is not None:
+            raise self._flush_exception
         if not self._schema:
             async with self._get_schema_lock():
                 await self._get_or_save_schema()
 
         async with self._get_lock(key):
-            return self._get_aggregations_attrs(key).get_features(timestamp)
+            attrs = self._get_aggregations_attrs(key)
 
-    async def _get_or_load_aggregations_by_key(self, key, timestamp=None):
-        async with self._get_lock(key):
-            if self._aggregations_read_only or not self._get_aggregations_attrs(key):
-                # Try load from the store, and create a new one only if the key really is new
-                initial_data = await self._storage._load_aggregates_by_key(self._container, self._table_path, key)
-                self._set_aggregations_attrs(key, self._new_aggregated_store_element()(key, self._aggregates, timestamp, initial_data))
+            if attrs is None:
+                return {}
 
-            return self._get_aggregations_attrs(key)
+            return attrs.get_features(timestamp)
 
     def _new_aggregated_store_element(self):
         if self._aggregations_read_only:
@@ -131,9 +152,10 @@ class Table:
 
     async def add_aggregation_by_key(self, key, base_timestamp, initial_data):
         if not self._schema:
-            async with self._get_schema_lock():
-                await self._get_or_save_schema()
-        async with self._get_lock(key):
+            await self._get_or_save_schema()
+        if self._aggregations_read_only and initial_data is None:
+            self._set_aggregations_attrs(key, None)
+        else:
             self._set_aggregations_attrs(key, self._new_aggregated_store_element()(key, self._aggregates, base_timestamp, initial_data))
 
     async def _get_or_save_schema(self):
@@ -205,10 +227,6 @@ class Table:
 
         return should_update
 
-    async def _save_aggregations_by_key(self, key):
-        async with self._get_lock(key):
-            await self._storage._save_key(self._container, self._table_path, key, self._get_aggregations_attrs(key))
-
     def _aggregates_to_schema(self):
         schema = {}
         for aggr in self._aggregates:
@@ -223,26 +241,33 @@ class Table:
         return schema
 
     def _get_aggregations_attrs(self, key):
+        key = get_hashed_key(key)
         if key in self._attrs_cache:
             return self._attrs_cache[key].aggregations
         else:
             return None
 
     def _set_aggregations_attrs(self, key, element):
+        key = get_hashed_key(key)
         if key in self._attrs_cache:
             self._attrs_cache[key].aggregations = element
+            self._changed_keys.add(key)
         else:
+            self._init_flush_task()
             self._attrs_cache[key] = _CacheElement({}, element)
 
     def _get_static_attrs(self, key):
+        key = get_hashed_key(key)
         if key in self._attrs_cache:
             return self._attrs_cache[key].static_attrs
         else:
             return None
 
     def _set_static_attrs(self, key, value):
+        key = get_hashed_key(key)
         if key in self._attrs_cache:
             self._attrs_cache[key].static_attrs = value
+            self._changed_keys.add(key)
         else:
             self._attrs_cache[key] = _CacheElement(value, None)
 
@@ -250,10 +275,144 @@ class Table:
         return self._attrs_cache.keys()
 
     def __setitem__(self, key, value):
+        """Sets attribute in table.
+
+        :param key: attribute name
+        :param value: attribute value
+         """
         self._set_static_attrs(key, value)
 
     def __getitem__(self, key):
+        """Gets attribute from table.
+
+        :param key: attribute to get
+         """
         return self._get_static_attrs(key)
+
+    async def _flush_worker(self):
+        try:
+            while not self._terminated:
+                await asyncio.sleep(self._flush_interval_secs)
+                for key in self._changed_keys.copy():
+                    if key not in self._pending_by_key:
+                        await self._persist(_PersistJob(key, None, None))
+                        self._changed_keys.discard(key)
+
+        except BaseException as ex:
+            if not isinstance(ex, asyncio.CancelledError):
+                self._flush_exception = ex
+
+    async def _persist_worker(self):
+        task = None
+        received_job_count = 0
+        self_sent_jobs = {}
+        try:
+            while True:
+                jobs = self_sent_jobs.pop(received_job_count, None)
+                if jobs:
+                    task = jobs[0]
+                    if len(jobs) > 1:
+                        self_sent_jobs[received_job_count] = jobs[1:]
+                else:
+                    task = await self._q.get()
+                    received_job_count += 1
+                    if task is _termination_obj:
+                        if received_job_count in self_sent_jobs:
+                            await self._q.put(_termination_obj)
+                            continue
+                        for key, pending_event in self._pending_by_key.items():
+                            if pending_event.pending and not pending_event.in_flight:
+                                for job in pending_event.pending:
+                                    resp = await self._internal_persist_key(key, job.data)
+                                    if job.callback:
+                                        await job.callback(job.extra_data, resp)
+                        break
+
+                job = task[0]
+                completed = await task[1]
+
+                for done_job in self._pending_by_key[job.key].in_flight:
+                    if done_job.callback:
+                        await done_job.callback(done_job.extra_data, completed)
+                self._pending_by_key[job.key].in_flight = []
+
+                # If we got more pending events for the same key process them
+                if self._pending_by_key[job.key].pending:
+                    self._pending_by_key[job.key].in_flight = self._pending_by_key[job.key].pending
+                    self._pending_by_key[job.key].pending = []
+
+                    future_task = self._safe_process_events(self._pending_by_key[job.key].in_flight)
+                    tail_position = received_job_count + self._q.qsize()
+                    jobs_at_tail = self_sent_jobs.get(tail_position, [])
+                    jobs_at_tail.append((job, asyncio.get_running_loop().create_task(future_task)))
+                    self_sent_jobs[tail_position] = jobs_at_tail
+                else:
+                    del self._pending_by_key[job.key]
+        except BaseException as ex:
+            if task and task is not _termination_obj:
+                if task[0].extra_data and task[0].extra_data._awaitable_result:
+                    task[0].extra_data._awaitable_result._set_error(ex)
+            if not self._q.empty():
+                await self._q.get()
+            raise ex
+
+    async def _terminate(self):
+        if self._flush_task:
+            self._flush_task.cancel()
+            if self._flush_exception is not None:
+                raise self._flush_exception
+        if not self._terminated:
+            self._terminated = True
+            for key in self._changed_keys.copy():
+                if key not in self._pending_by_key:
+                    await self._persist(_PersistJob(key, None, None), from_terminate=True)
+            await self._q.put(_termination_obj)
+            await self._worker_awaitable
+            self._q = None
+            self._flush_task = None
+            self._flush_exception = None
+
+    async def _persist(self, job, from_terminate=False):
+        if self._flush_exception is not None:
+            raise self._flush_exception
+        if not self._q:
+            self._q = asyncio.queues.Queue(self._max_updates_in_flight)
+            self._worker_awaitable = asyncio.get_running_loop().create_task(self._persist_worker())
+            if not from_terminate:
+                # for flow reuse
+                self._terminated = False
+
+        if self._worker_awaitable.done():
+            await self._worker_awaitable
+            raise FlowError("Persist worker has already terminated")
+        else:
+            # Initializing the key with 2 lists. One for pending requests and one for requests that an update request has been issued for.
+            if job.key not in self._pending_by_key:
+                self._pending_by_key[job.key] = _PendingEvent()
+
+            # If there is a current update in flight for the key, add the event to the pending list. Otherwise update the key.
+            self._pending_by_key[job.key].pending.append(job)
+            if len(self._pending_by_key[job.key].in_flight) == 0:
+                self._pending_by_key[job.key].in_flight = self._pending_by_key[job.key].pending
+                self._pending_by_key[job.key].pending = []
+                task = self._safe_process_events(self._pending_by_key[job.key].in_flight)
+                await self._q.put((job, asyncio.get_running_loop().create_task(task)))
+                if self._worker_awaitable.done():
+                    await self._worker_awaitable
+
+    async def _safe_process_events(self, jobs):
+        try:
+            # TODO using only last event might not work correctly if
+            #  there are different non aggregation attrs in each event
+            job = jobs[-1]
+            return await self._internal_persist_key(job.key, job.data)
+        except BaseException as ex:
+            for job in jobs:
+                if job.extra_data and job.extra_data._awaitable_result:
+                    none_or_coroutine = job.extra_data._awaitable_result._set_error(ex)
+                    if none_or_coroutine:
+                        await none_or_coroutine
+            raise ex
 
 
 class _CacheElement:
@@ -316,6 +475,8 @@ class ReadOnlyAggregatedStoreElement:
         for aggregation_metadata in self.aggregates:
             if aggregation_metadata.should_aggregate(data):
                 curr_value = aggregation_metadata.value_extractor(data)
+                if curr_value is None:
+                    continue
                 for aggr in aggregation_metadata.get_all_raw_aggregates():
                     self.aggregation_buckets[f'{aggregation_metadata.name}_{aggr}'].aggregate(timestamp, curr_value)
 
@@ -687,9 +848,10 @@ class VirtualAggregationBuckets:
 
 
 class AggregationValue:
-    default_value = None
+    default_value = math.nan
 
     def __init__(self, max_value=None, set_data=None):
+        self.value = self.default_value
         self.time = datetime.min
         self._max_value = max_value
         self._set_value = self._set_value_with_max if max_value else self._set_value_without_max
@@ -743,7 +905,6 @@ class MinValue(AggregationValue):
     default_value = float('inf')
 
     def __init__(self, max_value=None, set_data=None):
-        self.value = max_value or self.default_value
         super().__init__(max_value, set_data)
 
     def aggregate(self, time, value):
@@ -766,7 +927,6 @@ class MaxValue(AggregationValue):
     default_value = float('-inf')
 
     def __init__(self, max_value=None, set_data=None):
-        self.value = self.default_value
         super().__init__(max_value, set_data)
 
     def aggregate(self, time, value):
@@ -782,7 +942,6 @@ class SumValue(AggregationValue):
     default_value = 0
 
     def __init__(self, max_value=None, set_data=None):
-        self.value = self.default_value
         super().__init__(max_value, set_data)
 
     def aggregate(self, time, value):
@@ -794,7 +953,6 @@ class CountValue(AggregationValue):
     default_value = 0
 
     def __init__(self, max_value=None, set_data=None):
-        self.value = self.default_value
         super().__init__(max_value, set_data)
 
     def aggregate(self, time, value):
@@ -806,7 +964,6 @@ class SqrValue(AggregationValue):
     default_value = 0
 
     def __init__(self, max_value=None, set_data=None):
-        self.value = self.default_value
         super().__init__(max_value, set_data)
 
     def aggregate(self, time, value):
@@ -815,10 +972,8 @@ class SqrValue(AggregationValue):
 
 class LastValue(AggregationValue):
     name = 'last'
-    default_value = None
 
     def __init__(self, max_value=None, set_data=None):
-        self.value = self.default_value
         super().__init__(max_value, set_data)
 
     def aggregate(self, time, value):
@@ -832,10 +987,8 @@ class LastValue(AggregationValue):
 
 class FirstValue(AggregationValue):
     name = 'first'
-    default_value = None
 
     def __init__(self, max_value=None, set_data=None):
-        self.value = self.default_value
         super().__init__(max_value, set_data)
         self._first_time = datetime.max
 
@@ -897,6 +1050,8 @@ class AggregatedStoreElement:
         for aggregation_metadata in self.aggregates:
             if aggregation_metadata.should_aggregate(data):
                 curr_value = aggregation_metadata.value_extractor(data)
+                if curr_value is None:
+                    continue
                 # for aggr in aggregation_metadata.get_all_raw_aggregates():
                 self.aggregation_buckets[f'{aggregation_metadata.name}'].aggregate(timestamp, curr_value)
 
@@ -1017,7 +1172,7 @@ class AggregationBuckets:
                 self.initialize_column()
                 self._need_to_recalculate_pre_aggregates = True
             else:
-                # Updating the pre aggreagted data per window
+                # Updating the pre-aggregated data per window
                 self.remove_old_values_from_pre_aggregations(advance_to)
                 buckets_to_reuse = self.buckets[:buckets_to_advance]
                 self.buckets = self.buckets[buckets_to_advance:]
@@ -1094,8 +1249,10 @@ class AggregationBuckets:
             # In case our pre aggregates already have the answer
             for aggregation_name in self._explicit_raw_aggregations:
                 for (window_millis, window_str) in self.explicit_windows.windows:
-                    result[f'{self.name}_{aggregation_name}_{window_str}'] = \
-                        self._current_aggregate_values[(aggregation_name, window_millis)].value
+                    value = self._current_aggregate_values[(aggregation_name, window_millis)].value
+                    if value == math.inf or value == -math.inf:
+                        value = math.nan
+                    result[f'{self.name}_{aggregation_name}_{window_str}'] = value
 
         self.augment_virtual_features(result)
         return result
@@ -1242,3 +1399,17 @@ class VirtualAggregation:
         self.name = aggregation
         self.dependant_aggregates = dependant_aggregates
         self.aggregation_func = get_virtual_aggregation_func(aggregation)
+
+
+class _PendingEvent:
+    def __init__(self):
+        self.in_flight = []
+        self.pending = []
+
+
+class _PersistJob:
+    def __init__(self, key, data, callback, extra_data=None):
+        self.key = key
+        self.data = data
+        self.callback = callback
+        self.extra_data = extra_data

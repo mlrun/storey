@@ -2,7 +2,7 @@ import asyncio
 import base64
 import json
 import time
-from _datetime import datetime, timedelta
+from datetime import datetime, timedelta
 
 import aiohttp
 import pandas as pd
@@ -11,7 +11,9 @@ import v3io.aio.dataplane
 import v3io_frames as frames
 
 from storey import Filter, JoinWithV3IOTable, SendToHttp, Map, Reduce, Source, HttpRequest, build_flow, \
-    WriteToV3IOStream, V3ioDriver, WriteToTSDB, Table, JoinWithTable, MapWithState, WriteToTable
+    WriteToV3IOStream, V3ioDriver, WriteToTSDB, Table, JoinWithTable, MapWithState, WriteToTable, DataframeSource, \
+    ReadCSV
+from storey.utils import hash_list
 from .integration_test_utils import V3ioHeaders, append_return, test_base_time, setup_kv_teardown_test, setup_teardown_test, \
     setup_stream_teardown_test
 
@@ -180,7 +182,8 @@ def test_write_to_v3io_stream_unbalanced(setup_stream_teardown_test):
 
 
 def test_write_to_tsdb():
-    tsdb_path = f'tsdb_path-{int(time.time_ns() / 1000)}'
+    table_name = f'tsdb_path-{int(time.time_ns() / 1000)}'
+    tsdb_path = f'v3io://bigdata/{table_name}'
     controller = build_flow([
         Source(),
         WriteToTSDB(path=tsdb_path, time_col='time', index_cols='node', columns=['cpu', 'disk'], rate='1/h', max_events=2)
@@ -197,7 +200,7 @@ def test_write_to_tsdb():
     controller.await_termination()
 
     client = frames.Client()
-    res = client.read('tsdb', tsdb_path, start='0', end='now', multi_index=True)
+    res = client.read('tsdb', table_name, start='0', end='now', multi_index=True)
     res = res.sort_values(['time'])
     df = pd.DataFrame(expected, columns=['time', 'node', 'cpu', 'disk'])
     df.set_index(keys=['time', 'node'], inplace=True)
@@ -205,7 +208,8 @@ def test_write_to_tsdb():
 
 
 def test_write_to_tsdb_with_metadata_label():
-    tsdb_path = f'tsdb_path-{int(time.time_ns() / 1000)}'
+    table_name = f'tsdb_path-{int(time.time_ns() / 1000)}'
+    tsdb_path = f'projects/{table_name}'
     controller = build_flow([
         Source(),
         WriteToTSDB(path=tsdb_path, index_cols='node', columns=['cpu', 'disk'], rate='1/h',
@@ -222,8 +226,8 @@ def test_write_to_tsdb_with_metadata_label():
     controller.terminate()
     controller.await_termination()
 
-    client = frames.Client()
-    res = client.read('tsdb', tsdb_path, start='0', end='now', multi_index=True)
+    client = frames.Client(container='projects')
+    res = client.read('tsdb', table_name, start='0', end='now', multi_index=True)
     res = res.sort_values(['time'])
     df = pd.DataFrame(expected, columns=['time', 'node', 'cpu', 'disk'])
     df.set_index(keys=['time', 'node'], inplace=True)
@@ -378,6 +382,11 @@ def test_write_table_metadata_columns(setup_teardown_test):
 
 async def get_kv_item(full_path, key):
     try:
+        if isinstance(key, list):
+            if len(key) >= 3:
+                key = key[0] + "." + str(hash_list(key[1:]))
+            else:
+                key = key[0] + "." + key[1]
         headers = V3ioHeaders()
         container, path = full_path.split('/', 1)
 
@@ -387,3 +396,151 @@ async def get_kv_item(full_path, key):
         return response
     finally:
         await _v3io_client.close()
+
+
+def test_writing_int_key(setup_teardown_test):
+    table = Table(setup_teardown_test, V3ioDriver())
+
+    df = pd.DataFrame({"num": [0, 1, 2], "color": ["green", "blue", "red"]})
+
+    controller = build_flow([
+        DataframeSource(df, key_field='num'),
+        WriteToTable(table),
+
+    ]).run()
+    controller.await_termination()
+
+
+def test_writing_timedelta_key(setup_teardown_test):
+    table = Table(setup_teardown_test, V3ioDriver())
+
+    df = pd.DataFrame({"key": ['a', 'b'], "timedelta": [pd.Timedelta("-1 days 2 min 3us"), pd.Timedelta("P0DT0H1M0S")]})
+
+    controller = build_flow([
+        DataframeSource(df, key_field='key'),
+        WriteToTable(table),
+
+    ]).run()
+    controller.await_termination()
+
+
+def test_write_multiple_keys_to_v3io_from_df(setup_teardown_test):
+    table = Table(setup_teardown_test, V3ioDriver())
+    data = pd.DataFrame(
+        {
+            "first_name": ["moshe", "yosi"],
+            "last_name": ["cohen", "levi"],
+            "city": ["tel aviv", "ramat gan"],
+        }
+    )
+
+    keys = ['first_name', 'last_name']
+    controller = build_flow([
+        DataframeSource(data, key_field=keys),
+        WriteToTable(table),
+    ]).run()
+    controller.await_termination()
+
+    response = asyncio.run(get_kv_item(setup_teardown_test, ['moshe', 'cohen']))
+    expected = {'city': 'tel aviv', 'first_name': 'moshe', 'last_name': 'cohen'}
+    assert response.status_code == 200
+    assert expected == response.output.item
+
+
+def test_write_multiple_keys_to_v3io_from_csv(setup_teardown_test):
+    table = Table(setup_teardown_test, V3ioDriver())
+
+    controller = build_flow([
+        ReadCSV('tests/test.csv', header=True, key_field=['n1', 'n2'], build_dict=True),
+        WriteToTable(table),
+    ]).run()
+    controller.await_termination()
+
+    response = asyncio.run(get_kv_item(setup_teardown_test, '1.2'))
+    expected = {'n1': 1, 'n2': 2, 'n3': 3}
+    assert response.status_code == 200
+    assert expected == response.output.item
+
+    response = asyncio.run(get_kv_item(setup_teardown_test, '4.5'))
+    expected = {'n1': 4, 'n2': 5, 'n3': 6}
+    assert response.status_code == 200
+    assert expected == response.output.item
+
+
+def test_write_multiple_keys_to_v3io(setup_teardown_test):
+    table = Table(setup_teardown_test, V3ioDriver())
+
+    controller = build_flow([
+        Source(key_field=['n1', 'n2']),
+        WriteToTable(table),
+    ]).run()
+
+    controller.emit({'n1': 1, 'n2': 2, 'n3': 3})
+    controller.emit({'n1': 4, 'n2': 5, 'n3': 6})
+
+    controller.terminate()
+    controller.await_termination()
+
+    response = asyncio.run(get_kv_item(setup_teardown_test, '1.2'))
+    expected = {'n1': 1, 'n2': 2, 'n3': 3}
+    assert response.status_code == 200
+    assert expected == response.output.item
+
+    response = asyncio.run(get_kv_item(setup_teardown_test, '4.5'))
+    expected = {'n1': 4, 'n2': 5, 'n3': 6}
+    assert response.status_code == 200
+    assert expected == response.output.item
+
+
+def test_write_none_time(setup_teardown_test):
+    table = Table(setup_teardown_test, V3ioDriver())
+    data = pd.DataFrame(
+        {
+            "first_name": ["moshe", "yosi"],
+            "color": ['blue', 'yellow'],
+            "time": [test_base_time, None]
+        }
+    )
+
+    def set_moshe_time_to_none(data):
+        if data['first_name'] == 'moshe':
+            data['time'] = pd.NaT
+        return data
+
+    controller = build_flow([
+        DataframeSource(data, key_field='first_name'),
+        WriteToTable(table),
+        Map(set_moshe_time_to_none),
+        WriteToTable(table),
+    ]).run()
+    controller.await_termination()
+
+    response = asyncio.run(get_kv_item(setup_teardown_test, 'yosi'))
+    expected = {'first_name': 'yosi', 'color': 'yellow'}
+    assert response.status_code == 200
+    assert expected == response.output.item
+
+    response = asyncio.run(get_kv_item(setup_teardown_test, 'moshe'))
+    expected = {'first_name': 'moshe', 'color': 'blue'}
+    assert response.status_code == 200
+    assert expected == response.output.item
+
+
+def test_cache_flushing(setup_teardown_test):
+    table = Table(setup_teardown_test, V3ioDriver(), flush_interval_secs=3)
+    controller = build_flow([
+        Source(),
+        WriteToTable(table),
+    ]).run()
+
+    controller.emit({'col1': 0}, 'dina', test_base_time + timedelta(minutes=25))
+    response = asyncio.run(get_kv_item(setup_teardown_test, 'dina')).output.item
+    assert response == {}
+    time.sleep(4)
+
+    response = asyncio.run(get_kv_item(setup_teardown_test, 'dina')).output.item
+    assert response == {'col1': 0}
+
+    controller.terminate()
+    controller.await_termination()
+
