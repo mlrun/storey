@@ -670,6 +670,7 @@ class WriteToTable(_Writer, Flow):
             await self._table._persist(_PersistJob(event.key, data_to_persist, self._handle_completed, event))
         else:
             data_to_persist = self._event_to_writer_entry(event)
-            self._table._update_static_attrs(event.key, data_to_persist)
+            async with self._table._get_lock(event.key):
+                self._table._update_static_attrs(event.key, data_to_persist)
             self._table._init_flush_task()
             await self._do_downstream(event)
