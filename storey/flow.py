@@ -387,6 +387,9 @@ class _FunctionWithStateFlow(Flow):
             raise TypeError(f'Expected a callable, got {type(fn)}')
         self._is_async = asyncio.iscoroutinefunction(fn)
         self._state = initial_state
+        if isinstance(self._state, Table):
+            self._state._register_caller(self)
+
         self._fn = fn
         self._group_by_key = group_by_key
         if hasattr(initial_state, 'close'):
@@ -888,6 +891,7 @@ class JoinWithTable(_ConcurrentJobExecution):
             if not self.context:
                 raise TypeError("Table can not be string if no context was provided to the step")
             self._table = self.context.get_table(table)
+        self._table._register_caller(self)
 
         if key_extractor:
             if callable(key_extractor):

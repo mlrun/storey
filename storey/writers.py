@@ -646,6 +646,7 @@ class WriteToTable(_Writer, Flow):
             if not self.context:
                 raise TypeError("Table can not be string if no context was provided to the step")
             self._table = self.context.get_table(table)
+        self._table._register_caller(self)
         self._closeables = [self._table]
 
         self._field_extractor = lambda event_body, field_name: event_body.get(field_name)

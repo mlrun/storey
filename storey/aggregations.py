@@ -45,6 +45,7 @@ class AggregateByKey(Flow):
             if not self.context:
                 raise TypeError("Table can not be string if no context was provided to the step")
             self._table = self.context.get_table(table)
+        self._table._register_caller(self)
         self._table._set_aggregation_metadata(aggregates, use_windows_from_schema=use_windows_from_schema)
         self._closeables = [self._table]
 
