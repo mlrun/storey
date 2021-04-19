@@ -128,7 +128,7 @@ class Table:
         if self._flush_exception is not None:
             raise self._flush_exception
         if not self._schema:
-            await self._get_or_save_schema()
+            await self._load_and_update_schema()
         async with self._get_lock(key):
             cache_item = self._get_aggregations_attrs(key)
             cache_item.aggregate(data, timestamp)
@@ -138,8 +138,7 @@ class Table:
         if self._flush_exception is not None:
             raise self._flush_exception
         if not self._schema:
-            async with self._get_schema_lock():
-                await self._get_or_save_schema()
+            await self._load_and_update_schema()
 
         attrs = self._get_aggregations_attrs(key)
 
@@ -155,34 +154,35 @@ class Table:
 
     async def _add_aggregation_by_key(self, key, base_timestamp, initial_data):
         if not self._schema:
-            await self._get_or_save_schema()
+            await self._load_and_update_schema()
         if self._aggregations_read_only and initial_data is None:
             self._set_aggregations_attrs(key, None)
         else:
             self._set_aggregations_attrs(key, self._new_aggregated_store_element()(key, self._aggregates, base_timestamp, initial_data))
 
-    async def _get_or_save_schema(self):
-        self._schema = await self._storage._load_schema(self._container, self._table_path)
+    async def _load_and_update_schema(self):
+        async with self._get_schema_lock():
+            self._schema = await self._storage._load_schema(self._container, self._table_path)
 
-        should_update = True
-        if self._schema:
-            if self._use_windows_from_schema:
-                for aggr in self._aggregates:
-                    schema_aggr = self._schema[aggr.name]
-                    window_type = schema_aggr['window_type']
-                    period_secs = str(int(schema_aggr['period_millis'] / 1000)) + 's'
-                    if window_type == "SlidingWindow":
-                        aggr.windows = SlidingWindows(aggr.windows.windows, period_secs)
-                    elif window_type == "FixedWindow":
-                        aggr.windows = FixedWindows(aggr.windows.windows)
-                        aggr.windows.period_millis = schema_aggr['period_millis']
-                        aggr.windows.total_number_of_buckets = int(aggr.windows.max_window_millis / aggr.windows.period_millis)
-                    else:
-                        raise TypeError(f'"{window_type}" unknown window type')
-            should_update = self._validate_schema_fit_aggregations(self._schema)
+            should_update = True
+            if self._schema:
+                if self._use_windows_from_schema:
+                    for aggr in self._aggregates:
+                        schema_aggr = self._schema[aggr.name]
+                        window_type = schema_aggr['window_type']
+                        period_secs = str(int(schema_aggr['period_millis'] / 1000)) + 's'
+                        if window_type == "SlidingWindow":
+                            aggr.windows = SlidingWindows(aggr.windows.windows, period_secs)
+                        elif window_type == "FixedWindow":
+                            aggr.windows = FixedWindows(aggr.windows.windows)
+                            aggr.windows.period_millis = schema_aggr['period_millis']
+                            aggr.windows.total_number_of_buckets = int(aggr.windows.max_window_millis / aggr.windows.period_millis)
+                        else:
+                            raise TypeError(f'"{window_type}" unknown window type')
+                should_update = self._validate_schema_fit_aggregations(self._schema)
 
-        if should_update and not self._aggregations_read_only:
-            self._schema = await self._save_schema()
+            if should_update and not self._aggregations_read_only:
+                self._schema = await self._save_schema()
 
     async def _save_schema(self):
         schema = self._aggregates_to_schema()
