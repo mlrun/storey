@@ -141,13 +141,12 @@ class Table:
             async with self._get_schema_lock():
                 await self._get_or_save_schema()
 
-        async with self._get_lock(key):
-            attrs = self._get_aggregations_attrs(key)
+        attrs = self._get_aggregations_attrs(key)
 
-            if attrs is None:
-                return {}
+        if attrs is None:
+            return {}
 
-            return attrs.get_features(timestamp)
+        return attrs.get_features(timestamp)
 
     def _new_aggregated_store_element(self):
         if self._aggregations_read_only:
