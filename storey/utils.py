@@ -3,7 +3,7 @@ import struct
 from array import array
 from urllib.parse import urlparse
 import fsspec
-from datetime import datetime, timezone
+from datetime import datetime
 import calendar
 
 bucketPerWindow = 10
@@ -218,9 +218,9 @@ def get_filtered_path(dir_path, before, after, storage_options, dummy_date_first
         last_dir -= 1
     exp, attr, value_first = analyze_date(dirs[first_dir])
     exp, attr, value_last = analyze_date(dirs[last_dir])
+    # all of the sub dirs in this file_path are included in requested range.
     if value_first != value_last and get_dummy_date(dummy_date_first, attr, value_first) >= after and \
             get_dummy_date(dummy_date_last, attr, value_last) <= before:
-        print("all range " + attr + str(value_first) + " " + str(value_last) + "dir path is " + dir_path)
         if len(filtered_paths) == 0:
             filtered_paths.append(dir_path)
         return filtered_paths
@@ -230,7 +230,6 @@ def get_filtered_path(dir_path, before, after, storage_options, dummy_date_first
             date_in_range_low = get_dummy_date(dummy_date_first, attr, value)
             date_in_range_high = get_dummy_date(dummy_date_last, attr, value)
             if date_in_range_high >= after and date_in_range_low <= before:
-                print("diving into " + attr + " " + str(value))
                 new_path = dir_path + exp + "/"
                 filtered_paths.append(new_path)
                 get_filtered_path(new_path, before, after, storage_options, date_in_range_low, date_in_range_high, filtered_paths)

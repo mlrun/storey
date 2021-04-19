@@ -337,13 +337,11 @@ def test_filter_before_after_partitioned_random(setup_teardown_test):
 
     def create_rand_data(num_elements, low_limit, high_limit, char):
         import datetime
-        from collections import defaultdict
         delta = high_limit - low_limit
         int_delta = (delta.days * 24 * 60 * 60) + delta.seconds
 
         data = []
         for i in range(0, num_elements):
-            # data['time_stamp'].append(choice([datetime.datetime.now(), datetime.datetime.now()]))
             element = {}
             element['string'] = char + str(i)
             random_second = rand.randrange(int_delta)
@@ -385,6 +383,5 @@ def test_filter_before_after_partitioned_random(setup_teardown_test):
     ]).run()
     read_back_result = controller.await_termination()
     print("expecting " + str(number_below_middle_limit) + " to be below middle limit")
-
     assert (len(read_back_result)) == number_below_middle_limit
 

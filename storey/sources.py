@@ -1,5 +1,4 @@
 import asyncio
-import calendar
 import csv
 import math
 import queue
@@ -696,7 +695,6 @@ class ReadParquet(DataframeSource):
                 filtered_paths = [path]
                 get_filtered_path(path, before, after, storage_options, dummy_date_first=datetime.min,
                                   dummy_date_last=datetime.max, filtered_paths=filtered_paths)
-                print(filtered_paths)
                 for filt_path in filtered_paths:
                     df = pandas.read_parquet(filt_path, columns=columns,
                                              storage_options=kwargs.get('storage_options'))
