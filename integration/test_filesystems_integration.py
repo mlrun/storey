@@ -277,7 +277,7 @@ def test_filter_before_after_non_partitioned(setup_teardown_test):
     after = pd.Timestamp('2019-01-01 23:59:59.999999')
 
     controller = build_flow([
-        ReadParquet(out_file, before=before, after=after, filter_column='my_time'),
+        ReadParquet(out_file, end_filter=before, start_filter=after, filter_column='my_time'),
         Reduce([], append_and_return)
     ]).run()
     read_back_result = controller.await_termination()
@@ -290,15 +290,15 @@ def test_filter_before_after_partitioned_random(setup_teardown_test):
     high_limit = pd.Timestamp('2020-12-31 23:59:59.999999')
 
     delta = high_limit - low_limit
-    int_delta = (delta.days * 24 * 60 * 60) + delta.seconds
 
     seed_value = rand.randrange(sys.maxsize)
-#    seed_value = 1795533437429965381
+#    seed_value = 739165997829093626
+
     print('Seed value:', seed_value)
 
     rand.seed(seed_value)
 
-    random_second = rand.randrange(int_delta)
+    random_second = rand.randrange(int(delta.total_seconds()))
     middle_limit = low_limit + datetime.timedelta(seconds=random_second)
 
     print("middle_limit is " + str(middle_limit))
@@ -308,20 +308,19 @@ def test_filter_before_after_partitioned_random(setup_teardown_test):
     def create_rand_data(num_elements, low_limit, high_limit, char):
         import datetime
         delta = high_limit - low_limit
-        int_delta = (delta.days * 24 * 60 * 60) + delta.seconds
 
         data = []
         for i in range(0, num_elements):
             element = {}
             element['string'] = char + str(i)
-            random_second = rand.randrange(int_delta)
+            random_second = rand.randrange(int(delta.total_seconds()))
             element['datetime'] = low_limit + datetime.timedelta(seconds=random_second)
             data.append(element)
         return data
 
-    dict1 = create_rand_data(number_below_middle_limit, low_limit, middle_limit, 'a')
-    dict2 = create_rand_data(10-number_below_middle_limit, middle_limit, high_limit, 'b')
-    combined_list = dict1 + dict2
+    list1 = create_rand_data(number_below_middle_limit, low_limit, middle_limit, 'lower')
+    list2 = create_rand_data(10-number_below_middle_limit, middle_limit, high_limit, 'higher')
+    combined_list = list1 + list2
 
     df = pd.DataFrame(combined_list)
     print("data frame is " + str(df))
@@ -340,18 +339,92 @@ def test_filter_before_after_partitioned_random(setup_teardown_test):
     controller.await_termination()
 
     controller = build_flow([
-        ReadParquet(out_file, before=high_limit, after=middle_limit, filter_column='datetime'),
+        ReadParquet(out_file, end_filter=high_limit, start_filter=middle_limit, filter_column='datetime'),
         Reduce([], append_and_return)
     ]).run()
     read_back_result = controller.await_termination()
     print("expecting " + str(10 - number_below_middle_limit) + " to be above middle limit")
+    print(read_back_result)
     assert(len(read_back_result)) == 10 - number_below_middle_limit
 
+    print("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
+
     controller = build_flow([
-        ReadParquet(out_file, before=middle_limit, after=low_limit, filter_column='datetime'),
+        ReadParquet(out_file, end_filter=middle_limit, start_filter=low_limit, filter_column='datetime'),
         Reduce([], append_and_return)
     ]).run()
     read_back_result = controller.await_termination()
     print("expecting " + str(number_below_middle_limit) + " to be below middle limit")
     assert (len(read_back_result)) == number_below_middle_limit
+
+
+def test_filter_before_after_partitioned_inner_other_partition(setup_teardown_test):
+    columns = ['my_string', 'my_time', 'my_city']
+
+    df = pd.DataFrame([['hello', pd.Timestamp('2020-12-31 14:05:00'), 'tel aviv'],
+                       ['world', pd.Timestamp('2018-12-30 09:00:00'), 'haifa'],
+                       ['sun', pd.Timestamp('2019-12-29 09:00:00'), 'tel aviv'],
+                       ['is', pd.Timestamp('2019-06-30 15:00:45'), 'hod hasharon'],
+                       ['shining', pd.Timestamp('2020-02-28 13:00:56'), 'hod hasharon']],
+                      columns=columns)
+    df.set_index('my_string')
+
+    out_file = f'v3io:///{setup_teardown_test}/'
+    controller = build_flow([
+        DataframeSource(df, time_field='my_time'),
+        WriteToParquet(out_file, columns=columns, partition_cols=['$year', '$month', '$day', '$hour', 'my_city']),
+        ]).run()
+    controller.await_termination()
+
+    before = pd.Timestamp('2020-12-31 14:00:00')
+    after = pd.Timestamp('2019-07-01 00:00:00')
+
+    controller = build_flow([
+        ReadParquet(out_file, end_filter=before, start_filter=after, filter_column='my_time'),
+        Reduce([], append_and_return)
+    ]).run()
+    read_back_result = controller.await_termination()
+
+    expected = [{'my_string': 'sun', 'my_time': pd.Timestamp('2019-12-29 09:00:00'), 'my_city': 'tel aviv',
+                 'year': 2019, 'month': 12, 'day': 29, 'hour': 9},
+                {'my_string': 'shining', 'my_time': pd.Timestamp('2020-02-28 13:00:56'), 'my_city': 'hod hasharon',
+                 'year': 2020, 'month': 2, 'day': 28, 'hour': 13}]
+
+    assert read_back_result == expected, f"{read_back_result}\n!=\n{expected}"
+
+
+def test_filter_before_after_partitioned_outer_other_partition(setup_teardown_test):
+    columns = ['my_string', 'my_time', 'my_city']
+
+    df = pd.DataFrame([['hello', pd.Timestamp('2020-12-31 15:05:00'), 'tel aviv'],
+                       ['world', pd.Timestamp('2020-12-30 09:00:00'), 'haifa'],
+                       ['sun', pd.Timestamp('2020-12-29 09:00:00'), 'tel aviv'],
+                       ['is', pd.Timestamp('2020-12-30 15:00:45'), 'hod hasharon'],
+                       ['shining', pd.Timestamp('2020-12-31 13:00:56'), 'hod hasharon']],
+                      columns=columns)
+    df.set_index('my_string')
+
+    out_file = f'v3io:///{setup_teardown_test}/'
+    controller = build_flow([
+        DataframeSource(df, time_field='my_time'),
+        WriteToParquet(out_file, columns=columns, partition_cols=['my_city', '$year', '$month', '$day', '$hour']),
+        ]).run()
+    controller.await_termination()
+
+    before = pd.Timestamp('2020-12-31 14:00:00')
+    after = pd.Timestamp('2020-12-30 08:53:00')
+
+    controller = build_flow([
+        ReadParquet(out_file, end_filter=before, start_filter=after, filter_column='my_time'),
+        Reduce([], append_and_return)
+    ]).run()
+    read_back_result = controller.await_termination()
+    expected = [{'my_string': 'world', 'my_time': pd.Timestamp('2020-12-30 09:00:00'), 'my_city': 'haifa', 'year': 2020,
+                 'month': 12, 'day': 30, 'hour': 9},
+                {'my_string': 'is', 'my_time': pd.Timestamp('2020-12-30 15:00:45'), 'my_city': 'hod hasharon', 'year': 2020,
+                 'month': 12, 'day': 30, 'hour': 15},
+                {'my_string': 'shining', 'my_time': pd.Timestamp('2020-12-31 13:00:56'), 'my_city': 'hod hasharon', 'year': 2020,
+                 'month': 12, 'day': 31, 'hour': 13}]
+
+    assert read_back_result == expected, f"{read_back_result}\n!=\n{expected}"
 

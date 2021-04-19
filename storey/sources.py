@@ -7,12 +7,13 @@ import uuid
 import warnings
 from datetime import datetime
 from typing import List, Optional, Union, Callable, Coroutine, Iterable
+import pyarrow.parquet as pq
 
 import pandas
 
 from .dtypes import _termination_obj, Event
 from .flow import Flow, Complete
-from .utils import url_to_file_system, get_filtered_path
+from .utils import url_to_file_system, find_filters
 
 
 class AwaitableResult:
@@ -671,38 +672,49 @@ class ReadParquet(DataframeSource):
     """Reads Parquet files as input source for a flow.
     :parameter paths: paths to Parquet files
     :parameter columns : list, default=None. If not None, only these columns will be read from the file.
-    :parameter before: Optional. datetime. If not None, the results will be filtered 'filter_column' >= before
-    :parameter after: Optional. datetime. If not None, the results will be filtered 'filter_column' <= after
+    :parameter start_filter: datetime. If not None, the results will be filtered by partitions and 'filter_column' >= start_filter.
+        Default is None
+    :parameter end_filter: datetime. If not None, the results will be filtered by partitions 'filter_column' < end_filter.
+        Default is None
     :parameter filter_column: Optional. if not None, the results will be filtered by this column and before and/or after
     """
-
-    def __init__(self, paths: Union[str, Iterable[str]], columns=None, before=None, after=None, filter_column=None, **kwargs):
-        if before or after:
-            if after is None:
-                after = datetime.min
-            if before is None:
-                before = datetime.max
+    def __init__(self, paths: Union[str, Iterable[str]], columns=None, start_filter: Optional[datetime] = None,
+                 end_filter: Optional[datetime] = None, filter_column: Optional[str] = None, **kwargs):
+        if end_filter or start_filter:
+            if start_filter is None:
+                start_filter = datetime.min
+            if end_filter is None:
+                end_filter = datetime.max
             if filter_column is None:
                 raise TypeError('if passing before or after, need to pass filter column as well')
 
         if isinstance(paths, str):
             paths = [paths]
         dfs = []
+        storage_options = kwargs.get('storage_options')
 
         for path in paths:
-            if before or after:
-                storage_options = kwargs.get('storage_options')
-                filtered_paths = [path]
-                get_filtered_path(path, before, after, storage_options, dummy_date_first=datetime.min,
-                                  dummy_date_last=datetime.max, filtered_paths=filtered_paths)
-                for filt_path in filtered_paths:
-                    df = pandas.read_parquet(filt_path, columns=columns,
-                                             storage_options=kwargs.get('storage_options'))
-                    df = df[(df[filter_column] > after) & (df[filter_column] < before)]
-                    dfs.append(df)
+            if start_filter or end_filter:
+                fs, file_path = url_to_file_system(path, storage_options)
+                dataset = pq.ParquetDataset(path, filesystem=fs)
+                partitions = dataset.partitions.partition_names
+                time_attributes = ['year', 'month', 'day', 'hour', 'minute', 'second']
+                partitions_time_attributes = [j for j in time_attributes if j in partitions]
+                if len(partitions_time_attributes) == 0:
+                    filters = None
+                else:
+                    filters = []
+                    find_filters(partitions_time_attributes, start_filter, end_filter, filters)
+
+                print("mmmmmm   " + str(filters))
+                print("yyyyyyy " + str(path))
+                df = pandas.read_parquet(path, columns=columns, filters=filters,
+                                         storage_options=storage_options)
+                df = df[(df[filter_column] >= start_filter) & (df[filter_column] < end_filter)]
+                dfs.append(df)
             else:
                 df = pandas.read_parquet(path, columns=columns,
-                                         storage_options=kwargs.get('storage_options'))
+                                         storage_options=storage_options)
                 dfs.append(df)
 
         super().__init__(dfs, **kwargs)
