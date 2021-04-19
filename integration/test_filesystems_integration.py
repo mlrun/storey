@@ -285,36 +285,6 @@ def test_filter_before_after_non_partitioned(setup_teardown_test):
     assert len(read_back_result) == 1
 
 
-def test_bla2(setup_teardown_test):
-    current_time = pd.Timestamp.now()
-    columns = ['my_string', 'my_time']
-
-    df = pd.DataFrame([['b0', pd.Timestamp('2020-12-31 14:00:00')],
-                       ['b1', pd.Timestamp('2020-12-31')],
-                       ['b2', pd.Timestamp('2020-12-29')],
-                       ['b9', pd.Timestamp('2020-12-30')]],
-                      columns=columns)
-    df.set_index('my_time')
-
-    out_file = f'v3io:///{setup_teardown_test}/'
-    controller = build_flow([
-        DataframeSource(df, time_field='my_time'),
-        WriteToParquet(out_file, columns=columns, partition_cols=['$year', '$month', '$day', '$hour']), #year, month, day, hour, minute, second, microsecond
-    ]).run()
-    controller.await_termination()
-
-    before = pd.Timestamp('2020-12-31 14:00:00')
-    after = pd.Timestamp('2020-12-29')
-
-    controller = build_flow([
-        ReadParquet(out_file, after=after, before=before),
-        Reduce([], append_and_return)
-    ]).run()
-    read_back_result = controller.await_termination()
-
-    assert len(read_back_result) == 10
-
-
 def test_filter_before_after_partitioned_random(setup_teardown_test):
     low_limit = pd.Timestamp('2018-01-01')
     high_limit = pd.Timestamp('2020-12-31 23:59:59.999999')
