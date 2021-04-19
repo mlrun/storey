@@ -9,7 +9,7 @@ from .dtypes import FieldAggregator, SlidingWindows, FixedWindows, FlowError, _t
 
 from .aggregation_utils import is_raw_aggregate, get_virtual_aggregation_func, get_implied_aggregates, get_all_raw_aggregates, \
     get_all_raw_aggregates_with_hidden
-from .utils import _split_path, get_hashed_key
+from .utils import _split_path
 
 
 class Table:
@@ -47,7 +47,7 @@ class Table:
         return f'{self._container}/{self._table_path}'
 
     def _get_lock(self, key):
-        key = get_hashed_key(key)
+        key = key
         cache_element = self._attrs_cache.get(key)
         if cache_element is None:
             cache_element = _CacheElement({}, None)
@@ -67,12 +67,12 @@ class Table:
                 attrs[name] = value
         else:
             self._set_static_attrs(key, data)
-        self._changed_keys.add(get_hashed_key(key))
+        self._changed_keys.add(key)
 
     async def _lazy_load_key_with_aggregates(self, key, timestamp=None):
         if self._flush_exception is not None:
             raise self._flush_exception
-        key = get_hashed_key(key)
+        key = key
         async with self._get_lock(key):
             if self._aggregations_read_only or not self._get_aggregations_attrs(key):
                 # Try load from the store, and create a new one only if the key really is new
@@ -89,7 +89,7 @@ class Table:
     async def _get_or_load_static_attributes_by_key(self, key, attributes='*'):
         if self._flush_exception is not None:
             raise self._flush_exception
-        key = get_hashed_key(key)
+        key = key
         self._init_flush_task()
         async with self._get_lock(key):
             attrs = self._get_static_attrs(key)
@@ -132,7 +132,7 @@ class Table:
         async with self._get_lock(key):
             cache_item = self._get_aggregations_attrs(key)
             cache_item.aggregate(data, timestamp)
-            self._changed_keys.add(get_hashed_key(key))
+            self._changed_keys.add(key)
 
     async def _get_features(self, key, timestamp):
         if self._flush_exception is not None:
@@ -245,14 +245,14 @@ class Table:
         return schema
 
     def _get_aggregations_attrs(self, key):
-        key = get_hashed_key(key)
+        key = key
         if key in self._attrs_cache:
             return self._attrs_cache[key].aggregations
         else:
             return None
 
     def _set_aggregations_attrs(self, key, element):
-        key = get_hashed_key(key)
+        key = key
         if key in self._attrs_cache:
             self._attrs_cache[key].aggregations = element
             self._changed_keys.add(key)
@@ -261,14 +261,14 @@ class Table:
             self._attrs_cache[key] = _CacheElement({}, element)
 
     def _get_static_attrs(self, key):
-        key = get_hashed_key(key)
+        key = key
         if key in self._attrs_cache:
             return self._attrs_cache[key].static_attrs
         else:
             return None
 
     def _set_static_attrs(self, key, value):
-        key = get_hashed_key(key)
+        key = key
         if key in self._attrs_cache:
             self._attrs_cache[key].static_attrs = value
             self._changed_keys.add(key)

@@ -16,7 +16,7 @@ from . import Driver
 from .dtypes import V3ioError, Event
 from .flow import Flow, _termination_obj, _split_path, _Batching
 from .table import Table, _PersistJob
-from .utils import url_to_file_system
+from .utils import url_to_file_system, stringify_key
 
 
 class _Writer:
@@ -665,12 +665,13 @@ class WriteToTable(_Writer, Flow):
         if event.key is None:
             raise ValueError("Event could not be written to table because it has no key")
 
+        key = stringify_key(event.key)
         if not self._table._flush_interval_secs:
             data_to_persist = self._event_to_writer_entry(event)
-            await self._table._persist(_PersistJob(event.key, data_to_persist, self._handle_completed, event))
+            await self._table._persist(_PersistJob(key, data_to_persist, self._handle_completed, event))
         else:
             data_to_persist = self._event_to_writer_entry(event)
-            async with self._table._get_lock(event.key):
-                self._table._update_static_attrs(event.key, data_to_persist)
+            async with self._table._get_lock(key):
+                self._table._update_static_attrs(key, data_to_persist)
             self._table._init_flush_task()
             await self._do_downstream(event)

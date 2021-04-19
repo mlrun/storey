@@ -9,6 +9,7 @@ from .dtypes import EmitEveryEvent, FixedWindows, SlidingWindows, EmitAfterPerio
     _dict_to_emit_policy, FieldAggregator, EmitPolicy
 from .table import Table
 from .flow import Flow, _termination_obj, Event
+from .utils import stringify_key
 
 _default_emit_policy = EmitEveryEvent()
 
@@ -144,8 +145,9 @@ class AggregateByKey(Flow):
 
             event_timestamp = self._get_timestamp(event)
 
-            await self._table._lazy_load_key_with_aggregates(key, event_timestamp)
-            await self._table._aggregate(key, element, event_timestamp)
+            safe_key = stringify_key(key)
+            await self._table._lazy_load_key_with_aggregates(safe_key, event_timestamp)
+            await self._table._aggregate(safe_key, element, event_timestamp)
 
             if isinstance(self._emit_policy, EmitEveryEvent):
                 await self._emit_event(key, event)
@@ -181,14 +183,15 @@ class AggregateByKey(Flow):
     async def _emit_event(self, key, event):
         event_timestamp = self._get_timestamp(event)
 
-        await self._table._lazy_load_key_with_aggregates(key, event_timestamp)
-        features = await self._table._get_features(key, event_timestamp)
+        safe_key = stringify_key(key)
+        await self._table._lazy_load_key_with_aggregates(safe_key, event_timestamp)
+        features = await self._table._get_features(safe_key, event_timestamp)
         features = self._augmentation_fn(event.body, features)
 
         for col in self._enrich_with:
             emitted_attr_name = self._aliases.get(col, None) or col
-            if col in self._table._get_static_attrs(key):
-                features[emitted_attr_name] = self._table._get_static_attrs(key)[col]
+            if col in self._table._get_static_attrs(safe_key):
+                features[emitted_attr_name] = self._table._get_static_attrs(safe_key)[col]
         event.key = key
         event.body = features
         await self._do_downstream(event)
