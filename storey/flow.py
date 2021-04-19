@@ -401,7 +401,8 @@ class _FunctionWithStateFlow(Flow):
             else:
                 key_data = self._state[event.key]
             res, new_state = self._fn(element, key_data)
-            self._state._update_static_attrs(safe_key, new_state)
+            async with self._state._get_lock(safe_key):
+                self._state._update_static_attrs(safe_key, new_state)
             self._state._init_flush_task()
         else:
             res, self._state = self._fn(element, self._state)
@@ -416,7 +417,6 @@ class _FunctionWithStateFlow(Flow):
         if event is _termination_obj:
             return await self._do_downstream(_termination_obj)
         else:
-
             fn_result = await self._call(event)
             await self._do_internal(event, fn_result)
 
