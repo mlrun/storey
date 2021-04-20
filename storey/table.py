@@ -979,11 +979,12 @@ class LastValue(AggregationValue):
 
     def __init__(self, max_value=None, set_data=None):
         super().__init__(max_value, set_data)
+        self._last_time = -math.inf
 
     def aggregate(self, time, value):
-        if time > self.time:
+        if time > self._last_time:
             self._set_value(value)
-            self.time = time
+            self._last_time = time
 
     def get_update_expression(self, old):
         return f'{self.value}'
@@ -994,18 +995,18 @@ class FirstValue(AggregationValue):
 
     def __init__(self, max_value=None, set_data=None):
         super().__init__(max_value, set_data)
-        self._first_time = datetime.max
+        self._first_time = math.inf
 
     def aggregate(self, time, value):
-        if time < self.time:
+        if time < self._first_time:
             self._set_value(value)
-            self.time = time
+            self._first_time = time
 
     def get_update_expression(self, old):
         return f'if_else(({old} == {self.default_value}), {self.value}, {old})'
 
     def reset(self, value=None):
-        self.time = datetime.max
+        self._first_time = math.inf
         if value is None:
             self.value = self.default_value
         else:

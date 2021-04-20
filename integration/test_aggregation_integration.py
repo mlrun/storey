@@ -1243,8 +1243,8 @@ def test_concurrent_updates_to_kv_table(setup_teardown_test):
 
     try:
         for i in range(10):
-            controller1.emit({'attr1': i}, key='onekey')
-            controller2.emit({'attr2': i}, key='onekey')
+            controller1.emit({'attr1': i}, key='onekey', event_time=test_base_time)
+            controller2.emit({'attr2': i}, key='onekey', event_time=test_base_time)
     finally:
         controller1.terminate()
         controller2.terminate()
@@ -1258,7 +1258,7 @@ def test_concurrent_updates_to_kv_table(setup_teardown_test):
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
-    controller.emit({'mykey': 'onekey'})
+    controller.emit({'mykey': 'onekey'}, event_time=test_base_time)
 
     controller.terminate()
     result = controller.await_termination()
@@ -1311,3 +1311,36 @@ def test_separate_aggregate_steps(setup_teardown_test):
 
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
+
+
+def test_write_read_first_last(setup_teardown_test):
+    table = Table(setup_teardown_test, V3ioDriver(), flush_interval_secs=None)
+    controller = build_flow([
+        Source(),
+        AggregateByKey([FieldAggregator('attr', 'attr', ['first', 'last'], SlidingWindows(['1h'], '10m'))], table),
+        WriteToTable(table)
+    ]).run()
+
+    try:
+        for i in range(10):
+            controller.emit({'attr': i}, key='onekey', event_time=test_base_time)
+            controller.emit({'attr': i * 10}, key='onekey', event_time=test_base_time + timedelta(hours=1))
+    finally:
+        controller.terminate()
+        controller.await_termination()
+
+    table = Table(setup_teardown_test, V3ioDriver())
+    controller = build_flow([
+        Source(),
+        QueryByKey(['attr_first_1h', 'attr_last_1h'], table, key='mykey'),
+        Reduce([], lambda acc, x: append_return(acc, x)),
+    ]).run()
+
+    controller.emit({'mykey': 'onekey'}, event_time=test_base_time)
+    controller.emit({'mykey': 'onekey'}, event_time=test_base_time + timedelta(hours=1))
+
+    controller.terminate()
+    result = controller.await_termination()
+
+    assert result == [{'mykey': 'onekey', 'attr_first_1h': 1, 'attr_last_1h': 9},
+                      {'mykey': 'onekey', 'attr_first_1h': 10, 'attr_last_1h': 99}]

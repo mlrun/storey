@@ -7,6 +7,7 @@ _aggrTypeSqr = 4
 _aggrTypeMax = 8
 _aggrTypeMin = 16
 _aggrTypeLast = 32
+_aggrTypeFirst = 64
 
 # Derived aggregates
 _aggrTypeAvg = _aggrTypeCount | _aggrTypeSum
@@ -21,12 +22,14 @@ _raw_aggregates_by_name = {'count': _aggrTypeCount,
                            'sqr': _aggrTypeSqr,
                            'max': _aggrTypeMax,
                            'min': _aggrTypeMin,
+                           'first': _aggrTypeFirst,
                            'last': _aggrTypeLast}
 _all_aggregates_by_name = {'count': _aggrTypeCount,
                            'sum': _aggrTypeSum,
                            'sqr': _aggrTypeSqr,
                            'max': _aggrTypeMax,
                            'min': _aggrTypeMin,
+                           'first': _aggrTypeFirst,
                            'last': _aggrTypeLast,
                            'avg': _aggrTypeAvg,
                            'stdvar': _aggrTypeStdvar,
@@ -36,6 +39,7 @@ _all_aggregates_to_name = {_aggrTypeCount: 'count',
                            _aggrTypeSqr: 'sqr',
                            _aggrTypeMax: 'max',
                            _aggrTypeMin: 'min',
+                           _aggrTypeFirst: 'first',
                            _aggrTypeLast: 'last',
                            _aggrTypeAvg: 'avg',
                            _aggrTypeStdvar: 'stdvar',
