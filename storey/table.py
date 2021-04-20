@@ -47,12 +47,12 @@ class Table:
         return f'{self._container}/{self._table_path}'
 
     def _get_lock(self, key):
-        key = key
         cache_element = self._attrs_cache.get(key)
         if cache_element is None:
             cache_element = _CacheElement({}, None)
             self._attrs_cache[key] = cache_element
-        cache_element.lock = Lock()
+        if cache_element.lock is None:
+            cache_element.lock = Lock()
         return cache_element.lock
 
     def _get_schema_lock(self):
@@ -72,7 +72,6 @@ class Table:
     async def _lazy_load_key_with_aggregates(self, key, timestamp=None):
         if self._flush_exception is not None:
             raise self._flush_exception
-        key = key
         async with self._get_lock(key):
             if self._aggregations_read_only or not self._get_aggregations_attrs(key):
                 # Try load from the store, and create a new one only if the key really is new
@@ -89,7 +88,6 @@ class Table:
     async def _get_or_load_static_attributes_by_key(self, key, attributes='*'):
         if self._flush_exception is not None:
             raise self._flush_exception
-        key = key
         self._init_flush_task()
         async with self._get_lock(key):
             attrs = self._get_static_attrs(key)
@@ -244,14 +242,12 @@ class Table:
         return schema
 
     def _get_aggregations_attrs(self, key):
-        key = key
         if key in self._attrs_cache:
             return self._attrs_cache[key].aggregations
         else:
             return None
 
     def _set_aggregations_attrs(self, key, element):
-        key = key
         if key in self._attrs_cache:
             self._attrs_cache[key].aggregations = element
             self._changed_keys.add(key)
@@ -260,14 +256,12 @@ class Table:
             self._attrs_cache[key] = _CacheElement({}, element)
 
     def _get_static_attrs(self, key):
-        key = key
         if key in self._attrs_cache:
             return self._attrs_cache[key].static_attrs
         else:
             return None
 
     def _set_static_attrs(self, key, value):
-        key = key
         if key in self._attrs_cache:
             self._attrs_cache[key].static_attrs = value
             self._changed_keys.add(key)
