@@ -182,70 +182,6 @@ def get_hashed_key(key_list):
         return key_list
 
 
-def analyze_date(dir_name):
-    last = dir_name['name'].split('/')[-1]
-    exp = last.split("=")
-    attr = exp[0]
-    if attr not in ['year', 'month', 'day', 'hour', 'minute', 'second']:
-        return False, last, attr, 0
-    value = int(exp[1])
-    return True, last, attr, value
-
-
-def get_dummy_date(date, attr, new_value):
-    date_values = {'year': date.year, 'month': date.month, 'day': date.day, 'hour': date.hour, 'minute': date.minute,
-                   'second': date.second, 'microsecond': date.microsecond}
-    if attr == 'month' and date.day == 31:
-        # this should be the max num of days for this month:
-        date_values['day'] = calendar.monthrange(date.year, new_value)[1]
-    date_values[attr] = new_value
-    new_date = datetime(date_values['year'], date_values['month'], date_values['day'], hour=date_values['hour'],
-                        minute=date_values['minute'], second=date_values['second'], microsecond=date_values['microsecond'])
-    return new_date
-
-
-def get_filtered_path(dir_path, before, after, storage_options, dummy_date_first, dummy_date_last, filtered_paths):
-    fs, file_path = url_to_file_system(dir_path, storage_options)
-    dirs = fs.ls(file_path)
-
-    dirs = [directory for directory in dirs if directory['type'] == 'directory']
-    if len(dirs) == 0:
-        return
-    is_date, exp, attr, value_first = analyze_date(dirs[0])
-    if not is_date:
-        if dummy_date_first == datetime.min and dummy_date_last == datetime.max:
-            # the data is partitioned first by 'attr' and only then by time. need to dive in
-            for directory in dirs:
-                is_date, exp, attr, value = analyze_date(directory)
-                new_path = dir_path + exp + "/"
-                filtered_paths.append(new_path)
-                get_filtered_path(new_path, before, after, storage_options, dummy_date_first, dummy_date_last, filtered_paths)
-            if dir_path in filtered_paths:
-                filtered_paths.remove(dir_path)
-            return filtered_paths
-        else:
-            # the data is partitioned first by date and only then by 'attr'. finished diving in
-            return
-
-    is_date, exp, attr, value_last = analyze_date(dirs[-1])
-    # all of the sub dirs in this file_path are included in requested range.
-    if value_first != value_last and get_dummy_date(dummy_date_first, attr, value_first) >= after and \
-            get_dummy_date(dummy_date_last, attr, value_last) <= before:
-        return filtered_paths
-    for directory in dirs:
-        is_date, exp, attr, value = analyze_date(directory)
-        date_in_range_low = get_dummy_date(dummy_date_first, attr, value)
-        date_in_range_high = get_dummy_date(dummy_date_last, attr, value)
-        if date_in_range_high >= after and date_in_range_low <= before:
-            new_path = dir_path + exp + "/"
-            filtered_paths.append(new_path)
-            get_filtered_path(new_path, before, after, storage_options, date_in_range_low, date_in_range_high, filtered_paths)
-    # only some of the subdirs of dir_path are relevant so dir_path needs to be removed
-    if dir_path in filtered_paths:
-        filtered_paths.remove(dir_path)
-    return filtered_paths
-
-
 def create_tuple(dtime, attr, sign, list_tuples):
     if attr:
         value = getattr(dtime, attr, None)
@@ -255,7 +191,6 @@ def create_tuple(dtime, attr, sign, list_tuples):
 
 def find_filter_helper(list_partitions, dtime, sign, first_sign, first_uncommon, filters):
     single_filter = []
-    print("qqqqqqqq inside bla list partitions is " + str(list_partitions) + " uncommon is " + str(first_uncommon))
     last_partition = list_partitions[-1]
     if len(list_partitions) == 1 or last_partition == first_uncommon:
         return
@@ -273,7 +208,6 @@ def find_filter_helper(list_partitions, dtime, sign, first_sign, first_uncommon,
 def find_filters(partitions_time_attributes, start, end, filters):
     if len(partitions_time_attributes) == 1:
         # partitioned by year. need to return all range
-        print("partitioned by year. need to return all range")
         side_range = []
         create_tuple(start, partitions_time_attributes[0], ">=", side_range)
         create_tuple(end, partitions_time_attributes[0], "<=", side_range)
@@ -291,9 +225,6 @@ def find_filters(partitions_time_attributes, start, end, filters):
             first_uncommon = part
             break
 
-    print("jjjjjjjjjjjjjj " + str(common_partitions) + " hhhhhhhhhh " + str(first_uncommon))
-    print("vvvvvvvvv start is " + str(start) + " end is " + str(end))
-
     find_filter_helper(partitions_time_attributes, start, ">", ">=", first_uncommon, filters)
     middle_range_filter = []
     for partition in common_partitions:
@@ -304,6 +235,6 @@ def find_filters(partitions_time_attributes, start, end, filters):
     filters.append(middle_range_filter)
 
     find_filter_helper(partitions_time_attributes, end, "<", "<=", first_uncommon, filters)
-    #with "=" because we will need to filter it manually(partitioned by day, but user requested end with hours)
+    # with "=" because we will need to filter it manually(for example,partitioned by day, but user requested end with hours)
 
 

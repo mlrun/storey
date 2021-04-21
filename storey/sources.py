@@ -706,8 +706,6 @@ class ReadParquet(DataframeSource):
                     filters = []
                     find_filters(partitions_time_attributes, start_filter, end_filter, filters)
 
-                print("mmmmmm   " + str(filters))
-                print("yyyyyyy " + str(path))
                 df = pandas.read_parquet(path, columns=columns, filters=filters,
                                          storage_options=storage_options)
                 df = df[(df[filter_column] >= start_filter) & (df[filter_column] < end_filter)]

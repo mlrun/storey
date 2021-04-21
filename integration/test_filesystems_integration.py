@@ -292,8 +292,6 @@ def test_filter_before_after_partitioned_random(setup_teardown_test):
     delta = high_limit - low_limit
 
     seed_value = rand.randrange(sys.maxsize)
-#    seed_value = 739165997829093626
-
     print('Seed value:', seed_value)
 
     rand.seed(seed_value)
@@ -344,10 +342,7 @@ def test_filter_before_after_partitioned_random(setup_teardown_test):
     ]).run()
     read_back_result = controller.await_termination()
     print("expecting " + str(10 - number_below_middle_limit) + " to be above middle limit")
-    print(read_back_result)
     assert(len(read_back_result)) == 10 - number_below_middle_limit
-
-    print("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
 
     controller = build_flow([
         ReadParquet(out_file, end_filter=middle_limit, start_filter=low_limit, filter_column='datetime'),
