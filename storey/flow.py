@@ -11,7 +11,7 @@ import aiohttp
 
 from .dtypes import _termination_obj, Event, FlowError, V3ioError
 from .table import Table
-from .utils import _split_path, get_in, update_in
+from .utils import _split_path, get_in, update_in, stringify_key
 
 
 class Flow:
@@ -394,13 +394,15 @@ class _FunctionWithStateFlow(Flow):
 
     async def _call(self, event):
         element = self._get_event_or_body(event)
+        safe_key = stringify_key(event.key)
         if self._group_by_key:
             if isinstance(self._state, Table):
-                key_data = await self._state._get_or_load_static_attributes_by_key(event.key)
+                key_data = await self._state._get_or_load_static_attributes_by_key(safe_key)
             else:
                 key_data = self._state[event.key]
             res, new_state = self._fn(element, key_data)
-            self._state._update_static_attrs(event.key, new_state)
+            async with self._state._get_lock(safe_key):
+                self._state._update_static_attrs(safe_key, new_state)
             self._state._init_flush_task()
         else:
             res, self._state = self._fn(element, self._state)
@@ -415,7 +417,6 @@ class _FunctionWithStateFlow(Flow):
         if event is _termination_obj:
             return await self._do_downstream(_termination_obj)
         else:
-
             fn_result = await self._call(event)
             await self._do_internal(event, fn_result)
 
@@ -911,7 +912,8 @@ class JoinWithTable(_ConcurrentJobExecution):
 
     async def _process_event(self, event):
         key = self._key_extractor(self._get_event_or_body(event))
-        return await self._table._get_or_load_static_attributes_by_key(key, self._attributes)
+        safe_key = stringify_key(key)
+        return await self._table._get_or_load_static_attributes_by_key(safe_key, self._attributes)
 
     async def _handle_completed(self, event, response):
         joined = self._join_function(self._get_event_or_body(event), response)
