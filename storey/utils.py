@@ -190,7 +190,7 @@ def create_tuple(dtime, attr, sign, list_tuples):
 def find_filter_helper(list_partitions, dtime, sign, first_sign, first_uncommon, filters, filter_column=None):
     single_filter = []
     last_partition = list_partitions[-1]
-    if len(list_partitions) == 1 or last_partition == first_uncommon:
+    if len(list_partitions) == 1 or last_partition == first_uncommon or first_uncommon is None:
         return
     list_partitions_without_last_element = list_partitions[:-1]
     for partition in list_partitions_without_last_element:
