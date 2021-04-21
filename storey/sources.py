@@ -700,15 +700,10 @@ class ReadParquet(DataframeSource):
                 partitions = dataset.partitions.partition_names
                 time_attributes = ['year', 'month', 'day', 'hour', 'minute', 'second']
                 partitions_time_attributes = [j for j in time_attributes if j in partitions]
-                if len(partitions_time_attributes) == 0:
-                    filters = None
-                else:
-                    filters = []
-                    find_filters(partitions_time_attributes, start_filter, end_filter, filters)
-
+                filters = []
+                find_filters(partitions_time_attributes, start_filter, end_filter, filters, filter_column)
                 df = pandas.read_parquet(path, columns=columns, filters=filters,
                                          storage_options=storage_options)
-                df = df[(df[filter_column] >= start_filter) & (df[filter_column] < end_filter)]
                 dfs.append(df)
             else:
                 df = pandas.read_parquet(path, columns=columns,

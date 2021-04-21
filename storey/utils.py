@@ -189,7 +189,7 @@ def create_tuple(dtime, attr, sign, list_tuples):
         list_tuples.append(tuple1)
 
 
-def find_filter_helper(list_partitions, dtime, sign, first_sign, first_uncommon, filters):
+def find_filter_helper(list_partitions, dtime, sign, first_sign, first_uncommon, filters, filter_column=None):
     single_filter = []
     last_partition = list_partitions[-1]
     if len(list_partitions) == 1 or last_partition == first_uncommon:
@@ -199,13 +199,24 @@ def find_filter_helper(list_partitions, dtime, sign, first_sign, first_uncommon,
         create_tuple(dtime, partition, "=", single_filter)
     if first_sign:
         create_tuple(dtime, last_partition, first_sign, single_filter)
+        tuple_last_range = (filter_column, sign, dtime)
+        single_filter.append(tuple_last_range)
     else:
         create_tuple(dtime, last_partition, sign, single_filter)
     find_filter_helper(list_partitions_without_last_element, dtime, sign, None, first_uncommon, filters)
     filters.append(single_filter)
 
 
-def find_filters(partitions_time_attributes, start, end, filters):
+def find_filters(partitions_time_attributes, start, end, filters, filter_column):
+    if len(partitions_time_attributes) == 0:
+        range_no_partitions = []
+        lower_limit_tuple = (filter_column, ">=", start)
+        upper_limit_tuple = (filter_column, "<=", end)
+        range_no_partitions.append(lower_limit_tuple)
+        range_no_partitions.append(upper_limit_tuple)
+        filters.append(range_no_partitions)
+        return
+
     if len(partitions_time_attributes) == 1:
         # partitioned by year. need to return all range
         side_range = []
@@ -225,7 +236,7 @@ def find_filters(partitions_time_attributes, start, end, filters):
             first_uncommon = part
             break
 
-    find_filter_helper(partitions_time_attributes, start, ">", ">=", first_uncommon, filters)
+    find_filter_helper(partitions_time_attributes, start, ">", ">=", first_uncommon, filters, filter_column)
     middle_range_filter = []
     for partition in common_partitions:
         create_tuple(start, partition, "=", middle_range_filter)
@@ -234,7 +245,7 @@ def find_filters(partitions_time_attributes, start, end, filters):
 
     filters.append(middle_range_filter)
 
-    find_filter_helper(partitions_time_attributes, end, "<", "<=", first_uncommon, filters)
+    find_filter_helper(partitions_time_attributes, end, "<", "<=", first_uncommon, filters, filter_column)
     # with "=" because we will need to filter it manually(for example,partitioned by day, but user requested end with hours)
 
 
