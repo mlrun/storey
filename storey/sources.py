@@ -697,9 +697,12 @@ class ReadParquet(DataframeSource):
             if start_filter or end_filter:
                 fs, file_path = url_to_file_system(path, storage_options)
                 dataset = pq.ParquetDataset(path, filesystem=fs)
-                partitions = dataset.partitions.partition_names
-                time_attributes = ['year', 'month', 'day', 'hour', 'minute', 'second']
-                partitions_time_attributes = [j for j in time_attributes if j in partitions]
+                if dataset.partitions:
+                    partitions = dataset.partitions.partition_names
+                    time_attributes = ['year', 'month', 'day', 'hour', 'minute', 'second']
+                    partitions_time_attributes = [j for j in time_attributes if j in partitions]
+                else:
+                    partitions_time_attributes = []
                 filters = []
                 find_filters(partitions_time_attributes, start_filter, end_filter, filters, filter_column)
                 df = pandas.read_parquet(path, columns=columns, filters=filters,
