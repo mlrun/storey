@@ -3,8 +3,6 @@ import struct
 from array import array
 from urllib.parse import urlparse
 import fsspec
-from datetime import datetime
-import calendar
 
 bucketPerWindow = 10
 schema_file_name = '.schema'
@@ -247,5 +245,3 @@ def find_filters(partitions_time_attributes, start, end, filters, filter_column)
 
     find_filter_helper(partitions_time_attributes, end, "<", "<=", first_uncommon, filters, filter_column)
     # with "=" because we will need to filter it manually(for example,partitioned by day, but user requested end with hours)
-
-

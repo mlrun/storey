@@ -281,8 +281,9 @@ def test_filter_before_after_non_partitioned(setup_teardown_test):
         Reduce([], append_and_return)
     ]).run()
     read_back_result = controller.await_termination()
+    expected = [{'my_string': 'hello', 'my_time': pd.Timestamp('2019-01-26 14:52:37')}]
 
-    assert len(read_back_result) == 1
+    assert read_back_result == expected, f"{read_back_result}\n!=\n{expected}"
 
 
 def test_filter_before_after_partitioned_random(setup_teardown_test):
