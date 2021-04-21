@@ -1,3 +1,3 @@
-string,bool,bool_with_none,int_with_nan,float_with_nan
-a,True,False,1,2.3
-b,True,,,
+string,bool,bool_with_none,int_with_nan,float_with_nan,date_with_none
+a,True,False,1,2.3,2021-04-21 15:56:53.385444
+b,True,,,,

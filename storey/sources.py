@@ -522,6 +522,8 @@ class ReadCSV(_IterableSource):
                 return None
             raise TypeError(f'Expected boolean, got {field}')
         if typ == 't':
+            if field == '':
+                return None
             return self._datetime_from_timestamp(field)
         raise TypeError(f'Unknown type: {typ}')
 
