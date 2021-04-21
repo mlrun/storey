@@ -2370,6 +2370,6 @@ def test_csv_reader_with_none_values():
 
     assert len(termination_result) == 2
     assert termination_result[0].key == 'a'
-    assert termination_result[0].body == ['a', True, False, 1, 2.3]
+    assert termination_result[0].body == ['a', True, False, 1, 2.3, datetime(2021, 4, 21, 15, 56, 53, 385444)]
     assert termination_result[1].key == 'b'
-    assert termination_result[1].body == ['b', True, None, math.nan, math.nan]
+    assert termination_result[1].body == ['b', True, None, math.nan, math.nan, None]
