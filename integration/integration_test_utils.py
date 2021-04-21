@@ -88,7 +88,7 @@ def setup_teardown_test():
     yield table_name
 
     # Teardown
-    asyncio.run(recursive_delete(table_name, V3ioHeaders()))
+    # asyncio.run(recursive_delete(table_name, V3ioHeaders()))
 
 
 @pytest.fixture()

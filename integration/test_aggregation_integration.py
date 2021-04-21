@@ -1323,8 +1323,8 @@ def test_write_read_first_last(setup_teardown_test):
 
     try:
         for i in range(10):
-            controller.emit({'attr': i}, key='onekey', event_time=test_base_time)
-            controller.emit({'attr': i * 10}, key='onekey', event_time=test_base_time + timedelta(hours=1))
+            controller.emit({'attr': i}, key='onekey', event_time=test_base_time + timedelta(minutes=i))
+            controller.emit({'attr': i * 10}, key='onekey', event_time=test_base_time + timedelta(hours=2, minutes=i))
     finally:
         controller.terminate()
         controller.await_termination()
@@ -1336,8 +1336,8 @@ def test_write_read_first_last(setup_teardown_test):
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
-    controller.emit({'mykey': 'onekey'}, event_time=test_base_time)
-    controller.emit({'mykey': 'onekey'}, event_time=test_base_time + timedelta(hours=1))
+    controller.emit({'mykey': 'onekey'}, event_time=test_base_time + timedelta(minutes=10))
+    controller.emit({'mykey': 'onekey'}, event_time=test_base_time + timedelta(hours=2))
 
     controller.terminate()
     result = controller.await_termination()

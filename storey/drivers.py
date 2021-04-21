@@ -132,6 +132,7 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
         if not update_expression:
             return
 
+        print(f'update_expression={update_expression}')
         key = str(key)
         response = await self._v3io_client.kv.update(container, table_path, key, expression=update_expression,
                                                      condition=condition_expression,
