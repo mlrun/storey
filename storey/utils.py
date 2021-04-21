@@ -205,13 +205,17 @@ def find_filter_helper(list_partitions, dtime, sign, first_sign, first_uncommon,
     filters.append(single_filter)
 
 
+def get_filters_for_filter_column(start, end, filter_column, side_range):
+    lower_limit_tuple = (filter_column, ">=", start)
+    upper_limit_tuple = (filter_column, "<=", end)
+    side_range.append(lower_limit_tuple)
+    side_range.append(upper_limit_tuple)
+
+
 def find_filters(partitions_time_attributes, start, end, filters, filter_column):
     if len(partitions_time_attributes) == 0:
         range_no_partitions = []
-        lower_limit_tuple = (filter_column, ">=", start)
-        upper_limit_tuple = (filter_column, "<=", end)
-        range_no_partitions.append(lower_limit_tuple)
-        range_no_partitions.append(upper_limit_tuple)
+        get_filters_for_filter_column(start, end, filter_column, range_no_partitions)
         filters.append(range_no_partitions)
         return
 
@@ -220,6 +224,7 @@ def find_filters(partitions_time_attributes, start, end, filters, filter_column)
         side_range = []
         create_tuple(start, partitions_time_attributes[0], ">=", side_range)
         create_tuple(end, partitions_time_attributes[0], "<=", side_range)
+        get_filters_for_filter_column(start, end, filter_column, side_range)
         filters.append(side_range)
         return
 
