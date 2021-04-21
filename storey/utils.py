@@ -219,15 +219,6 @@ def find_filters(partitions_time_attributes, start, end, filters, filter_column)
         filters.append(range_no_partitions)
         return
 
-    if len(partitions_time_attributes) == 1:
-        # partitioned by year. need to return all range
-        side_range = []
-        create_tuple(start, partitions_time_attributes[0], ">=", side_range)
-        create_tuple(end, partitions_time_attributes[0], "<=", side_range)
-        get_filters_for_filter_column(start, end, filter_column, side_range)
-        filters.append(side_range)
-        return
-
     common_partitions = []
     first_uncommon = None
     for part in partitions_time_attributes:
@@ -238,15 +229,22 @@ def find_filters(partitions_time_attributes, start, end, filters, filter_column)
         else:
             first_uncommon = part
             break
-
     find_filter_helper(partitions_time_attributes, start, ">", ">=", first_uncommon, filters, filter_column)
+
     middle_range_filter = []
     for partition in common_partitions:
         create_tuple(start, partition, "=", middle_range_filter)
-    create_tuple(start, first_uncommon, ">", middle_range_filter)
-    create_tuple(end, first_uncommon, "<", middle_range_filter)
 
+    if len(filters) == 0:
+        # partitioned by "first uncommon". need to return all range
+        create_tuple(start, partitions_time_attributes[0], ">=", middle_range_filter)
+        create_tuple(end, partitions_time_attributes[0], "<=", middle_range_filter)
+        get_filters_for_filter_column(start, end, filter_column, middle_range_filter)
+        filters.append(middle_range_filter)
+        return
+    else:
+        create_tuple(start, first_uncommon, ">", middle_range_filter)
+        create_tuple(end, first_uncommon, "<", middle_range_filter)
     filters.append(middle_range_filter)
 
     find_filter_helper(partitions_time_attributes, end, "<", "<=", first_uncommon, filters, filter_column)
-    # with "=" because we will need to filter it manually(for example,partitioned by day, but user requested end with hours)
