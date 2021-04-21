@@ -6,7 +6,7 @@ import os
 import queue
 import random
 import uuid
-from typing import Optional, Union, List, Callable
+from typing import Optional, Union, List, Callable, Tuple
 from urllib.parse import urlparse
 
 import pandas as pd
@@ -90,6 +90,9 @@ class _Writer:
     def _path_from_event(self, event):
         res = '/'
         for col in self._partition_cols:
+            hash_into = 0
+            if isinstance(col, tuple):
+                col, hash_into = col
             if col == '$key':
                 val = event.key
             elif col == '$date':
@@ -111,8 +114,14 @@ class _Writer:
                     val = event.body[self._partition_col_to_index[col]]
                 else:
                     val = event.body[col]
+
             if col.startswith('$'):
                 col = col[1:]
+
+            if hash_into:
+                col = f'hash{hash_into}_{col}'
+                val = hash(val) / hash_into
+
             res += f'{col}={val}/'
         return res
 
@@ -298,7 +307,8 @@ class WriteToParquet(_Batching, _Writer):
         provided list. If header is True and columns is not provided, infer_columns_from_data=True is implied.
         Optional. Default to False if columns is provided, True otherwise.
     :param partition_cols: Columns by which to partition the data into directories. The following metadata columns are also supported:
-        $key, $date (e.g. 2020-02-09), $year, $month, $day, $hour, $minute, $second.
+        $key, $date (e.g. 2020-02-09), $year, $month, $day, $hour, $minute, $second. A column may be specified as a tuple, such as
+        ('$key', 64), which means partitioning by the event key hashed into 64 partitions.
         If None (the default), the data will not be partitioned, and will be written to a single directory or file (when path ends in
         .parquet or .pq).
     :param max_events: Maximum number of events to write at a time. If None (default), all events will be written on flow termination,
@@ -313,14 +323,15 @@ class WriteToParquet(_Batching, _Writer):
     """
 
     def __init__(self, path: str, index_cols: Union[str, List[str], None] = None, columns: Union[str, List[str], None] = None,
-                 partition_cols: Union[str, List[str], None] = None, infer_columns_from_data: Optional[bool] = None,
-                 max_events: Optional[int] = None, flush_after_seconds: Optional[int] = None, **kwargs):
+                 partition_cols: Union[str, List[Union[str, Tuple[(str, int)]]], None] = None,
+                 infer_columns_from_data: Optional[bool] = None, max_events: Optional[int] = None,
+                 flush_after_seconds: Optional[int] = None, **kwargs):
         self._single_file_mode = False
         if partition_cols is None:
             if path.endswith('.parquet') or path.endswith('.pq'):
                 self._single_file_mode = True
             else:
-                partition_cols = ['$key', '$year', '$month', '$day', '$hour']
+                partition_cols = [('$key', 64), '$year', '$month', '$day', '$hour']
         else:
             kwargs['partition_cols'] = partition_cols
 
