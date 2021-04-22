@@ -691,24 +691,24 @@ class ReadParquet(DataframeSource):
         dfs = []
         storage_options = kwargs.get('storage_options')
 
-        for path in paths:
-            if start_filter or end_filter:
-                fs, file_path = url_to_file_system(path, storage_options)
-                dataset = pq.ParquetDataset(path, filesystem=fs)
-                if dataset.partitions:
-                    partitions = dataset.partitions.partition_names
-                    time_attributes = ['year', 'month', 'day', 'hour', 'minute', 'second']
-                    partitions_time_attributes = [j for j in time_attributes if j in partitions]
-                else:
-                    partitions_time_attributes = []
-                filters = []
-                find_filters(partitions_time_attributes, start_filter, end_filter, filters, filter_column)
-                df = pandas.read_parquet(path, columns=columns, filters=filters,
-                                         storage_options=storage_options)
-                dfs.append(df)
+        def read_filtered_parquet(path, start_filter, end_filter, storage_options, columns):
+            fs, file_path = url_to_file_system(path, storage_options)
+            dataset = pq.ParquetDataset(path, filesystem=fs)
+            if dataset.partitions:
+                partitions = dataset.partitions.partition_names
+                time_attributes = ['year', 'month', 'day', 'hour', 'minute', 'second']
+                partitions_time_attributes = [j for j in time_attributes if j in partitions]
             else:
-                df = pandas.read_parquet(path, columns=columns,
-                                         storage_options=storage_options)
-                dfs.append(df)
+                partitions_time_attributes = []
+            filters = []
+            find_filters(partitions_time_attributes, start_filter, end_filter, filters, filter_column)
+            return pandas.read_parquet(path, columns=columns, filters=filters,
+                                       storage_options=storage_options)
 
+        if start_filter or end_filter:
+            dfs = map(lambda path: read_filtered_parquet(path, start_filter, end_filter, storage_options, columns), paths)
+
+        else:
+            dfs = map(lambda path: pandas.read_parquet(path, columns=columns,
+                                                       storage_options=kwargs.get('storage_options')), paths)
         super().__init__(dfs, **kwargs)

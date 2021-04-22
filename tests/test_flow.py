@@ -2290,7 +2290,7 @@ def test_illegal_step_source_not_first_step():
     df = pd.DataFrame([['hello', 1, 1.5], ['world', 2, 2.5]], columns=['string', 'int', 'float'])
     try:
         build_flow([
-            ReadParquet('tests/test.parquet'),
+            ReadParquet('tests'),
             DataframeSource(df),
             Reduce([], append_and_return),
         ]).run()
