@@ -178,3 +178,79 @@ def stringify_key(key_list):
         return key_list[0]
     else:
         return key_list
+
+
+def _create_filter_tuple(dtime, attr, sign, list_tuples):
+    if attr:
+        value = getattr(dtime, attr, None)
+        tuple1 = (attr, sign, value)
+        list_tuples.append(tuple1)
+
+
+def _find_filter_helper(list_partitions, dtime, sign, first_sign, first_uncommon, filters, filter_column=None):
+    single_filter = []
+    if len(list_partitions) == 0 or first_uncommon is None:
+        return
+    last_partition = list_partitions[-1]
+    if len(list_partitions) == 1 or last_partition == first_uncommon:
+        return
+    list_partitions_without_last_element = list_partitions[:-1]
+    for partition in list_partitions_without_last_element:
+        _create_filter_tuple(dtime, partition, "=", single_filter)
+    if first_sign:
+        # only for the first iteration we need to have ">="/"<=" instead of ">"/"<"
+        _create_filter_tuple(dtime, last_partition, first_sign, single_filter)
+        tuple_last_range = (filter_column, sign, dtime)
+        single_filter.append(tuple_last_range)
+    else:
+        _create_filter_tuple(dtime, last_partition, sign, single_filter)
+    _find_filter_helper(list_partitions_without_last_element, dtime, sign, None, first_uncommon, filters)
+    filters.append(single_filter)
+
+
+def _get_filters_for_filter_column(start, end, filter_column, side_range):
+    lower_limit_tuple = (filter_column, ">=", start)
+    upper_limit_tuple = (filter_column, "<=", end)
+    side_range.append(lower_limit_tuple)
+    side_range.append(upper_limit_tuple)
+
+
+def find_filters(partitions_time_attributes, start, end, filters, filter_column):
+    # this method build filters to be used by
+    # https://arrow.apache.org/docs/python/generated/pyarrow.parquet.ParquetDataset.html
+    common_partitions = []
+    first_uncommon = None
+    # finding the common attributes. for example for start=1.2.2018 08:53:15, end=5.2.2018 16:24:31, partitioned by
+    # year, month, day, hour. common_partions=[year, month], first_uncommon=day
+    for part in partitions_time_attributes:
+        value_start = getattr(start, part, None)
+        value_end = getattr(end, part, None)
+        if value_end == value_start:
+            common_partitions.append(part)
+        else:
+            first_uncommon = part
+            break
+
+    # for start=1.2.2018 08:53:15, end=5.2.2018 16:24:31, this method will append to filters
+    # [(year=2018, month=2,day>=1, filter_column>1.2.2018 08:53:15)]
+    _find_filter_helper(partitions_time_attributes, start, ">", ">=", first_uncommon, filters, filter_column)
+
+    middle_range_filter = []
+    for partition in common_partitions:
+        _create_filter_tuple(start, partition, "=", middle_range_filter)
+
+    if len(filters) == 0:
+        # creating only the middle range
+        _create_filter_tuple(start, first_uncommon, ">=", middle_range_filter)
+        _create_filter_tuple(end, first_uncommon, "<=", middle_range_filter)
+        _get_filters_for_filter_column(start, end, filter_column, middle_range_filter)
+    else:
+        _create_filter_tuple(start, first_uncommon, ">", middle_range_filter)
+        _create_filter_tuple(end, first_uncommon, "<", middle_range_filter)
+    # for start=1.2.2018 08:53:15, end=5.2.2018 16:24:31, this will append to filters
+    # [(year=2018, month=2, 1<day<5)]
+    filters.append(middle_range_filter)
+
+    # for start=1.2.2018 08:53:15, end=5.2.2018 16:24:31, this method will append to filters
+    # [(year=2018, month=2,day<=5, filter_column<5.2.2018 16:24:31)]
+    _find_filter_helper(partitions_time_attributes, end, "<", "<=", first_uncommon, filters, filter_column)
