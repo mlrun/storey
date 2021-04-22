@@ -1619,7 +1619,8 @@ def test_write_to_parquet_with_metadata(tmpdir):
     columns = ['event_key', 'my_int', 'my_string']
     controller = build_flow([
         Source(),
-        WriteToParquet(out_file, columns=['event_key=$key', 'my_int', 'my_string'])
+        WriteToParquet(out_file, columns=['event_key=$key', 'my_int', 'my_string'],
+                       partition_cols=['$year', '$month', '$day', '$hour'])
     ]).run()
 
     expected = []
@@ -1638,7 +1639,8 @@ def test_write_to_parquet_with_indices(tmpdir):
     out_file = f'{tmpdir}/test_write_to_parquet_with_indices{uuid.uuid4().hex}'
     controller = build_flow([
         Source(),
-        WriteToParquet(out_file, index_cols='event_key=$key', columns=['my_int', 'my_string'])
+        WriteToParquet(out_file, index_cols='event_key=$key', columns=['my_int', 'my_string'],
+                       partition_cols=['$year', '$month', '$day', '$hour'])
     ]).run()
 
     expected = []
@@ -1678,6 +1680,29 @@ def test_write_to_parquet_partition_by_date(tmpdir):
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
 
 
+def test_write_to_parquet_partition_by_hash(tmpdir):
+    out_file = f'{tmpdir}/test_write_to_parquet_partition_by_hash{uuid.uuid4().hex}'
+    controller = build_flow([
+        Source(),
+        WriteToParquet(out_file, columns=['my_int', 'my_string'])
+    ]).run()
+
+    my_time = datetime(2020, 2, 15)
+
+    expected = []
+    for i in range(10):
+        controller.emit([i, f'this is {i}'], event_time=my_time)
+        expected.append([i, f'this is {i}'])
+    columns = ['my_int', 'my_string']
+    expected = pd.DataFrame(expected, columns=columns, dtype='int64')
+    controller.terminate()
+    controller.await_termination()
+
+    read_back_df = pd.read_parquet(out_file, columns=columns)
+    read_back_df.sort_values('my_int', inplace=True)
+    assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+
+
 def test_write_to_parquet_with_inference(tmpdir):
     out_dir = f'{tmpdir}/test_write_to_parquet_with_inference{uuid.uuid4().hex}/'
     controller = build_flow([
@@ -1700,7 +1725,7 @@ def test_write_to_parquet_with_inference(tmpdir):
 
 def test_write_to_parquet_with_inference_error_on_partition_index_collision(tmpdir):
     try:
-        WriteToParquet('out/', index_cols='$key')
+        WriteToParquet('out/', index_cols='$key', partition_cols=['$key'])
         assert False
     except ValueError:
         pass
@@ -1900,7 +1925,7 @@ def test_csv_reader_parquet_write_microsecs(tmpdir):
     controller = build_flow([
         ReadCSV('tests/test-with-timestamp-microsecs.csv', header=True, key_field='k',
                 time_field='t', timestamp_format=time_format),
-        WriteToParquet(out_file, columns=columns, max_events=2)
+        WriteToParquet(out_file, columns=columns, partition_cols=['$year', '$month', '$day', '$hour'], max_events=2, )
     ]).run()
 
     expected = pd.DataFrame([['m1', datetime.strptime("15/02/2020 02:03:04.123456", time_format)],
@@ -1920,7 +1945,7 @@ def test_csv_reader_parquet_write_nanosecs(tmpdir):
     controller = build_flow([
         ReadCSV('tests/test-with-timestamp-nanosecs.csv', header=True, key_field='k',
                 time_field='t', timestamp_format=time_format),
-        WriteToParquet(out_file, columns=columns, max_events=2)
+        WriteToParquet(out_file, columns=columns, partition_cols=['$year', '$month', '$day', '$hour'], max_events=2)
     ]).run()
 
     expected = pd.DataFrame([['m1', datetime.strptime("15/02/2020 02:03:04.123456", time_format)],
