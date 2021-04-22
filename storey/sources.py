@@ -680,9 +680,9 @@ class ReadParquet(DataframeSource):
     """
     def __init__(self, paths: Union[str, Iterable[str]], columns=None, start_filter: Optional[datetime] = None,
                  end_filter: Optional[datetime] = None, filter_column: Optional[str] = None, **kwargs):
-        if any(end_filter, start_filter):
-            start_filter = start_filter or datetime.min
-            end_filter = end_filter or datetime.max
+        if end_filter or start_filter:
+            start_filter = datetime.min if start_filter is None else start_filter
+            end_filter = datetime.max if end_filter is None else end_filter
             if filter_column is None:
                 raise TypeError('Filter column is required when passing start/end filters')
 
