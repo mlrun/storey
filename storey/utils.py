@@ -180,32 +180,34 @@ def get_hashed_key(key_list):
         return key_list
 
 
-def create_tuple(dtime, attr, sign, list_tuples):
+def _create_filter_tuple(dtime, attr, sign, list_tuples):
     if attr:
         value = getattr(dtime, attr, None)
         tuple1 = (attr, sign, value)
         list_tuples.append(tuple1)
 
 
-def find_filter_helper(list_partitions, dtime, sign, first_sign, first_uncommon, filters, filter_column=None):
+def _find_filter_helper(list_partitions, dtime, sign, first_sign, first_uncommon, filters, filter_column=None):
     single_filter = []
+    if len(list_partitions) == 0:
+        return
     last_partition = list_partitions[-1]
     if len(list_partitions) == 1 or last_partition == first_uncommon or first_uncommon is None:
         return
     list_partitions_without_last_element = list_partitions[:-1]
     for partition in list_partitions_without_last_element:
-        create_tuple(dtime, partition, "=", single_filter)
+        _create_filter_tuple(dtime, partition, "=", single_filter)
     if first_sign:
-        create_tuple(dtime, last_partition, first_sign, single_filter)
+        _create_filter_tuple(dtime, last_partition, first_sign, single_filter)
         tuple_last_range = (filter_column, sign, dtime)
         single_filter.append(tuple_last_range)
     else:
-        create_tuple(dtime, last_partition, sign, single_filter)
-    find_filter_helper(list_partitions_without_last_element, dtime, sign, None, first_uncommon, filters)
+        _create_filter_tuple(dtime, last_partition, sign, single_filter)
+    _find_filter_helper(list_partitions_without_last_element, dtime, sign, None, first_uncommon, filters)
     filters.append(single_filter)
 
 
-def get_filters_for_filter_column(start, end, filter_column, side_range):
+def _get_filters_for_filter_column(start, end, filter_column, side_range):
     lower_limit_tuple = (filter_column, ">=", start)
     upper_limit_tuple = (filter_column, "<=", end)
     side_range.append(lower_limit_tuple)
@@ -213,12 +215,6 @@ def get_filters_for_filter_column(start, end, filter_column, side_range):
 
 
 def find_filters(partitions_time_attributes, start, end, filters, filter_column):
-    if len(partitions_time_attributes) == 0:
-        range_no_partitions = []
-        get_filters_for_filter_column(start, end, filter_column, range_no_partitions)
-        filters.append(range_no_partitions)
-        return
-
     common_partitions = []
     first_uncommon = None
     for part in partitions_time_attributes:
@@ -229,22 +225,21 @@ def find_filters(partitions_time_attributes, start, end, filters, filter_column)
         else:
             first_uncommon = part
             break
-    find_filter_helper(partitions_time_attributes, start, ">", ">=", first_uncommon, filters, filter_column)
+
+    _find_filter_helper(partitions_time_attributes, start, ">", ">=", first_uncommon, filters, filter_column)
 
     middle_range_filter = []
     for partition in common_partitions:
-        create_tuple(start, partition, "=", middle_range_filter)
+        _create_filter_tuple(start, partition, "=", middle_range_filter)
 
     if len(filters) == 0:
-        # partitioned by "first uncommon". need to return all range
-        create_tuple(start, partitions_time_attributes[0], ">=", middle_range_filter)
-        create_tuple(end, partitions_time_attributes[0], "<=", middle_range_filter)
-        get_filters_for_filter_column(start, end, filter_column, middle_range_filter)
-        filters.append(middle_range_filter)
-        return
+        # creating only the middle range
+        _create_filter_tuple(start, first_uncommon, ">=", middle_range_filter)
+        _create_filter_tuple(end, first_uncommon, "<=", middle_range_filter)
+        _get_filters_for_filter_column(start, end, filter_column, middle_range_filter)
     else:
-        create_tuple(start, first_uncommon, ">", middle_range_filter)
-        create_tuple(end, first_uncommon, "<", middle_range_filter)
+        _create_filter_tuple(start, first_uncommon, ">", middle_range_filter)
+        _create_filter_tuple(end, first_uncommon, "<", middle_range_filter)
     filters.append(middle_range_filter)
 
-    find_filter_helper(partitions_time_attributes, end, "<", "<=", first_uncommon, filters, filter_column)
+    _find_filter_helper(partitions_time_attributes, end, "<", "<=", first_uncommon, filters, filter_column)
