@@ -1691,7 +1691,7 @@ def test_write_to_parquet_partition_by_hash(tmpdir):
 
     expected = []
     for i in range(10):
-        controller.emit([i, f'this is {i}'], event_time=my_time)
+        controller.emit([i, f'this is {i}'], event_time=my_time, key=[i])
         expected.append([i, f'this is {i}'])
     columns = ['my_int', 'my_string']
     expected = pd.DataFrame(expected, columns=columns, dtype='int64')
@@ -1700,6 +1700,7 @@ def test_write_to_parquet_partition_by_hash(tmpdir):
 
     read_back_df = pd.read_parquet(out_file, columns=columns)
     read_back_df.sort_values('my_int', inplace=True)
+    read_back_df.reset_index(drop=True, inplace=True)
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
 
 
