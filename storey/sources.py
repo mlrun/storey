@@ -688,7 +688,6 @@ class ReadParquet(DataframeSource):
 
         if isinstance(paths, str):
             paths = [paths]
-        dfs = []
         storage_options = kwargs.get('storage_options')
 
         def read_filtered_parquet(path, start_filter, end_filter, storage_options, columns):
@@ -710,5 +709,5 @@ class ReadParquet(DataframeSource):
 
         else:
             dfs = map(lambda path: pandas.read_parquet(path, columns=columns,
-                                                       storage_options=kwargs.get('storage_options')), paths)
+                                                       storage_options=storage_options), paths)
         super().__init__(dfs, **kwargs)
