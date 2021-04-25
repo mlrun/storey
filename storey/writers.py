@@ -119,7 +119,7 @@ class _Writer:
                 col = col[1:]
 
             if hash_into:
-                col = f'hash{hash_into}_{col}'
+                col = f'hash_{hash_into}_{col}'
                 if isinstance(val, list):
                     val = '.'.join(map(str, val))
                 val = hash(val) / hash_into

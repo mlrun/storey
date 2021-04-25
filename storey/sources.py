@@ -383,6 +383,9 @@ class _IterableSource(Flow):
         self._ex = None
         self._closeables = []
 
+    def _init(self):
+        pass
+
     async def _run_loop(self):
         raise NotImplementedError()
 
@@ -410,6 +413,8 @@ class _IterableSource(Flow):
 
     def run(self):
         self._closeables = super().run()
+
+        self._init()
 
         thread = threading.Thread(target=self._loop_thread_main)
         thread.start()
@@ -676,8 +681,21 @@ class ReadParquet(DataframeSource):
     """
 
     def __init__(self, paths: Union[str, Iterable[str]], columns=None, **kwargs):
+        self._paths = paths
         if isinstance(paths, str):
-            paths = [paths]
-        dfs = map(lambda path: pandas.read_parquet(path, columns=columns,
-                                                   storage_options=kwargs.get('storage_options')), paths)
-        super().__init__(dfs, **kwargs)
+            self._paths = [paths]
+        self._columns = columns
+        self._storage_options = kwargs.get('storage_options')
+        super().__init__([], **kwargs)
+
+    def _init(self):
+        self._dfs = []
+        for path in self._paths:
+            df = pandas.read_parquet(path, columns=self._columns, storage_options=self._storage_options)
+            cols_to_delete = []
+            reserved_column_names = {'date', 'year', 'month', 'day', 'hour', 'minute', 'second'}
+            for col in df.columns:
+                if col in reserved_column_names or col.startswith('hash_'):
+                    cols_to_delete.append(col)
+            df.drop(labels=cols_to_delete, inplace=True, errors='ignore')
+            self._dfs.append(df)
