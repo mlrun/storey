@@ -333,7 +333,7 @@ class WriteToParquet(_Batching, _Writer):
             if path.endswith('.parquet') or path.endswith('.pq'):
                 self._single_file_mode = True
             else:
-                partition_cols = [('$key', 64), '$year', '$month', '$day', '$hour']
+                partition_cols = [('$key', 256), '$year', '$month', '$day', '$hour']
         else:
             kwargs['partition_cols'] = partition_cols
 
