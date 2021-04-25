@@ -12,7 +12,7 @@ import pandas
 
 from .dtypes import _termination_obj, Event
 from .flow import Flow, Complete
-from .utils import url_to_file_system
+from .utils import url_to_file_system, _drop_reserved_columns
 
 
 class AwaitableResult:
@@ -692,10 +692,5 @@ class ReadParquet(DataframeSource):
         self._dfs = []
         for path in self._paths:
             df = pandas.read_parquet(path, columns=self._columns, storage_options=self._storage_options)
-            cols_to_delete = []
-            reserved_column_names = {'date', 'year', 'month', 'day', 'hour', 'minute', 'second'}
-            for col in df.columns:
-                if col in reserved_column_names or col.startswith('hash_'):
-                    cols_to_delete.append(col)
-            df.drop(labels=cols_to_delete, inplace=True, errors='ignore')
+            _drop_reserved_columns(df)
             self._dfs.append(df)

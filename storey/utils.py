@@ -178,3 +178,12 @@ def stringify_key(key_list):
         return key_list[0]
     else:
         return key_list
+
+
+def _drop_reserved_columns(df):
+    cols_to_drop = []
+    reserved_column_names = {'date', 'year', 'month', 'day', 'hour', 'minute', 'second'}
+    for col in df.columns:
+        if col in reserved_column_names or col.startswith('hash_'):
+            cols_to_drop.append(col)
+    df.drop(labels=cols_to_drop, axis=1, inplace=True, errors='ignore')
