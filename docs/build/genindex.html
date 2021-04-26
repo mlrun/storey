@@ -25,7 +25,7 @@
     href="_static/vendor/lato_latin-ext/1.44.1/index.css">
 
     
-    <link rel="stylesheet" href="_static/sphinx-book-theme.40e2e510f6b7d1648584402491bb10fe.css" type="text/css" />
+    <link rel="stylesheet" href="_static/sphinx-book-theme.c441f2ba0852f4cabcb80105e3a46ae6.css" type="text/css" />
     <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
     
   <link rel="preload" as="script" href="_static/js/index.d3f166471bb80abb5163.js">
@@ -35,7 +35,7 @@
     <script src="_static/underscore.js"></script>
     <script src="_static/doctools.js"></script>
     <script src="_static/language_data.js"></script>
-    <script src="_static/sphinx-book-theme.d31b09fe5c1d09cb49b26a786de4a05d.js"></script>
+    <script src="_static/sphinx-book-theme.7d483ff0a819d6edff12ce0b1ead3928.js"></script>
     <link rel="index" title="Index" href="#" />
     <link rel="search" title="Search" href="search.html" />
 
@@ -72,11 +72,6 @@
 </p>
 <ul class="nav sidenav_l1">
  <li class="toctree-l1">
-  <a class="reference internal" href="overview.html">
-   Storey overview
-  </a>
- </li>
- <li class="toctree-l1">
   <a class="reference internal" href="examples.html">
    Storey examples
   </a>
@@ -103,37 +98,38 @@
           
 <main class="col py-md-3 pl-md-4 bd-content overflow-auto" role="main">
     
-    <div class="row topbar fixed-top container-xl">
-    <div class="col-12 col-md-3 bd-topbar-whitespace site-navigation show">
-    </div>
-    <div class="col pl-2 topbar-main">
-        
-        <button id="navbar-toggler" class="navbar-toggler ml-0" type="button" data-toggle="collapse"
-            data-toggle="tooltip" data-placement="bottom" data-target=".site-navigation" aria-controls="navbar-menu"
-            aria-expanded="true" aria-label="Toggle navigation" aria-controls="site-navigation"
-            title="Toggle navigation" data-toggle="tooltip" data-placement="left">
-            <i class="fas fa-bars"></i>
-            <i class="fas fa-arrow-left"></i>
-            <i class="fas fa-arrow-up"></i>
-        </button>
-        
-        
-        <!-- Source interaction buttons -->
+    <div class="topbar container-xl fixed-top">
+    <div class="topbar-contents row">
+        <div class="col-12 col-md-3 bd-topbar-whitespace site-navigation show"></div>
+        <div class="col pl-md-4 topbar-main">
+            
+            <button id="navbar-toggler" class="navbar-toggler ml-0" type="button" data-toggle="collapse"
+                data-toggle="tooltip" data-placement="bottom" data-target=".site-navigation" aria-controls="navbar-menu"
+                aria-expanded="true" aria-label="Toggle navigation" aria-controls="site-navigation"
+                title="Toggle navigation" data-toggle="tooltip" data-placement="left">
+                <i class="fas fa-bars"></i>
+                <i class="fas fa-arrow-left"></i>
+                <i class="fas fa-arrow-up"></i>
+            </button>
+            
+            
+            <!-- Source interaction buttons -->
 
 
-        <!-- Full screen (wrap in <a> to have style consistency -->
-        <a class="full-screen-button"><button type="button" class="btn btn-secondary topbarbtn" data-toggle="tooltip"
-                data-placement="bottom" onclick="toggleFullScreen()" aria-label="Fullscreen mode"
-                title="Fullscreen mode"><i
-                    class="fas fa-expand"></i></button></a>
+            <!-- Full screen (wrap in <a> to have style consistency -->
+            <a class="full-screen-button"><button type="button" class="btn btn-secondary topbarbtn" data-toggle="tooltip"
+                    data-placement="bottom" onclick="toggleFullScreen()" aria-label="Fullscreen mode"
+                    title="Fullscreen mode"><i
+                        class="fas fa-expand"></i></button></a>
 
-        <!-- Launch buttons -->
+            <!-- Launch buttons -->
 
-    </div>
+        </div>
 
-    <!-- Table of contents -->
-    <div class="d-none d-md-block col-md-2 bd-toc show">
-        
+        <!-- Table of contents -->
+        <div class="d-none d-md-block col-md-2 bd-toc show">
+            
+        </div>
     </div>
 </div>
     <div id="main-content" class="row">
@@ -156,12 +152,12 @@
  | <a href="#L"><strong>L</strong></a>
  | <a href="#M"><strong>M</strong></a>
  | <a href="#N"><strong>N</strong></a>
+ | <a href="#P"><strong>P</strong></a>
  | <a href="#Q"><strong>Q</strong></a>
  | <a href="#R"><strong>R</strong></a>
  | <a href="#S"><strong>S</strong></a>
  | <a href="#T"><strong>T</strong></a>
  | <a href="#V"><strong>V</strong></a>
- | <a href="#W"><strong>W</strong></a>
  
 </div>
 <h2 id="A">A</h2>
@@ -215,11 +211,15 @@
 </li>
       <li><a href="api.html#storey.drivers.V3ioDriver.close">close() (storey.drivers.V3ioDriver method)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api.html#storey.flow.Complete">Complete (class in storey.flow)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api.html#storey.flow.Context">Context (class in storey.flow)</a>
+</li>
+      <li><a href="api.html#storey.sources.CSVSource">CSVSource (class in storey.sources)</a>
+</li>
+      <li><a href="api.html#storey.targets.CSVTarget">CSVTarget (class in storey.targets)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -341,6 +341,20 @@
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api.html#storey.drivers.NoopDriver">NoopDriver (class in storey.drivers)</a>
 </li>
+      <li><a href="api.html#storey.targets.NoSqlTarget">NoSqlTarget (class in storey.targets)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="P">P</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api.html#storey.sources.ParquetSource">ParquetSource (class in storey.sources)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api.html#storey.targets.ParquetTarget">ParquetTarget (class in storey.targets)</a>
+</li>
   </ul></td>
 </tr></table>
 
@@ -355,16 +369,12 @@
 <h2 id="R">R</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api.html#storey.sources.CSVSource">CSVSource (class in storey.sources)</a>
-</li>
-      <li><a href="api.html#storey.sources.ParquetSource">ParquetSource (class in storey.sources)</a>
-</li>
       <li><a href="api.html#storey.flow.Reduce">Reduce (class in storey.flow)</a>
+</li>
+      <li><a href="api.html#storey.dataframe.ReduceToDataFrame">ReduceToDataFrame (class in storey.dataframe)</a>
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api.html#storey.dataframe.ReduceToDataFrame">ReduceToDataFrame (class in storey.dataframe)</a>
-</li>
       <li><a href="api.html#storey.sources.AsyncSource.run">run() (storey.sources.AsyncSource method)</a>
 
       <ul>
@@ -401,7 +411,9 @@
 </li>
       <li><a href="api.html#module-storey.table">storey.table (module)</a>
 </li>
-      <li><a href="api.html#module-storey.writers">storey.writers (module)</a>
+      <li><a href="api.html#module-storey.targets">storey.targets (module)</a>
+</li>
+      <li><a href="api.html#storey.targets.StreamTarget">StreamTarget (class in storey.targets)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -423,6 +435,8 @@
 </li>
       <li><a href="api.html#storey.dataframe.ToDataFrame">ToDataFrame (class in storey.dataframe)</a>
 </li>
+      <li><a href="api.html#storey.targets.TSDBTarget">TSDBTarget (class in storey.targets)</a>
+</li>
   </ul></td>
 </tr></table>
 
@@ -438,35 +452,17 @@
   </ul></td>
 </tr></table>
 
-<h2 id="W">W</h2>
-<table style="width: 100%" class="indextable genindextable"><tr>
-  <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api.html#storey.writers.CSVTarget">CSVTarget (class in storey.writers)</a>
-</li>
-      <li><a href="api.html#storey.writers.ParquetTarget">ParquetTarget (class in storey.writers)</a>
-</li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api.html#storey.writers.NoSqlTarget">NoSqlTarget (class in storey.writers)</a>
-</li>
-      <li><a href="api.html#storey.writers.TSDBTarget">TSDBTarget (class in storey.writers)</a>
-</li>
-      <li><a href="api.html#storey.writers.StreamTarget">StreamTarget (class in storey.writers)</a>
-</li>
-  </ul></td>
-</tr></table>
-
 
 
               </div>
               
-        </div>
-    </div>
-    
-    
-    <div class='prev-next-bottom'>
         
+        <div class='prev-next-bottom'>
+            
 
+        </div>
+        
+        </div>
     </div>
     <footer class="footer mt-5 mt-md-0">
     <div class="container">

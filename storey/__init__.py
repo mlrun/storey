@@ -26,7 +26,7 @@ from .sources import (  # noqa: F401
 from .table import (  # noqa: F401
     Table
 )
-from .writers import (  # noqa: F401
+from .targets import (  # noqa: F401
     StreamTarget, CSVTarget, ParquetTarget, TSDBTarget, NoSqlTarget
 )
 

@@ -2194,7 +2194,7 @@ def test_flow_to_dict_read_csv():
 def test_flow_to_dict_write_to_parquet():
     step = ParquetTarget('outdir', columns=['col1', 'col2'], max_events=2)
     assert step.to_dict() == {
-        'class_name': 'storey.writers.ParquetTarget',
+        'class_name': 'storey.targets.ParquetTarget',
         'class_args': {
             'path': 'outdir',
             'columns': ['col1', 'col2'],
@@ -2210,7 +2210,7 @@ def test_flow_to_dict_write_to_tsdb():
                       max_events=1, frames_client=MockFramesClient())
 
     assert step.to_dict() == {
-        'class_name': 'storey.writers.TSDBTarget',
+        'class_name': 'storey.targets.TSDBTarget',
         'class_args': {
             'columns': ['cpu', 'disk'],
             'index_cols': 'node',

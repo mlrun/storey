@@ -677,6 +677,7 @@ class DataframeSource(_IterableSource):
 
 class ParquetSource(DataframeSource):
     """Reads Parquet files as input source for a flow.
+
     :parameter paths: paths to Parquet files
     :parameter columns : list, default=None. If not None, only these columns will be read from the file.
     :parameter start_filter: datetime. If not None, the results will be filtered by partitions and 'filter_column' >= start_filter.

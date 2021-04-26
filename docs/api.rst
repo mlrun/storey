@@ -5,7 +5,7 @@ Storey api
 Targets:
 ********
 
-.. automodule:: storey.writers
+.. automodule:: storey.targets
     :members:
     :show-inheritance:
 

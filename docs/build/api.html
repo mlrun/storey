@@ -24,7 +24,7 @@
     href="_static/vendor/lato_latin-ext/1.44.1/index.css">
 
     
-    <link rel="stylesheet" href="_static/sphinx-book-theme.40e2e510f6b7d1648584402491bb10fe.css" type="text/css" />
+    <link rel="stylesheet" href="_static/sphinx-book-theme.c441f2ba0852f4cabcb80105e3a46ae6.css" type="text/css" />
     <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
     
   <link rel="preload" as="script" href="_static/js/index.d3f166471bb80abb5163.js">
@@ -34,7 +34,7 @@
     <script src="_static/underscore.js"></script>
     <script src="_static/doctools.js"></script>
     <script src="_static/language_data.js"></script>
-    <script src="_static/sphinx-book-theme.d31b09fe5c1d09cb49b26a786de4a05d.js"></script>
+    <script src="_static/sphinx-book-theme.7d483ff0a819d6edff12ce0b1ead3928.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
     <link rel="prev" title="Storey examples" href="examples.html" />
@@ -72,11 +72,6 @@
 </p>
 <ul class="current nav sidenav_l1">
  <li class="toctree-l1">
-  <a class="reference internal" href="overview.html">
-   Storey overview
-  </a>
- </li>
- <li class="toctree-l1">
   <a class="reference internal" href="examples.html">
    Storey examples
   </a>
@@ -103,21 +98,21 @@
           
 <main class="col py-md-3 pl-md-4 bd-content overflow-auto" role="main">
     
-    <div class="row topbar fixed-top container-xl">
-    <div class="col-12 col-md-3 bd-topbar-whitespace site-navigation show">
-    </div>
-    <div class="col pl-2 topbar-main">
-        
-        <button id="navbar-toggler" class="navbar-toggler ml-0" type="button" data-toggle="collapse"
-            data-toggle="tooltip" data-placement="bottom" data-target=".site-navigation" aria-controls="navbar-menu"
-            aria-expanded="true" aria-label="Toggle navigation" aria-controls="site-navigation"
-            title="Toggle navigation" data-toggle="tooltip" data-placement="left">
-            <i class="fas fa-bars"></i>
-            <i class="fas fa-arrow-left"></i>
-            <i class="fas fa-arrow-up"></i>
-        </button>
-        
-        
+    <div class="topbar container-xl fixed-top">
+    <div class="topbar-contents row">
+        <div class="col-12 col-md-3 bd-topbar-whitespace site-navigation show"></div>
+        <div class="col pl-md-4 topbar-main">
+            
+            <button id="navbar-toggler" class="navbar-toggler ml-0" type="button" data-toggle="collapse"
+                data-toggle="tooltip" data-placement="bottom" data-target=".site-navigation" aria-controls="navbar-menu"
+                aria-expanded="true" aria-label="Toggle navigation" aria-controls="site-navigation"
+                title="Toggle navigation" data-toggle="tooltip" data-placement="left">
+                <i class="fas fa-bars"></i>
+                <i class="fas fa-arrow-left"></i>
+                <i class="fas fa-arrow-up"></i>
+            </button>
+            
+            
 <div class="dropdown-buttons-trigger">
     <button id="dropdown-buttons-trigger" class="btn btn-secondary topbarbtn" aria-label="Download this page"><i
             class="fas fa-download"></i></button>
@@ -135,51 +130,53 @@
     </div>
 </div>
 
-        <!-- Source interaction buttons -->
+            <!-- Source interaction buttons -->
 
 
-        <!-- Full screen (wrap in <a> to have style consistency -->
-        <a class="full-screen-button"><button type="button" class="btn btn-secondary topbarbtn" data-toggle="tooltip"
-                data-placement="bottom" onclick="toggleFullScreen()" aria-label="Fullscreen mode"
-                title="Fullscreen mode"><i
-                    class="fas fa-expand"></i></button></a>
+            <!-- Full screen (wrap in <a> to have style consistency -->
+            <a class="full-screen-button"><button type="button" class="btn btn-secondary topbarbtn" data-toggle="tooltip"
+                    data-placement="bottom" onclick="toggleFullScreen()" aria-label="Fullscreen mode"
+                    title="Fullscreen mode"><i
+                        class="fas fa-expand"></i></button></a>
 
-        <!-- Launch buttons -->
+            <!-- Launch buttons -->
 
-    </div>
+        </div>
 
-    <!-- Table of contents -->
-    <div class="d-none d-md-block col-md-2 bd-toc show">
-        
+        <!-- Table of contents -->
+        <div class="d-none d-md-block col-md-2 bd-toc show">
+            
         <div class="tocsection onthispage pt-5 pb-3">
-            <i class="fas fa-list"></i> Contents
+            <i class="fas fa-list"></i>
+            Contents
         </div>
         <nav id="bd-toc-nav">
             <ul class="nav section-nav flex-column">
  <li class="toc-h2 nav-item toc-entry">
-  <a class="reference internal nav-link" href="#module-storey.writers">
-   Writers
+  <a class="reference internal nav-link" href="#module-storey.targets">
+   Targets:
   </a>
  </li>
  <li class="toc-h2 nav-item toc-entry">
   <a class="reference internal nav-link" href="#module-storey.sources">
-   Readers
+   Sources:
   </a>
  </li>
  <li class="toc-h2 nav-item toc-entry">
   <a class="reference internal nav-link" href="#module-storey.flow">
-   Transformations
+   Transformations:
   </a>
  </li>
  <li class="toc-h2 nav-item toc-entry">
   <a class="reference internal nav-link" href="#module-storey.drivers">
-   Miscellaneous
+   Miscellaneous:
   </a>
  </li>
 </ul>
 
         </nav>
         
+        </div>
     </div>
 </div>
     <div id="main-content" class="row">
@@ -189,12 +186,12 @@
                 
   <div class="section" id="storey-api">
 <h1>Storey api<a class="headerlink" href="#storey-api" title="Permalink to this headline">¶</a></h1>
-<div class="section" id="module-storey.writers">
-<span id="writers"></span><h2>Writers<a class="headerlink" href="#module-storey.writers" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="module-storey.targets">
+<span id="targets"></span><h2>Targets:<a class="headerlink" href="#module-storey.targets" title="Permalink to this headline">¶</a></h2>
 <dl class="class">
-<dt id="storey.writers.CSVTarget">
-<em class="property">class </em><code class="sig-prename descclassname">storey.writers.</code><code class="sig-name descname">CSVTarget</code><span class="sig-paren">(</span><em class="sig-param">path: str</em>, <em class="sig-param">columns: Optional[List[str]] = None</em>, <em class="sig-param">header: bool = False</em>, <em class="sig-param">infer_columns_from_data: Optional[bool] = None</em>, <em class="sig-param">max_lines_before_flush: int = 128</em>, <em class="sig-param">max_seconds_before_flush: int = 3</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.writers.CSVTarget" title="Permalink to this definition">¶</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow._Batching</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.writers._Writer</span></code></p>
+<dt id="storey.targets.CSVTarget">
+<em class="property">class </em><code class="sig-prename descclassname">storey.targets.</code><code class="sig-name descname">CSVTarget</code><span class="sig-paren">(</span><em class="sig-param">path: str</em>, <em class="sig-param">columns: Optional[List[str]] = None</em>, <em class="sig-param">header: bool = False</em>, <em class="sig-param">infer_columns_from_data: Optional[bool] = None</em>, <em class="sig-param">max_lines_before_flush: int = 128</em>, <em class="sig-param">max_seconds_before_flush: int = 3</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.targets.CSVTarget" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow._Batching</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.targets._Writer</span></code></p>
 <p>Writes events to a CSV file.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
@@ -225,9 +222,32 @@ if using a URL that will be parsed by fsspec, e.g., starting “s3://”, “gcs
 </dd></dl>
 
 <dl class="class">
-<dt id="storey.writers.ParquetTarget">
-<em class="property">class </em><code class="sig-prename descclassname">storey.writers.</code><code class="sig-name descname">ParquetTarget</code><span class="sig-paren">(</span><em class="sig-param">path: str, index_cols: Union[str, List[str], None] = None, columns: Union[str, List[str], None] = None, partition_cols: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None, **kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.writers.ParquetTarget" title="Permalink to this definition">¶</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow._Batching</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.writers._Writer</span></code></p>
+<dt id="storey.targets.NoSqlTarget">
+<em class="property">class </em><code class="sig-prename descclassname">storey.targets.</code><code class="sig-name descname">NoSqlTarget</code><span class="sig-paren">(</span><em class="sig-param">table: Union[storey.table.Table, str], columns: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None, **kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.targets.NoSqlTarget" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.targets._Writer</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow.Flow</span></code></p>
+<p>Persists the data in <cite>table</cite> to its associated storage by key.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>table</strong> – A Table object or name to persist. If a table name is provided, it will be looked up in the context.</p></li>
+<li><p><strong>columns</strong> – Fields to be written to the storage. Will be extracted from events when an event is a dictionary (lists will be written
+as is). Use = notation for renaming fields (e.g. write_this=event_field).
+Use $ notation to refer to metadata ($key, event_time=$time). Optional. Defaults to None (will be inferred if event is dictionary).</p></li>
+<li><p><strong>infer_columns_from_data</strong> – Whether to infer columns from the first event, when events are dictionaries. If True, columns will be
+inferred from data and used in place of explicit columns list if none was provided, or appended to the provided list. If header is
+True and columns is not provided, infer_columns_from_data=True is implied. Optional. Default to False if columns is provided, True
+otherwise.</p></li>
+<li><p><strong>storage_options</strong> (<em>dict</em>) – Extra options that make sense for a particular storage connection, e.g. host, port, username, password, etc.,
+if using a URL that will be parsed by fsspec, e.g., starting “s3://”, “gcs://”. Optional</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="class">
+<dt id="storey.targets.ParquetTarget">
+<em class="property">class </em><code class="sig-prename descclassname">storey.targets.</code><code class="sig-name descname">ParquetTarget</code><span class="sig-paren">(</span><em class="sig-param">path: str, index_cols: Union[str, List[str], None] = None, columns: Union[str, List[str], None] = None, partition_cols: Union[str, List[Union[str, Tuple[str, int]]], None] = None, infer_columns_from_data: Optional[bool] = None, max_events: Optional[int] = None, flush_after_seconds: Optional[int] = None, **kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.targets.ParquetTarget" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow._Batching</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.targets._Writer</span></code></p>
 <p>Writes incoming events to parquet files.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
@@ -243,8 +263,11 @@ Optional. Defaults to None (will be inferred if event is dictionary).</p></li>
 If True, columns will be inferred from data and used in place of explicit columns list if none was provided, or appended to the
 provided list. If header is True and columns is not provided, infer_columns_from_data=True is implied.
 Optional. Default to False if columns is provided, True otherwise.</p></li>
-<li><p><strong>partition_cols</strong> – Columns by which to partition the data into separate parquet files. If None (default), data will be written
-to a single file at path. This parameter is forwarded as-is to pandas.DataFrame.to_parquet().</p></li>
+<li><p><strong>partition_cols</strong> – Columns by which to partition the data into directories. The following metadata columns are also supported:
+$key, $date (e.g. 2020-02-09), $year, $month, $day, $hour, $minute, $second. A column may be specified as a tuple, such as
+(‘$key’, 64), which means partitioning by the event key hashed into 64 partitions.
+If None (the default), the data will only be partitioned if the path ends in .parquet or .pq. Otherwise, it will be partitioned by
+key/year/month/day/hour, where the key is hashed into 256 buckets.</p></li>
 <li><p><strong>max_events</strong> (<em>int</em>) – Maximum number of events to write at a time. If None (default), all events will be written on flow termination,
 or after timeout_secs (if timeout_secs is set).</p></li>
 <li><p><strong>timeout_secs</strong> (<em>int</em>) – Maximum number of seconds to hold events before they are written. If None (default), all events will be written
@@ -257,9 +280,35 @@ if using a URL that will be parsed by fsspec, e.g., starting “s3://”, “gcs
 </dd></dl>
 
 <dl class="class">
-<dt id="storey.writers.TSDBTarget">
-<em class="property">class </em><code class="sig-prename descclassname">storey.writers.</code><code class="sig-name descname">TSDBTarget</code><span class="sig-paren">(</span><em class="sig-param">path: str, time_col: str = '$time', columns: Union[str, List[str], None] = None, infer_columns_from_data: Optional[bool] = None, index_cols: Union[str, List[str], None] = None, v3io_frames: Optional[str] = None, access_key: Optional[str] = None, container: str = '', rate: str = '', aggr: str = '', aggr_granularity: str = '', frames_client=None, **kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.writers.TSDBTarget" title="Permalink to this definition">¶</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow._Batching</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.writers._Writer</span></code></p>
+<dt id="storey.targets.StreamTarget">
+<em class="property">class </em><code class="sig-prename descclassname">storey.targets.</code><code class="sig-name descname">StreamTarget</code><span class="sig-paren">(</span><em class="sig-param">storage: storey.drivers.Driver, stream_path: str, sharding_func: Optional[Callable[[storey.dtypes.Event], int]] = None, batch_size: int = 8, columns: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None, **kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.targets.StreamTarget" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow.Flow</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.targets._Writer</span></code></p>
+<p>Writes all incoming events into a V3IO stream.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>storage</strong> – Database driver.</p></li>
+<li><p><strong>stream_path</strong> – Path to the V3IO stream.</p></li>
+<li><p><strong>sharding_func</strong> – Function for determining the shard ID to which to write each event. Optional. Default is None</p></li>
+<li><p><strong>batch_size</strong> – Batch size for each write request.</p></li>
+<li><p><strong>columns</strong> – Fields to be written to stream. Will be extracted from events when an event is a dictionary (other types will be written
+as is). Use = notation for renaming fields (e.g. write_this=event_field). Use $ notation to refer to metadata
+($key, event_time=$time). Optional. Defaults to None (will be inferred if event is dictionary).</p></li>
+<li><p><strong>infer_columns_from_data</strong> – Whether to infer columns from the first event, when events are dictionaries. If True, columns will be
+inferred from data and used in place of explicit columns list if none was provided, or appended to the provided list. If header is
+True and columns is not provided, infer_columns_from_data=True is implied. Optional. Default to False if columns is provided,
+True otherwise.</p></li>
+<li><p><strong>storage_options</strong> (<em>dict</em>) – Extra options that make sense for a particular storage connection, e.g. host, port, username, password, etc.,
+if using a URL that will be parsed by fsspec, e.g., starting “s3://”, “gcs://”. Optional</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="class">
+<dt id="storey.targets.TSDBTarget">
+<em class="property">class </em><code class="sig-prename descclassname">storey.targets.</code><code class="sig-name descname">TSDBTarget</code><span class="sig-paren">(</span><em class="sig-param">path: str, time_col: str = '$time', columns: Union[str, List[str], None] = None, infer_columns_from_data: Optional[bool] = None, index_cols: Union[str, List[str], None] = None, v3io_frames: Optional[str] = None, access_key: Optional[str] = None, rate: str = '', aggr: str = '', aggr_granularity: str = '', frames_client=None, **kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.targets.TSDBTarget" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow._Batching</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.targets._Writer</span></code></p>
 <p>Writes incoming events to TSDB table.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
@@ -291,58 +340,9 @@ if using a URL that will be parsed by fsspec, e.g., starting “s3://”, “gcs
 </dl>
 </dd></dl>
 
-<dl class="class">
-<dt id="storey.writers.NoSqlTarget">
-<em class="property">class </em><code class="sig-prename descclassname">storey.writers.</code><code class="sig-name descname">NoSqlTarget</code><span class="sig-paren">(</span><em class="sig-param">table: Union[storey.table.Table, str], columns: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None, **kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.writers.NoSqlTarget" title="Permalink to this definition">¶</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow._ConcurrentByKeyJobExecution</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.writers._Writer</span></code></p>
-<p>Persists the data in <cite>table</cite> to its associated storage by key.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>table</strong> – A Table object or name to persist. If a table name is provided, it will be looked up in the context.</p></li>
-<li><p><strong>columns</strong> – Fields to be written to the storage. Will be extracted from events when an event is a dictionary (lists will be written
-as is). Use = notation for renaming fields (e.g. write_this=event_field).
-Use $ notation to refer to metadata ($key, event_time=$time). Optional. Defaults to None (will be inferred if event is dictionary).</p></li>
-<li><p><strong>infer_columns_from_data</strong> – Whether to infer columns from the first event, when events are dictionaries. If True, columns will be
-inferred from data and used in place of explicit columns list if none was provided, or appended to the provided list. If header is
-True and columns is not provided, infer_columns_from_data=True is implied. Optional. Default to False if columns is provided, True
-otherwise.</p></li>
-<li><p><strong>storage_options</strong> (<em>dict</em>) – Extra options that make sense for a particular storage connection, e.g. host, port, username, password, etc.,
-if using a URL that will be parsed by fsspec, e.g., starting “s3://”, “gcs://”. Optional</p></li>
-</ul>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="class">
-<dt id="storey.writers.StreamTarget">
-<em class="property">class </em><code class="sig-prename descclassname">storey.writers.</code><code class="sig-name descname">StreamTarget</code><span class="sig-paren">(</span><em class="sig-param">storage: storey.drivers.Driver, stream_path: str, sharding_func: Optional[Callable[[storey.dtypes.Event], int]] = None, batch_size: int = 8, columns: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None, **kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.writers.StreamTarget" title="Permalink to this definition">¶</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow.Flow</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.writers._Writer</span></code></p>
-<p>Writes all incoming events into a V3IO stream.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>storage</strong> – Database driver.</p></li>
-<li><p><strong>stream_path</strong> – Path to the V3IO stream.</p></li>
-<li><p><strong>sharding_func</strong> – Function for determining the shard ID to which to write each event. Optional. Default is None</p></li>
-<li><p><strong>batch_size</strong> – Batch size for each write request.</p></li>
-<li><p><strong>columns</strong> – Fields to be written to stream. Will be extracted from events when an event is a dictionary (other types will be written
-as is). Use = notation for renaming fields (e.g. write_this=event_field). Use $ notation to refer to metadata
-($key, event_time=$time). Optional. Defaults to None (will be inferred if event is dictionary).</p></li>
-<li><p><strong>infer_columns_from_data</strong> – Whether to infer columns from the first event, when events are dictionaries. If True, columns will be
-inferred from data and used in place of explicit columns list if none was provided, or appended to the provided list. If header is
-True and columns is not provided, infer_columns_from_data=True is implied. Optional. Default to False if columns is provided,
-True otherwise.</p></li>
-<li><p><strong>storage_options</strong> (<em>dict</em>) – Extra options that make sense for a particular storage connection, e.g. host, port, username, password, etc.,
-if using a URL that will be parsed by fsspec, e.g., starting “s3://”, “gcs://”. Optional</p></li>
-</ul>
-</dd>
-</dl>
-</dd></dl>
-
 </div>
 <div class="section" id="module-storey.sources">
-<span id="readers"></span><h2>Readers<a class="headerlink" href="#module-storey.sources" title="Permalink to this headline">¶</a></h2>
+<span id="sources"></span><h2>Sources:<a class="headerlink" href="#module-storey.sources" title="Permalink to this headline">¶</a></h2>
 <dl class="class">
 <dt id="storey.sources.AsyncAwaitableResult">
 <em class="property">class </em><code class="sig-prename descclassname">storey.sources.</code><code class="sig-name descname">AsyncAwaitableResult</code><span class="sig-paren">(</span><em class="sig-param">on_error: Optional[Callable[[BaseException], Coroutine]] = None</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.sources.AsyncAwaitableResult" title="Permalink to this definition">¶</a></dt>
@@ -370,13 +370,13 @@ Same as AwaitableResult but for an async context.</p>
 
 <dl class="method">
 <dt id="storey.sources.AsyncFlowController.emit">
-<em class="property">async </em><code class="sig-name descname">emit</code><span class="sig-paren">(</span><em class="sig-param">element: object</em>, <em class="sig-param">key: Optional[str] = None</em>, <em class="sig-param">event_time: Optional[datetime.datetime] = None</em>, <em class="sig-param">await_result: Optional[bool] = None</em><span class="sig-paren">)</span> &#x2192; object<a class="headerlink" href="#storey.sources.AsyncFlowController.emit" title="Permalink to this definition">¶</a></dt>
+<em class="property">async </em><code class="sig-name descname">emit</code><span class="sig-paren">(</span><em class="sig-param">element: object, key: Union[str, List[str], None] = None, event_time: Optional[datetime.datetime] = None, await_result: Optional[bool] = None</em><span class="sig-paren">)</span> &#x2192; object<a class="headerlink" href="#storey.sources.AsyncFlowController.emit" title="Permalink to this definition">¶</a></dt>
 <dd><p>Emits an event into the associated flow.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>element</strong> – The event data, or payload. To set metadata as well, pass an Event object.</p></li>
-<li><p><strong>key</strong> – The event key (optional)</p></li>
+<li><p><strong>key</strong> – The event key(s) (optional)</p></li>
 <li><p><strong>event_time</strong> – The event time (default to current time, UTC).</p></li>
 <li><p><strong>await_result</strong> – Deprecated. Will await a result if a Complete step appears in the flow.</p></li>
 </ul>
@@ -397,7 +397,7 @@ Same as AwaitableResult but for an async context.</p>
 
 <dl class="class">
 <dt id="storey.sources.AsyncSource">
-<em class="property">class </em><code class="sig-prename descclassname">storey.sources.</code><code class="sig-name descname">AsyncSource</code><span class="sig-paren">(</span><em class="sig-param">buffer_size: int = 1024</em>, <em class="sig-param">key_field: Optional[str] = None</em>, <em class="sig-param">time_field: Optional[str] = None</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.sources.AsyncSource" title="Permalink to this definition">¶</a></dt>
+<em class="property">class </em><code class="sig-prename descclassname">storey.sources.</code><code class="sig-name descname">AsyncSource</code><span class="sig-paren">(</span><em class="sig-param">buffer_size: int = 1024</em>, <em class="sig-param">key_field: Union[list</em>, <em class="sig-param">str</em>, <em class="sig-param">None] = None</em>, <em class="sig-param">time_field: Optional[str] = None</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.sources.AsyncSource" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow.Flow</span></code></p>
 <p>Asynchronous entry point into a flow. Produces an AsyncFlowController when run, for use from inside an async def.
 See Source for use from inside a synchronous context.</p>
@@ -432,15 +432,41 @@ See Source for use from inside a synchronous context.</p>
 </dd></dl>
 
 <dl class="class">
+<dt id="storey.sources.CSVSource">
+<em class="property">class </em><code class="sig-prename descclassname">storey.sources.</code><code class="sig-name descname">CSVSource</code><span class="sig-paren">(</span><em class="sig-param">paths: Union[List[str], str], header: bool = False, build_dict: bool = False, key_field: Union[int, str, List[int], List[str], None] = None, time_field: Union[int, str, None] = None, timestamp_format: Optional[str] = None, type_inference: bool = True, **kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.sources.CSVSource" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.sources._IterableSource</span></code></p>
+<p>Reads CSV files as input source for a flow.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>paths</strong> – paths to CSV files</p></li>
+<li><p><strong>header</strong> – whether CSV files have a header or not. Defaults to False.</p></li>
+<li><p><strong>build_dict</strong> – whether to format each record produced from the input file as a dictionary (as opposed to a list).
+Default to False.</p></li>
+<li><p><strong>key_field</strong> – the CSV field to be use as the key for events. May be an int (field index) or string (field name) if
+with_header is True. Defaults to None (no key). Can be a list of keys</p></li>
+<li><p><strong>time_field</strong> – the CSV field to be parsed as the timestamp for events. May be an int (field index) or string (field name)
+if with_header is True. Defaults to None (no timestamp field).</p></li>
+<li><p><strong>timestamp_format</strong> – timestamp format as defined in datetime.strptime(). Default to ISO-8601 as defined in
+datetime.fromisoformat().</p></li>
+<li><p><strong>type_inference</strong> – Whether to infer data types from the data (when True), or read all fields in as strings (when False).
+Defaults to True.</p></li>
+</ul>
+</dd>
+</dl>
+<p>for additional params, see documentation of  <code class="xref py py-class docutils literal notranslate"><span class="pre">Flow</span></code></p>
+</dd></dl>
+
+<dl class="class">
 <dt id="storey.sources.DataframeSource">
-<em class="property">class </em><code class="sig-prename descclassname">storey.sources.</code><code class="sig-name descname">DataframeSource</code><span class="sig-paren">(</span><em class="sig-param">dfs: Union[pandas.core.frame.DataFrame, Iterable[pandas.core.frame.DataFrame]], key_field: Optional[str] = None, time_field: Optional[str] = None, id_field: Optional[str] = None, **kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.sources.DataframeSource" title="Permalink to this definition">¶</a></dt>
+<em class="property">class </em><code class="sig-prename descclassname">storey.sources.</code><code class="sig-name descname">DataframeSource</code><span class="sig-paren">(</span><em class="sig-param">dfs: Union[pandas.core.frame.DataFrame, Iterable[pandas.core.frame.DataFrame]], key_field: Union[str, List[str], None] = None, time_field: Optional[str] = None, id_field: Optional[str] = None, **kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.sources.DataframeSource" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.sources._IterableSource</span></code></p>
 <p>Use pandas dataframe as input source for a flow.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>dfs</strong> – A pandas dataframe, or dataframes, to be used as input source for the flow.</p></li>
-<li><p><strong>key_field</strong> – column to be used as key for events.</p></li>
+<li><p><strong>key_field</strong> – column to be used as key for events. can be list of columns</p></li>
 <li><p><strong>time_field</strong> – column to be used as time for events.</p></li>
 <li><p><strong>id_field</strong> – column to be used as ID for events.</p></li>
 </ul>
@@ -477,13 +503,13 @@ To be used from a synchronous context.</p>
 
 <dl class="method">
 <dt id="storey.sources.FlowController.emit">
-<code class="sig-name descname">emit</code><span class="sig-paren">(</span><em class="sig-param">element: object</em>, <em class="sig-param">key: Optional[str] = None</em>, <em class="sig-param">event_time: Optional[datetime.datetime] = None</em>, <em class="sig-param">return_awaitable_result: Optional[bool] = None</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.sources.FlowController.emit" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname">emit</code><span class="sig-paren">(</span><em class="sig-param">element: object, key: Union[str, List[str], None] = None, event_time: Optional[datetime.datetime] = None, return_awaitable_result: Optional[bool] = None</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.sources.FlowController.emit" title="Permalink to this definition">¶</a></dt>
 <dd><p>Emits an event into the associated flow.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>element</strong> – The event data, or payload. To set metadata as well, pass an Event object.</p></li>
-<li><p><strong>key</strong> – The event key (optional)</p></li>
+<li><p><strong>key</strong> – The event key(s) (optional) #add to async</p></li>
 <li><p><strong>event_time</strong> – The event time (default to current time, UTC).</p></li>
 <li><p><strong>return_awaitable_result</strong> – Deprecated! An awaitable result object will be returned if a Complete step appears in the flow.</p></li>
 </ul>
@@ -503,43 +529,34 @@ To be used from a synchronous context.</p>
 </dd></dl>
 
 <dl class="class">
-<dt id="storey.sources.CSVSource">
-<em class="property">class </em><code class="sig-prename descclassname">storey.sources.</code><code class="sig-name descname">CSVSource</code><span class="sig-paren">(</span><em class="sig-param">paths: Union[List[str], str], header: bool = False, build_dict: bool = False, key_field: Union[int, str, None] = None, timestamp_field: Union[int, str, None] = None, timestamp_format: Optional[str] = None, type_inference: bool = True, **kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.sources.CSVSource" title="Permalink to this definition">¶</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.sources._IterableSource</span></code></p>
-<p>Reads CSV files as input source for a flow.</p>
+<dt id="storey.sources.ParquetSource">
+<em class="property">class </em><code class="sig-prename descclassname">storey.sources.</code><code class="sig-name descname">ParquetSource</code><span class="sig-paren">(</span><em class="sig-param">paths: Union[str, Iterable[str]], columns=None, start_filter: Optional[datetime.datetime] = None, end_filter: Optional[datetime.datetime] = None, filter_column: Optional[str] = None, **kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.sources.ParquetSource" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#storey.sources.DataframeSource" title="storey.sources.DataframeSource"><code class="xref py py-class docutils literal notranslate"><span class="pre">storey.sources.DataframeSource</span></code></a></p>
+<p>Reads Parquet files as input source for a flow.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>paths</strong> – paths to Parquet files</p>
+</dd>
+</dl>
+<p>:parameter columns : list, default=None. If not None, only these columns will be read from the file.
+:parameter start_filter: datetime. If not None, the results will be filtered by partitions and ‘filter_column’ &gt;= start_filter.</p>
+<blockquote>
+<div><p>Default is None</p>
+</div></blockquote>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>paths</strong> – paths to CSV files</p></li>
-<li><p><strong>header</strong> – whether CSV files have a header or not. Defaults to False.</p></li>
-<li><p><strong>build_dict</strong> – whether to format each record produced from the input file as a dictionary (as opposed to a list).
-Default to False.</p></li>
-<li><p><strong>key_field</strong> – the CSV field to be use as the key for events. May be an int (field index) or string (field name) if
-with_header is True. Defaults to None (no key).</p></li>
-<li><p><strong>timestamp_field</strong> – the CSV field to be parsed as the timestamp for events. May be an int (field index) or string (field name)
-if with_header is True. Defaults to None (no timestamp field).</p></li>
-<li><p><strong>timestamp_format</strong> – timestamp format as defined in datetime.strptime(). Default to ISO-8601 as defined in
-datetime.fromisoformat().</p></li>
-<li><p><strong>type_inference</strong> – Whether to infer data types from the data (when True), or read all fields in as strings (when False).
-Defaults to True.</p></li>
+<li><p><strong>end_filter</strong> – datetime. If not None, the results will be filtered by partitions ‘filter_column’ &lt; end_filter.
+Default is None</p></li>
+<li><p><strong>filter_column</strong> – Optional. if not None, the results will be filtered by this column and before and/or after</p></li>
 </ul>
 </dd>
 </dl>
-<p>for additional params, see documentation of  <code class="xref py py-class docutils literal notranslate"><span class="pre">Flow</span></code></p>
-</dd></dl>
-
-<dl class="class">
-<dt id="storey.sources.ParquetSource">
-<em class="property">class </em><code class="sig-prename descclassname">storey.sources.</code><code class="sig-name descname">ParquetSource</code><span class="sig-paren">(</span><em class="sig-param">paths: Union[str, Iterable[str]], columns=None, **kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.sources.ParquetSource" title="Permalink to this definition">¶</a></dt>
-<dd><p>Bases: <a class="reference internal" href="#storey.sources.DataframeSource" title="storey.sources.DataframeSource"><code class="xref py py-class docutils literal notranslate"><span class="pre">storey.sources.DataframeSource</span></code></a></p>
-<p>Reads Parquet files as input source for a flow.
-:parameter paths: paths to Parquet files
-:parameter columns : list, default=None. If not None, only these columns will be read from the file.</p>
 </dd></dl>
 
 <dl class="class">
 <dt id="storey.sources.Source">
-<em class="property">class </em><code class="sig-prename descclassname">storey.sources.</code><code class="sig-name descname">Source</code><span class="sig-paren">(</span><em class="sig-param">buffer_size: Optional[int] = None</em>, <em class="sig-param">key_field: Optional[str] = None</em>, <em class="sig-param">time_field: Optional[str] = None</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.sources.Source" title="Permalink to this definition">¶</a></dt>
+<em class="property">class </em><code class="sig-prename descclassname">storey.sources.</code><code class="sig-name descname">Source</code><span class="sig-paren">(</span><em class="sig-param">buffer_size: Optional[int] = None</em>, <em class="sig-param">key_field: Union[list</em>, <em class="sig-param">str</em>, <em class="sig-param">None] = None</em>, <em class="sig-param">time_field: Optional[str] = None</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.sources.Source" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow.Flow</span></code></p>
 <p>Synchronous entry point into a flow. Produces a FlowController when run, for use from inside a synchronous context. See AsyncSource
 for use from inside an async context.</p>
@@ -564,7 +581,7 @@ for use from inside an async context.</p>
 
 </div>
 <div class="section" id="module-storey.flow">
-<span id="transformations"></span><h2>Transformations<a class="headerlink" href="#module-storey.flow" title="Permalink to this headline">¶</a></h2>
+<span id="transformations"></span><h2>Transformations:<a class="headerlink" href="#module-storey.flow" title="Permalink to this headline">¶</a></h2>
 <dl class="class">
 <dt id="storey.flow.Batch">
 <em class="property">class </em><code class="sig-prename descclassname">storey.flow.</code><code class="sig-name descname">Batch</code><span class="sig-paren">(</span><em class="sig-param">max_events: Optional[int] = None, timeout_secs: Optional[int] = None, key: Union[str, Callable[[storey.dtypes.Event], str], None] = None, **kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.flow.Batch" title="Permalink to this definition">¶</a></dt>
@@ -897,7 +914,7 @@ If not set, event IDs will not be inserted into the DataFrame.</p></li>
 
 </div>
 <div class="section" id="module-storey.drivers">
-<span id="miscellaneous"></span><h2>Miscellaneous<a class="headerlink" href="#module-storey.drivers" title="Permalink to this headline">¶</a></h2>
+<span id="miscellaneous"></span><h2>Miscellaneous:<a class="headerlink" href="#module-storey.drivers" title="Permalink to this headline">¶</a></h2>
 <dl class="class">
 <dt id="storey.drivers.Driver">
 <em class="property">class </em><code class="sig-prename descclassname">storey.drivers.</code><code class="sig-name descname">Driver</code><a class="headerlink" href="#storey.drivers.Driver" title="Permalink to this definition">¶</a></dt>
@@ -951,7 +968,7 @@ If not set, event IDs will not be inserted into the DataFrame.</p></li>
 <dl class="class">
 <dt id="storey.dtypes.EmitAfterMaxEvent">
 <em class="property">class </em><code class="sig-prename descclassname">storey.dtypes.</code><code class="sig-name descname">EmitAfterMaxEvent</code><span class="sig-paren">(</span><em class="sig-param">max_events: int</em>, <em class="sig-param">timeout_secs: Optional[int] = None</em>, <em class="sig-param">emission_type=&lt;EmissionType.All: 1&gt;</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.dtypes.EmitAfterMaxEvent" title="Permalink to this definition">¶</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.dtypes.EmitBase</span></code></p>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.dtypes.EmitPolicy</span></code></p>
 <p>Emit the Nth event</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
@@ -966,7 +983,7 @@ If not set, event IDs will not be inserted into the DataFrame.</p></li>
 <dl class="class">
 <dt id="storey.dtypes.EmitAfterPeriod">
 <em class="property">class </em><code class="sig-prename descclassname">storey.dtypes.</code><code class="sig-name descname">EmitAfterPeriod</code><span class="sig-paren">(</span><em class="sig-param">delay_in_seconds: Optional[int] = 0</em>, <em class="sig-param">emission_type=&lt;EmissionType.All: 1&gt;</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.dtypes.EmitAfterPeriod" title="Permalink to this definition">¶</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.dtypes.EmitBase</span></code></p>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.dtypes.EmitPolicy</span></code></p>
 <p>Emit event for next step after each period ends</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
@@ -978,7 +995,7 @@ If not set, event IDs will not be inserted into the DataFrame.</p></li>
 <dl class="class">
 <dt id="storey.dtypes.EmitAfterWindow">
 <em class="property">class </em><code class="sig-prename descclassname">storey.dtypes.</code><code class="sig-name descname">EmitAfterWindow</code><span class="sig-paren">(</span><em class="sig-param">delay_in_seconds: Optional[int] = 0</em>, <em class="sig-param">emission_type=&lt;EmissionType.All: 1&gt;</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.dtypes.EmitAfterWindow" title="Permalink to this definition">¶</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.dtypes.EmitBase</span></code></p>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.dtypes.EmitPolicy</span></code></p>
 <p>Emit event for next step after each window ends</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
@@ -990,20 +1007,20 @@ If not set, event IDs will not be inserted into the DataFrame.</p></li>
 <dl class="class">
 <dt id="storey.dtypes.EmitEveryEvent">
 <em class="property">class </em><code class="sig-prename descclassname">storey.dtypes.</code><code class="sig-name descname">EmitEveryEvent</code><span class="sig-paren">(</span><em class="sig-param">emission_type=&lt;EmissionType.All: 1&gt;</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.dtypes.EmitEveryEvent" title="Permalink to this definition">¶</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.dtypes.EmitBase</span></code></p>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.dtypes.EmitPolicy</span></code></p>
 <p>Emit every event</p>
 </dd></dl>
 
 <dl class="class">
 <dt id="storey.dtypes.Event">
-<em class="property">class </em><code class="sig-prename descclassname">storey.dtypes.</code><code class="sig-name descname">Event</code><span class="sig-paren">(</span><em class="sig-param">body: object</em>, <em class="sig-param">key: Optional[str] = None</em>, <em class="sig-param">time: Optional[datetime.datetime] = None</em>, <em class="sig-param">id: Optional[str] = None</em>, <em class="sig-param">headers: Optional[dict] = None</em>, <em class="sig-param">method: Optional[str] = None</em>, <em class="sig-param">path: Optional[str] = '/'</em>, <em class="sig-param">content_type=None</em>, <em class="sig-param">awaitable_result=None</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.dtypes.Event" title="Permalink to this definition">¶</a></dt>
+<em class="property">class </em><code class="sig-prename descclassname">storey.dtypes.</code><code class="sig-name descname">Event</code><span class="sig-paren">(</span><em class="sig-param">body: object, key: Union[str, List[str], None] = None, time: Optional[datetime.datetime] = None, id: Optional[str] = None, headers: Optional[dict] = None, method: Optional[str] = None, path: Optional[str] = '/', content_type=None, awaitable_result=None</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.dtypes.Event" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <p>The basic unit of data in storey. All steps receive and emit events.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>body</strong> – the event payload, or data</p></li>
-<li><p><strong>key</strong> – Event key. Used by steps that aggregate events by key, such as AggregateByKey. (Optional)</p></li>
+<li><p><strong>key</strong> – Event key. Used by steps that aggregate events by key, such as AggregateByKey. (Optional). Can be list</p></li>
 <li><p><strong>time</strong> – Event time. Defaults to the time the event was created, UTC. (Optional)</p></li>
 <li><p><strong>id</strong> – Event identifier. Usually a unique identifier. (Optional)</p></li>
 <li><p><strong>headers</strong> – Request headers (HTTP only) (Optional)</p></li>
@@ -1112,7 +1129,7 @@ For example: 1h will represent 1h windows starting from the current time.</p>
 
 <span class="target" id="module-storey.table"></span><dl class="class">
 <dt id="storey.table.Table">
-<em class="property">class </em><code class="sig-prename descclassname">storey.table.</code><code class="sig-name descname">Table</code><span class="sig-paren">(</span><em class="sig-param">table_path: str</em>, <em class="sig-param">storage: storey.drivers.Driver</em>, <em class="sig-param">partitioned_by_key: bool = True</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.table.Table" title="Permalink to this definition">¶</a></dt>
+<em class="property">class </em><code class="sig-prename descclassname">storey.table.</code><code class="sig-name descname">Table</code><span class="sig-paren">(</span><em class="sig-param">table_path: str</em>, <em class="sig-param">storage: storey.drivers.Driver</em>, <em class="sig-param">partitioned_by_key: bool = True</em>, <em class="sig-param">flush_interval_secs: Optional[int] = 300</em>, <em class="sig-param">max_updates_in_flight: int = 8</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.table.Table" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <p>Table object, represents a single table in a specific storage.</p>
 <dl class="field-list simple">
@@ -1122,6 +1139,8 @@ For example: 1h will represent 1h windows starting from the current time.</p>
 <li><p><strong>storage</strong> – Storage driver</p></li>
 <li><p><strong>partitioned_by_key</strong> – Whether that data is partitioned by the key or not, based on this indication storage drivers
 can optimize writes. Defaults to True.</p></li>
+<li><p><strong>flush_interval_secs</strong> – How often the cache will be flushed in seconds. None for flush every event. Default is 300 (5 minutes)</p></li>
+<li><p><strong>max_updates_in_flight</strong> – Maximum number of concurrent updates.</p></li>
 </ul>
 </dd>
 </dl>
@@ -1129,7 +1148,7 @@ can optimize writes. Defaults to True.</p></li>
 
 <span class="target" id="module-storey.aggregations"></span><dl class="class">
 <dt id="storey.aggregations.AggregateByKey">
-<em class="property">class </em><code class="sig-prename descclassname">storey.aggregations.</code><code class="sig-name descname">AggregateByKey</code><span class="sig-paren">(</span><em class="sig-param">aggregates: Union[List[storey.dtypes.FieldAggregator], List[Dict[str, object]]], table: Union[storey.table.Table, str], key: Union[str, Callable[[storey.dtypes.Event], object], None] = None, emit_policy: Union[storey.dtypes.EmitEveryEvent, storey.dtypes.FixedWindows, storey.dtypes.SlidingWindows, storey.dtypes.EmitAfterPeriod, storey.dtypes.EmitAfterWindow, storey.dtypes.EmitAfterMaxEvent, Dict[str, object]] = &lt;storey.dtypes.EmitEveryEvent object&gt;, augmentation_fn: Optional[Callable[[storey.dtypes.Event, Dict[str, object]], storey.dtypes.Event]] = None, enrich_with: Optional[List[str]] = None, aliases: Optional[Dict[str, str]] = None, use_windows_from_schema: bool = False, **kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.aggregations.AggregateByKey" title="Permalink to this definition">¶</a></dt>
+<em class="property">class </em><code class="sig-prename descclassname">storey.aggregations.</code><code class="sig-name descname">AggregateByKey</code><span class="sig-paren">(</span><em class="sig-param">aggregates: Union[List[storey.dtypes.FieldAggregator], List[Dict[str, object]]], table: Union[storey.table.Table, str], key: Union[str, Callable[[storey.dtypes.Event], object], None] = None, emit_policy: Union[storey.dtypes.EmitPolicy, Dict[str, object]] = &lt;storey.dtypes.EmitEveryEvent object&gt;, augmentation_fn: Optional[Callable[[storey.dtypes.Event, Dict[str, object]], storey.dtypes.Event]] = None, enrich_with: Optional[List[str]] = None, aliases: Optional[Dict[str, str]] = None, use_windows_from_schema: bool = False, **kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.aggregations.AggregateByKey" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow.Flow</span></code></p>
 <p>Aggregates the data into the table object provided for later persistence, and outputs an event enriched with the requested aggregation
 features.
@@ -1154,7 +1173,7 @@ Defaults to the key in the event’s metadata. (Optional)</p></li>
 
 <dl class="class">
 <dt id="storey.aggregations.QueryByKey">
-<em class="property">class </em><code class="sig-prename descclassname">storey.aggregations.</code><code class="sig-name descname">QueryByKey</code><span class="sig-paren">(</span><em class="sig-param">features: List[str], table: Union[storey.table.Table, str], key: Union[str, Callable[[storey.dtypes.Event], object], None] = None, augmentation_fn: Optional[Callable[[storey.dtypes.Event, Dict[str, object]], storey.dtypes.Event]] = None, aliases: Optional[Dict[str, str]] = None, **kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.aggregations.QueryByKey" title="Permalink to this definition">¶</a></dt>
+<em class="property">class </em><code class="sig-prename descclassname">storey.aggregations.</code><code class="sig-name descname">QueryByKey</code><span class="sig-paren">(</span><em class="sig-param">features: List[str], table: Union[storey.table.Table, str], key: Union[str, List[str], Callable[[storey.dtypes.Event], object], None] = None, augmentation_fn: Optional[Callable[[storey.dtypes.Event, Dict[str, object]], storey.dtypes.Event]] = None, aliases: Optional[Dict[str, str]] = None, **kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.aggregations.QueryByKey" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <a class="reference internal" href="#storey.aggregations.AggregateByKey" title="storey.aggregations.AggregateByKey"><code class="xref py py-class docutils literal notranslate"><span class="pre">storey.aggregations.AggregateByKey</span></code></a></p>
 <p>Query features by name</p>
 <dl class="field-list simple">
@@ -1164,7 +1183,7 @@ Defaults to the key in the event’s metadata. (Optional)</p></li>
 <li><p><strong>table</strong> – A Table object or name for persistence of aggregations.
 If a table name is provided, it will be looked up in the context object passed in kwargs.</p></li>
 <li><p><strong>key</strong> – Key field to aggregate by, accepts either a string representing the key field or a key extracting function.
-Defaults to the key in the event’s metadata. (Optional)</p></li>
+Defaults to the key in the event’s metadata. (Optional). Can be list of keys</p></li>
 <li><p><strong>augmentation_fn</strong> – Function that augments the features into the event’s body. Defaults to updating a dict. (Optional)</p></li>
 <li><p><strong>aliases</strong> – Dictionary specifying aliases to the enriched columns, of the format <cite>{‘col_name’: ‘new_col_name’}</cite>. (Optional)</p></li>
 </ul>
@@ -1178,14 +1197,14 @@ Defaults to the key in the event’s metadata. (Optional)</p></li>
 
               </div>
               
-        </div>
-    </div>
-    
-    
-    <div class='prev-next-bottom'>
         
+        <div class='prev-next-bottom'>
+            
     <a class='left-prev' id="prev-link" href="examples.html" title="previous page">Storey examples</a>
 
+        </div>
+        
+        </div>
     </div>
     <footer class="footer mt-5 mt-md-0">
     <div class="container">
