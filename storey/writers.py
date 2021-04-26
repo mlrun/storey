@@ -311,8 +311,8 @@ class WriteToParquet(_Batching, _Writer):
     :param partition_cols: Columns by which to partition the data into directories. The following metadata columns are also supported:
         $key, $date (e.g. 2020-02-09), $year, $month, $day, $hour, $minute, $second. A column may be specified as a tuple, such as
         ('$key', 64), which means partitioning by the event key hashed into 64 partitions.
-        If None (the default), the data will not be partitioned, and will be written to a single directory or file (when path ends in
-        .parquet or .pq).
+        If None (the default), the data will only be partitioned if the path ends in .parquet or .pq. Otherwise, it will be partitioned by
+        key/year/month/day/hour, where the key is hashed into 256 buckets.
     :param max_events: Maximum number of events to write at a time. If None (default), all events will be written on flow termination,
         or after timeout_secs (if timeout_secs is set).
     :type max_events: int

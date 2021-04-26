@@ -13,7 +13,7 @@ import pandas
 
 from .dtypes import _termination_obj, Event
 from .flow import Flow, Complete
-from .utils import url_to_file_system, _drop_reserved_columns, find_filters
+from .utils import url_to_file_system, drop_reserved_columns, find_filters
 
 
 class AwaitableResult:
@@ -725,5 +725,5 @@ class ReadParquet(DataframeSource):
                 df = self._read_filtered_parquet(path)
             else:
                 df = pandas.read_parquet(path, columns=self._columns, storage_options=self._storage_options)
-            _drop_reserved_columns(df)
+            drop_reserved_columns(df)
             self._dfs.append(df)

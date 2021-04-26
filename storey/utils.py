@@ -256,7 +256,7 @@ def find_filters(partitions_time_attributes, start, end, filters, filter_column)
     _find_filter_helper(partitions_time_attributes, end, "<", "<=", first_uncommon, filters, filter_column)
 
 
-def _drop_reserved_columns(df):
+def drop_reserved_columns(df):
     cols_to_drop = []
     reserved_column_names = {'date', 'year', 'month', 'day', 'hour', 'minute', 'second'}
     for col in df.columns:
