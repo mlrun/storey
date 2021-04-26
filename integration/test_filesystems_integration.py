@@ -318,7 +318,7 @@ def test_filter_before_after_partitioned_random(setup_teardown_test):
         return data
 
     list1 = create_rand_data(number_below_middle_limit, low_limit, middle_limit, 'lower')
-    list2 = create_rand_data(10-number_below_middle_limit, middle_limit, high_limit, 'higher')
+    list2 = create_rand_data(10 - number_below_middle_limit, middle_limit, high_limit, 'higher')
     combined_list = list1 + list2
 
     df = pd.DataFrame(combined_list)
@@ -343,7 +343,7 @@ def test_filter_before_after_partitioned_random(setup_teardown_test):
     ]).run()
     read_back_result = controller.await_termination()
     print("expecting " + str(10 - number_below_middle_limit) + " to be above middle limit")
-    assert(len(read_back_result)) == 10 - number_below_middle_limit
+    assert (len(read_back_result)) == 10 - number_below_middle_limit
 
     controller = build_flow([
         ParquetSource(out_file, end_filter=middle_limit, start_filter=low_limit, filter_column='datetime'),
@@ -369,7 +369,7 @@ def test_filter_before_after_partitioned_inner_other_partition(setup_teardown_te
     controller = build_flow([
         DataframeSource(df, time_field='my_time'),
         ParquetTarget(out_file, columns=columns, partition_cols=['$year', '$month', '$day', '$hour', 'my_city']),
-        ]).run()
+    ]).run()
     controller.await_termination()
 
     before = pd.Timestamp('2020-12-31 14:00:00')
@@ -381,10 +381,8 @@ def test_filter_before_after_partitioned_inner_other_partition(setup_teardown_te
     ]).run()
     read_back_result = controller.await_termination()
 
-    expected = [{'my_string': 'sun', 'my_time': pd.Timestamp('2019-12-29 09:00:00'), 'my_city': 'tel aviv',
-                 'year': 2019, 'month': 12, 'day': 29, 'hour': 9},
-                {'my_string': 'shining', 'my_time': pd.Timestamp('2020-02-28 13:00:56'), 'my_city': 'hod hasharon',
-                 'year': 2020, 'month': 2, 'day': 28, 'hour': 13}]
+    expected = [{'my_string': 'sun', 'my_time': pd.Timestamp('2019-12-29 09:00:00'), 'my_city': 'tel aviv'},
+                {'my_string': 'shining', 'my_time': pd.Timestamp('2020-02-28 13:00:56'), 'my_city': 'hod hasharon'}]
 
     assert read_back_result == expected, f"{read_back_result}\n!=\n{expected}"
 
@@ -404,7 +402,7 @@ def test_filter_before_after_partitioned_outer_other_partition(setup_teardown_te
     controller = build_flow([
         DataframeSource(df, time_field='my_time'),
         ParquetTarget(out_file, columns=columns, partition_cols=['my_city', '$year', '$month', '$day', '$hour']),
-        ]).run()
+    ]).run()
     controller.await_termination()
 
     before = pd.Timestamp('2020-12-31 14:00:00')
@@ -415,12 +413,8 @@ def test_filter_before_after_partitioned_outer_other_partition(setup_teardown_te
         Reduce([], append_and_return)
     ]).run()
     read_back_result = controller.await_termination()
-    expected = [{'my_string': 'world', 'my_time': pd.Timestamp('2020-12-30 09:00:00'), 'my_city': 'haifa', 'year': 2020,
-                 'month': 12, 'day': 30, 'hour': 9},
-                {'my_string': 'is', 'my_time': pd.Timestamp('2020-12-30 15:00:45'), 'my_city': 'hod hasharon', 'year': 2020,
-                 'month': 12, 'day': 30, 'hour': 15},
-                {'my_string': 'shining', 'my_time': pd.Timestamp('2020-12-31 13:00:56'), 'my_city': 'hod hasharon', 'year': 2020,
-                 'month': 12, 'day': 31, 'hour': 13}]
+    expected = [{'my_string': 'world', 'my_time': pd.Timestamp('2020-12-30 09:00:00'), 'my_city': 'haifa'},
+                {'my_string': 'is', 'my_time': pd.Timestamp('2020-12-30 15:00:45'), 'my_city': 'hod hasharon'},
+                {'my_string': 'shining', 'my_time': pd.Timestamp('2020-12-31 13:00:56'), 'my_city': 'hod hasharon'}]
 
     assert read_back_result == expected, f"{read_back_result}\n!=\n{expected}"
-
