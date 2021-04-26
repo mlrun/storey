@@ -704,25 +704,25 @@ class ReadParquet(DataframeSource):
         self._storage_options = kwargs.get('storage_options')
         super().__init__([], **kwargs)
 
+    def _read_filtered_parquet(self, path):
+        fs, file_path = url_to_file_system(path, self._storage_options)
+        dataset = pq.ParquetDataset(path, filesystem=fs)
+        if dataset.partitions:
+            partitions = dataset.partitions.partition_names
+            time_attributes = ['year', 'month', 'day', 'hour', 'minute', 'second']
+            partitions_time_attributes = [j for j in time_attributes if j in partitions]
+        else:
+            partitions_time_attributes = []
+        filters = []
+        find_filters(partitions_time_attributes, self._start_filter, self._end_filter, filters, self._filter_column)
+        return pandas.read_parquet(path, columns=self._columns, filters=filters,
+                                   storage_options=self._storage_options)
+
     def _init(self):
-        def read_filtered_parquet(path):
-            fs, file_path = url_to_file_system(path, storage_options)
-            dataset = pq.ParquetDataset(path, filesystem=fs)
-            if dataset.partitions:
-                partitions = dataset.partitions.partition_names
-                time_attributes = ['year', 'month', 'day', 'hour', 'minute', 'second']
-                partitions_time_attributes = [j for j in time_attributes if j in partitions]
-            else:
-                partitions_time_attributes = []
-            filters = []
-            find_filters(partitions_time_attributes, self._start_filter, self._end_filter, filters, filter_column)
-            return pandas.read_parquet(path, columns=self._columns, filters=filters,
-                                       storage_options=self._storage_options)
-        
         self._dfs = []
         for path in self._paths:
             if self._start_filter or self._end_filter:
-                df = read_filtered_parquet(path)
+                df = self._read_filtered_parquet(path)
             else:
                 df = pandas.read_parquet(path, columns=self._columns, storage_options=self._storage_options)
             _drop_reserved_columns(df)
