@@ -7,12 +7,13 @@ import uuid
 import warnings
 from datetime import datetime
 from typing import List, Optional, Union, Callable, Coroutine, Iterable
+import pyarrow.parquet as pq
 
 import pandas
 
 from .dtypes import _termination_obj, Event
 from .flow import Flow, Complete
-from .utils import url_to_file_system, _drop_reserved_columns
+from .utils import url_to_file_system, _drop_reserved_columns, find_filters
 
 
 class AwaitableResult:
@@ -678,19 +679,51 @@ class ReadParquet(DataframeSource):
     """Reads Parquet files as input source for a flow.
     :parameter paths: paths to Parquet files
     :parameter columns : list, default=None. If not None, only these columns will be read from the file.
+    :parameter start_filter: datetime. If not None, the results will be filtered by partitions and 'filter_column' >= start_filter.
+        Default is None
+    :parameter end_filter: datetime. If not None, the results will be filtered by partitions 'filter_column' < end_filter.
+        Default is None
+    :parameter filter_column: Optional. if not None, the results will be filtered by this column and before and/or after
     """
 
-    def __init__(self, paths: Union[str, Iterable[str]], columns=None, **kwargs):
+    def __init__(self, paths: Union[str, Iterable[str]], columns=None, start_filter: Optional[datetime] = None,
+                 end_filter: Optional[datetime] = None, filter_column: Optional[str] = None, **kwargs):
+        if end_filter or start_filter:
+            start_filter = datetime.min if start_filter is None else start_filter
+            end_filter = datetime.max if end_filter is None else end_filter
+            if filter_column is None:
+                raise TypeError('Filter column is required when passing start/end filters')
+
         self._paths = paths
         if isinstance(paths, str):
             self._paths = [paths]
         self._columns = columns
+        self._start_filter = start_filter
+        self._end_filter = end_filter
+        self._filter_column = filter_column
         self._storage_options = kwargs.get('storage_options')
         super().__init__([], **kwargs)
 
     def _init(self):
+        def read_filtered_parquet(path):
+            fs, file_path = url_to_file_system(path, storage_options)
+            dataset = pq.ParquetDataset(path, filesystem=fs)
+            if dataset.partitions:
+                partitions = dataset.partitions.partition_names
+                time_attributes = ['year', 'month', 'day', 'hour', 'minute', 'second']
+                partitions_time_attributes = [j for j in time_attributes if j in partitions]
+            else:
+                partitions_time_attributes = []
+            filters = []
+            find_filters(partitions_time_attributes, self._start_filter, self._end_filter, filters, filter_column)
+            return pandas.read_parquet(path, columns=self._columns, filters=filters,
+                                       storage_options=self._storage_options)
+        
         self._dfs = []
         for path in self._paths:
-            df = pandas.read_parquet(path, columns=self._columns, storage_options=self._storage_options)
+            if self._start_filter or self._end_filter:
+                df = read_filtered_parquet(path)
+            else:
+                df = pandas.read_parquet(path, columns=self._columns, storage_options=self._storage_options)
             _drop_reserved_columns(df)
             self._dfs.append(df)
