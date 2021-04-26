@@ -192,8 +192,8 @@
 <div class="section" id="module-storey.writers">
 <span id="writers"></span><h2>Writers<a class="headerlink" href="#module-storey.writers" title="Permalink to this headline">¶</a></h2>
 <dl class="class">
-<dt id="storey.writers.WriteToCSV">
-<em class="property">class </em><code class="sig-prename descclassname">storey.writers.</code><code class="sig-name descname">WriteToCSV</code><span class="sig-paren">(</span><em class="sig-param">path: str</em>, <em class="sig-param">columns: Optional[List[str]] = None</em>, <em class="sig-param">header: bool = False</em>, <em class="sig-param">infer_columns_from_data: Optional[bool] = None</em>, <em class="sig-param">max_lines_before_flush: int = 128</em>, <em class="sig-param">max_seconds_before_flush: int = 3</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.writers.WriteToCSV" title="Permalink to this definition">¶</a></dt>
+<dt id="storey.writers.CSVTarget">
+<em class="property">class </em><code class="sig-prename descclassname">storey.writers.</code><code class="sig-name descname">CSVTarget</code><span class="sig-paren">(</span><em class="sig-param">path: str</em>, <em class="sig-param">columns: Optional[List[str]] = None</em>, <em class="sig-param">header: bool = False</em>, <em class="sig-param">infer_columns_from_data: Optional[bool] = None</em>, <em class="sig-param">max_lines_before_flush: int = 128</em>, <em class="sig-param">max_seconds_before_flush: int = 3</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.writers.CSVTarget" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow._Batching</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.writers._Writer</span></code></p>
 <p>Writes events to a CSV file.</p>
 <dl class="field-list simple">
@@ -211,7 +211,7 @@ If header is True and columns is not provided, infer_columns_from_data=True is i
 Optional. Default to False if columns is provided, True otherwise.</p></li>
 <li><p><strong>max_lines_before_flush</strong> – Number of lines to write before flushing data to the output file. Defaults to 128.</p></li>
 <li><p><strong>max_seconds_before_flush</strong> – Maximum delay in seconds before flushing lines. Defaults to 3.</p></li>
-<li><p><strong>name</strong> (<em>string</em>) – Name of this step, as it should appear in logs. Defaults to class name (WriteToCSV).</p></li>
+<li><p><strong>name</strong> (<em>string</em>) – Name of this step, as it should appear in logs. Defaults to class name (CSVTarget).</p></li>
 <li><p><strong>max_events</strong> (<em>int</em>) – Maximum number of events to write at a time. If None (default), all events will be written on flow termination,
 or after timeout_secs (if timeout_secs is set).</p></li>
 <li><p><strong>timeout_secs</strong> (<em>int</em>) – Maximum number of seconds to hold events before they are written. If None (default), all events will be written
@@ -225,8 +225,8 @@ if using a URL that will be parsed by fsspec, e.g., starting “s3://”, “gcs
 </dd></dl>
 
 <dl class="class">
-<dt id="storey.writers.WriteToParquet">
-<em class="property">class </em><code class="sig-prename descclassname">storey.writers.</code><code class="sig-name descname">WriteToParquet</code><span class="sig-paren">(</span><em class="sig-param">path: str, index_cols: Union[str, List[str], None] = None, columns: Union[str, List[str], None] = None, partition_cols: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None, **kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.writers.WriteToParquet" title="Permalink to this definition">¶</a></dt>
+<dt id="storey.writers.ParquetTarget">
+<em class="property">class </em><code class="sig-prename descclassname">storey.writers.</code><code class="sig-name descname">ParquetTarget</code><span class="sig-paren">(</span><em class="sig-param">path: str, index_cols: Union[str, List[str], None] = None, columns: Union[str, List[str], None] = None, partition_cols: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None, **kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.writers.ParquetTarget" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow._Batching</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.writers._Writer</span></code></p>
 <p>Writes incoming events to parquet files.</p>
 <dl class="field-list simple">
@@ -257,8 +257,8 @@ if using a URL that will be parsed by fsspec, e.g., starting “s3://”, “gcs
 </dd></dl>
 
 <dl class="class">
-<dt id="storey.writers.WriteToTSDB">
-<em class="property">class </em><code class="sig-prename descclassname">storey.writers.</code><code class="sig-name descname">WriteToTSDB</code><span class="sig-paren">(</span><em class="sig-param">path: str, time_col: str = '$time', columns: Union[str, List[str], None] = None, infer_columns_from_data: Optional[bool] = None, index_cols: Union[str, List[str], None] = None, v3io_frames: Optional[str] = None, access_key: Optional[str] = None, container: str = '', rate: str = '', aggr: str = '', aggr_granularity: str = '', frames_client=None, **kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.writers.WriteToTSDB" title="Permalink to this definition">¶</a></dt>
+<dt id="storey.writers.TSDBTarget">
+<em class="property">class </em><code class="sig-prename descclassname">storey.writers.</code><code class="sig-name descname">TSDBTarget</code><span class="sig-paren">(</span><em class="sig-param">path: str, time_col: str = '$time', columns: Union[str, List[str], None] = None, infer_columns_from_data: Optional[bool] = None, index_cols: Union[str, List[str], None] = None, v3io_frames: Optional[str] = None, access_key: Optional[str] = None, container: str = '', rate: str = '', aggr: str = '', aggr_granularity: str = '', frames_client=None, **kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.writers.TSDBTarget" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow._Batching</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.writers._Writer</span></code></p>
 <p>Writes incoming events to TSDB table.</p>
 <dl class="field-list simple">
@@ -292,8 +292,8 @@ if using a URL that will be parsed by fsspec, e.g., starting “s3://”, “gcs
 </dd></dl>
 
 <dl class="class">
-<dt id="storey.writers.WriteToTable">
-<em class="property">class </em><code class="sig-prename descclassname">storey.writers.</code><code class="sig-name descname">WriteToTable</code><span class="sig-paren">(</span><em class="sig-param">table: Union[storey.table.Table, str], columns: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None, **kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.writers.WriteToTable" title="Permalink to this definition">¶</a></dt>
+<dt id="storey.writers.NoSqlTarget">
+<em class="property">class </em><code class="sig-prename descclassname">storey.writers.</code><code class="sig-name descname">NoSqlTarget</code><span class="sig-paren">(</span><em class="sig-param">table: Union[storey.table.Table, str], columns: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None, **kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.writers.NoSqlTarget" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow._ConcurrentByKeyJobExecution</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.writers._Writer</span></code></p>
 <p>Persists the data in <cite>table</cite> to its associated storage by key.</p>
 <dl class="field-list simple">
@@ -315,8 +315,8 @@ if using a URL that will be parsed by fsspec, e.g., starting “s3://”, “gcs
 </dd></dl>
 
 <dl class="class">
-<dt id="storey.writers.WriteToV3IOStream">
-<em class="property">class </em><code class="sig-prename descclassname">storey.writers.</code><code class="sig-name descname">WriteToV3IOStream</code><span class="sig-paren">(</span><em class="sig-param">storage: storey.drivers.Driver, stream_path: str, sharding_func: Optional[Callable[[storey.dtypes.Event], int]] = None, batch_size: int = 8, columns: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None, **kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.writers.WriteToV3IOStream" title="Permalink to this definition">¶</a></dt>
+<dt id="storey.writers.StreamTarget">
+<em class="property">class </em><code class="sig-prename descclassname">storey.writers.</code><code class="sig-name descname">StreamTarget</code><span class="sig-paren">(</span><em class="sig-param">storage: storey.drivers.Driver, stream_path: str, sharding_func: Optional[Callable[[storey.dtypes.Event], int]] = None, batch_size: int = 8, columns: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None, **kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.writers.StreamTarget" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow.Flow</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.writers._Writer</span></code></p>
 <p>Writes all incoming events into a V3IO stream.</p>
 <dl class="field-list simple">
@@ -503,8 +503,8 @@ To be used from a synchronous context.</p>
 </dd></dl>
 
 <dl class="class">
-<dt id="storey.sources.ReadCSV">
-<em class="property">class </em><code class="sig-prename descclassname">storey.sources.</code><code class="sig-name descname">ReadCSV</code><span class="sig-paren">(</span><em class="sig-param">paths: Union[List[str], str], header: bool = False, build_dict: bool = False, key_field: Union[int, str, None] = None, timestamp_field: Union[int, str, None] = None, timestamp_format: Optional[str] = None, type_inference: bool = True, **kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.sources.ReadCSV" title="Permalink to this definition">¶</a></dt>
+<dt id="storey.sources.CSVSource">
+<em class="property">class </em><code class="sig-prename descclassname">storey.sources.</code><code class="sig-name descname">CSVSource</code><span class="sig-paren">(</span><em class="sig-param">paths: Union[List[str], str], header: bool = False, build_dict: bool = False, key_field: Union[int, str, None] = None, timestamp_field: Union[int, str, None] = None, timestamp_format: Optional[str] = None, type_inference: bool = True, **kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.sources.CSVSource" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.sources._IterableSource</span></code></p>
 <p>Reads CSV files as input source for a flow.</p>
 <dl class="field-list simple">
@@ -529,8 +529,8 @@ Defaults to True.</p></li>
 </dd></dl>
 
 <dl class="class">
-<dt id="storey.sources.ReadParquet">
-<em class="property">class </em><code class="sig-prename descclassname">storey.sources.</code><code class="sig-name descname">ReadParquet</code><span class="sig-paren">(</span><em class="sig-param">paths: Union[str, Iterable[str]], columns=None, **kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.sources.ReadParquet" title="Permalink to this definition">¶</a></dt>
+<dt id="storey.sources.ParquetSource">
+<em class="property">class </em><code class="sig-prename descclassname">storey.sources.</code><code class="sig-name descname">ParquetSource</code><span class="sig-paren">(</span><em class="sig-param">paths: Union[str, Iterable[str]], columns=None, **kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.sources.ParquetSource" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <a class="reference internal" href="#storey.sources.DataframeSource" title="storey.sources.DataframeSource"><code class="xref py py-class docutils literal notranslate"><span class="pre">storey.sources.DataframeSource</span></code></a></p>
 <p>Reads Parquet files as input source for a flow.
 :parameter paths: paths to Parquet files
@@ -1133,7 +1133,7 @@ can optimize writes. Defaults to True.</p></li>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow.Flow</span></code></p>
 <p>Aggregates the data into the table object provided for later persistence, and outputs an event enriched with the requested aggregation
 features.
-Persistence is done via the <cite>WriteToTable</cite> step and based on the Cache object persistence settings.</p>
+Persistence is done via the <cite>NoSqlTarget</cite> step and based on the Cache object persistence settings.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">

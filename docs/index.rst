@@ -10,11 +10,11 @@ such:
 
 .. code-block:: python
 
-    from storey import build_flow, Source, WriteToCSV
+    from storey import build_flow, Source, CSVTarget
 
     controller = build_flow([
         Source(),
-        WriteToCSV('myfile.csv', columns=['n', 'n*10'], header=True)
+        CSVTarget('myfile.csv', columns=['n', 'n*10'], header=True)
     ]).run()
 
     for i in range(10):
@@ -29,11 +29,11 @@ The same example can also be run from within an async context:
 
 .. code-block:: python
 
-    from storey import build_flow, AsyncSource, WriteToCSV
+    from storey import build_flow, AsyncSource, CSVTarget
 
     controller = await build_flow([
         AsyncSource(),
-        WriteToCSV('myfile.csv', columns=['n', 'n*10'], header=True)
+        CSVTarget('myfile.csv', columns=['n', 'n*10'], header=True)
     ]).run()
 
     for i in range(10):
@@ -47,7 +47,7 @@ V3IO key-value store.
 
 .. code-block:: python
 
-    from storey import build_flow, DataframeSource, AggregateByKey, FieldAggregator, SlidingWindows, WriteToTable, V3ioDriver, Table
+    from storey import build_flow, DataframeSource, AggregateByKey, FieldAggregator, SlidingWindows, NoSqlTarget, V3ioDriver, Table
 
     table = Table(f'users/me/destination', V3ioDriver())
 
@@ -62,7 +62,7 @@ V3IO key-value store.
                             SlidingWindows(['1h', '2h'], '10m'))
         ],
             table),
-        WriteToTable(table, columns=['feature1', 'feature2', 'feature3']),
+        NoSqlTarget(table, columns=['feature1', 'feature2', 'feature3']),
     ]).run()
 
     controller.await_termination()

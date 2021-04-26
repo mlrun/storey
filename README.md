@@ -19,8 +19,8 @@ A Storey flow consist of steps linked together by the `build_flow` function, eac
 #### Input Steps
 * `Source` 
 * `AsyncSource` 
-* `ReadCSV`  
-* `ReadParquet` 
+* `CSVSource`  
+* `ParquetSource` 
 * `DataframeSource`  
 
 #### Processing Steps
@@ -34,18 +34,18 @@ A Storey flow consist of steps linked together by the `build_flow` function, eac
 * `SendToHttp` 
 * `AggregateByKey(aggregations,cache, key=None, emit_policy=EmitEveryEvent(), augmentation_fn=None)` - This step aggregates the data into the cache object provided for later persistence, and outputs an event enriched with the requested aggregation features.
 * `QueryByKey(features, cache, key=None, augmentation_fn=None, aliases=None)` - Similar to to `AggregateByKey`, but this step is for serving only and does not aggregate the event.
-* `WriteToTable(table)` - Persists the data in `table` to its associated storage by key.
+* `NoSqlTarget(table)` - Persists the data in `table` to its associated storage by key.
 * `Extend`
 * `JoinWithTable`  
 
 #### Output Steps
 * `Complete`  
 * `Reduce` 
-* `WriteToV3IOStream` 
-* `WriteToCSV`
+* `StreamTarget` 
+* `CSVTarget`
 * `ReduceToDataFrame`
-* `WriteToTSDB`
-* `WriteToParquet`     
+* `TSDBTarget`
+* `ParquetTarget`     
 
 
 <a id="examples"></a>
@@ -55,7 +55,7 @@ A Storey flow consist of steps linked together by the `build_flow` function, eac
 The following example reads user data, creates features using Storey's aggregates, persists the data to V3IO and emits events containing the features to a V3IO Stream for further processing.
 
 ```python
-from storey import build_flow, Source, Table, V3ioDriver, AggregateByKey, FieldAggregator, WriteToTable
+from storey import build_flow, Source, Table, V3ioDriver, AggregateByKey, FieldAggregator, NoSqlTarget
 from storey.dtypes import SlidingWindows
 
 v3io_web_api = 'https://webapi.change-me.com'
@@ -81,8 +81,8 @@ controller = build_flow([
                                     SlidingWindows(['1h'], '10m'),
                                     aggr_filter=lambda element: element['activity_status'] == 'fail'))],
                    table_object),
-    WriteToTable(table_object),
-    WriteToV3IOStream(V3ioDriver(v3io_web_api, v3io_acceess_key), 'features_stream')
+    NoSqlTarget(table_object),
+    StreamTarget(V3ioDriver(v3io_web_api, v3io_acceess_key), 'features_stream')
 ]).run()
 ```
 

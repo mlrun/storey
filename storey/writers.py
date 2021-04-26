@@ -194,7 +194,7 @@ class _V3ioCSVDialect(csv.Dialect):
     quoting = csv.QUOTE_MINIMAL
 
 
-class WriteToCSV(_Batching, _Writer):
+class CSVTarget(_Batching, _Writer):
     """Writes events to a CSV file.
 
     :param path: path where CSV file will be written.
@@ -209,7 +209,7 @@ class WriteToCSV(_Batching, _Writer):
         Optional. Default to False if columns is provided, True otherwise.
     :param max_lines_before_flush: Number of lines to write before flushing data to the output file. Defaults to 128.
     :param max_seconds_before_flush: Maximum delay in seconds before flushing lines. Defaults to 3.
-    :param name: Name of this step, as it should appear in logs. Defaults to class name (WriteToCSV).
+    :param name: Name of this step, as it should appear in logs. Defaults to class name (CSVTarget).
     :type name: string
     :param max_events: Maximum number of events to write at a time. If None (default), all events will be written on flow termination,
         or after timeout_secs (if timeout_secs is set).
@@ -292,7 +292,7 @@ class WriteToCSV(_Batching, _Writer):
             await asyncio.get_running_loop().run_in_executor(None, lambda: self._data_buffer.put(batch))
 
 
-class WriteToParquet(_Batching, _Writer):
+class ParquetTarget(_Batching, _Writer):
     """Writes incoming events to parquet files.
 
     :param path: Output path. Can be either a file or directory. This parameter is forwarded as-is to pandas.DataFrame.to_parquet().
@@ -394,7 +394,7 @@ class WriteToParquet(_Batching, _Writer):
             df.to_parquet(path=file, index=bool(self._index_cols))
 
 
-class WriteToTSDB(_Batching, _Writer):
+class TSDBTarget(_Batching, _Writer):
     """Writes incoming events to TSDB table.
 
     :param path: Path to TSDB table.
@@ -484,7 +484,7 @@ class WriteToTSDB(_Batching, _Writer):
         self._frames_client.write("tsdb", self._path, df)
 
 
-class WriteToV3IOStream(Flow, _Writer):
+class StreamTarget(Flow, _Writer):
     """Writes all incoming events into a V3IO stream.
 
     :param storage: Database driver.
@@ -614,7 +614,7 @@ class WriteToV3IOStream(Flow, _Writer):
 
         if self._worker_awaitable.done():
             await self._worker_awaitable
-            raise AssertionError("WriteToV3IOStream worker has already terminated")
+            raise AssertionError("StreamTarget worker has already terminated")
 
         if event is _termination_obj:
             await self._q.put(_termination_obj)
@@ -626,7 +626,7 @@ class WriteToV3IOStream(Flow, _Writer):
                 await self._worker_awaitable
 
 
-class WriteToTable(_Writer, Flow):
+class NoSqlTarget(_Writer, Flow):
     """
     Persists the data in `table` to its associated storage by key.
 

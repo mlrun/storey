@@ -5,7 +5,7 @@ import uuid
 import pandas as pd
 import pytest
 
-from storey import build_flow, ReadCSV, WriteToCSV, Source, Reduce, Map, FlatMap, AsyncSource, WriteToParquet
+from storey import build_flow, CSVSource, CSVTarget, Source, Reduce, Map, FlatMap, AsyncSource, ParquetTarget
 from .integration_test_utils import _generate_table_name
 
 has_azure_credentials = os.getenv("AZURE_ACCOUNT_NAME") and os.getenv("AZURE_ACCOUNT_KEY") and os.getenv("AZURE_BLOB_STORE")
@@ -74,7 +74,7 @@ def azure_recursive_delete(path):
 @pytest.mark.skipif(not has_azure_credentials, reason='No azure credentials found')
 def test_csv_reader_from_azure(azure_create_csv):
     controller = build_flow([
-        ReadCSV(f'az:///{azure_create_csv}', header=True, storage_options=storage_options),
+        CSVSource(f'az:///{azure_create_csv}', header=True, storage_options=storage_options),
         FlatMap(lambda x: x),
         Map(lambda x: int(x)),
         Reduce(0, lambda acc, x: acc + x),
@@ -87,7 +87,7 @@ def test_csv_reader_from_azure(azure_create_csv):
 @pytest.mark.skipif(not has_azure_credentials, reason='No azure credentials found')
 def test_csv_reader_from_azure_error_on_file_not_found():
     controller = build_flow([
-        ReadCSV(f'az:///{os.getenv("AZURE_BLOB_STORE")}/idontexist.csv', header=True, storage_options=storage_options),
+        CSVSource(f'az:///{os.getenv("AZURE_BLOB_STORE")}/idontexist.csv', header=True, storage_options=storage_options),
     ]).run()
 
     try:
@@ -100,7 +100,7 @@ def test_csv_reader_from_azure_error_on_file_not_found():
 async def async_test_write_csv_to_azure(azure_teardown_csv):
     controller = await build_flow([
         AsyncSource(),
-        WriteToCSV(f'az:///{azure_teardown_csv}', columns=['n', 'n*10'], header=True, storage_options=storage_options)
+        CSVTarget(f'az:///{azure_teardown_csv}', columns=['n', 'n*10'], header=True, storage_options=storage_options)
     ]).run()
 
     for i in range(10):
@@ -125,7 +125,7 @@ def test_write_csv_with_dict_to_azure(azure_teardown_file):
     file_path = f'az:///{azure_teardown_file}'
     controller = build_flow([
         Source(),
-        WriteToCSV(file_path, columns=['n', 'n*10'], header=True, storage_options=storage_options)
+        CSVTarget(file_path, columns=['n', 'n*10'], header=True, storage_options=storage_options)
     ]).run()
 
     for i in range(10):
@@ -144,7 +144,7 @@ def test_write_csv_infer_columns_without_header_to_azure(azure_teardown_file):
     file_path = f'az:///{azure_teardown_file}'
     controller = build_flow([
         Source(),
-        WriteToCSV(file_path, storage_options=storage_options)
+        CSVTarget(file_path, storage_options=storage_options)
     ]).run()
 
     for i in range(10):
@@ -163,7 +163,7 @@ def test_write_csv_from_lists_with_metadata_and_column_pruning_to_azure(azure_te
     file_path = f'az:///{azure_teardown_file}'
     controller = build_flow([
         Source(),
-        WriteToCSV(file_path, columns=['event_key=$key', 'n*10'], header=True, storage_options=storage_options)
+        CSVTarget(file_path, columns=['event_key=$key', 'n*10'], header=True, storage_options=storage_options)
     ]).run()
 
     for i in range(10):
@@ -183,7 +183,7 @@ def test_write_to_parquet_to_azure(azure_setup_teardown_test):
     columns = ['my_int', 'my_string']
     controller = build_flow([
         Source(),
-        WriteToParquet(out_dir, partition_cols='my_int', columns=columns, max_events=1, storage_options=storage_options)
+        ParquetTarget(out_dir, partition_cols='my_int', columns=columns, max_events=1, storage_options=storage_options)
     ]).run()
 
     expected = []
@@ -204,7 +204,7 @@ def test_write_to_parquet_to_azure_single_file_on_termination(azure_setup_teardo
     columns = ['my_int', 'my_string']
     controller = build_flow([
         Source(),
-        WriteToParquet(out_file, columns=columns, storage_options=storage_options)
+        ParquetTarget(out_file, columns=columns, storage_options=storage_options)
     ]).run()
 
     expected = []
@@ -224,7 +224,7 @@ def test_write_to_parquet_to_azure_with_indices(azure_setup_teardown_test):
     out_file = f'az:///{azure_setup_teardown_test}/test_write_to_parquet_with_indices{uuid.uuid4().hex}.parquet'
     controller = build_flow([
         Source(),
-        WriteToParquet(out_file, index_cols='event_key=$key', columns=['my_int', 'my_string'], storage_options=storage_options)
+        ParquetTarget(out_file, index_cols='event_key=$key', columns=['my_int', 'my_string'], storage_options=storage_options)
     ]).run()
 
     expected = []

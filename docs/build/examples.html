@@ -169,7 +169,7 @@
     <span class="n">AggregateByKey</span><span class="p">([</span><span class="n">FieldAggregator</span><span class="p">(</span><span class="s2">&quot;number_of_stuff&quot;</span><span class="p">,</span> <span class="s2">&quot;col1&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;sum&quot;</span><span class="p">,</span> <span class="s2">&quot;avg&quot;</span><span class="p">,</span> <span class="s2">&quot;min&quot;</span><span class="p">,</span> <span class="s2">&quot;max&quot;</span><span class="p">,</span> <span class="s2">&quot;sqr&quot;</span><span class="p">],</span>
                                     <span class="n">SlidingWindows</span><span class="p">([</span><span class="s1">&#39;1h&#39;</span><span class="p">,</span> <span class="s1">&#39;2h&#39;</span><span class="p">,</span> <span class="s1">&#39;24h&#39;</span><span class="p">],</span> <span class="s1">&#39;10m&#39;</span><span class="p">))],</span>
                    <span class="n">table</span><span class="p">),</span>
-    <span class="n">WriteToTable</span><span class="p">(</span><span class="n">table</span><span class="p">),</span>
+    <span class="n">NoSqlTarget</span><span class="p">(</span><span class="n">table</span><span class="p">),</span>
     <span class="n">Reduce</span><span class="p">([],</span> <span class="k">lambda</span> <span class="n">acc</span><span class="p">,</span> <span class="n">x</span><span class="p">:</span> <span class="n">append_return</span><span class="p">(</span><span class="n">acc</span><span class="p">,</span> <span class="n">x</span><span class="p">)),</span>
 <span class="p">])</span><span class="o">.</span><span class="n">run</span><span class="p">()</span>
 

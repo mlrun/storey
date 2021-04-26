@@ -9,11 +9,11 @@ from random import choice
 import pandas as pd
 from aiohttp import InvalidURL
 
-from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, MapWithState, ReadCSV, Complete, \
+from storey import build_flow, Source, Map, Filter, FlatMap, Reduce, MapWithState, CSVSource, Complete, \
     AsyncSource, Choice, \
-    Event, Batch, Table, WriteToCSV, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, \
-    WriteToParquet, QueryByKey, \
-    WriteToTSDB, Extend, SendToHttp, HttpRequest, WriteToTable, NoopDriver, Driver, Recover, V3ioDriver, ReadParquet
+    Event, Batch, Table, CSVTarget, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, \
+    ParquetTarget, QueryByKey, \
+    TSDBTarget, Extend, SendToHttp, HttpRequest, NoSqlTarget, NoopDriver, Driver, Recover, V3ioDriver, ParquetSource
 
 
 class ATestException(Exception):
@@ -92,7 +92,7 @@ def test_recover():
 
 def test_csv_reader():
     controller = build_flow([
-        ReadCSV('tests/test.csv', header=True),
+        CSVSource('tests/test.csv', header=True),
         FlatMap(lambda x: x),
         Map(lambda x: int(x)),
         Reduce(0, lambda acc, x: acc + x),
@@ -104,7 +104,7 @@ def test_csv_reader():
 
 def test_csv_reader_error_on_file_not_found():
     controller = build_flow([
-        ReadCSV('tests/idontexist.csv', header=True),
+        CSVSource('tests/idontexist.csv', header=True),
     ]).run()
 
     try:
@@ -116,7 +116,7 @@ def test_csv_reader_error_on_file_not_found():
 
 def test_csv_reader_as_dict():
     controller = build_flow([
-        ReadCSV('tests/test.csv', header=True, build_dict=True),
+        CSVSource('tests/test.csv', header=True, build_dict=True),
         FlatMap(lambda x: [x['n1'], x['n2'], x['n3']]),
         Map(lambda x: int(x)),
         Reduce(0, lambda acc, x: acc + x),
@@ -133,8 +133,8 @@ def append_and_return(lst, x):
 
 def test_csv_reader_as_dict_with_key_and_timestamp():
     controller = build_flow([
-        ReadCSV('tests/test-with-timestamp.csv', header=True, build_dict=True, key_field='k',
-                time_field='t', timestamp_format='%d/%m/%Y %H:%M:%S'),
+        CSVSource('tests/test-with-timestamp.csv', header=True, build_dict=True, key_field='k',
+                  time_field='t', timestamp_format='%d/%m/%Y %H:%M:%S'),
         Reduce([], append_and_return, full_event=True),
     ]).run()
 
@@ -151,7 +151,7 @@ def test_csv_reader_as_dict_with_key_and_timestamp():
 
 def test_csv_reader_as_dict_with_compact_timestamp():
     controller = build_flow([
-        ReadCSV('tests/test-with-compact-timestamp.csv', header=True, build_dict=True, time_field='t', timestamp_format='%Y%m%d%H'),
+        CSVSource('tests/test-with-compact-timestamp.csv', header=True, build_dict=True, time_field='t', timestamp_format='%Y%m%d%H'),
         Reduce([], append_and_return, full_event=True),
     ]).run()
 
@@ -168,8 +168,8 @@ def test_csv_reader_as_dict_with_compact_timestamp():
 
 def test_csv_reader_with_key_and_timestamp():
     controller = build_flow([
-        ReadCSV('tests/test-with-timestamp.csv', header=True, key_field='k',
-                time_field='t', timestamp_format='%d/%m/%Y %H:%M:%S'),
+        CSVSource('tests/test-with-timestamp.csv', header=True, key_field='k',
+                  time_field='t', timestamp_format='%d/%m/%Y %H:%M:%S'),
         Reduce([], append_and_return, full_event=True),
     ]).run()
 
@@ -186,7 +186,7 @@ def test_csv_reader_with_key_and_timestamp():
 
 def test_csv_reader_as_dict_no_header():
     controller = build_flow([
-        ReadCSV('tests/test-no-header.csv', header=False, build_dict=True),
+        CSVSource('tests/test-no-header.csv', header=False, build_dict=True),
         FlatMap(lambda x: [x[0], x[1], x[2]]),
         Map(lambda x: int(x)),
         Reduce(0, lambda acc, x: acc + x),
@@ -263,12 +263,12 @@ def test_write_parquet_timestamp_nanosecs(tmpdir):
     df.set_index(keys=['timestamp1'], inplace=True)
     controller = build_flow([
         DataframeSource(df),
-        WriteToParquet(out_dir, columns=['string', 'timestamp2'], partition_cols=[], index_cols='timestamp1')
+        ParquetTarget(out_dir, columns=['string', 'timestamp2'], partition_cols=[], index_cols='timestamp1')
     ]).run()
     controller.await_termination()
 
     controller = build_flow([
-        ReadParquet(out_dir), Reduce([], append_and_return),
+        ParquetSource(out_dir), Reduce([], append_and_return),
     ]).run()
 
     termination_result = controller.await_termination()
@@ -281,7 +281,7 @@ def test_write_parquet_timestamp_nanosecs(tmpdir):
 
 def test_read_parquet():
     controller = build_flow([
-        ReadParquet('tests/test.parquet'),
+        ParquetSource('tests/test.parquet'),
         Reduce([], append_and_return),
     ]).run()
 
@@ -292,7 +292,7 @@ def test_read_parquet():
 
 def test_read_parquet_files():
     controller = build_flow([
-        ReadParquet(['tests/test.parquet', 'tests/test.parquet']),
+        ParquetSource(['tests/test.parquet', 'tests/test.parquet']),
         Reduce([], append_and_return),
     ]).run()
 
@@ -309,7 +309,7 @@ def test_write_parquet_read_parquet(tmpdir):
     columns = ['my_int', 'my_string']
     controller = build_flow([
         Source(),
-        WriteToParquet(out_dir, columns=columns, partition_cols=[])
+        ParquetTarget(out_dir, columns=columns, partition_cols=[])
     ]).run()
 
     expected = []
@@ -320,7 +320,7 @@ def test_write_parquet_read_parquet(tmpdir):
     controller.await_termination()
 
     controller = build_flow([
-        ReadParquet(out_dir),
+        ParquetSource(out_dir),
         Reduce([], append_and_return),
     ]).run()
     read_back_result = controller.await_termination()
@@ -333,7 +333,7 @@ def test_write_parquet_read_parquet_partitioned(tmpdir):
     columns = ['my_int', 'my_string']
     controller = build_flow([
         Source(),
-        WriteToParquet(out_dir, partition_cols='my_int', columns=columns)
+        ParquetTarget(out_dir, partition_cols='my_int', columns=columns)
     ]).run()
 
     expected = []
@@ -344,7 +344,7 @@ def test_write_parquet_read_parquet_partitioned(tmpdir):
     controller.await_termination()
 
     controller = build_flow([
-        ReadParquet(out_dir),
+        ParquetSource(out_dir),
         Reduce([], append_and_return),
     ]).run()
     read_back_result = controller.await_termination()
@@ -833,7 +833,7 @@ def test_awaitable_result_error_in_by_key_async_downstream():
 
     controller = build_flow([
         Source(),
-        WriteToTable(Table('test', DriverBoom())),
+        NoSqlTarget(Table('test', DriverBoom())),
         Complete()
     ]).run()
     try:
@@ -1163,7 +1163,7 @@ async def async_test_write_csv(tmpdir):
     file_path = f'{tmpdir}/test_write_csv/out.csv'
     controller = await build_flow([
         AsyncSource(),
-        WriteToCSV(file_path, columns=['n', 'n*10'], header=True)
+        CSVTarget(file_path, columns=['n', 'n*10'], header=True)
     ]).run()
 
     for i in range(10):
@@ -1186,7 +1186,7 @@ def test_write_csv(tmpdir):
 async def async_test_write_csv_error(tmpdir):
     file_path = f'{tmpdir}/test_write_csv_error.csv'
 
-    write_csv = WriteToCSV(file_path)
+    write_csv = CSVTarget(file_path)
     controller = await build_flow([
         AsyncSource(),
         write_csv
@@ -1210,7 +1210,7 @@ def test_write_csv_with_dict(tmpdir):
     file_path = f'{tmpdir}/test_write_csv_with_dict.csv'
     controller = build_flow([
         Source(),
-        WriteToCSV(file_path, columns=['n', 'n*10'], header=True)
+        CSVTarget(file_path, columns=['n', 'n*10'], header=True)
     ]).run()
 
     for i in range(10):
@@ -1230,7 +1230,7 @@ def test_write_csv_infer_columns(tmpdir):
     file_path = f'{tmpdir}/test_write_csv_infer_columns.csv'
     controller = build_flow([
         Source(),
-        WriteToCSV(file_path, header=True)
+        CSVTarget(file_path, header=True)
     ]).run()
 
     for i in range(10):
@@ -1250,7 +1250,7 @@ def test_write_csv_infer_columns_without_header(tmpdir):
     file_path = f'{tmpdir}/test_write_csv_infer_columns_without_header.csv'
     controller = build_flow([
         Source(),
-        WriteToCSV(file_path)
+        CSVTarget(file_path)
     ]).run()
 
     for i in range(10):
@@ -1270,7 +1270,7 @@ def test_write_csv_with_metadata(tmpdir):
     file_path = f'{tmpdir}/test_write_csv_with_metadata.csv'
     controller = build_flow([
         Source(),
-        WriteToCSV(file_path, columns=['event_key=$key', 'n', 'n*10'], header=True)
+        CSVTarget(file_path, columns=['event_key=$key', 'n', 'n*10'], header=True)
     ]).run()
 
     for i in range(10):
@@ -1291,7 +1291,7 @@ def test_write_csv_with_metadata_no_rename(tmpdir):
     file_path = f'{tmpdir}/test_write_csv_with_metadata_no_rename.csv'
     controller = build_flow([
         Source(),
-        WriteToCSV(file_path, columns=['$key', 'n', 'n*10'], header=True)
+        CSVTarget(file_path, columns=['$key', 'n', 'n*10'], header=True)
     ]).run()
 
     for i in range(10):
@@ -1312,7 +1312,7 @@ def test_write_csv_with_rename(tmpdir):
     file_path = f'{tmpdir}/test_write_csv_with_rename.csv'
     controller = build_flow([
         Source(),
-        WriteToCSV(file_path, columns=['n', 'n x 10=n*10'], header=True)
+        CSVTarget(file_path, columns=['n', 'n x 10=n*10'], header=True)
     ]).run()
 
     for i in range(10):
@@ -1332,7 +1332,7 @@ def test_write_csv_from_lists_with_metadata(tmpdir):
     file_path = f'{tmpdir}/test_write_csv_with_metadata.csv'
     controller = build_flow([
         Source(),
-        WriteToCSV(file_path, columns=['event_key=$key', 'n', 'n*10'], header=True)
+        CSVTarget(file_path, columns=['event_key=$key', 'n', 'n*10'], header=True)
     ]).run()
 
     for i in range(10):
@@ -1353,7 +1353,7 @@ def test_write_csv_from_lists_with_metadata_and_column_pruning(tmpdir):
     file_path = f'{tmpdir}/test_write_csv_from_lists_with_metadata_and_column_pruning.csv'
     controller = build_flow([
         Source(),
-        WriteToCSV(file_path, columns=['event_key=$key', 'n*10'], header=True)
+        CSVTarget(file_path, columns=['event_key=$key', 'n*10'], header=True)
     ]).run()
 
     for i in range(10):
@@ -1373,7 +1373,7 @@ def test_write_csv_infer_with_metadata_columns(tmpdir):
     file_path = f'{tmpdir}/test_write_csv_infer_with_metadata_columns.csv'
     controller = build_flow([
         Source(),
-        WriteToCSV(file_path, columns=['event_key=$key'], header=True, infer_columns_from_data=True)
+        CSVTarget(file_path, columns=['event_key=$key'], header=True, infer_columns_from_data=True)
     ]).run()
 
     for i in range(10):
@@ -1394,7 +1394,7 @@ def test_write_csv_fail_to_infer_columns(tmpdir):
     file_path = f'{tmpdir}/test_write_csv_fail_to_infer_columns.csv'
     controller = build_flow([
         Source(),
-        WriteToCSV(file_path, header=True)
+        CSVTarget(file_path, header=True)
     ]).run()
 
     try:
@@ -1556,7 +1556,7 @@ def test_write_to_parquet(tmpdir):
     columns = ['my_int', 'my_string']
     controller = build_flow([
         Source(),
-        WriteToParquet(out_dir, partition_cols='my_int', columns=columns, max_events=1)
+        ParquetTarget(out_dir, partition_cols='my_int', columns=columns, max_events=1)
     ]).run()
 
     expected = []
@@ -1576,7 +1576,7 @@ def test_write_sparse_data_to_parquet(tmpdir):
     columns = ['my_int', 'my_string']
     controller = build_flow([
         Source(),
-        WriteToParquet(out_dir, columns=columns)
+        ParquetTarget(out_dir, columns=columns)
     ]).run()
 
     expected = []
@@ -1598,7 +1598,7 @@ def test_write_to_parquet_single_file_on_termination(tmpdir):
     columns = ['my_int', 'my_string']
     controller = build_flow([
         Source(),
-        WriteToParquet(out_file, columns=columns)
+        ParquetTarget(out_file, columns=columns)
     ]).run()
 
     expected = []
@@ -1619,8 +1619,8 @@ def test_write_to_parquet_with_metadata(tmpdir):
     columns = ['event_key', 'my_int', 'my_string']
     controller = build_flow([
         Source(),
-        WriteToParquet(out_file, columns=['event_key=$key', 'my_int', 'my_string'],
-                       partition_cols=['$year', '$month', '$day', '$hour'])
+        ParquetTarget(out_file, columns=['event_key=$key', 'my_int', 'my_string'],
+                      partition_cols=['$year', '$month', '$day', '$hour'])
     ]).run()
 
     expected = []
@@ -1639,8 +1639,8 @@ def test_write_to_parquet_with_indices(tmpdir):
     out_file = f'{tmpdir}/test_write_to_parquet_with_indices{uuid.uuid4().hex}'
     controller = build_flow([
         Source(),
-        WriteToParquet(out_file, index_cols='event_key=$key', columns=['my_int', 'my_string'],
-                       partition_cols=['$year', '$month', '$day', '$hour'])
+        ParquetTarget(out_file, index_cols='event_key=$key', columns=['my_int', 'my_string'],
+                      partition_cols=['$year', '$month', '$day', '$hour'])
     ]).run()
 
     expected = []
@@ -1661,7 +1661,7 @@ def test_write_to_parquet_partition_by_date(tmpdir):
     out_file = f'{tmpdir}/test_write_to_parquet_partition_by_date{uuid.uuid4().hex}'
     controller = build_flow([
         Source(),
-        WriteToParquet(out_file, partition_cols=['$date'], columns=['my_int', 'my_string'])
+        ParquetTarget(out_file, partition_cols=['$date'], columns=['my_int', 'my_string'])
     ]).run()
 
     my_time = datetime(2020, 2, 15)
@@ -1684,7 +1684,7 @@ def test_write_to_parquet_partition_by_hash(tmpdir):
     out_file = f'{tmpdir}/test_write_to_parquet_partition_by_hash{uuid.uuid4().hex}'
     controller = build_flow([
         Source(),
-        WriteToParquet(out_file, columns=['my_int', 'my_string'])
+        ParquetTarget(out_file, columns=['my_int', 'my_string'])
     ]).run()
 
     my_time = datetime(2020, 2, 15)
@@ -1707,7 +1707,7 @@ def test_write_to_parquet_with_inference(tmpdir):
     out_dir = f'{tmpdir}/test_write_to_parquet_with_inference{uuid.uuid4().hex}/'
     controller = build_flow([
         Source(),
-        WriteToParquet(out_dir, index_cols='$key', partition_cols=[])
+        ParquetTarget(out_dir, index_cols='$key', partition_cols=[])
     ]).run()
 
     expected = []
@@ -1725,7 +1725,7 @@ def test_write_to_parquet_with_inference(tmpdir):
 
 def test_write_to_parquet_with_inference_error_on_partition_index_collision(tmpdir):
     try:
-        WriteToParquet('out/', index_cols='$key', partition_cols=['$key'])
+        ParquetTarget('out/', index_cols='$key', partition_cols=['$key'])
         assert False
     except ValueError:
         pass
@@ -1816,9 +1816,9 @@ def test_write_to_tsdb():
 
     controller = build_flow([
         Source(),
-        WriteToTSDB(path='container/some/path', time_col='time', index_cols='node', columns=['cpu', 'disk'], rate='1/h',
-                    max_events=1,
-                    frames_client=mock_frames_client)
+        TSDBTarget(path='container/some/path', time_col='time', index_cols='node', columns=['cpu', 'disk'], rate='1/h',
+                   max_events=1,
+                   frames_client=mock_frames_client)
     ]).run()
 
     expected_data = []
@@ -1852,8 +1852,8 @@ def test_write_to_tsdb_with_key_index():
 
     controller = build_flow([
         Source(),
-        WriteToTSDB(path='container/some/path', time_col='time', index_cols='node=$key', columns=['cpu', 'disk'], rate='1/h',
-                    max_events=1, frames_client=mock_frames_client)
+        TSDBTarget(path='container/some/path', time_col='time', index_cols='node=$key', columns=['cpu', 'disk'], rate='1/h',
+                   max_events=1, frames_client=mock_frames_client)
     ]).run()
 
     expected_data = []
@@ -1887,8 +1887,8 @@ def test_write_to_tsdb_with_key_index_and_default_time():
 
     controller = build_flow([
         Source(),
-        WriteToTSDB(path='container/some/path', index_cols='node=$key', columns=['cpu', 'disk'], rate='1/h',
-                    max_events=1, frames_client=mock_frames_client)
+        TSDBTarget(path='container/some/path', index_cols='node=$key', columns=['cpu', 'disk'], rate='1/h',
+                   max_events=1, frames_client=mock_frames_client)
     ]).run()
 
     expected_data = []
@@ -1923,9 +1923,9 @@ def test_csv_reader_parquet_write_microsecs(tmpdir):
 
     time_format = '%d/%m/%Y %H:%M:%S.%f'
     controller = build_flow([
-        ReadCSV('tests/test-with-timestamp-microsecs.csv', header=True, key_field='k',
-                time_field='t', timestamp_format=time_format),
-        WriteToParquet(out_file, columns=columns, partition_cols=['$year', '$month', '$day', '$hour'], max_events=2, )
+        CSVSource('tests/test-with-timestamp-microsecs.csv', header=True, key_field='k',
+                  time_field='t', timestamp_format=time_format),
+        ParquetTarget(out_file, columns=columns, partition_cols=['$year', '$month', '$day', '$hour'], max_events=2, )
     ]).run()
 
     expected = pd.DataFrame([['m1', datetime.strptime("15/02/2020 02:03:04.123456", time_format)],
@@ -1943,9 +1943,9 @@ def test_csv_reader_parquet_write_nanosecs(tmpdir):
 
     time_format = '%d/%m/%Y %H:%M:%S.%f'
     controller = build_flow([
-        ReadCSV('tests/test-with-timestamp-nanosecs.csv', header=True, key_field='k',
-                time_field='t', timestamp_format=time_format),
-        WriteToParquet(out_file, columns=columns, partition_cols=['$year', '$month', '$day', '$hour'], max_events=2)
+        CSVSource('tests/test-with-timestamp-nanosecs.csv', header=True, key_field='k',
+                  time_field='t', timestamp_format=time_format),
+        ParquetTarget(out_file, columns=columns, partition_cols=['$year', '$month', '$day', '$hour'], max_events=2)
     ]).run()
 
     expected = pd.DataFrame([['m1', datetime.strptime("15/02/2020 02:03:04.123456", time_format)],
@@ -1962,7 +1962,7 @@ def test_error_in_concurrent_by_key_task():
 
     controller = build_flow([
         Source(),
-        WriteToTable(table, columns=['twice_total_activities']),
+        NoSqlTarget(table, columns=['twice_total_activities']),
     ]).run()
 
     controller.emit({'col1': 0}, 'tal')
@@ -1979,7 +1979,7 @@ def test_async_task_error_and_complete():
 
     controller = build_flow([
         Source(),
-        WriteToTable(table),
+        NoSqlTarget(table),
         Map(RaiseEx(1).raise_ex),
         Complete()
     ]).run()
@@ -2004,7 +2004,7 @@ def test_async_task_error_and_complete_repeated_emits():
 
     controller = build_flow([
         Source(),
-        WriteToTable(table),
+        NoSqlTarget(table),
         Map(RaiseEx(1).raise_ex),
         Complete()
     ]).run()
@@ -2173,10 +2173,10 @@ def test_flow_reuse():
 
 
 def test_flow_to_dict_read_csv():
-    step = ReadCSV('tests/test-with-timestamp-microsecs.csv', header=True, key_field='k', time_field='t',
-                   timestamp_format='%d/%m/%Y %H:%M:%S.%f')
+    step = CSVSource('tests/test-with-timestamp-microsecs.csv', header=True, key_field='k', time_field='t',
+                     timestamp_format='%d/%m/%Y %H:%M:%S.%f')
     assert step.to_dict() == {
-        'class_name': 'storey.sources.ReadCSV',
+        'class_name': 'storey.sources.CSVSource',
         'class_args': {
             'build_dict': False,
             'header': True,
@@ -2191,9 +2191,9 @@ def test_flow_to_dict_read_csv():
 
 
 def test_flow_to_dict_write_to_parquet():
-    step = WriteToParquet('outdir', columns=['col1', 'col2'], max_events=2)
+    step = ParquetTarget('outdir', columns=['col1', 'col2'], max_events=2)
     assert step.to_dict() == {
-        'class_name': 'storey.writers.WriteToParquet',
+        'class_name': 'storey.writers.ParquetTarget',
         'class_args': {
             'path': 'outdir',
             'columns': ['col1', 'col2'],
@@ -2205,11 +2205,11 @@ def test_flow_to_dict_write_to_parquet():
 
 
 def test_flow_to_dict_write_to_tsdb():
-    step = WriteToTSDB(path='some/path', time_col='time', index_cols='node', columns=['cpu', 'disk'], rate='1/h',
-                       max_events=1, frames_client=MockFramesClient())
+    step = TSDBTarget(path='some/path', time_col='time', index_cols='node', columns=['cpu', 'disk'], rate='1/h',
+                      max_events=1, frames_client=MockFramesClient())
 
     assert step.to_dict() == {
-        'class_name': 'storey.writers.WriteToTSDB',
+        'class_name': 'storey.writers.TSDBTarget',
         'class_args': {
             'columns': ['cpu', 'disk'],
             'index_cols': 'node',
@@ -2289,16 +2289,16 @@ to_data_frame0.to(reduce1)
 
 def test_reader_writer_to_code():
     flow = build_flow([
-        ReadCSV('mycsv.csv'),
-        WriteToParquet('mypq')
+        CSVSource('mycsv.csv'),
+        ParquetTarget('mypq')
     ])
 
     reconstructed_code = flow.to_code()
     print(reconstructed_code)
-    expected = """read_c_s_v0 = ReadCSV(paths='mycsv.csv', header=False, build_dict=False, type_inference=True)
-write_to_parquet0 = WriteToParquet(flush_after_seconds=60, path='mypq', max_events=10000)
+    expected = """c_s_v_source0 = CSVSource(paths='mycsv.csv', header=False, build_dict=False, type_inference=True)
+parquet_target0 = ParquetTarget(flush_after_seconds=60, path='mypq', max_events=10000)
 
-read_c_s_v0.to(write_to_parquet0)
+c_s_v_source0.to(parquet_target0)
 """
     assert reconstructed_code == expected
 
@@ -2315,7 +2315,7 @@ def test_illegal_step_source_not_first_step():
     df = pd.DataFrame([['hello', 1, 1.5], ['world', 2, 2.5]], columns=['string', 'int', 'float'])
     try:
         build_flow([
-            ReadParquet('tests'),
+            ParquetSource('tests'),
             DataframeSource(df),
             Reduce([], append_and_return),
         ]).run()
@@ -2328,7 +2328,7 @@ def test_writer_downstream(tmpdir):
     file_path = f'{tmpdir}/test_writer_downstream/out.csv'
     controller = build_flow([
         Source(),
-        WriteToCSV(file_path, columns=['n', 'n*10'], header=True),
+        CSVTarget(file_path, columns=['n', 'n*10'], header=True),
         Reduce(0, lambda acc, x: acc + x[0])
     ]).run()
 
@@ -2369,7 +2369,7 @@ def test_non_existing_key_query_by_key():
     table = Table('table', NoopDriver())
     controller = build_flow([
         DataframeSource(df, key_field='name'),
-        WriteToTable(table),
+        NoSqlTarget(table),
     ]).run()
     controller.await_termination()
 
@@ -2385,7 +2385,7 @@ def test_non_existing_key_query_by_key():
 
 def test_csv_reader_with_none_values():
     controller = build_flow([
-        ReadCSV('tests/test-with-none-values.csv', header=True, key_field='string'),
+        CSVSource('tests/test-with-none-values.csv', header=True, key_field='string'),
         Reduce([], append_and_return, full_event=True),
     ]).run()
 

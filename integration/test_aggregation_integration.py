@@ -6,7 +6,7 @@ import math
 import pandas as pd
 
 from storey import build_flow, Source, Reduce, Table, V3ioDriver, MapWithState, AggregateByKey, FieldAggregator, \
-    QueryByKey, WriteToTable, Context, DataframeSource, Map
+    QueryByKey, NoSqlTarget, Context, DataframeSource, Map
 
 from storey.dtypes import SlidingWindows, FixedWindows
 from storey.utils import _split_path
@@ -24,7 +24,7 @@ def test_aggregate_and_query_with_different_windows(setup_teardown_test, partiti
         AggregateByKey([FieldAggregator('number_of_stuff', 'col1', ['sum', 'avg', 'min', 'max', 'sqr'],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
                        table),
-        WriteToTable(table),
+        NoSqlTarget(table),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -113,7 +113,7 @@ def test_query_virtual_aggregations_flow(setup_teardown_test):
         AggregateByKey([FieldAggregator('number_of_stuff', 'col1', ['avg', 'stddev', 'stdvar'],
                                         SlidingWindows(['24h'], '10m'))],
                        table),
-        WriteToTable(table),
+        NoSqlTarget(table),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -178,7 +178,7 @@ def test_query_aggregate_by_key(setup_teardown_test, partitioned_by_key, flush_i
         AggregateByKey([FieldAggregator('number_of_stuff', 'col1', ['sum', 'avg', 'min', 'max', 'sqr'],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
                        table),
-        WriteToTable(table),
+        NoSqlTarget(table),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -273,7 +273,7 @@ def test_aggregate_and_query_with_dependent_aggrs_different_windows(setup_teardo
         AggregateByKey([FieldAggregator('number_of_stuff', 'col1', ['sum', 'avg'],
                                         SlidingWindows(['1h', '2h'], '10m'))],
                        table),
-        WriteToTable(table),
+        NoSqlTarget(table),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -358,7 +358,7 @@ def test_aggregate_by_key_one_underlying_window(setup_teardown_test, partitioned
                             FieldAggregator('other_stuff', 'col1', ['sum'],
                                             SlidingWindows(['1h'], '10m'))],
                            table),
-            WriteToTable(table),
+            NoSqlTarget(table),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]).run()
 
@@ -398,7 +398,7 @@ def test_aggregate_by_key_two_underlying_windows(setup_teardown_test, partitione
                             FieldAggregator('other_stuff', 'col1', ['sum'],
                                             SlidingWindows(['24h'], '10m'))],
                            table),
-            WriteToTable(table),
+            NoSqlTarget(table),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]).run()
 
@@ -435,7 +435,7 @@ def test_aggregate_by_key_with_extra_aliases(setup_teardown_test):
         AggregateByKey([FieldAggregator('number_of_stuff', 'col1', ['sum', 'avg'],
                                         SlidingWindows(['2h'], '10m'))],
                        table),
-        WriteToTable(table),
+        NoSqlTarget(table),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -516,7 +516,7 @@ def test_write_cache_with_aggregations(setup_teardown_test, flush_interval):
         AggregateByKey([FieldAggregator('number_of_stuff', 'col1', ['sum', 'avg'],
                                         SlidingWindows(['2h'], '10m'))],
                        table),
-        WriteToTable(table),
+        NoSqlTarget(table),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -594,7 +594,7 @@ def test_write_cache(setup_teardown_test, flush_interval):
     controller = build_flow([
         Source(),
         MapWithState(table, enrich, group_by_key=True, full_event=True),
-        WriteToTable(table),
+        NoSqlTarget(table),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -650,7 +650,7 @@ def test_aggregate_with_string_table(setup_teardown_test):
         AggregateByKey([FieldAggregator('number_of_stuff', 'col1', ['sum', 'avg', 'min', 'max', 'sqr'],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
                        table_name, context=context),
-        WriteToTable(table),
+        NoSqlTarget(table),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -732,7 +732,7 @@ def test_modify_schema(setup_teardown_test):
         AggregateByKey([FieldAggregator('number_of_stuff', 'col1', ['sum', 'avg', 'min', 'max'],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
                        table),
-        WriteToTable(table),
+        NoSqlTarget(table),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -829,7 +829,7 @@ def test_invalid_modify_schema(setup_teardown_test):
         AggregateByKey([FieldAggregator('number_of_stuff', 'col1', ['sum', 'avg', 'min', 'max'],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
                        table),
-        WriteToTable(table),
+        NoSqlTarget(table),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -914,7 +914,7 @@ def test_query_aggregate_by_key_sliding_window_new_time_exceeds_stored_window(se
         AggregateByKey([FieldAggregator('number_of_stuff', 'col1', ['count'],
                                         SlidingWindows(['30m', '2h'], '1m'))],
                        table),
-        WriteToTable(table),
+        NoSqlTarget(table),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -964,7 +964,7 @@ def test_query_aggregate_by_key_fixed_window_new_time_exceeds_stored_window(setu
         AggregateByKey([FieldAggregator('number_of_stuff', 'col1', ['count'],
                                         FixedWindows(['30m', '2h']))],
                        table),
-        WriteToTable(table),
+        NoSqlTarget(table),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -1014,7 +1014,7 @@ def test_sliding_query_time_exceeds_stored_window_by_more_than_window(setup_tear
         AggregateByKey([FieldAggregator('number_of_stuff', 'col1', ['count'],
                                         SlidingWindows(['30m', '2h'], '1m'))],
                        table),
-        WriteToTable(table),
+        NoSqlTarget(table),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -1064,7 +1064,7 @@ def test_fixed_query_time_exceeds_stored_window_by_more_than_window(setup_teardo
         AggregateByKey([FieldAggregator('number_of_stuff', 'col1', ['count'],
                                         FixedWindows(['30m', '2h']))],
                        table),
-        WriteToTable(table),
+        NoSqlTarget(table),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -1111,7 +1111,7 @@ def test_write_to_table_reuse(setup_teardown_test):
     flow = build_flow([
         Source(),
         AggregateByKey([FieldAggregator('number_of_stuff', 'col1', ['count'], FixedWindows(['30m', '2h']))], table),
-        WriteToTable(table), Reduce([], lambda acc, x: append_return(acc, x))
+        NoSqlTarget(table), Reduce([], lambda acc, x: append_return(acc, x))
     ])
     items_in_ingest_batch = 3
 
@@ -1157,7 +1157,7 @@ def test_aggregate_multiple_keys(setup_teardown_test):
         AggregateByKey([FieldAggregator('number_of_stuff', 'some_data', ['sum'],
                                         SlidingWindows(['1h'], '10m'))],
                        table),
-        WriteToTable(table),
+        NoSqlTarget(table),
     ]).run()
 
     actual = controller.await_termination()
@@ -1204,7 +1204,7 @@ def test_read_non_existing_key(setup_teardown_test):
         AggregateByKey([FieldAggregator('number_of_stuff', 'some_data', ['sum'],
                                         SlidingWindows(['1h'], '10m'))],
                        table),
-        WriteToTable(table),
+        NoSqlTarget(table),
     ]).run()
 
     actual = controller.await_termination()
@@ -1233,12 +1233,12 @@ def test_concurrent_updates_to_kv_table(setup_teardown_test):
     controller1 = build_flow([
         Source(),
         AggregateByKey([FieldAggregator('attr1', 'attr1', ['sum'], SlidingWindows(['1h'], '10m'))], table1),
-        WriteToTable(table1)
+        NoSqlTarget(table1)
     ]).run()
     controller2 = build_flow([
         Source(),
         AggregateByKey([FieldAggregator('attr2', 'attr2', ['sum'], SlidingWindows(['1h'], '10m'))], table2),
-        WriteToTable(table2)
+        NoSqlTarget(table2)
     ]).run()
 
     try:

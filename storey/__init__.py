@@ -21,13 +21,13 @@ from .flow import (  # noqa: F401
     MapWithState, MapClass, Complete, Choice, Recover, HttpRequest, HttpResponse, build_flow, Context
 )
 from .sources import (  # noqa: F401
-    Source, AsyncSource, DataframeSource, ReadCSV, ReadParquet
+    Source, AsyncSource, DataframeSource, CSVSource, ParquetSource
 )
 from .table import (  # noqa: F401
     Table
 )
 from .writers import (  # noqa: F401
-    WriteToV3IOStream, WriteToCSV, WriteToParquet, WriteToTSDB, WriteToTable
+    StreamTarget, CSVTarget, ParquetTarget, TSDBTarget, NoSqlTarget
 )
 
 # clear module namespace

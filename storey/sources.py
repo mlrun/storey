@@ -426,7 +426,7 @@ class _IterableSource(Flow):
         return await self._run_loop()
 
 
-class ReadCSV(_IterableSource):
+class CSVSource(_IterableSource):
     """
     Reads CSV files as input source for a flow.
 
@@ -670,7 +670,7 @@ class DataframeSource(_IterableSource):
         return await self._do_downstream(_termination_obj)
 
 
-class ReadParquet(DataframeSource):
+class ParquetSource(DataframeSource):
     """Reads Parquet files as input source for a flow.
     :parameter paths: paths to Parquet files
     :parameter columns : list, default=None. If not None, only these columns will be read from the file.

@@ -2,14 +2,14 @@ Storey api
 ================
 
 
-Writers:
+Targets:
 ********
 
 .. automodule:: storey.writers
     :members:
     :show-inheritance:
 
-Readers:
+Sources:
 ********
 .. automodule:: storey.sources
     :members:

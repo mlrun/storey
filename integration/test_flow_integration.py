@@ -11,8 +11,8 @@ import v3io.aio.dataplane
 import v3io_frames as frames
 
 from storey import Filter, JoinWithV3IOTable, SendToHttp, Map, Reduce, Source, HttpRequest, build_flow, \
-    WriteToV3IOStream, V3ioDriver, WriteToTSDB, Table, JoinWithTable, MapWithState, WriteToTable, DataframeSource, \
-    ReadCSV
+    StreamTarget, V3ioDriver, TSDBTarget, Table, JoinWithTable, MapWithState, NoSqlTarget, DataframeSource, \
+    CSVSource
 from storey.utils import hash_list
 from .integration_test_utils import V3ioHeaders, append_return, test_base_time, setup_kv_teardown_test, setup_teardown_test, \
     setup_stream_teardown_test
@@ -90,7 +90,7 @@ def test_write_to_v3io_stream(setup_stream_teardown_test):
     controller = build_flow([
         Source(),
         Map(lambda x: str(x)),
-        WriteToV3IOStream(V3ioDriver(), stream_path, sharding_func=lambda event: int(event.body))
+        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: int(event.body))
     ]).run()
     for i in range(10):
         controller.emit(i)
@@ -107,7 +107,7 @@ def test_write_to_v3io_stream_with_column_inference(setup_stream_teardown_test):
     stream_path = setup_stream_teardown_test
     controller = build_flow([
         Source(),
-        WriteToV3IOStream(V3ioDriver(), stream_path, sharding_func=lambda event: event.body['x'], infer_columns_from_data=True)
+        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: event.body['x'], infer_columns_from_data=True)
     ]).run()
     for i in range(10):
         controller.emit({'x': i, 'y': f'{i}+{i}={i * 2}'})
@@ -136,8 +136,8 @@ def test_write_dict_to_v3io_stream(setup_stream_teardown_test):
     stream_path = setup_stream_teardown_test
     controller = build_flow([
         Source(),
-        WriteToV3IOStream(V3ioDriver(), stream_path, sharding_func=lambda event: int(event.key), columns=['$key'],
-                          infer_columns_from_data=True)
+        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: int(event.key), columns=['$key'],
+                     infer_columns_from_data=True)
     ]).run()
     expected_shard0 = []
     expected_shard1 = []
@@ -168,7 +168,7 @@ def test_write_to_v3io_stream_unbalanced(setup_stream_teardown_test):
     controller = build_flow([
         Source(),
         Map(lambda x: str(x)),
-        WriteToV3IOStream(V3ioDriver(), stream_path, sharding_func=lambda event: 0)
+        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: 0)
     ]).run()
     for i in range(10):
         controller.emit(i)
@@ -186,7 +186,7 @@ def test_write_to_tsdb():
     tsdb_path = f'v3io://bigdata/{table_name}'
     controller = build_flow([
         Source(),
-        WriteToTSDB(path=tsdb_path, time_col='time', index_cols='node', columns=['cpu', 'disk'], rate='1/h', max_events=2)
+        TSDBTarget(path=tsdb_path, time_col='time', index_cols='node', columns=['cpu', 'disk'], rate='1/h', max_events=2)
     ]).run()
 
     expected = []
@@ -212,8 +212,8 @@ def test_write_to_tsdb_with_metadata_label():
     tsdb_path = f'projects/{table_name}'
     controller = build_flow([
         Source(),
-        WriteToTSDB(path=tsdb_path, index_cols='node', columns=['cpu', 'disk'], rate='1/h',
-                    max_events=2)
+        TSDBTarget(path=tsdb_path, index_cols='node', columns=['cpu', 'disk'], rate='1/h',
+                   max_events=2)
     ]).run()
 
     expected = []
@@ -289,7 +289,7 @@ def test_write_table_specific_columns(setup_teardown_test):
     controller = build_flow([
         Source(),
         MapWithState(table, enrich, group_by_key=True, full_event=True),
-        WriteToTable(table, columns=['twice_total_activities']),
+        NoSqlTarget(table, columns=['twice_total_activities']),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -344,7 +344,7 @@ def test_write_table_metadata_columns(setup_teardown_test):
     controller = build_flow([
         Source(),
         MapWithState(table, enrich, group_by_key=True, full_event=True),
-        WriteToTable(table, columns=['twice_total_activities', 'my_key=$key']),
+        NoSqlTarget(table, columns=['twice_total_activities', 'my_key=$key']),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -405,7 +405,7 @@ def test_writing_int_key(setup_teardown_test):
 
     controller = build_flow([
         DataframeSource(df, key_field='num'),
-        WriteToTable(table),
+        NoSqlTarget(table),
 
     ]).run()
     controller.await_termination()
@@ -418,7 +418,7 @@ def test_writing_timedelta_key(setup_teardown_test):
 
     controller = build_flow([
         DataframeSource(df, key_field='key'),
-        WriteToTable(table),
+        NoSqlTarget(table),
 
     ]).run()
     controller.await_termination()
@@ -437,7 +437,7 @@ def test_write_multiple_keys_to_v3io_from_df(setup_teardown_test):
     keys = ['first_name', 'last_name']
     controller = build_flow([
         DataframeSource(data, key_field=keys),
-        WriteToTable(table),
+        NoSqlTarget(table),
     ]).run()
     controller.await_termination()
 
@@ -451,8 +451,8 @@ def test_write_multiple_keys_to_v3io_from_csv(setup_teardown_test):
     table = Table(setup_teardown_test, V3ioDriver())
 
     controller = build_flow([
-        ReadCSV('tests/test.csv', header=True, key_field=['n1', 'n2'], build_dict=True),
-        WriteToTable(table),
+        CSVSource('tests/test.csv', header=True, key_field=['n1', 'n2'], build_dict=True),
+        NoSqlTarget(table),
     ]).run()
     controller.await_termination()
 
@@ -472,7 +472,7 @@ def test_write_multiple_keys_to_v3io(setup_teardown_test):
 
     controller = build_flow([
         Source(key_field=['n1', 'n2']),
-        WriteToTable(table),
+        NoSqlTarget(table),
     ]).run()
 
     controller.emit({'n1': 1, 'n2': 2, 'n3': 3})
@@ -509,9 +509,9 @@ def test_write_none_time(setup_teardown_test):
 
     controller = build_flow([
         DataframeSource(data, key_field='first_name'),
-        WriteToTable(table),
+        NoSqlTarget(table),
         Map(set_moshe_time_to_none),
-        WriteToTable(table),
+        NoSqlTarget(table),
     ]).run()
     controller.await_termination()
 
@@ -530,7 +530,7 @@ def test_cache_flushing(setup_teardown_test):
     table = Table(setup_teardown_test, V3ioDriver(), flush_interval_secs=3)
     controller = build_flow([
         Source(),
-        WriteToTable(table),
+        NoSqlTarget(table),
     ]).run()
 
     controller.emit({'col1': 0}, 'dina', test_base_time + timedelta(minutes=25))
