@@ -2247,12 +2247,12 @@ def test_to_code():
     ])
 
     reconstructed_code = flow.to_code()
-    expected = """source0 = SyncEmitSource()
+    expected = """sync_emit_source0 = SyncEmitSource()
 batch0 = Batch(max_events=5)
 to_data_frame0 = ToDataFrame()
 reduce0 = Reduce(initial_value=[], full_event=True)
 
-source0.to(batch0)
+sync_emit_source0.to(batch0)
 batch0.to(to_data_frame0)
 to_data_frame0.to(reduce0)
 """
@@ -2272,16 +2272,16 @@ def test_split_flow_to_code():
     ])
 
     reconstructed_code = flow.to_code()
-    expected = """source0 = SyncEmitSource()
+    expected = """sync_emit_source0 = SyncEmitSource()
 batch0 = Batch(max_events=5)
 reduce0 = Reduce(initial_value=[])
 batch1 = Batch(max_events=5)
 to_data_frame0 = ToDataFrame()
 reduce1 = Reduce(initial_value=[], full_event=True)
 
-source0.to(batch0)
+sync_emit_source0.to(batch0)
 batch0.to(reduce0)
-source0.to(batch1)
+sync_emit_source0.to(batch1)
 batch1.to(to_data_frame0)
 to_data_frame0.to(reduce1)
 """
