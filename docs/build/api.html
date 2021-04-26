@@ -396,23 +396,23 @@ Same as AwaitableResult but for an async context.</p>
 </dd></dl>
 
 <dl class="class">
-<dt id="storey.sources.AsyncSource">
-<em class="property">class </em><code class="sig-prename descclassname">storey.sources.</code><code class="sig-name descname">AsyncSource</code><span class="sig-paren">(</span><em class="sig-param">buffer_size: int = 1024</em>, <em class="sig-param">key_field: Union[list</em>, <em class="sig-param">str</em>, <em class="sig-param">None] = None</em>, <em class="sig-param">time_field: Optional[str] = None</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.sources.AsyncSource" title="Permalink to this definition">¶</a></dt>
+<dt id="storey.sources.AsyncEmitSource">
+<em class="property">class </em><code class="sig-prename descclassname">storey.sources.</code><code class="sig-name descname">AsyncEmitSource</code><span class="sig-paren">(</span><em class="sig-param">buffer_size: int = 1024</em>, <em class="sig-param">key_field: Union[list</em>, <em class="sig-param">str</em>, <em class="sig-param">None] = None</em>, <em class="sig-param">time_field: Optional[str] = None</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.sources.AsyncEmitSource" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow.Flow</span></code></p>
 <p>Asynchronous entry point into a flow. Produces an AsyncFlowController when run, for use from inside an async def.
-See Source for use from inside a synchronous context.</p>
+See SyncEmitSource for use from inside a synchronous context.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>buffer_size</strong> – size of the incoming event buffer. Defaults to 1024.</p></li>
-<li><p><strong>name</strong> (<em>string</em>) – Name of this step, as it should appear in logs. Defaults to class name (AsyncSource).</p></li>
+<li><p><strong>name</strong> (<em>string</em>) – Name of this step, as it should appear in logs. Defaults to class name (AsyncEmitSource).</p></li>
 </ul>
 </dd>
 </dl>
 <p>for additional params, see documentation of  <code class="xref py py-class docutils literal notranslate"><span class="pre">Flow</span></code></p>
 <dl class="method">
-<dt id="storey.sources.AsyncSource.run">
-<em class="property">async </em><code class="sig-name descname">run</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#storey.sources.AsyncSource.run" title="Permalink to this definition">¶</a></dt>
+<dt id="storey.sources.AsyncEmitSource.run">
+<em class="property">async </em><code class="sig-name descname">run</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#storey.sources.AsyncEmitSource.run" title="Permalink to this definition">¶</a></dt>
 <dd><p>Starts the flow</p>
 </dd></dl>
 
@@ -555,10 +555,10 @@ Default is None</p></li>
 </dd></dl>
 
 <dl class="class">
-<dt id="storey.sources.Source">
-<em class="property">class </em><code class="sig-prename descclassname">storey.sources.</code><code class="sig-name descname">Source</code><span class="sig-paren">(</span><em class="sig-param">buffer_size: Optional[int] = None</em>, <em class="sig-param">key_field: Union[list</em>, <em class="sig-param">str</em>, <em class="sig-param">None] = None</em>, <em class="sig-param">time_field: Optional[str] = None</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.sources.Source" title="Permalink to this definition">¶</a></dt>
+<dt id="storey.sources.SyncEmitSource">
+<em class="property">class </em><code class="sig-prename descclassname">storey.sources.</code><code class="sig-name descname">SyncEmitSource</code><span class="sig-paren">(</span><em class="sig-param">buffer_size: Optional[int] = None</em>, <em class="sig-param">key_field: Union[list</em>, <em class="sig-param">str</em>, <em class="sig-param">None] = None</em>, <em class="sig-param">time_field: Optional[str] = None</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.sources.SyncEmitSource" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow.Flow</span></code></p>
-<p>Synchronous entry point into a flow. Produces a FlowController when run, for use from inside a synchronous context. See AsyncSource
+<p>Synchronous entry point into a flow. Produces a FlowController when run, for use from inside a synchronous context. See AsyncEmitSource
 for use from inside an async context.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
@@ -566,14 +566,14 @@ for use from inside an async context.</p>
 <li><p><strong>buffer_size</strong> – size of the incoming event buffer. Defaults to 1024.</p></li>
 <li><p><strong>key_field</strong> – Field to extract and use as the key. Optional.</p></li>
 <li><p><strong>time_field</strong> – Field to extract and use as the time. Optional.</p></li>
-<li><p><strong>name</strong> (<em>string</em>) – Name of this step, as it should appear in logs. Defaults to class name (Source).</p></li>
+<li><p><strong>name</strong> (<em>string</em>) – Name of this step, as it should appear in logs. Defaults to class name (SyncEmitSource).</p></li>
 </ul>
 </dd>
 </dl>
 <p>for additional params, see documentation of  <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow.Flow</span></code></p>
 <dl class="method">
-<dt id="storey.sources.Source.run">
-<code class="sig-name descname">run</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#storey.sources.Source.run" title="Permalink to this definition">¶</a></dt>
+<dt id="storey.sources.SyncEmitSource.run">
+<code class="sig-name descname">run</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#storey.sources.SyncEmitSource.run" title="Permalink to this definition">¶</a></dt>
 <dd><p>Starts the flow</p>
 </dd></dl>
 

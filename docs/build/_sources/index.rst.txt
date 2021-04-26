@@ -10,10 +10,10 @@ such:
 
 .. code-block:: python
 
-    from storey import build_flow, Source, CSVTarget
+    from storey import build_flow, SyncEmitSource, CSVTarget
 
     controller = build_flow([
-        Source(),
+        SyncEmitSource(),
         CSVTarget('myfile.csv', columns=['n', 'n*10'], header=True)
     ]).run()
 
@@ -29,10 +29,10 @@ The same example can also be run from within an async context:
 
 .. code-block:: python
 
-    from storey import build_flow, AsyncSource, CSVTarget
+    from storey import build_flow, AsyncEmitSource, CSVTarget
 
     controller = await build_flow([
-        AsyncSource(),
+        AsyncEmitSource(),
         CSVTarget('myfile.csv', columns=['n', 'n*10'], header=True)
     ]).run()
 

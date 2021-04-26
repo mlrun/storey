@@ -21,7 +21,7 @@ from .flow import (  # noqa: F401
     MapWithState, MapClass, Complete, Choice, Recover, HttpRequest, HttpResponse, build_flow, Context
 )
 from .sources import (  # noqa: F401
-    Source, AsyncSource, DataframeSource, CSVSource, ParquetSource
+    SyncEmitSource, AsyncEmitSource, DataframeSource, CSVSource, ParquetSource
 )
 from .table import (  # noqa: F401
     Table

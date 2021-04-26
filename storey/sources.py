@@ -141,14 +141,14 @@ class FlowAwaiter:
         return self._await_termination_fn()
 
 
-class Source(Flow):
-    """Synchronous entry point into a flow. Produces a FlowController when run, for use from inside a synchronous context. See AsyncSource
+class SyncEmitSource(Flow):
+    """Synchronous entry point into a flow. Produces a FlowController when run, for use from inside a synchronous context. See AsyncEmitSource
     for use from inside an async context.
 
     :param buffer_size: size of the incoming event buffer. Defaults to 1024.
     :param key_field: Field to extract and use as the key. Optional.
     :param time_field: Field to extract and use as the time. Optional.
-    :param name: Name of this step, as it should appear in logs. Defaults to class name (Source).
+    :param name: Name of this step, as it should appear in logs. Defaults to class name (SyncEmitSource).
     :type name: string
 
     for additional params, see documentation of  :class:`storey.flow.Flow`
@@ -309,13 +309,13 @@ class AsyncFlowController(FlowControllerBase):
         return await self._loop_task
 
 
-class AsyncSource(Flow):
+class AsyncEmitSource(Flow):
     """
     Asynchronous entry point into a flow. Produces an AsyncFlowController when run, for use from inside an async def.
-    See Source for use from inside a synchronous context.
+    See SyncEmitSource for use from inside a synchronous context.
 
     :param buffer_size: size of the incoming event buffer. Defaults to 1024.
-    :param name: Name of this step, as it should appear in logs. Defaults to class name (AsyncSource).
+    :param name: Name of this step, as it should appear in logs. Defaults to class name (AsyncEmitSource).
     :type name: string
 
     for additional params, see documentation of  :class:`~storey.flow.Flow`

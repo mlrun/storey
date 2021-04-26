@@ -130,7 +130,7 @@
     </div>
 </div>
 
-            <!-- Source interaction buttons -->
+            <!-- SyncEmitSource interaction buttons -->
 
 
             <!-- Full screen (wrap in <a> to have style consistency -->
@@ -187,10 +187,10 @@
 <p>Storey is streaming library for real time event processing and feature extraction. It’s based on <a class="reference external" href="https://docs.python.org/3/library/asyncio.html">asyncio</a> and offers both synchronous and
 asynchronous APIs. Storey flows are graphs of steps that perform computational and IO tasks. A basic synchronous flow is created and run as
 such:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">storey</span> <span class="kn">import</span> <span class="n">build_flow</span><span class="p">,</span> <span class="n">Source</span><span class="p">,</span> <span class="n">CSVTarget</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">storey</span> <span class="kn">import</span> <span class="n">build_flow</span><span class="p">,</span> <span class="n">SyncEmitSource</span><span class="p">,</span> <span class="n">CSVTarget</span>
 
 <span class="n">controller</span> <span class="o">=</span> <span class="n">build_flow</span><span class="p">([</span>
-    <span class="n">Source</span><span class="p">(),</span>
+    <span class="n">SyncEmitSource</span><span class="p">(),</span>
     <span class="n">CSVTarget</span><span class="p">(</span><span class="s1">&#39;myfile.csv&#39;</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;n&#39;</span><span class="p">,</span> <span class="s1">&#39;n*10&#39;</span><span class="p">],</span> <span class="n">header</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <span class="p">])</span><span class="o">.</span><span class="n">run</span><span class="p">()</span>
 
@@ -203,10 +203,10 @@ such:</p>
 </div>
 <p>This example constructs a flow that writes events to a CSV file, runs it, then pushes events into that flow.</p>
 <p>The same example can also be run from within an async context:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">storey</span> <span class="kn">import</span> <span class="n">build_flow</span><span class="p">,</span> <span class="n">AsyncSource</span><span class="p">,</span> <span class="n">CSVTarget</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">storey</span> <span class="kn">import</span> <span class="n">build_flow</span><span class="p">,</span> <span class="n">AsyncEmitSource</span><span class="p">,</span> <span class="n">CSVTarget</span>
 
 <span class="n">controller</span> <span class="o">=</span> <span class="k">await</span> <span class="n">build_flow</span><span class="p">([</span>
-    <span class="n">AsyncSource</span><span class="p">(),</span>
+    <span class="n">AsyncEmitSource</span><span class="p">(),</span>
     <span class="n">CSVTarget</span><span class="p">(</span><span class="s1">&#39;myfile.csv&#39;</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;n&#39;</span><span class="p">,</span> <span class="s1">&#39;n*10&#39;</span><span class="p">],</span> <span class="n">header</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <span class="p">])</span><span class="o">.</span><span class="n">run</span><span class="p">()</span>
 

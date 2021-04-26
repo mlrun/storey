@@ -17,8 +17,8 @@ A Storey flow consist of steps linked together by the `build_flow` function, eac
 
 ### Supported Steps
 #### Input Steps
-* `Source` 
-* `AsyncSource` 
+* `SyncEmitSource` 
+* `AsyncEmitSource` 
 * `CSVSource`  
 * `ParquetSource` 
 * `DataframeSource`  
@@ -55,7 +55,7 @@ A Storey flow consist of steps linked together by the `build_flow` function, eac
 The following example reads user data, creates features using Storey's aggregates, persists the data to V3IO and emits events containing the features to a V3IO Stream for further processing.
 
 ```python
-from storey import build_flow, Source, Table, V3ioDriver, AggregateByKey, FieldAggregator, NoSqlTarget
+from storey import build_flow, SyncEmitSource, Table, V3ioDriver, AggregateByKey, FieldAggregator, NoSqlTarget
 from storey.dtypes import SlidingWindows
 
 v3io_web_api = 'https://webapi.change-me.com'
@@ -71,7 +71,7 @@ def enrich(event, state):
     return event, state
 
 controller = build_flow([
-    Source(),
+    SyncEmitSource(),
     MapWithState(table_object, enrich, group_by_key=True, full_event=True),
     AggregateByKey([FieldAggregator("number_of_clicks", "click", ["count"],
                                     SlidingWindows(['1h','2h', '24h'], '10m')),
@@ -90,7 +90,7 @@ We can also create a serving function, which sole purpose is to read data from t
 
 ```python
 controller = build_flow([
-    Source(),
+    SyncEmitSource(),
     QueryAggregationByKey([FieldAggregator("number_of_clicks", "click", ["count"],
                                            SlidingWindows(['1h','2h', '24h'], '10m')),
                            FieldAggregator("purchases", "purchase_amount", ["avg", "min", "max"],

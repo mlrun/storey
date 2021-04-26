@@ -161,7 +161,7 @@
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">table</span> <span class="o">=</span> <span class="n">Table</span><span class="p">(</span><span class="n">setup_teardown_test</span><span class="p">,</span> <span class="n">V3ioDriver</span><span class="p">(),</span> <span class="n">partitioned_by_key</span><span class="o">=</span><span class="n">partitioned_by_key</span><span class="p">)</span>
 
 <span class="n">controller</span> <span class="o">=</span> <span class="n">build_flow</span><span class="p">([</span>
-    <span class="n">Source</span><span class="p">(),</span>
+    <span class="n">SyncEmitSource</span><span class="p">(),</span>
     <span class="n">AggregateByKey</span><span class="p">([</span><span class="n">FieldAggregator</span><span class="p">(</span><span class="s2">&quot;number_of_stuff&quot;</span><span class="p">,</span> <span class="s2">&quot;col1&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;sum&quot;</span><span class="p">,</span> <span class="s2">&quot;avg&quot;</span><span class="p">,</span> <span class="s2">&quot;min&quot;</span><span class="p">,</span> <span class="s2">&quot;max&quot;</span><span class="p">,</span> <span class="s2">&quot;sqr&quot;</span><span class="p">],</span>
                                     <span class="n">SlidingWindows</span><span class="p">([</span><span class="s1">&#39;1h&#39;</span><span class="p">,</span> <span class="s1">&#39;2h&#39;</span><span class="p">,</span> <span class="s1">&#39;24h&#39;</span><span class="p">],</span> <span class="s1">&#39;10m&#39;</span><span class="p">))],</span>
                    <span class="n">table</span><span class="p">),</span>
@@ -181,7 +181,7 @@
 <p>Example showing join with V3IO table:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">table_path</span> <span class="o">=</span> <span class="s2">&quot;path_to_table&quot;</span>
 <span class="n">controller</span> <span class="o">=</span> <span class="n">build_flow</span><span class="p">([</span>
-    <span class="n">Source</span><span class="p">(),</span>
+    <span class="n">SyncEmitSource</span><span class="p">(),</span>
     <span class="n">Map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span> <span class="o">+</span> <span class="mi">1</span><span class="p">),</span>
     <span class="n">Filter</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span> <span class="o">&lt;</span> <span class="mi">8</span><span class="p">),</span>
     <span class="n">JoinWithV3IOTable</span><span class="p">(</span><span class="n">V3ioDriver</span><span class="p">(),</span> <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="p">,</span> <span class="k">lambda</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">:</span> <span class="n">y</span><span class="p">[</span><span class="s1">&#39;age&#39;</span><span class="p">],</span> <span class="n">table_path</span><span class="p">),</span>
