@@ -24,7 +24,7 @@
     href="_static/vendor/lato_latin-ext/1.44.1/index.css">
 
     
-    <link rel="stylesheet" href="_static/sphinx-book-theme.40e2e510f6b7d1648584402491bb10fe.css" type="text/css" />
+    <link rel="stylesheet" href="_static/sphinx-book-theme.c441f2ba0852f4cabcb80105e3a46ae6.css" type="text/css" />
     <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
     
   <link rel="preload" as="script" href="_static/js/index.d3f166471bb80abb5163.js">
@@ -34,11 +34,11 @@
     <script src="_static/underscore.js"></script>
     <script src="_static/doctools.js"></script>
     <script src="_static/language_data.js"></script>
-    <script src="_static/sphinx-book-theme.d31b09fe5c1d09cb49b26a786de4a05d.js"></script>
+    <script src="_static/sphinx-book-theme.7d483ff0a819d6edff12ce0b1ead3928.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
     <link rel="next" title="Storey api" href="api.html" />
-    <link rel="prev" title="Storey overview" href="overview.html" />
+    <link rel="prev" title="Storey Package Documentation" href="index.html" />
 
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="docsearch:language" content="en" />
@@ -72,11 +72,6 @@
  </span>
 </p>
 <ul class="current nav sidenav_l1">
- <li class="toctree-l1">
-  <a class="reference internal" href="overview.html">
-   Storey overview
-  </a>
- </li>
  <li class="toctree-l1 current active">
   <a class="current reference internal" href="#">
    Storey examples
@@ -104,21 +99,21 @@
           
 <main class="col py-md-3 pl-md-4 bd-content overflow-auto" role="main">
     
-    <div class="row topbar fixed-top container-xl">
-    <div class="col-12 col-md-3 bd-topbar-whitespace site-navigation show">
-    </div>
-    <div class="col pl-2 topbar-main">
-        
-        <button id="navbar-toggler" class="navbar-toggler ml-0" type="button" data-toggle="collapse"
-            data-toggle="tooltip" data-placement="bottom" data-target=".site-navigation" aria-controls="navbar-menu"
-            aria-expanded="true" aria-label="Toggle navigation" aria-controls="site-navigation"
-            title="Toggle navigation" data-toggle="tooltip" data-placement="left">
-            <i class="fas fa-bars"></i>
-            <i class="fas fa-arrow-left"></i>
-            <i class="fas fa-arrow-up"></i>
-        </button>
-        
-        
+    <div class="topbar container-xl fixed-top">
+    <div class="topbar-contents row">
+        <div class="col-12 col-md-3 bd-topbar-whitespace site-navigation show"></div>
+        <div class="col pl-md-4 topbar-main">
+            
+            <button id="navbar-toggler" class="navbar-toggler ml-0" type="button" data-toggle="collapse"
+                data-toggle="tooltip" data-placement="bottom" data-target=".site-navigation" aria-controls="navbar-menu"
+                aria-expanded="true" aria-label="Toggle navigation" aria-controls="site-navigation"
+                title="Toggle navigation" data-toggle="tooltip" data-placement="left">
+                <i class="fas fa-bars"></i>
+                <i class="fas fa-arrow-left"></i>
+                <i class="fas fa-arrow-up"></i>
+            </button>
+            
+            
 <div class="dropdown-buttons-trigger">
     <button id="dropdown-buttons-trigger" class="btn btn-secondary topbarbtn" aria-label="Download this page"><i
             class="fas fa-download"></i></button>
@@ -136,22 +131,23 @@
     </div>
 </div>
 
-        <!-- Source interaction buttons -->
+            <!-- Source interaction buttons -->
 
 
-        <!-- Full screen (wrap in <a> to have style consistency -->
-        <a class="full-screen-button"><button type="button" class="btn btn-secondary topbarbtn" data-toggle="tooltip"
-                data-placement="bottom" onclick="toggleFullScreen()" aria-label="Fullscreen mode"
-                title="Fullscreen mode"><i
-                    class="fas fa-expand"></i></button></a>
+            <!-- Full screen (wrap in <a> to have style consistency -->
+            <a class="full-screen-button"><button type="button" class="btn btn-secondary topbarbtn" data-toggle="tooltip"
+                    data-placement="bottom" onclick="toggleFullScreen()" aria-label="Fullscreen mode"
+                    title="Fullscreen mode"><i
+                        class="fas fa-expand"></i></button></a>
 
-        <!-- Launch buttons -->
+            <!-- Launch buttons -->
 
-    </div>
+        </div>
 
-    <!-- Table of contents -->
-    <div class="d-none d-md-block col-md-2 bd-toc show">
-        
+        <!-- Table of contents -->
+        <div class="d-none d-md-block col-md-2 bd-toc show">
+            
+        </div>
     </div>
 </div>
     <div id="main-content" class="row">
@@ -165,11 +161,11 @@
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">table</span> <span class="o">=</span> <span class="n">Table</span><span class="p">(</span><span class="n">setup_teardown_test</span><span class="p">,</span> <span class="n">V3ioDriver</span><span class="p">(),</span> <span class="n">partitioned_by_key</span><span class="o">=</span><span class="n">partitioned_by_key</span><span class="p">)</span>
 
 <span class="n">controller</span> <span class="o">=</span> <span class="n">build_flow</span><span class="p">([</span>
-    <span class="n">Source</span><span class="p">(),</span>
+    <span class="n">SyncEmitSource</span><span class="p">(),</span>
     <span class="n">AggregateByKey</span><span class="p">([</span><span class="n">FieldAggregator</span><span class="p">(</span><span class="s2">&quot;number_of_stuff&quot;</span><span class="p">,</span> <span class="s2">&quot;col1&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;sum&quot;</span><span class="p">,</span> <span class="s2">&quot;avg&quot;</span><span class="p">,</span> <span class="s2">&quot;min&quot;</span><span class="p">,</span> <span class="s2">&quot;max&quot;</span><span class="p">,</span> <span class="s2">&quot;sqr&quot;</span><span class="p">],</span>
                                     <span class="n">SlidingWindows</span><span class="p">([</span><span class="s1">&#39;1h&#39;</span><span class="p">,</span> <span class="s1">&#39;2h&#39;</span><span class="p">,</span> <span class="s1">&#39;24h&#39;</span><span class="p">],</span> <span class="s1">&#39;10m&#39;</span><span class="p">))],</span>
                    <span class="n">table</span><span class="p">),</span>
-    <span class="n">WriteToTable</span><span class="p">(</span><span class="n">table</span><span class="p">),</span>
+    <span class="n">NoSqlTarget</span><span class="p">(</span><span class="n">table</span><span class="p">),</span>
     <span class="n">Reduce</span><span class="p">([],</span> <span class="k">lambda</span> <span class="n">acc</span><span class="p">,</span> <span class="n">x</span><span class="p">:</span> <span class="n">append_return</span><span class="p">(</span><span class="n">acc</span><span class="p">,</span> <span class="n">x</span><span class="p">)),</span>
 <span class="p">])</span><span class="o">.</span><span class="n">run</span><span class="p">()</span>
 
@@ -185,7 +181,7 @@
 <p>Example showing join with V3IO table:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">table_path</span> <span class="o">=</span> <span class="s2">&quot;path_to_table&quot;</span>
 <span class="n">controller</span> <span class="o">=</span> <span class="n">build_flow</span><span class="p">([</span>
-    <span class="n">Source</span><span class="p">(),</span>
+    <span class="n">SyncEmitSource</span><span class="p">(),</span>
     <span class="n">Map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span> <span class="o">+</span> <span class="mi">1</span><span class="p">),</span>
     <span class="n">Filter</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span> <span class="o">&lt;</span> <span class="mi">8</span><span class="p">),</span>
     <span class="n">JoinWithV3IOTable</span><span class="p">(</span><span class="n">V3ioDriver</span><span class="p">(),</span> <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="p">,</span> <span class="k">lambda</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">:</span> <span class="n">y</span><span class="p">[</span><span class="s1">&#39;age&#39;</span><span class="p">],</span> <span class="n">table_path</span><span class="p">),</span>
@@ -203,15 +199,15 @@
 
               </div>
               
-        </div>
-    </div>
-    
-    
-    <div class='prev-next-bottom'>
         
-    <a class='left-prev' id="prev-link" href="overview.html" title="previous page">Storey overview</a>
+        <div class='prev-next-bottom'>
+            
+    <a class='left-prev' id="prev-link" href="index.html" title="previous page">Storey Package Documentation</a>
     <a class='right-next' id="next-link" href="api.html" title="next page">Storey api</a>
 
+        </div>
+        
+        </div>
     </div>
     <footer class="footer mt-5 mt-md-0">
     <div class="container">

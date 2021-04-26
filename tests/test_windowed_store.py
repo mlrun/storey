@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from storey import build_flow, Source, Filter, Reduce
+from storey import build_flow, SyncEmitSource, Filter, Reduce
 from storey.dtypes import EmissionType, SlidingWindow
 from storey.windowed_store import EmitAfterMaxEvent, Window
 
@@ -29,7 +29,7 @@ def to_millis(t):
 
 def test_windowed_flow():
     controller = build_flow([
-        Source(),
+        SyncEmitSource(),
         Filter(lambda x: x['col1'] > 3),
         Window(SlidingWindow('30m', '5m'), EmitAfterMaxEvent(max_events=3, emission_type=EmissionType.Incremental)),
         Reduce([], lambda acc, x: append_return(acc, x)),

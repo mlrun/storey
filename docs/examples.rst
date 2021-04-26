@@ -8,11 +8,11 @@ Example showing aggregation by key
     table = Table(setup_teardown_test, V3ioDriver(), partitioned_by_key=partitioned_by_key)
 
     controller = build_flow([
-        Source(),
+        SyncEmitSource(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg", "min", "max", "sqr"],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
                        table),
-        WriteToTable(table),
+        NoSqlTarget(table),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -31,7 +31,7 @@ Example showing join with V3IO table:
 
     table_path = "path_to_table"
     controller = build_flow([
-        Source(),
+        SyncEmitSource(),
         Map(lambda x: x + 1),
         Filter(lambda x: x < 8),
         JoinWithV3IOTable(V3ioDriver(), lambda x: x, lambda x, y: y['age'], table_path),

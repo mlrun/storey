@@ -2,7 +2,7 @@ import math
 import queue
 from datetime import datetime, timedelta
 
-from storey import build_flow, Source, Reduce, Table, AggregateByKey, FieldAggregator, NoopDriver
+from storey import build_flow, SyncEmitSource, Reduce, Table, AggregateByKey, FieldAggregator, NoopDriver
 from storey.dtypes import SlidingWindows, FixedWindows, EmitAfterMaxEvent, EmitEveryEvent
 
 test_base_time = datetime.fromisoformat("2020-07-21T21:40:00+00:00")
@@ -15,7 +15,7 @@ def append_return(lst, x):
 
 def test_sliding_window_simple_aggregation_flow():
     controller = build_flow([
-        Source(),
+        SyncEmitSource(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg", "min", "max"],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
                        Table("test", NoopDriver())),
@@ -67,7 +67,7 @@ def test_sliding_window_simple_aggregation_flow():
 
 def test_sliding_window_sparse_data():
     controller = build_flow([
-        Source(),
+        SyncEmitSource(),
         AggregateByKey(
             [FieldAggregator("number_of_stuff1", "col1", ["sum", "avg", "min", "max"], SlidingWindows(['1h', '2h', '24h'], '10m')),
              FieldAggregator("number_of_stuff2", "col2", ["sum", "avg", "min", "max"], SlidingWindows(['1h', '2h', '24h'], '10m'))],
@@ -248,7 +248,7 @@ def test_sliding_window_sparse_data():
 
 def test_sliding_window_sparse_data_uneven_feature_occurrence():
     controller = build_flow([
-        Source(),
+        SyncEmitSource(),
         AggregateByKey(
             [FieldAggregator("number_of_stuff1", "col1", ["sum", "avg", "min", "max"], SlidingWindows(['1h', '2h', '24h'], '10m')),
              FieldAggregator("number_of_stuff2", "col2", ["sum", "avg", "min", "max"], SlidingWindows(['1h', '2h', '24h'], '10m'))],
@@ -357,7 +357,7 @@ def test_sliding_window_sparse_data_uneven_feature_occurrence():
 
 def test_sliding_window_multiple_keys_aggregation_flow():
     controller = build_flow([
-        Source(),
+        SyncEmitSource(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg"],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
                        Table("test", NoopDriver())),
@@ -398,7 +398,7 @@ def test_sliding_window_multiple_keys_aggregation_flow():
 
 def test_sliding_window_aggregations_with_filters_flow():
     controller = build_flow([
-        Source(),
+        SyncEmitSource(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg"],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'),
                                         aggr_filter=lambda element: element['is_valid'] == 0)],
@@ -449,7 +449,7 @@ def test_sliding_window_aggregations_with_filters_flow():
 
 def test_sliding_window_aggregations_with_max_values_flow():
     controller = build_flow([
-        Source(),
+        SyncEmitSource(),
         AggregateByKey([FieldAggregator("num_hours_with_stuff_in_the_last_24h", "col1", ["count"],
                                         SlidingWindows(['24h'], '1h'),
                                         max_value=1)],
@@ -480,7 +480,7 @@ def test_sliding_window_aggregations_with_max_values_flow():
 
 def test_sliding_window_simple_aggregation_flow_multiple_fields():
     controller = build_flow([
-        Source(),
+        SyncEmitSource(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg"],
                                         SlidingWindows(['1h', '2h', '24h'], '10m')),
                         FieldAggregator("number_of_things", "col2", ["count"],
@@ -537,7 +537,7 @@ def test_sliding_window_simple_aggregation_flow_multiple_fields():
 
 def test_fixed_window_simple_aggregation_flow():
     controller = build_flow([
-        Source(),
+        SyncEmitSource(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["count"],
                                         FixedWindows(['1h', '2h', '3h', '24h']))],
                        Table("test", NoopDriver())),
@@ -577,7 +577,7 @@ def test_fixed_window_simple_aggregation_flow():
 
 def test_emit_max_event_sliding_window_multiple_keys_aggregation_flow():
     controller = build_flow([
-        Source(),
+        SyncEmitSource(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg"],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
                        Table("test", NoopDriver()), emit_policy=EmitAfterMaxEvent(3)),
@@ -622,7 +622,7 @@ def test_emit_delay_aggregation_flow():
         return acc
 
     controller = build_flow([
-        Source(),
+        SyncEmitSource(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "count"],
                                         SlidingWindows(['1h'], '10m'))],
                        Table("test", NoopDriver()), emit_policy=EmitAfterMaxEvent(4, 1)),
@@ -653,7 +653,7 @@ def test_aggregate_dict_simple_aggregation_flow():
                      'windows': ['1h', '2h', '24h'],
                      'period': '10m'}]
     controller = build_flow([
-        Source(),
+        SyncEmitSource(),
         AggregateByKey(aggregations, Table("test", NoopDriver())),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
@@ -707,7 +707,7 @@ def test_aggregate_dict_fixed_window():
                      'operations': ["count"],
                      'windows': ['1h', '2h', '3h', '24h']}]
     controller = build_flow([
-        Source(),
+        SyncEmitSource(),
         AggregateByKey(aggregations, Table("test", NoopDriver())),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
@@ -745,7 +745,7 @@ def test_aggregate_dict_fixed_window():
 
 def test_sliding_window_old_event():
     controller = build_flow([
-        Source(),
+        SyncEmitSource(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg", "min", "max"],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
                        Table("test", NoopDriver())),
@@ -779,7 +779,7 @@ def test_sliding_window_old_event():
 
 def test_fixed_window_old_event():
     controller = build_flow([
-        Source(),
+        SyncEmitSource(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["count"],
                                         FixedWindows(['1h', '2h', '3h', '24h']))],
                        Table("test", NoopDriver())),
@@ -808,7 +808,7 @@ def test_fixed_window_old_event():
 
 def test_fixed_window_out_of_order_event():
     controller = build_flow([
-        Source(),
+        SyncEmitSource(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["count"],
                                         FixedWindows(['1h', '2h']))],
                        Table("test", NoopDriver())),
@@ -836,7 +836,7 @@ def test_fixed_window_out_of_order_event():
 
 def test_fixed_window_roll_cached_buckets():
     controller = build_flow([
-        Source(),
+        SyncEmitSource(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["count"],
                                         FixedWindows(['1h', '2h', '3h']))],
                        Table("test", NoopDriver())),
@@ -866,7 +866,7 @@ def test_fixed_window_roll_cached_buckets():
 
 def test_sliding_window_roll_cached_buckets():
     controller = build_flow([
-        Source(),
+        SyncEmitSource(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg", "min", "max"],
                                         SlidingWindows(['1h', '2h'], '10m'))],
                        Table("test", NoopDriver())),
@@ -909,7 +909,7 @@ def test_sliding_window_roll_cached_buckets():
 def test_aggregation_unique_fields():
     try:
         build_flow([
-            Source(),
+            SyncEmitSource(),
             AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg"],
                                             SlidingWindows(['1h', '2h', '24h'], '10m')),
                             FieldAggregator("number_of_stuff", "col1", ["count"],

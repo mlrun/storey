@@ -3,7 +3,7 @@ import sys
 import random as rand
 
 from .integration_test_utils import setup_teardown_test, _generate_table_name, V3ioHeaders, V3ioError
-from storey import build_flow, ReadCSV, WriteToCSV, Source, Reduce, Map, FlatMap, AsyncSource, WriteToParquet, ReadParquet, DataframeSource
+from storey import build_flow, CSVSource, CSVTarget, SyncEmitSource, Reduce, Map, FlatMap, AsyncEmitSource, ParquetTarget, ParquetSource, DataframeSource
 import pandas as pd
 import aiohttp
 import pytest
@@ -66,7 +66,7 @@ async def _delete_file(path):
 
 def test_csv_reader_from_v3io(v3io_create_csv):
     controller = build_flow([
-        ReadCSV(f'v3io:///{v3io_create_csv}', header=True),
+        CSVSource(f'v3io:///{v3io_create_csv}', header=True),
         FlatMap(lambda x: x),
         Map(lambda x: int(x)),
         Reduce(0, lambda acc, x: acc + x),
@@ -78,7 +78,7 @@ def test_csv_reader_from_v3io(v3io_create_csv):
 
 def test_csv_reader_from_v3io_error_on_file_not_found():
     controller = build_flow([
-        ReadCSV('v3io:///bigdatra/tests/idontexist.csv', header=True),
+        CSVSource('v3io:///bigdatra/tests/idontexist.csv', header=True),
     ]).run()
 
     try:
@@ -90,8 +90,8 @@ def test_csv_reader_from_v3io_error_on_file_not_found():
 
 async def async_test_write_csv_to_v3io(v3io_teardown_csv):
     controller = await build_flow([
-        AsyncSource(),
-        WriteToCSV(f'v3io:///{v3io_teardown_csv}', columns=['n', 'n*10'], header=True)
+        AsyncEmitSource(),
+        CSVTarget(f'v3io:///{v3io_teardown_csv}', columns=['n', 'n*10'], header=True)
     ]).run()
 
     for i in range(10):
@@ -119,8 +119,8 @@ def test_write_csv_to_v3io(v3io_teardown_file):
 def test_write_csv_with_dict_to_v3io(v3io_teardown_file):
     file_path = f'v3io:///{v3io_teardown_file}'
     controller = build_flow([
-        Source(),
-        WriteToCSV(file_path, columns=['n', 'n*10'], header=True)
+        SyncEmitSource(),
+        CSVTarget(file_path, columns=['n', 'n*10'], header=True)
     ]).run()
 
     for i in range(10):
@@ -144,8 +144,8 @@ def test_write_csv_with_dict_to_v3io(v3io_teardown_file):
 def test_write_csv_infer_columns_without_header_to_v3io(v3io_teardown_file):
     file_path = f'v3io:///{v3io_teardown_file}'
     controller = build_flow([
-        Source(),
-        WriteToCSV(file_path)
+        SyncEmitSource(),
+        CSVTarget(file_path)
     ]).run()
 
     for i in range(10):
@@ -169,8 +169,8 @@ def test_write_csv_infer_columns_without_header_to_v3io(v3io_teardown_file):
 def test_write_csv_from_lists_with_metadata_and_column_pruning_to_v3io(v3io_teardown_file):
     file_path = f'v3io:///{v3io_teardown_file}'
     controller = build_flow([
-        Source(),
-        WriteToCSV(file_path, columns=['event_key=$key', 'n*10'], header=True)
+        SyncEmitSource(),
+        CSVTarget(file_path, columns=['event_key=$key', 'n*10'], header=True)
     ]).run()
 
     for i in range(10):
@@ -195,8 +195,8 @@ def test_write_to_parquet_to_v3io(setup_teardown_test):
     out_dir = f'v3io:///{setup_teardown_test}'
     columns = ['my_int', 'my_string']
     controller = build_flow([
-        Source(),
-        WriteToParquet(out_dir, partition_cols='my_int', columns=columns, max_events=1)
+        SyncEmitSource(),
+        ParquetTarget(out_dir, partition_cols='my_int', columns=columns, max_events=1)
     ]).run()
 
     expected = []
@@ -215,8 +215,8 @@ def test_write_to_parquet_to_v3io_single_file_on_termination(setup_teardown_test
     out_file = f'v3io:///{setup_teardown_test}/out.parquet'
     columns = ['my_int', 'my_string']
     controller = build_flow([
-        Source(),
-        WriteToParquet(out_file, columns=columns)
+        SyncEmitSource(),
+        ParquetTarget(out_file, columns=columns)
     ]).run()
 
     expected = []
@@ -234,8 +234,8 @@ def test_write_to_parquet_to_v3io_single_file_on_termination(setup_teardown_test
 def test_write_to_parquet_to_v3io_with_indices(setup_teardown_test):
     out_file = f'v3io:///{setup_teardown_test}/test_write_to_parquet_with_indices{uuid.uuid4().hex}.parquet'
     controller = build_flow([
-        Source(),
-        WriteToParquet(out_file, index_cols='event_key=$key', columns=['my_int', 'my_string'])
+        SyncEmitSource(),
+        ParquetTarget(out_file, index_cols='event_key=$key', columns=['my_int', 'my_string'])
     ]).run()
 
     expected = []
@@ -269,7 +269,7 @@ def test_filter_before_after_non_partitioned(setup_teardown_test):
     out_file = f'v3io:///{setup_teardown_test}/'
     controller = build_flow([
         DataframeSource(df),
-        WriteToParquet(out_file, columns=columns, partition_cols=[]),
+        ParquetTarget(out_file, columns=columns, partition_cols=[]),
     ]).run()
     controller.await_termination()
 
@@ -277,7 +277,7 @@ def test_filter_before_after_non_partitioned(setup_teardown_test):
     after = pd.Timestamp('2019-01-01 23:59:59.999999')
 
     controller = build_flow([
-        ReadParquet(out_file, end_filter=before, start_filter=after, filter_column='my_time'),
+        ParquetSource(out_file, end_filter=before, start_filter=after, filter_column='my_time'),
         Reduce([], append_and_return)
     ]).run()
     read_back_result = controller.await_termination()
@@ -332,13 +332,13 @@ def test_filter_before_after_partitioned_random(setup_teardown_test):
     out_file = f'v3io:///{setup_teardown_test}/'
     controller = build_flow([
         DataframeSource(df, time_field='datetime'),
-        WriteToParquet(out_file, columns=['string', 'datetime'], partition_cols=partition_columns),
+        ParquetTarget(out_file, columns=['string', 'datetime'], partition_cols=partition_columns),
     ]).run()
 
     controller.await_termination()
 
     controller = build_flow([
-        ReadParquet(out_file, end_filter=high_limit, start_filter=middle_limit, filter_column='datetime'),
+        ParquetSource(out_file, end_filter=high_limit, start_filter=middle_limit, filter_column='datetime'),
         Reduce([], append_and_return)
     ]).run()
     read_back_result = controller.await_termination()
@@ -346,7 +346,7 @@ def test_filter_before_after_partitioned_random(setup_teardown_test):
     assert (len(read_back_result)) == 10 - number_below_middle_limit
 
     controller = build_flow([
-        ReadParquet(out_file, end_filter=middle_limit, start_filter=low_limit, filter_column='datetime'),
+        ParquetSource(out_file, end_filter=middle_limit, start_filter=low_limit, filter_column='datetime'),
         Reduce([], append_and_return)
     ]).run()
     read_back_result = controller.await_termination()
@@ -368,7 +368,7 @@ def test_filter_before_after_partitioned_inner_other_partition(setup_teardown_te
     out_file = f'v3io:///{setup_teardown_test}/'
     controller = build_flow([
         DataframeSource(df, time_field='my_time'),
-        WriteToParquet(out_file, columns=columns, partition_cols=['$year', '$month', '$day', '$hour', 'my_city']),
+        ParquetTarget(out_file, columns=columns, partition_cols=['$year', '$month', '$day', '$hour', 'my_city']),
     ]).run()
     controller.await_termination()
 
@@ -376,7 +376,7 @@ def test_filter_before_after_partitioned_inner_other_partition(setup_teardown_te
     after = pd.Timestamp('2019-07-01 00:00:00')
 
     controller = build_flow([
-        ReadParquet(out_file, end_filter=before, start_filter=after, filter_column='my_time'),
+        ParquetSource(out_file, end_filter=before, start_filter=after, filter_column='my_time'),
         Reduce([], append_and_return)
     ]).run()
     read_back_result = controller.await_termination()
@@ -401,7 +401,7 @@ def test_filter_before_after_partitioned_outer_other_partition(setup_teardown_te
     out_file = f'v3io:///{setup_teardown_test}/'
     controller = build_flow([
         DataframeSource(df, time_field='my_time'),
-        WriteToParquet(out_file, columns=columns, partition_cols=['my_city', '$year', '$month', '$day', '$hour']),
+        ParquetTarget(out_file, columns=columns, partition_cols=['my_city', '$year', '$month', '$day', '$hour']),
     ]).run()
     controller.await_termination()
 
@@ -409,7 +409,7 @@ def test_filter_before_after_partitioned_outer_other_partition(setup_teardown_te
     after = pd.Timestamp('2020-12-30 08:53:00')
 
     controller = build_flow([
-        ReadParquet(out_file, end_filter=before, start_filter=after, filter_column='my_time'),
+        ParquetSource(out_file, end_filter=before, start_filter=after, filter_column='my_time'),
         Reduce([], append_and_return)
     ]).run()
     read_back_result = controller.await_termination()
