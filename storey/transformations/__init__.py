@@ -9,7 +9,6 @@ from ..flow import (  # noqa: F401
     _FunctionWithStateFlow, _UnaryFunctionFlow, _Batching
 )
 
-from ..steps import ( # noqa: F401
+from ..steps import (  # noqa: F401
     Flatten, Assert, Partition, SampleWindow, ForEach
 )
-
