@@ -18,13 +18,10 @@ Sources:
 Transformations:
 ****************
 
-.. automodule:: storey.flow
+.. automodule:: storey.transformations
     :members:
     :show-inheritance:
-
-.. automodule:: storey.dataframe
-    :members:
-    :show-inheritance:
+    :imported-members:
 
 
 Miscellaneous:

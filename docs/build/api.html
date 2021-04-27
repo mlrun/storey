@@ -163,7 +163,7 @@
   </a>
  </li>
  <li class="toc-h2 nav-item toc-entry">
-  <a class="reference internal nav-link" href="#module-storey.flow">
+  <a class="reference internal nav-link" href="#module-storey.transformations">
    Transformations:
   </a>
  </li>
@@ -358,6 +358,29 @@ Same as AwaitableResult but for an async context.</p>
 </dd></dl>
 
 <dl class="class">
+<dt id="storey.sources.AsyncEmitSource">
+<em class="property">class </em><code class="sig-prename descclassname">storey.sources.</code><code class="sig-name descname">AsyncEmitSource</code><span class="sig-paren">(</span><em class="sig-param">buffer_size: int = 1024</em>, <em class="sig-param">key_field: Union[list</em>, <em class="sig-param">str</em>, <em class="sig-param">None] = None</em>, <em class="sig-param">time_field: Optional[str] = None</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.sources.AsyncEmitSource" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow.Flow</span></code></p>
+<p>Asynchronous entry point into a flow. Produces an AsyncFlowController when run, for use from inside an async def.
+See SyncEmitSource for use from inside a synchronous context.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>buffer_size</strong> – size of the incoming event buffer. Defaults to 1024.</p></li>
+<li><p><strong>name</strong> (<em>string</em>) – Name of this step, as it should appear in logs. Defaults to class name (AsyncEmitSource).</p></li>
+</ul>
+</dd>
+</dl>
+<p>for additional params, see documentation of  <code class="xref py py-class docutils literal notranslate"><span class="pre">Flow</span></code></p>
+<dl class="method">
+<dt id="storey.sources.AsyncEmitSource.run">
+<em class="property">async </em><code class="sig-name descname">run</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#storey.sources.AsyncEmitSource.run" title="Permalink to this definition">¶</a></dt>
+<dd><p>Starts the flow</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="class">
 <dt id="storey.sources.AsyncFlowController">
 <em class="property">class </em><code class="sig-prename descclassname">storey.sources.</code><code class="sig-name descname">AsyncFlowController</code><span class="sig-paren">(</span><em class="sig-param">emit_fn</em>, <em class="sig-param">loop_task</em>, <em class="sig-param">await_result</em>, <em class="sig-param">key_field: Optional[str] = None</em>, <em class="sig-param">time_field: Optional[str] = None</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.sources.AsyncFlowController" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.sources.FlowControllerBase</span></code></p>
@@ -391,29 +414,6 @@ Same as AwaitableResult but for an async context.</p>
 <dt id="storey.sources.AsyncFlowController.terminate">
 <em class="property">async </em><code class="sig-name descname">terminate</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#storey.sources.AsyncFlowController.terminate" title="Permalink to this definition">¶</a></dt>
 <dd><p>Terminates the associated flow.</p>
-</dd></dl>
-
-</dd></dl>
-
-<dl class="class">
-<dt id="storey.sources.AsyncEmitSource">
-<em class="property">class </em><code class="sig-prename descclassname">storey.sources.</code><code class="sig-name descname">AsyncEmitSource</code><span class="sig-paren">(</span><em class="sig-param">buffer_size: int = 1024</em>, <em class="sig-param">key_field: Union[list</em>, <em class="sig-param">str</em>, <em class="sig-param">None] = None</em>, <em class="sig-param">time_field: Optional[str] = None</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.sources.AsyncEmitSource" title="Permalink to this definition">¶</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow.Flow</span></code></p>
-<p>Asynchronous entry point into a flow. Produces an AsyncFlowController when run, for use from inside an async def.
-See SyncEmitSource for use from inside a synchronous context.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>buffer_size</strong> – size of the incoming event buffer. Defaults to 1024.</p></li>
-<li><p><strong>name</strong> (<em>string</em>) – Name of this step, as it should appear in logs. Defaults to class name (AsyncEmitSource).</p></li>
-</ul>
-</dd>
-</dl>
-<p>for additional params, see documentation of  <code class="xref py py-class docutils literal notranslate"><span class="pre">Flow</span></code></p>
-<dl class="method">
-<dt id="storey.sources.AsyncEmitSource.run">
-<em class="property">async </em><code class="sig-name descname">run</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#storey.sources.AsyncEmitSource.run" title="Permalink to this definition">¶</a></dt>
-<dd><p>Starts the flow</p>
 </dd></dl>
 
 </dd></dl>
@@ -580,11 +580,18 @@ for use from inside an async context.</p>
 </dd></dl>
 
 </div>
-<div class="section" id="module-storey.flow">
-<span id="transformations"></span><h2>Transformations:<a class="headerlink" href="#module-storey.flow" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="module-storey.transformations">
+<span id="transformations"></span><h2>Transformations:<a class="headerlink" href="#module-storey.transformations" title="Permalink to this headline">¶</a></h2>
 <dl class="class">
-<dt id="storey.flow.Batch">
-<em class="property">class </em><code class="sig-prename descclassname">storey.flow.</code><code class="sig-name descname">Batch</code><span class="sig-paren">(</span><em class="sig-param">max_events: Optional[int] = None, timeout_secs: Optional[int] = None, key: Union[str, Callable[[storey.dtypes.Event], str], None] = None, **kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.flow.Batch" title="Permalink to this definition">¶</a></dt>
+<dt id="storey.transformations.Assert">
+<em class="property">class </em><code class="sig-prename descclassname">storey.transformations.</code><code class="sig-name descname">Assert</code><span class="sig-paren">(</span><em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.transformations.Assert" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow.Flow</span></code></p>
+<p>Exposes an API for testing the flow between steps.</p>
+</dd></dl>
+
+<dl class="class">
+<dt id="storey.transformations.Batch">
+<em class="property">class </em><code class="sig-prename descclassname">storey.transformations.</code><code class="sig-name descname">Batch</code><span class="sig-paren">(</span><em class="sig-param">max_events: Optional[int] = None, timeout_secs: Optional[int] = None, key: Union[str, Callable[[storey.dtypes.Event], str], None] = None, **kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.transformations.Batch" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow._Batching</span></code></p>
 <p>Batches events into lists of up to max_events events. Each emitted list contained max_events events, unless
 timeout_secs seconds have passed since the first event in the batch was received, at which the batch is emitted with
@@ -606,8 +613,8 @@ set a Callable[Any, Any] to group events by a a custom key extractor.</p></li>
 </dd></dl>
 
 <dl class="class">
-<dt id="storey.flow.Choice">
-<em class="property">class </em><code class="sig-prename descclassname">storey.flow.</code><code class="sig-name descname">Choice</code><span class="sig-paren">(</span><em class="sig-param">choice_array</em>, <em class="sig-param">default=None</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.flow.Choice" title="Permalink to this definition">¶</a></dt>
+<dt id="storey.transformations.Choice">
+<em class="property">class </em><code class="sig-prename descclassname">storey.transformations.</code><code class="sig-name descname">Choice</code><span class="sig-paren">(</span><em class="sig-param">choice_array</em>, <em class="sig-param">default=None</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.transformations.Choice" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow.Flow</span></code></p>
 <p>Redirects each input element into at most one of multiple downstreams.</p>
 <dl class="field-list simple">
@@ -626,35 +633,8 @@ Defaults to False.</p></li>
 </dd></dl>
 
 <dl class="class">
-<dt id="storey.flow.Complete">
-<em class="property">class </em><code class="sig-prename descclassname">storey.flow.</code><code class="sig-name descname">Complete</code><span class="sig-paren">(</span><em class="sig-param">recovery_step=None</em>, <em class="sig-param">termination_result_fn=&lt;function Flow.&lt;lambda&gt;&gt;</em>, <em class="sig-param">context=None</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.flow.Complete" title="Permalink to this definition">¶</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow.Flow</span></code></p>
-<p>Completes the AwaitableResult associated with incoming events.
-:param name: Name of this step, as it should appear in logs. Defaults to class name (Complete).
-:type name: string
-:param full_event: Whether to complete with an Event object (when True) or only the payload (when False). Default to False.
-:type full_event: boolean</p>
-</dd></dl>
-
-<dl class="class">
-<dt id="storey.flow.Context">
-<em class="property">class </em><code class="sig-prename descclassname">storey.flow.</code><code class="sig-name descname">Context</code><span class="sig-paren">(</span><em class="sig-param">initial_secrets: Optional[Dict[str</em>, <em class="sig-param">str]] = None</em>, <em class="sig-param">initial_parameters: Optional[Dict[str</em>, <em class="sig-param">object]] = None</em>, <em class="sig-param">initial_tables: Optional[Dict[str</em>, <em class="sig-param">storey.table.Table]] = None</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.flow.Context" title="Permalink to this definition">¶</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
-<p>Context object that holds global secrets and configurations to be passed to relevant steps.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>initial_secrets</strong> – Initial dict of secrets.</p></li>
-<li><p><strong>initial_parameters</strong> – Initial dict of parameters.</p></li>
-<li><p><strong>initial_tables</strong> – Initial dict of tables.</p></li>
-</ul>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="class">
-<dt id="storey.flow.Filter">
-<em class="property">class </em><code class="sig-prename descclassname">storey.flow.</code><code class="sig-name descname">Filter</code><span class="sig-paren">(</span><em class="sig-param">fn</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.flow.Filter" title="Permalink to this definition">¶</a></dt>
+<dt id="storey.transformations.Filter">
+<em class="property">class </em><code class="sig-prename descclassname">storey.transformations.</code><code class="sig-name descname">Filter</code><span class="sig-paren">(</span><em class="sig-param">fn</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.transformations.Filter" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow._UnaryFunctionFlow</span></code></p>
 <p>Filters events based on a user-provided function.</p>
 <dl class="field-list simple">
@@ -670,8 +650,8 @@ Defaults to False.</p></li>
 </dd></dl>
 
 <dl class="class">
-<dt id="storey.flow.FlatMap">
-<em class="property">class </em><code class="sig-prename descclassname">storey.flow.</code><code class="sig-name descname">FlatMap</code><span class="sig-paren">(</span><em class="sig-param">fn</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.flow.FlatMap" title="Permalink to this definition">¶</a></dt>
+<dt id="storey.transformations.FlatMap">
+<em class="property">class </em><code class="sig-prename descclassname">storey.transformations.</code><code class="sig-name descname">FlatMap</code><span class="sig-paren">(</span><em class="sig-param">fn</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.transformations.FlatMap" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow._UnaryFunctionFlow</span></code></p>
 <p>Maps, or transforms, each incoming event into any number of events.</p>
 <dl class="field-list simple">
@@ -687,40 +667,22 @@ Defaults to False.</p></li>
 </dd></dl>
 
 <dl class="class">
-<dt id="storey.flow.HttpRequest">
-<em class="property">class </em><code class="sig-prename descclassname">storey.flow.</code><code class="sig-name descname">HttpRequest</code><span class="sig-paren">(</span><em class="sig-param">method</em>, <em class="sig-param">url</em>, <em class="sig-param">body</em>, <em class="sig-param">headers: Optional[dict] = None</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.flow.HttpRequest" title="Permalink to this definition">¶</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
-<p>A class representing an HTTP request, with method, url, body, and headers.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>method</strong> (<em>string</em>) – HTTP method (e.g. GET).</p></li>
-<li><p><strong>url</strong> (<em>string</em>) – Target URL (http and https schemes supported).</p></li>
-<li><p><strong>body</strong> (<em>bytes</em><em> or </em><em>string</em>) – Request body.</p></li>
-<li><p><strong>headers</strong> (<em>dictionary</em><em>, or </em><em>None.</em>) – Request headers, in the form of a dictionary. Optional. Defaults to no headers.</p></li>
-</ul>
-</dd>
-</dl>
+<dt id="storey.transformations.Flatten">
+<em class="property">class </em><code class="sig-prename descclassname">storey.transformations.</code><code class="sig-name descname">Flatten</code><span class="sig-paren">(</span><em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.transformations.Flatten" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow.Flow</span></code></p>
+<p>Splits an event with an iterable body into multiple events.</p>
 </dd></dl>
 
 <dl class="class">
-<dt id="storey.flow.HttpResponse">
-<em class="property">class </em><code class="sig-prename descclassname">storey.flow.</code><code class="sig-name descname">HttpResponse</code><span class="sig-paren">(</span><em class="sig-param">status</em>, <em class="sig-param">body</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.flow.HttpResponse" title="Permalink to this definition">¶</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
-<p>A class representing an HTTP response, with a status code and body.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>body</strong> (<em>bytes</em>) – Response body.</p></li>
-<li><p><strong>status</strong> (<em>int</em>) – HTTP status code.</p></li>
-</ul>
-</dd>
-</dl>
+<dt id="storey.transformations.ForEach">
+<em class="property">class </em><code class="sig-prename descclassname">storey.transformations.</code><code class="sig-name descname">ForEach</code><span class="sig-paren">(</span><em class="sig-param">fn</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.transformations.ForEach" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow._UnaryFunctionFlow</span></code></p>
+<p>Applies given function on each event in the stream, passes original event downstream.</p>
 </dd></dl>
 
 <dl class="class">
-<dt id="storey.flow.JoinWithTable">
-<em class="property">class </em><code class="sig-prename descclassname">storey.flow.</code><code class="sig-name descname">JoinWithTable</code><span class="sig-paren">(</span><em class="sig-param">table: Union[storey.table.Table, str], key_extractor: Union[str, Callable[[storey.dtypes.Event], str]], attributes: Optional[List[str]] = None, join_function: Optional[Callable[[storey.dtypes.Event, Dict[str, object]], storey.dtypes.Event]] = None, **kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.flow.JoinWithTable" title="Permalink to this definition">¶</a></dt>
+<dt id="storey.transformations.JoinWithTable">
+<em class="property">class </em><code class="sig-prename descclassname">storey.transformations.</code><code class="sig-name descname">JoinWithTable</code><span class="sig-paren">(</span><em class="sig-param">table: Union[storey.table.Table, str], key_extractor: Union[str, Callable[[storey.dtypes.Event], str]], attributes: Optional[List[str]] = None, join_function: Optional[Callable[[storey.dtypes.Event, Dict[str, object]], storey.dtypes.Event]] = None, **kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.transformations.JoinWithTable" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow._ConcurrentJobExecution</span></code></p>
 <p>Joins each event with data from the given table.</p>
 <dl class="field-list simple">
@@ -741,29 +703,8 @@ Defaults to False.</p></li>
 </dd></dl>
 
 <dl class="class">
-<dt id="storey.flow.JoinWithV3IOTable">
-<em class="property">class </em><code class="sig-prename descclassname">storey.flow.</code><code class="sig-name descname">JoinWithV3IOTable</code><span class="sig-paren">(</span><em class="sig-param">storage</em>, <em class="sig-param">key_extractor</em>, <em class="sig-param">join_function</em>, <em class="sig-param">table_path</em>, <em class="sig-param">attributes='*'</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.flow.JoinWithV3IOTable" title="Permalink to this definition">¶</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow._ConcurrentJobExecution</span></code></p>
-<p>Joins each event with a V3IO table. Used for event augmentation.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>storage</strong> (<a class="reference internal" href="#storey.drivers.Driver" title="storey.drivers.Driver"><em>Driver</em></a>) – Database driver.</p></li>
-<li><p><strong>key_extractor</strong> (<em>Function</em><em> (</em><em>Event=&gt;string</em><em>)</em>) – Function for extracting the key for table access from an event.</p></li>
-<li><p><strong>join_function</strong> (<em>Function</em><em> (</em><em>(</em><a class="reference internal" href="#storey.dtypes.Event" title="storey.dtypes.Event"><em>Event</em></a><em>, </em><em>dict</em><em>)</em><em>=&gt;Event</em><em>)</em>) – Joins the original event with relevant data received from V3IO.</p></li>
-<li><p><strong>table_path</strong> (<em>string</em>) – Path to the table in V3IO.</p></li>
-<li><p><strong>attributes</strong> (<em>string</em>) – A comma-separated list of attributes to be requested from V3IO. Defaults to ‘*’ (all user attributes).</p></li>
-<li><p><strong>name</strong> (<em>string</em>) – Name of this step, as it should appear in logs. Defaults to class name (JoinWithV3IOTable).</p></li>
-<li><p><strong>full_event</strong> (<em>boolean</em>) – Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
-Defaults to False.</p></li>
-</ul>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="class">
-<dt id="storey.flow.Map">
-<em class="property">class </em><code class="sig-prename descclassname">storey.flow.</code><code class="sig-name descname">Map</code><span class="sig-paren">(</span><em class="sig-param">fn</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.flow.Map" title="Permalink to this definition">¶</a></dt>
+<dt id="storey.transformations.Map">
+<em class="property">class </em><code class="sig-prename descclassname">storey.transformations.</code><code class="sig-name descname">Map</code><span class="sig-paren">(</span><em class="sig-param">fn</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.transformations.Map" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow._UnaryFunctionFlow</span></code></p>
 <p>Maps, or transforms, incoming events using a user-provided function.</p>
 <dl class="field-list simple">
@@ -779,15 +720,15 @@ Defaults to False.</p></li>
 </dd></dl>
 
 <dl class="class">
-<dt id="storey.flow.MapClass">
-<em class="property">class </em><code class="sig-prename descclassname">storey.flow.</code><code class="sig-name descname">MapClass</code><span class="sig-paren">(</span><em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.flow.MapClass" title="Permalink to this definition">¶</a></dt>
+<dt id="storey.transformations.MapClass">
+<em class="property">class </em><code class="sig-prename descclassname">storey.transformations.</code><code class="sig-name descname">MapClass</code><span class="sig-paren">(</span><em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.transformations.MapClass" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow.Flow</span></code></p>
 <p>Similar to Map, but instead of a function argument, this class should be extended and its do() method overridden.</p>
 </dd></dl>
 
 <dl class="class">
-<dt id="storey.flow.MapWithState">
-<em class="property">class </em><code class="sig-prename descclassname">storey.flow.</code><code class="sig-name descname">MapWithState</code><span class="sig-paren">(</span><em class="sig-param">initial_state</em>, <em class="sig-param">fn</em>, <em class="sig-param">group_by_key=False</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.flow.MapWithState" title="Permalink to this definition">¶</a></dt>
+<dt id="storey.transformations.MapWithState">
+<em class="property">class </em><code class="sig-prename descclassname">storey.transformations.</code><code class="sig-name descname">MapWithState</code><span class="sig-paren">(</span><em class="sig-param">initial_state</em>, <em class="sig-param">fn</em>, <em class="sig-param">group_by_key=False</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.transformations.MapWithState" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow._FunctionWithStateFlow</span></code></p>
 <p>Maps, or transforms, incoming events using a stateful user-provided function, and an initial state, which may be a database table.</p>
 <dl class="field-list simple">
@@ -804,33 +745,60 @@ False (body only).</p></li>
 </dd></dl>
 
 <dl class="class">
-<dt id="storey.flow.Reduce">
-<em class="property">class </em><code class="sig-prename descclassname">storey.flow.</code><code class="sig-name descname">Reduce</code><span class="sig-paren">(</span><em class="sig-param">initial_value</em>, <em class="sig-param">fn</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.flow.Reduce" title="Permalink to this definition">¶</a></dt>
+<dt id="storey.transformations.Partition">
+<em class="property">class </em><code class="sig-prename descclassname">storey.transformations.</code><code class="sig-name descname">Partition</code><span class="sig-paren">(</span><em class="sig-param">predicate: Callable[[Any], bool], **kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.transformations.Partition" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow.Flow</span></code></p>
-<p>Reduces incoming events into a single value which is returned upon the successful termination of the flow.</p>
+<p>Partitions events by calling a predicate function on each event. Each processed event results in a <cite>Partitioned</cite>
+namedtuple of (left=Optional[Event], right=Optional[Event]).</p>
+<p>For a given event, if the predicate function results in <cite>True</cite>, the event is assigned to <cite>left</cite>. Otherwise, the
+event is assigned to <cite>right</cite>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>initial_value</strong> (<em>object</em>) – Starting value. When the first event is received, fn will be appled to the initial_value and that event.</p></li>
-<li><p><strong>fn</strong> (<em>Function</em><em> (</em><em>(</em><em>object</em><em>, </em><a class="reference internal" href="#storey.dtypes.Event" title="storey.dtypes.Event"><em>Event</em></a><em>) </em><em>=&gt; object</em><em>)</em>) – Function to apply to the current value and each event.</p></li>
-<li><p><strong>name</strong> (<em>string</em>) – Name of this step, as it should appear in logs. Defaults to class name (Reduce).</p></li>
-<li><p><strong>full_event</strong> (<em>boolean</em>) – Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
-Defaults to False.</p></li>
-</ul>
+<dd class="field-odd"><p><strong>predicate</strong> – A predicate function that results in a boolean.</p>
 </dd>
 </dl>
 </dd></dl>
 
 <dl class="class">
-<dt id="storey.flow.SendToHttp">
-<em class="property">class </em><code class="sig-prename descclassname">storey.flow.</code><code class="sig-name descname">SendToHttp</code><span class="sig-paren">(</span><em class="sig-param">request_builder</em>, <em class="sig-param">join_from_response</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.flow.SendToHttp" title="Permalink to this definition">¶</a></dt>
+<dt id="storey.transformations.SampleWindow">
+<em class="property">class </em><code class="sig-prename descclassname">storey.transformations.</code><code class="sig-name descname">SampleWindow</code><span class="sig-paren">(</span><em class="sig-param">window_size: int</em>, <em class="sig-param">emit_period: storey.steps.sample.EmitPeriod = &lt;EmitPeriod.FIRST: 1&gt;</em>, <em class="sig-param">emit_before_termination: bool = False</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.transformations.SampleWindow" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow.Flow</span></code></p>
+<p>Emits a single event in a window of <cite>window_size</cite> events, in accordance with <cite>emit_period</cite> and <cite>emit_before_termination</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>window_size</strong> – The size of the window we want to sample a single event from.</p></li>
+<li><p><strong>emit_period</strong> – What event should this step emit for each <cite>window_size</cite> (default: EmitPeriod.First).</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Available options:</dt><dd><p>1.1) EmitPeriod.FIRST - will emit the first event in a window <cite>window_size</cite> events.
+1.2) EmitPeriod.LAST - will emit the last event in a window of <cite>window_size</cite> events.</p>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>emit_before_termination</strong> – On termination signal, should the step emit the last event it seen (default: False).</p>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Available options:</dt><dd><p>2.1) True - The last event seen will be emitted downstream.
+2.2) False - The last event seen will NOT be emitted downstream.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="class">
+<dt id="storey.transformations.SendToHttp">
+<em class="property">class </em><code class="sig-prename descclassname">storey.transformations.</code><code class="sig-name descname">SendToHttp</code><span class="sig-paren">(</span><em class="sig-param">request_builder</em>, <em class="sig-param">join_from_response</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.transformations.SendToHttp" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow._ConcurrentJobExecution</span></code></p>
 <p>Joins each event with data from any HTTP source. Used for event augmentation.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>request_builder</strong> (<em>Function</em><em> (</em><em>Event=&gt;HttpRequest</em><em>)</em>) – Creates an HTTP request from the event. This request is then sent to its destination.</p></li>
-<li><p><strong>join_from_response</strong> (<em>Function</em><em> (</em><em>(</em><a class="reference internal" href="#storey.dtypes.Event" title="storey.dtypes.Event"><em>Event</em></a><em>, </em><a class="reference internal" href="#storey.flow.HttpResponse" title="storey.flow.HttpResponse"><em>HttpResponse</em></a><em>)</em><em>=&gt;Event</em><em>)</em>) – Joins the original event with the HTTP response into a new event.</p></li>
+<li><p><strong>join_from_response</strong> (<em>Function</em><em> (</em><em>(</em><a class="reference internal" href="#storey.dtypes.Event" title="storey.dtypes.Event"><em>Event</em></a><em>, </em><em>HttpResponse</em><em>)</em><em>=&gt;Event</em><em>)</em>) – Joins the original event with the HTTP response into a new event.</p></li>
 <li><p><strong>name</strong> (<em>string</em>) – Name of this step, as it should appear in logs. Defaults to class name (SendToHttp).</p></li>
 <li><p><strong>full_event</strong> (<em>boolean</em>) – Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
 Defaults to False.</p></li>
@@ -839,66 +807,9 @@ Defaults to False.</p></li>
 </dl>
 </dd></dl>
 
-<dl class="function">
-<dt id="storey.flow.build_flow">
-<code class="sig-prename descclassname">storey.flow.</code><code class="sig-name descname">build_flow</code><span class="sig-paren">(</span><em class="sig-param">steps</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.flow.build_flow" title="Permalink to this definition">¶</a></dt>
-<dd><p>Builds a flow from a list of steps, by chaining the steps according to their order in the list.
-Nested lists are used to represent branches in the flow.</p>
-<dl>
-<dt>Examples:</dt><dd><p>build_flow([step1, step2, step3])
-is equivalent to
-step1.to(step2).to(step3)</p>
-<p>build_flow([step1, [step2a, step2b], step3])
-is equivalent to
-step1.to(step2a)
-step1.to(step3)
-step2a.to(step2b)</p>
-</dd>
-</dl>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><p><strong>steps</strong> – a potentially nested list of steps</p>
-</dd>
-<dt class="field-even">Returns</dt>
-<dd class="field-even"><p>the first step</p>
-</dd>
-<dt class="field-odd">Return type</dt>
-<dd class="field-odd"><p>Flow</p>
-</dd>
-</dl>
-</dd></dl>
-
-<span class="target" id="module-storey.dataframe"></span><dl class="class">
-<dt id="storey.dataframe.ReduceToDataFrame">
-<em class="property">class </em><code class="sig-prename descclassname">storey.dataframe.</code><code class="sig-name descname">ReduceToDataFrame</code><span class="sig-paren">(</span><em class="sig-param">index: Optional[str] = None</em>, <em class="sig-param">columns: Optional[List[str]] = None</em>, <em class="sig-param">insert_key_column_as: Optional[str] = None</em>, <em class="sig-param">insert_time_column_as: Optional[str] = None</em>, <em class="sig-param">insert_id_column_as: Optional[str] = None</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.dataframe.ReduceToDataFrame" title="Permalink to this definition">¶</a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow.Flow</span></code></p>
-<p>Builds a pandas DataFrame from events and returns that DataFrame on flow termination.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>index</strong> – Name of the column to be used as index. Optional. If not set, DataFrame will be range indexed.</p></li>
-<li><p><strong>columns</strong> – List of column names to be passed as-is to the DataFrame constructor. Optional.</p></li>
-<li><p><strong>insert_key_column_as</strong> – Name of the column to be inserted for event keys. Optional.
-If not set, event keys will not be inserted into the DataFrame.</p></li>
-<li><p><strong>insert_time_column_as</strong> – Name of the column to be inserted for event times. Optional.
-If not set, event times will not be inserted into the DataFrame.</p></li>
-<li><p><strong>insert_id_column_as</strong> – Name of the column to be inserted for event IDs. Optional.
-If not set, event IDs will not be inserted into the DataFrame.</p></li>
-</ul>
-</dd>
-</dl>
-<p>for additional params, see documentation of  <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow.Flow</span></code></p>
-<dl class="method">
-<dt id="storey.dataframe.ReduceToDataFrame.to">
-<code class="sig-name descname">to</code><span class="sig-paren">(</span><em class="sig-param">outlet</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.dataframe.ReduceToDataFrame.to" title="Permalink to this definition">¶</a></dt>
-<dd><p>Pipe this step to next one. Throws exception since illegal</p>
-</dd></dl>
-
-</dd></dl>
-
 <dl class="class">
-<dt id="storey.dataframe.ToDataFrame">
-<em class="property">class </em><code class="sig-prename descclassname">storey.dataframe.</code><code class="sig-name descname">ToDataFrame</code><span class="sig-paren">(</span><em class="sig-param">index: Optional[str] = None</em>, <em class="sig-param">columns: Optional[List[str]] = None</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.dataframe.ToDataFrame" title="Permalink to this definition">¶</a></dt>
+<dt id="storey.transformations.ToDataFrame">
+<em class="property">class </em><code class="sig-prename descclassname">storey.transformations.</code><code class="sig-name descname">ToDataFrame</code><span class="sig-paren">(</span><em class="sig-param">index: Optional[str] = None</em>, <em class="sig-param">columns: Optional[List[str]] = None</em>, <em class="sig-param">**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#storey.transformations.ToDataFrame" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">storey.flow.Flow</span></code></p>
 <p>Create pandas data frame from events. Can appear in the middle of the flow, as opposed to ReduceToDataFrame</p>
 <dl class="field-list simple">

@@ -113,7 +113,7 @@
             </button>
             
             
-            <!-- SyncEmitSource interaction buttons -->
+            <!-- Source interaction buttons -->
 
 
             <!-- Full screen (wrap in <a> to have style consistency -->
@@ -147,7 +147,6 @@
  | <a href="#D"><strong>D</strong></a>
  | <a href="#E"><strong>E</strong></a>
  | <a href="#F"><strong>F</strong></a>
- | <a href="#H"><strong>H</strong></a>
  | <a href="#J"><strong>J</strong></a>
  | <a href="#L"><strong>L</strong></a>
  | <a href="#M"><strong>M</strong></a>
@@ -165,20 +164,22 @@
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api.html#storey.aggregations.AggregateByKey">AggregateByKey (class in storey.aggregations)</a>
 </li>
-      <li><a href="api.html#storey.sources.AsyncAwaitableResult">AsyncAwaitableResult (class in storey.sources)</a>
+      <li><a href="api.html#storey.transformations.Assert">Assert (class in storey.transformations)</a>
 </li>
-      <li><a href="api.html#storey.sources.AsyncFlowController">AsyncFlowController (class in storey.sources)</a>
+      <li><a href="api.html#storey.sources.AsyncAwaitableResult">AsyncAwaitableResult (class in storey.sources)</a>
 </li>
       <li><a href="api.html#storey.sources.AsyncEmitSource">AsyncEmitSource (class in storey.sources)</a>
 </li>
+      <li><a href="api.html#storey.sources.AsyncFlowController">AsyncFlowController (class in storey.sources)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api.html#storey.sources.AsyncAwaitableResult.await_result">await_result() (storey.sources.AsyncAwaitableResult method)</a>
 
       <ul>
         <li><a href="api.html#storey.sources.AwaitableResult.await_result">(storey.sources.AwaitableResult method)</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api.html#storey.sources.AsyncFlowController.await_termination">await_termination() (storey.sources.AsyncFlowController method)</a>
 
       <ul>
@@ -195,11 +196,7 @@
 <h2 id="B">B</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api.html#storey.flow.Batch">Batch (class in storey.flow)</a>
-</li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api.html#storey.flow.build_flow">build_flow() (in module storey.flow)</a>
+      <li><a href="api.html#storey.transformations.Batch">Batch (class in storey.transformations)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -207,16 +204,12 @@
 <h2 id="C">C</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api.html#storey.flow.Choice">Choice (class in storey.flow)</a>
+      <li><a href="api.html#storey.transformations.Choice">Choice (class in storey.transformations)</a>
 </li>
       <li><a href="api.html#storey.drivers.V3ioDriver.close">close() (storey.drivers.V3ioDriver method)</a>
 </li>
-      <li><a href="api.html#storey.flow.Complete">Complete (class in storey.flow)</a>
-</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api.html#storey.flow.Context">Context (class in storey.flow)</a>
-</li>
       <li><a href="api.html#storey.sources.CSVSource">CSVSource (class in storey.sources)</a>
 </li>
       <li><a href="api.html#storey.targets.CSVTarget">CSVTarget (class in storey.targets)</a>
@@ -267,15 +260,17 @@
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api.html#storey.dtypes.FieldAggregator">FieldAggregator (class in storey.dtypes)</a>
 </li>
-      <li><a href="api.html#storey.flow.Filter">Filter (class in storey.flow)</a>
+      <li><a href="api.html#storey.transformations.Filter">Filter (class in storey.transformations)</a>
 </li>
       <li><a href="api.html#storey.dtypes.FixedWindow">FixedWindow (class in storey.dtypes)</a>
 </li>
       <li><a href="api.html#storey.dtypes.FixedWindows">FixedWindows (class in storey.dtypes)</a>
 </li>
+      <li><a href="api.html#storey.transformations.FlatMap">FlatMap (class in storey.transformations)</a>
+</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api.html#storey.flow.FlatMap">FlatMap (class in storey.flow)</a>
+      <li><a href="api.html#storey.transformations.Flatten">Flatten (class in storey.transformations)</a>
 </li>
       <li><a href="api.html#storey.sources.FlowAwaiter">FlowAwaiter (class in storey.sources)</a>
 </li>
@@ -283,17 +278,7 @@
 </li>
       <li><a href="api.html#storey.dtypes.FlowError">FlowError</a>
 </li>
-  </ul></td>
-</tr></table>
-
-<h2 id="H">H</h2>
-<table style="width: 100%" class="indextable genindextable"><tr>
-  <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api.html#storey.flow.HttpRequest">HttpRequest (class in storey.flow)</a>
-</li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api.html#storey.flow.HttpResponse">HttpResponse (class in storey.flow)</a>
+      <li><a href="api.html#storey.transformations.ForEach">ForEach (class in storey.transformations)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -301,11 +286,7 @@
 <h2 id="J">J</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api.html#storey.flow.JoinWithTable">JoinWithTable (class in storey.flow)</a>
-</li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api.html#storey.flow.JoinWithV3IOTable">JoinWithV3IOTable (class in storey.flow)</a>
+      <li><a href="api.html#storey.transformations.JoinWithTable">JoinWithTable (class in storey.transformations)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -321,13 +302,13 @@
 <h2 id="M">M</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api.html#storey.flow.Map">Map (class in storey.flow)</a>
+      <li><a href="api.html#storey.transformations.Map">Map (class in storey.transformations)</a>
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api.html#storey.flow.MapClass">MapClass (class in storey.flow)</a>
+      <li><a href="api.html#storey.transformations.MapClass">MapClass (class in storey.transformations)</a>
 </li>
-      <li><a href="api.html#storey.flow.MapWithState">MapWithState (class in storey.flow)</a>
+      <li><a href="api.html#storey.transformations.MapWithState">MapWithState (class in storey.transformations)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -355,6 +336,8 @@
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api.html#storey.targets.ParquetTarget">ParquetTarget (class in storey.targets)</a>
 </li>
+      <li><a href="api.html#storey.transformations.Partition">Partition (class in storey.transformations)</a>
+</li>
   </ul></td>
 </tr></table>
 
@@ -369,12 +352,6 @@
 <h2 id="R">R</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api.html#storey.flow.Reduce">Reduce (class in storey.flow)</a>
-</li>
-      <li><a href="api.html#storey.dataframe.ReduceToDataFrame">ReduceToDataFrame (class in storey.dataframe)</a>
-</li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api.html#storey.sources.AsyncEmitSource.run">run() (storey.sources.AsyncEmitSource method)</a>
 
       <ul>
@@ -387,25 +364,21 @@
 <h2 id="S">S</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api.html#storey.flow.SendToHttp">SendToHttp (class in storey.flow)</a>
+      <li><a href="api.html#storey.transformations.SampleWindow">SampleWindow (class in storey.transformations)</a>
+</li>
+      <li><a href="api.html#storey.transformations.SendToHttp">SendToHttp (class in storey.transformations)</a>
 </li>
       <li><a href="api.html#storey.dtypes.SlidingWindow">SlidingWindow (class in storey.dtypes)</a>
 </li>
       <li><a href="api.html#storey.dtypes.SlidingWindows">SlidingWindows (class in storey.dtypes)</a>
 </li>
-      <li><a href="api.html#storey.sources.SyncEmitSource">SyncEmitSource (class in storey.sources)</a>
-</li>
       <li><a href="api.html#module-storey.aggregations">storey.aggregations (module)</a>
 </li>
-      <li><a href="api.html#module-storey.dataframe">storey.dataframe (module)</a>
+      <li><a href="api.html#module-storey.drivers">storey.drivers (module)</a>
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api.html#module-storey.drivers">storey.drivers (module)</a>
-</li>
       <li><a href="api.html#module-storey.dtypes">storey.dtypes (module)</a>
-</li>
-      <li><a href="api.html#module-storey.flow">storey.flow (module)</a>
 </li>
       <li><a href="api.html#module-storey.sources">storey.sources (module)</a>
 </li>
@@ -413,7 +386,11 @@
 </li>
       <li><a href="api.html#module-storey.targets">storey.targets (module)</a>
 </li>
+      <li><a href="api.html#module-storey.transformations">storey.transformations (module)</a>
+</li>
       <li><a href="api.html#storey.targets.StreamTarget">StreamTarget (class in storey.targets)</a>
+</li>
+      <li><a href="api.html#storey.sources.SyncEmitSource">SyncEmitSource (class in storey.sources)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -431,9 +408,7 @@
       </ul></li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api.html#storey.dataframe.ReduceToDataFrame.to">to() (storey.dataframe.ReduceToDataFrame method)</a>
-</li>
-      <li><a href="api.html#storey.dataframe.ToDataFrame">ToDataFrame (class in storey.dataframe)</a>
+      <li><a href="api.html#storey.transformations.ToDataFrame">ToDataFrame (class in storey.transformations)</a>
 </li>
       <li><a href="api.html#storey.targets.TSDBTarget">TSDBTarget (class in storey.targets)</a>
 </li>
