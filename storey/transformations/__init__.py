@@ -1,5 +1,3 @@
-__version__ = 'unknown'
-
 from ..dataframe import (  # noqa: F401
     ToDataFrame
 )
