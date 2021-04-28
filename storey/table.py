@@ -24,7 +24,7 @@ class Table:
      """
 
     def __init__(self, table_path: str, storage: Driver, partitioned_by_key: bool = True,
-                 flush_interval_secs: Optional[int] = 300, max_updates_in_flight: int = 8):
+                 flush_interval_secs: Optional[int] = None, max_updates_in_flight: int = 8):
         self._container, self._table_path = _split_path(table_path)
         self._storage = storage
         self._partitioned_by_key = partitioned_by_key
@@ -365,6 +365,8 @@ class Table:
                     await self._persist(_PersistJob(key, None, None), from_terminate=True)
             await self._q.put(_termination_obj)
             await self._worker_awaitable
+            for value in self._attrs_cache.values():
+                value.lock = None
             self._q = None
             self._flush_task = None
             self._flush_exception = None
