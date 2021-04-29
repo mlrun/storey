@@ -150,7 +150,7 @@ class AggregateByKey(Flow):
             await self._table._aggregate(safe_key, element, event_timestamp)
 
             if isinstance(self._emit_policy, EmitEveryEvent):
-                await self._emit_event(key, event)
+                await self._emit_event(safe_key, event)
             elif isinstance(self._emit_policy, EmitAfterMaxEvent):
                 if safe_key in self._events_in_batch:
                     self._events_in_batch[safe_key]['counter'] += 1
