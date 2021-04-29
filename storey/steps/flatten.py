@@ -1,5 +1,3 @@
-from itertools import chain
-
 from storey import Flow
 from storey.dtypes import _termination_obj
 
