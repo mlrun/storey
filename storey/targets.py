@@ -95,6 +95,8 @@ class _Writer:
                 col, hash_into = col
             if col == '$key':
                 val = event.key
+                if isinstance(val, list):
+                    val = '.'.join(map(str, val))
             elif col == '$date':
                 val = f'{event.time.year:02}-{event.time.month:02}-{event.time.day:02}'
             elif col == '$year':
@@ -329,6 +331,8 @@ class ParquetTarget(_Batching, _Writer):
                  infer_columns_from_data: Optional[bool] = None, max_events: Optional[int] = None,
                  flush_after_seconds: Optional[int] = None, **kwargs):
         self._single_file_mode = False
+        if isinstance(partition_cols, str):
+            partition_cols = [partition_cols]
         if partition_cols is None:
             if path.endswith('.parquet') or path.endswith('.pq'):
                 self._single_file_mode = True

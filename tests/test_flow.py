@@ -1704,6 +1704,32 @@ def test_write_to_parquet_partition_by_hash(tmpdir):
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
 
 
+def test_write_to_parquet_partition_by_column(tmpdir):
+    out_file = f'{tmpdir}/test_write_to_parquet_partition_by_column{uuid.uuid4().hex}'
+    controller = build_flow([
+        SyncEmitSource(),
+        ParquetTarget(out_file, columns=['my_int', 'my_string', 'even'], partition_cols=['even'])
+    ]).run()
+
+    my_time = datetime(2020, 2, 15)
+
+    expected = []
+    for i in range(10):
+        even = 'even' if i % 2 == 0 else 'odd'
+        controller.emit([i, f'this is {i}', even], event_time=my_time, key=[i])
+        expected.append([i, f'this is {i}', even])
+    columns = ['my_int', 'my_string', 'even']
+    expected = pd.DataFrame(expected, columns=columns)
+    expected['even'] = expected['even'].astype('category')
+    controller.terminate()
+    controller.await_termination()
+
+    read_back_df = pd.read_parquet(out_file, columns=columns)
+    read_back_df.sort_values('my_int', inplace=True)
+    read_back_df.reset_index(drop=True, inplace=True)
+    assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+
+
 def test_write_to_parquet_with_inference(tmpdir):
     out_dir = f'{tmpdir}/test_write_to_parquet_with_inference{uuid.uuid4().hex}/'
     controller = build_flow([
