@@ -8,7 +8,7 @@ import pandas as pd
 from storey import build_flow, SyncEmitSource, Reduce, Table, V3ioDriver, MapWithState, AggregateByKey, FieldAggregator, \
     QueryByKey, NoSqlTarget, Context, DataframeSource, Map
 
-from storey.dtypes import SlidingWindows, FixedWindows
+from storey.dtypes import SlidingWindows, FixedWindows, EmitAfterMaxEvent
 from storey.utils import _split_path
 
 from .integration_test_utils import setup_teardown_test, append_return, test_base_time, V3ioHeaders
@@ -1156,7 +1156,7 @@ def test_aggregate_multiple_keys(setup_teardown_test):
         DataframeSource(data, key_field=keys, time_field='time'),
         AggregateByKey([FieldAggregator('number_of_stuff', 'some_data', ['sum'],
                                         SlidingWindows(['1h'], '10m'))],
-                       table),
+                       table, emit_policy=EmitAfterMaxEvent(1)),
         NoSqlTarget(table),
     ]).run()
 

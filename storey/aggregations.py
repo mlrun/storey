@@ -152,16 +152,16 @@ class AggregateByKey(Flow):
             if isinstance(self._emit_policy, EmitEveryEvent):
                 await self._emit_event(key, event)
             elif isinstance(self._emit_policy, EmitAfterMaxEvent):
-                if key in self._events_in_batch:
-                    self._events_in_batch[key]['counter'] += 1
+                if safe_key in self._events_in_batch:
+                    self._events_in_batch[safe_key]['counter'] += 1
                 else:
                     event_dict = {'counter': 1, 'time': time.monotonic()}
-                    self._events_in_batch[key] = event_dict
-                self._events_in_batch[key]['event'] = event
+                    self._events_in_batch[safe_key] = event_dict
+                self._events_in_batch[safe_key]['event'] = event
                 if self._emit_policy.timeout_secs and self._timeout_task is None:
                     self._timeout_task = asyncio.get_running_loop().create_task(self._sleep_and_emit())
-                if self._events_in_batch[key]['counter'] == self._emit_policy.max_events:
-                    event_from_batch = self._events_in_batch.pop(key, None)
+                if self._events_in_batch[safe_key]['counter'] == self._emit_policy.max_events:
+                    event_from_batch = self._events_in_batch.pop(safe_key, None)
                     if event_from_batch is not None:
                         await self._emit_event(key, event_from_batch['event'])
         except Exception as ex:
