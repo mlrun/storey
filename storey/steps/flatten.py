@@ -16,5 +16,5 @@ class Flatten(Flow):
         if event is _termination_obj:
             return await self._do_downstream(_termination_obj)
         else:
-            for flattened in chain.from_iterable(event.body):
-                await self._do_downstream(event.copy(body=flattened))
+            for element in event.body:
+                await self._do_downstream(event.copy(body=element))

@@ -349,11 +349,11 @@ def test_flatten():
         [
             SyncEmitSource(),
             Flatten(),
-            Assert().match_exactly([1, 2, 3, 4, 5, 6])
+            Assert().contains_all_of([1, 2, 3, 4, 5, 6])
         ]
     ).run()
 
-    controller.emit([[1, 2], [3, 4], [5, 6]])
+    controller.emit([1, 2, 3, 4, 5, 6])
     controller.terminate()
     controller.await_termination()
 
