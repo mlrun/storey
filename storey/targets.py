@@ -118,10 +118,10 @@ class _Writer:
                     val = event.body[col]
 
             if col.startswith('$'):
-                col = col[1:]
+                col = f'igzpart_{col[1:]}'
 
             if hash_into:
-                col = f'hash_{hash_into}_{col}'
+                col = f'igzpart_hash{hash_into}_{col}'
                 if isinstance(val, list):
                     val = '.'.join(map(str, val))
                 val = hash(val) / hash_into
