@@ -2392,7 +2392,7 @@ def test_complete_in_error_flow():
 
 
 def test_non_existing_key_query_by_key():
-    df = pd.DataFrame([['katya', 'green'], ['dina', 'blue']], columns=['name', 'color'])
+    df = pd.DataFrame([['katya', 'green', 'hod hasharon'], ['dina', 'blue', 'ramat gan']], columns=['name', 'color', 'city'])
     table = Table('table', NoopDriver())
     controller = build_flow([
         DataframeSource(df, key_field='name'),
@@ -2403,6 +2403,7 @@ def test_non_existing_key_query_by_key():
     controller = build_flow([
         SyncEmitSource(),
         QueryByKey(["color"], table, key="name"),
+        QueryByKey(["city"], table, key="name"),
     ]).run()
 
     controller.emit({'nameeeee': 'katya'}, 'katya')
