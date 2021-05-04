@@ -4,4 +4,6 @@ sphinx~=2.2
 sphinx_rtd_theme~=0.4
 sphinx-copybutton~=0.3
 myst-nb~=0.10
+markdown-it-py<1
+mdit-py-plugins<0.2.7
 sphinx-book-theme~=0.0.39
