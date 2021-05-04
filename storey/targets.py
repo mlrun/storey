@@ -117,14 +117,18 @@ class _Writer:
                 else:
                     val = event.body[col]
 
+            is_meta = False
             if col.startswith('$'):
-                col = f'igzpart_{col[1:]}'
+                col = col[1:]
+                is_meta = True
 
             if hash_into:
                 col = f'igzpart_hash{hash_into}_{col}'
                 if isinstance(val, list):
                     val = '.'.join(map(str, val))
                 val = hash(val) / hash_into
+            elif is_meta:
+                col = f'igzpart_{col}'
 
             res += f'{col}={val}/'
         return res
