@@ -2,6 +2,7 @@ import asyncio
 import math
 import os
 import queue
+import time
 import uuid
 from datetime import datetime
 from random import choice
@@ -350,6 +351,41 @@ def test_write_parquet_read_parquet_partitioned(tmpdir):
     read_back_result = controller.await_termination()
 
     assert read_back_result == expected
+
+
+from unittest.mock import MagicMock
+
+
+async def async_test_write_parquet_flush(tmpdir):
+    out_dir = f'{tmpdir}/test_write_parquet_read_parquet_partitioned/{uuid.uuid4().hex}/'
+    columns = ['my_int', 'my_string']
+    target = ParquetTarget(out_dir, partition_cols='my_int', columns=columns, flush_after_seconds=0)
+
+    async def f():
+        pass
+
+    mock = MagicMock(return_value=asyncio.get_running_loop().create_task(f()))
+    target._emit = mock
+
+    controller = await build_flow([
+        AsyncEmitSource(),
+        target,
+    ]).run()
+
+    for i in range(10):
+        await controller.emit([i, f'this is {i}'])
+
+    await asyncio.sleep(1)
+
+    try:
+        assert mock.call_count == 10
+    finally:
+        controller.terminate()
+        controller.await_termination()
+
+
+def test_write_parquet_flush(tmpdir):
+    asyncio.run(async_test_write_parquet_flush(tmpdir))
 
 
 def test_error_flow():
@@ -2323,7 +2359,7 @@ def test_reader_writer_to_code():
     reconstructed_code = flow.to_code()
     print(reconstructed_code)
     expected = """c_s_v_source0 = CSVSource(paths='mycsv.csv', header=False, build_dict=False, type_inference=True)
-parquet_target0 = ParquetTarget(flush_after_seconds=60, path='mypq', max_events=10000)
+parquet_target0 = ParquetTarget(path='mypq', max_events=10000, flush_after_seconds=60)
 
 c_s_v_source0.to(parquet_target0)
 """
