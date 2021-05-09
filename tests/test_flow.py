@@ -8,6 +8,7 @@ from datetime import datetime
 from random import choice
 
 import pandas as pd
+import pytz
 from aiohttp import InvalidURL
 
 from storey import build_flow, SyncEmitSource, Map, Filter, FlatMap, Reduce, MapWithState, CSVSource, Complete, \
@@ -2462,3 +2463,67 @@ def test_csv_reader_with_none_values():
     assert termination_result[0].body == ['a', True, False, 1, 2.3, datetime(2021, 4, 21, 15, 56, 53, 385444)]
     assert termination_result[1].key == 'b'
     assert termination_result[1].body == ['b', True, None, math.nan, math.nan, None]
+
+
+def test_bad_time_string_input():
+    controller = build_flow([
+        SyncEmitSource(time_field='time'),
+    ]).run()
+
+    try:
+        controller.emit({'time': 'not a time for sure'})
+        assert False
+    except ValueError:
+        pass
+    finally:
+        controller.terminate()
+
+
+def test_bad_time_input():
+    controller = build_flow([
+        SyncEmitSource(time_field='time'),
+    ]).run()
+
+    try:
+        controller.emit({'time': object()})
+        assert False
+    except ValueError as ex:
+        pass
+    finally:
+        controller.terminate()
+
+
+def test_epoch_time_input():
+    controller = build_flow([
+        SyncEmitSource(time_field='time'),
+        Complete(full_event=True)
+    ]).run()
+
+    awaitable_result = controller.emit({'time': 1620569127})
+    result = awaitable_result.await_result()
+    controller.terminate()
+    assert result.time == datetime(2021, 5, 9, 14, 5, 27, tzinfo=pytz.utc)
+
+
+def test_iso_string_time_input():
+    controller = build_flow([
+        SyncEmitSource(time_field='time'),
+        Complete(full_event=True)
+    ]).run()
+
+    awaitable_result = controller.emit({'time': '2021-05-09T14:05:27+00:00'})
+    result = awaitable_result.await_result()
+    controller.terminate()
+    assert result.time == datetime(2021, 5, 9, 14, 5, 27, tzinfo=pytz.utc)
+
+
+def test_custom_string_time_input():
+    controller = build_flow([
+        SyncEmitSource(time_field='time', time_format='%Y-%m-%dT%H:%M:%S%z'),
+        Complete(full_event=True)
+    ]).run()
+
+    awaitable_result = controller.emit({'time': '2021-05-09T14:05:27+00:00'})
+    result = awaitable_result.await_result()
+    controller.terminate()
+    assert result.time == datetime(2021, 5, 9, 14, 5, 27, tzinfo=pytz.utc)
