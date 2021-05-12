@@ -2,12 +2,12 @@ import asyncio
 import math
 import os
 import queue
-import time
 import uuid
 from datetime import datetime
 from random import choice
 
 import pandas as pd
+import pytest
 import pytz
 from aiohttp import InvalidURL
 
@@ -360,7 +360,7 @@ from unittest.mock import MagicMock
 async def async_test_write_parquet_flush(tmpdir):
     out_dir = f'{tmpdir}/test_write_parquet_read_parquet_partitioned/{uuid.uuid4().hex}/'
     columns = ['my_int', 'my_string']
-    target = ParquetTarget(out_dir, partition_cols='my_int', columns=columns, flush_after_seconds=0)
+    target = ParquetTarget(out_dir, partition_cols='my_int', columns=columns, flush_after_seconds=2)
 
     async def f():
         pass
@@ -376,13 +376,13 @@ async def async_test_write_parquet_flush(tmpdir):
     for i in range(10):
         await controller.emit([i, f'this is {i}'])
 
-    await asyncio.sleep(1)
-
     try:
+        assert mock.call_count == 0
+        await asyncio.sleep(3)
         assert mock.call_count == 10
     finally:
-        controller.terminate()
-        controller.await_termination()
+        await controller.terminate()
+        await controller.await_termination()
 
 
 def test_write_parquet_flush(tmpdir):
@@ -2471,10 +2471,8 @@ def test_bad_time_string_input():
     ]).run()
 
     try:
-        controller.emit({'time': 'not a time for sure'})
-        assert False
-    except ValueError:
-        pass
+        with pytest.raises(ValueError):
+            controller.emit({'time': 'not a time for sure'})
     finally:
         controller.terminate()
 
@@ -2485,10 +2483,8 @@ def test_bad_time_input():
     ]).run()
 
     try:
-        controller.emit({'time': object()})
-        assert False
-    except ValueError as ex:
-        pass
+        with pytest.raises(ValueError):
+            controller.emit({'time': object()})
     finally:
         controller.terminate()
 

@@ -54,7 +54,7 @@ def _convert_to_datetime(obj, time_format: Optional[str] = None):
         else:
             return datetime.strptime(obj, time_format)
     else:
-        raise ValueError(f"Could not parse '{obj}' as a time.")
+        raise ValueError(f"Could not parse '{obj}' (of type {type(obj)}) as a time.")
 
 
 class FlowControllerBase:
