@@ -7,6 +7,8 @@ from datetime import datetime
 from random import choice
 
 import pandas as pd
+import pytest
+import pytz
 from aiohttp import InvalidURL
 
 from storey import build_flow, SyncEmitSource, Map, Filter, FlatMap, Reduce, MapWithState, CSVSource, Complete, \
@@ -350,6 +352,41 @@ def test_write_parquet_read_parquet_partitioned(tmpdir):
     read_back_result = controller.await_termination()
 
     assert read_back_result == expected
+
+
+from unittest.mock import MagicMock
+
+
+async def async_test_write_parquet_flush(tmpdir):
+    out_dir = f'{tmpdir}/test_write_parquet_read_parquet_partitioned/{uuid.uuid4().hex}/'
+    columns = ['my_int', 'my_string']
+    target = ParquetTarget(out_dir, partition_cols='my_int', columns=columns, flush_after_seconds=2)
+
+    async def f():
+        pass
+
+    mock = MagicMock(return_value=asyncio.get_running_loop().create_task(f()))
+    target._emit = mock
+
+    controller = await build_flow([
+        AsyncEmitSource(),
+        target,
+    ]).run()
+
+    for i in range(10):
+        await controller.emit([i, f'this is {i}'])
+
+    try:
+        assert mock.call_count == 0
+        await asyncio.sleep(3)
+        assert mock.call_count == 10
+    finally:
+        await controller.terminate()
+        await controller.await_termination()
+
+
+def test_write_parquet_flush(tmpdir):
+    asyncio.run(async_test_write_parquet_flush(tmpdir))
 
 
 def test_error_flow():
@@ -2323,7 +2360,7 @@ def test_reader_writer_to_code():
     reconstructed_code = flow.to_code()
     print(reconstructed_code)
     expected = """c_s_v_source0 = CSVSource(paths='mycsv.csv', header=False, build_dict=False, type_inference=True)
-parquet_target0 = ParquetTarget(flush_after_seconds=60, path='mypq', max_events=10000)
+parquet_target0 = ParquetTarget(path='mypq', max_events=10000, flush_after_seconds=60)
 
 c_s_v_source0.to(parquet_target0)
 """
@@ -2426,3 +2463,63 @@ def test_csv_reader_with_none_values():
     assert termination_result[0].body == ['a', True, False, 1, 2.3, datetime(2021, 4, 21, 15, 56, 53, 385444)]
     assert termination_result[1].key == 'b'
     assert termination_result[1].body == ['b', True, None, math.nan, math.nan, None]
+
+
+def test_bad_time_string_input():
+    controller = build_flow([
+        SyncEmitSource(time_field='time'),
+    ]).run()
+
+    try:
+        with pytest.raises(ValueError):
+            controller.emit({'time': 'not a time for sure'})
+    finally:
+        controller.terminate()
+
+
+def test_bad_time_input():
+    controller = build_flow([
+        SyncEmitSource(time_field='time'),
+    ]).run()
+
+    try:
+        with pytest.raises(ValueError):
+            controller.emit({'time': object()})
+    finally:
+        controller.terminate()
+
+
+def test_epoch_time_input():
+    controller = build_flow([
+        SyncEmitSource(time_field='time'),
+        Complete(full_event=True)
+    ]).run()
+
+    awaitable_result = controller.emit({'time': 1620569127})
+    result = awaitable_result.await_result()
+    controller.terminate()
+    assert result.time == datetime(2021, 5, 9, 14, 5, 27, tzinfo=pytz.utc)
+
+
+def test_iso_string_time_input():
+    controller = build_flow([
+        SyncEmitSource(time_field='time'),
+        Complete(full_event=True)
+    ]).run()
+
+    awaitable_result = controller.emit({'time': '2021-05-09T14:05:27+00:00'})
+    result = awaitable_result.await_result()
+    controller.terminate()
+    assert result.time == datetime(2021, 5, 9, 14, 5, 27, tzinfo=pytz.utc)
+
+
+def test_custom_string_time_input():
+    controller = build_flow([
+        SyncEmitSource(time_field='time', time_format='%Y-%m-%dT%H:%M:%S%z'),
+        Complete(full_event=True)
+    ]).run()
+
+    awaitable_result = controller.emit({'time': '2021-05-09T14:05:27+00:00'})
+    result = awaitable_result.await_result()
+    controller.terminate()
+    assert result.time == datetime(2021, 5, 9, 14, 5, 27, tzinfo=pytz.utc)

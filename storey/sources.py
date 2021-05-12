@@ -10,6 +10,7 @@ from typing import List, Optional, Union, Callable, Coroutine, Iterable
 import pyarrow.parquet as pq
 
 import pandas
+import pytz
 
 from .dtypes import _termination_obj, Event
 from .flow import Flow, Complete
@@ -42,10 +43,25 @@ class AwaitableResult:
         self._set_result(ex)
 
 
+def _convert_to_datetime(obj, time_format: Optional[str] = None):
+    if isinstance(obj, datetime):
+        return obj
+    elif isinstance(obj, float) or isinstance(obj, int):
+        return datetime.fromtimestamp(obj, tz=pytz.utc)
+    elif isinstance(obj, str):
+        if time_format is None:
+            return datetime.fromisoformat(obj)
+        else:
+            return datetime.strptime(obj, time_format)
+    else:
+        raise ValueError(f"Could not parse '{obj}' (of type {type(obj)}) as a time.")
+
+
 class FlowControllerBase:
-    def __init__(self, key_field: Optional[Union[str, List[str]]], time_field: Optional[str]):
+    def __init__(self, key_field: Optional[Union[str, List[str]]], time_field: Optional[str], time_format: Optional[str]):
         self._key_field = key_field
         self._time_field = time_field
+        self._time_format = time_format
         self._current_uuid_base = None
         self._current_uuid_count = 0
 
@@ -71,7 +87,7 @@ class FlowControllerBase:
                 for field in self._key_field:
                     key.append(body[field])
         if not event_time and self._time_field:
-            event_time = body[self._time_field]
+            event_time = _convert_to_datetime(body[self._time_field], self._time_format)
 
         if element_is_event:
             if key:
@@ -90,8 +106,8 @@ class FlowController(FlowControllerBase):
     """
 
     def __init__(self, emit_fn, await_termination_fn, return_awaitable_result, key_field: Optional[str] = None,
-                 time_field: Optional[str] = None):
-        super().__init__(key_field, time_field)
+                 time_field: Optional[str] = None, time_format: Optional[str] = None):
+        super().__init__(key_field, time_field, time_format)
         self._emit_fn = emit_fn
         self._await_termination_fn = await_termination_fn
         self._return_awaitable_result = return_awaitable_result
@@ -148,6 +164,7 @@ class SyncEmitSource(Flow):
     :param buffer_size: size of the incoming event buffer. Defaults to 1024.
     :param key_field: Field to extract and use as the key. Optional.
     :param time_field: Field to extract and use as the time. Optional.
+    :param time_format: Format of the event time. Needed when a nonstandard string timestamp is used (i.e. not ISO or epoch). Optional.
     :param name: Name of this step, as it should appear in logs. Defaults to class name (SyncEmitSource).
     :type name: string
 
@@ -156,7 +173,7 @@ class SyncEmitSource(Flow):
     _legal_first_step = True
 
     def __init__(self, buffer_size: Optional[int] = None, key_field: Union[list, str, None] = None, time_field: Optional[str] = None,
-                 **kwargs):
+                 time_format: Optional[str] = None, **kwargs):
         if buffer_size is None:
             buffer_size = 1024
         else:
@@ -169,6 +186,7 @@ class SyncEmitSource(Flow):
         self._q = queue.Queue(buffer_size)
         self._key_field = key_field
         self._time_field = time_field
+        self._time_format = time_format
         self._termination_q = queue.Queue(1)
         self._ex = None
         self._closeables = []
@@ -229,7 +247,8 @@ class SyncEmitSource(Flow):
 
         has_complete = self._check_step_in_flow(Complete)
 
-        return FlowController(self._emit, raise_error_or_return_termination_result, has_complete, self._key_field, self._time_field)
+        return FlowController(self._emit, raise_error_or_return_termination_result, has_complete, self._key_field, self._time_field,
+                              self._time_format)
 
 
 class AsyncAwaitableResult:
@@ -264,12 +283,14 @@ class AsyncFlowController(FlowControllerBase):
     Used to emit events into the associated flow, terminate the flow, and await the flow's termination. To be used from inside an async def.
     """
 
-    def __init__(self, emit_fn, loop_task, await_result, key_field: Optional[str] = None, time_field: Optional[str] = None):
-        super().__init__(key_field, time_field)
+    def __init__(self, emit_fn, loop_task, await_result, key_field: Optional[str] = None, time_field: Optional[str] = None,
+                 time_format: Optional[str] = None):
+        super().__init__(key_field, time_field, time_format)
         self._emit_fn = emit_fn
         self._loop_task = loop_task
         self._key_field = key_field
         self._time_field = time_field
+        self._time_format = time_format
         self._await_result = await_result
 
     async def emit(self, element: object, key: Optional[Union[str, List[str]]] = None, event_time: Optional[datetime] = None,
@@ -317,18 +338,22 @@ class AsyncEmitSource(Flow):
     :param buffer_size: size of the incoming event buffer. Defaults to 1024.
     :param name: Name of this step, as it should appear in logs. Defaults to class name (AsyncEmitSource).
     :type name: string
+    :param time_field: Field to extract and use as the time. Optional.
+    :param time_format: Format of the event time. Needed when a nonstandard string timestamp is used (i.e. not ISO or epoch). Optional.
 
     for additional params, see documentation of  :class:`~storey.flow.Flow`
     """
     _legal_first_step = True
 
-    def __init__(self, buffer_size: int = 1024, key_field: Union[list, str, None] = None, time_field: Optional[str] = None, **kwargs):
+    def __init__(self, buffer_size: int = 1024, key_field: Union[list, str, None] = None, time_field: Optional[str] = None,
+                 time_format: Optional[str] = None, **kwargs):
         super().__init__(**kwargs)
         if buffer_size <= 0:
             raise ValueError('Buffer size must be positive')
         self._q = asyncio.Queue(buffer_size)
         self._key_field = key_field
         self._time_field = time_field
+        self._time_format = time_format
         self._ex = None
         self._closeables = []
 

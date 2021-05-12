@@ -690,23 +690,23 @@ class _Batching(Flow):
     def __init__(
             self,
             max_events: Optional[int] = None,
-            timeout_secs: Optional[int] = None,
+            flush_after_seconds: Optional[int] = None,
             key: Optional[Union[str, Callable[[Event], str]]] = None,
             **kwargs,
     ):
         if max_events:
             kwargs['max_events'] = max_events
-        if timeout_secs:
-            kwargs['timeout_secs'] = timeout_secs
+        if flush_after_seconds is not None:
+            kwargs['flush_after_seconds'] = flush_after_seconds
         if isinstance(key, str):
             kwargs['key'] = key
         super().__init__(**kwargs)
 
         self._max_events = max_events
-        self._timeout_secs = timeout_secs
+        self._flush_after_seconds = flush_after_seconds
 
-        if self._timeout_secs is not None and self._timeout_secs <= 0:
-            raise ValueError('Batch timeout cannot be 0 or negative')
+        if self._flush_after_seconds is not None and self._flush_after_seconds < 0:
+            raise ValueError('flush_after_seconds cannot be negative')
 
         self._extract_key: Optional[Callable[[Event], str]] = self._create_key_extractor(key)
 
@@ -748,7 +748,7 @@ class _Batching(Flow):
             self._batch_first_event_time[key] = event.time
             self._batch_start_time[key] = time.monotonic()
 
-        if self._timeout_secs and self._timeout_task is None:
+        if self._flush_after_seconds is not None and self._timeout_task is None:
             self._timeout_task = asyncio.get_running_loop().create_task(self._sleep_and_emit())
 
         self._batch[key].append(self._event_to_batch_entry(event))
@@ -763,8 +763,8 @@ class _Batching(Flow):
         while self._batch:
             key = next(iter(self._batch.keys()))
             delta_seconds = time.monotonic() - self._batch_start_time[key]
-            if delta_seconds < self._timeout_secs:
-                await asyncio.sleep(self._timeout_secs - delta_seconds)
+            if delta_seconds < self._flush_after_seconds:
+                await asyncio.sleep(self._flush_after_seconds - delta_seconds)
             await self._emit_batch(key)
 
         self._timeout_task = None
@@ -787,12 +787,12 @@ class _Batching(Flow):
 
 class Batch(_Batching):
     """Batches events into lists of up to max_events events. Each emitted list contained max_events events, unless
-    timeout_secs seconds have passed since the first event in the batch was received, at which the batch is emitted with
+    flush_after_seconds seconds have passed since the first event in the batch was received, at which the batch is emitted with
     potentially fewer than max_events event.
 
     :param max_events: Maximum number of events per emitted batch. Set to None to emit all events in one batch on flow
         termination.
-    :param timeout_secs: Maximum number of seconds to wait before a batch is emitted.
+    :param flush_after_seconds: Maximum number of seconds to wait before a batch is emitted.
     :param key: The key by which events are grouped. By default (None), events are not grouped.
         Other options may be:
         Set a '$key' to group events by the Event.key property.
