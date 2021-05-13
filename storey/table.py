@@ -24,7 +24,7 @@ class Table:
      """
 
     def __init__(self, table_path: str, storage: Driver, partitioned_by_key: bool = True,
-                 flush_interval_secs: Optional[int] = None, max_updates_in_flight: int = 8):
+                 flush_interval_secs: Optional[int] = 300, max_updates_in_flight: int = 8):
         self._container, self._table_path = _split_path(table_path)
         self._storage = storage
         self._partitioned_by_key = partitioned_by_key
