@@ -12,7 +12,7 @@ import pyarrow.parquet as pq
 import pandas
 import pytz
 
-from .dtypes import _termination_obj, Event
+from .dtypes import _termination_obj, Event, legal_time_units
 from .flow import Flow, Complete
 from .utils import url_to_file_system, drop_reserved_columns, find_filters
 
@@ -735,8 +735,7 @@ class ParquetSource(DataframeSource):
         dataset = pq.ParquetDataset(path, filesystem=fs)
         if dataset.partitions:
             partitions = dataset.partitions.partition_names
-            time_attributes = ['year', 'month', 'day', 'hour', 'minute', 'second']
-            partitions_time_attributes = [j for j in time_attributes if j in partitions]
+            partitions_time_attributes = [j for j in legal_time_units if j in partitions]
         else:
             partitions_time_attributes = []
         filters = []
