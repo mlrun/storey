@@ -378,3 +378,6 @@ class FieldAggregator:
             return True
 
         return self.aggr_filter(element)
+
+
+legal_time_units = ['year', 'month', 'day', 'hour', 'minute', 'second']
