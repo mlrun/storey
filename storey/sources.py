@@ -88,6 +88,7 @@ class FlowControllerBase:
                     key.append(body[field])
         if not event_time and self._time_field:
             event_time = _convert_to_datetime(body[self._time_field], self._time_format)
+            body[self._time_field] = event_time
 
         if element_is_event:
             if key:
