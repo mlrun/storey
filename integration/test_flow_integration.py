@@ -544,3 +544,13 @@ def test_cache_flushing(setup_teardown_test):
     controller.terminate()
     controller.await_termination()
 
+
+def test_write_empty_df(setup_teardown_test):
+    table = Table(setup_teardown_test, V3ioDriver())
+    df = pd.DataFrame({})
+
+    controller = build_flow([
+        DataframeSource(df),
+        NoSqlTarget(table),
+    ]).run()
+    controller.await_termination()
