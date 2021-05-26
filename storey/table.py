@@ -113,7 +113,10 @@ class Table:
 
     def _set_aggregation_metadata(self, aggregates: List[FieldAggregator], use_windows_from_schema: bool = False):
         self._use_windows_from_schema = use_windows_from_schema
-        self._aggregates = aggregates
+        if self._aggregates:
+            self._aggregates = self._aggregates + aggregates
+        else:
+            self._aggregates = aggregates
 
     def _init_flush_task(self):
         if not self._flush_task and self._flush_interval_secs:
