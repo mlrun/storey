@@ -363,8 +363,10 @@ class Table:
             for key in self._changed_keys.copy():
                 if key not in self._pending_by_key:
                     await self._persist(_PersistJob(key, None, None), from_terminate=True)
-            await self._q.put(_termination_obj)
-            await self._worker_awaitable
+            if self._q:
+                # in case there was no _persist for this table, q and worker_awaitable were never created
+                await self._q.put(_termination_obj)
+                await self._worker_awaitable
             for value in self._attrs_cache.values():
                 value.lock = None
             self._q = None
