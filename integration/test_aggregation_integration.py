@@ -1264,3 +1264,50 @@ def test_concurrent_updates_to_kv_table(setup_teardown_test):
     result = controller.await_termination()
 
     assert result == [{'mykey': 'onekey', 'attr1': 9, 'attr2': 9}]
+
+
+def test_separate_aggregate_steps(setup_teardown_test):
+    def map_multiply(x):
+        x['some_data'] = x['some_data'] * 10
+        return x
+
+    t0 = pd.Timestamp(test_base_time)
+    data = pd.DataFrame(
+        {
+            'first_name': ['moshe', 'yosi', 'katya'],
+            'some_data': [1, 2, 3],
+            'time': [t0 - pd.Timedelta(minutes=25), t0 - pd.Timedelta(minutes=30),
+                     t0 - pd.Timedelta(minutes=35)]
+        }
+    )
+
+    table = Table(setup_teardown_test, V3ioDriver())
+
+    controller = build_flow([
+        DataframeSource(data, key_field='first_name', time_field='time'),
+        AggregateByKey([FieldAggregator("number_of_stuff", "some_data", ["avg"],
+                                        SlidingWindows(['1h'], '10m'))], table),
+        Map(map_multiply),
+        AggregateByKey([FieldAggregator("number_of_stuff2", "some_data", ["sum"],
+                                        SlidingWindows(['2h'], '10m'))], table),
+        NoSqlTarget(table),
+    ]).run()
+
+    controller.await_termination()
+
+    other_table = Table(setup_teardown_test, V3ioDriver())
+    controller = build_flow([
+        SyncEmitSource(),
+        QueryByKey(['number_of_stuff_avg_1h', 'number_of_stuff2_sum_2h'],
+                   other_table, keys=['first_name']),
+        Reduce([], lambda acc, x: append_return(acc, x)),
+    ]).run()
+
+    controller.emit({'first_name': 'moshe'}, ['moshe'], event_time=test_base_time)
+
+    controller.terminate()
+    actual = controller.await_termination()
+    expected_results = [{'number_of_stuff2_sum_2h': 11.0, 'number_of_stuff_avg_1h': 5.5, 'first_name': 'moshe'}]
+
+    assert actual == expected_results, \
+        f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
