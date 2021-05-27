@@ -1267,7 +1267,7 @@ def test_concurrent_updates_to_kv_table(setup_teardown_test):
 
 
 def test_separate_aggregate_steps(setup_teardown_test):
-    def map(x):
+    def map_multiply(x):
         x['some_data'] = x['some_data'] * 10
         return x
 
@@ -1287,11 +1287,10 @@ def test_separate_aggregate_steps(setup_teardown_test):
         DataframeSource(data, key_field='first_name', time_field='time'),
         AggregateByKey([FieldAggregator("number_of_stuff", "some_data", ["avg"],
                                         SlidingWindows(['1h'], '10m'))], table),
-        Map(map),
+        Map(map_multiply),
         AggregateByKey([FieldAggregator("number_of_stuff2", "some_data", ["sum"],
                                         SlidingWindows(['2h'], '10m'))], table),
         NoSqlTarget(table),
-
     ]).run()
 
     controller.await_termination()
