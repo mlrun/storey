@@ -510,6 +510,7 @@ class CSVSource(_IterableSource):
     def _init(self):
         self._event_buffer = queue.Queue(1024)
         self._types = []
+        self._none_columns = []
 
     def _infer_type(self, value):
         lowercase = value.lower()
@@ -534,7 +535,7 @@ class CSVSource(_IterableSource):
         except ValueError:
             pass
 
-        if value == "":
+        if value == '':
             return 'n'
 
         return 's'
@@ -588,12 +589,14 @@ class CSVSource(_IterableSource):
                         parsed_line = next(csv.reader([line]))
                         if self._type_inference:
                             if not self._types:
-                                for field in parsed_line:
-                                    self._types.append(self._infer_type(field))
+                                for index, field in enumerate(parsed_line):
+                                    type_field = self._infer_type(field)
+                                    self._types.append(type_field)
+                                    if type_field == 'n':
+                                        self._none_columns.append(index)
                             else:
-                                for index in range(len(parsed_line)):
-                                    if self._types[index] == 'n':
-                                        self._types[index] = self._infer_type(parsed_line[index])
+                                for index in self._none_columns:
+                                    self._types[index] = self._infer_type(parsed_line[index])
                             for i in range(len(parsed_line)):
                                 parsed_line[i] = self._parse_field(parsed_line[i], i)
                         element = parsed_line
