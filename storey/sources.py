@@ -534,6 +534,9 @@ class CSVSource(_IterableSource):
         except ValueError:
             pass
 
+        if value == "":
+            return 'n'
+
         return 's'
 
     def _parse_field(self, field, index):
@@ -557,6 +560,8 @@ class CSVSource(_IterableSource):
             if field == '':
                 return None
             return self._datetime_from_timestamp(field)
+        if typ == 'n':
+            return None
         raise TypeError(f'Unknown type: {typ}')
 
     def _datetime_from_timestamp(self, timestamp):
@@ -585,6 +590,10 @@ class CSVSource(_IterableSource):
                             if not self._types:
                                 for field in parsed_line:
                                     self._types.append(self._infer_type(field))
+                            else:
+                                for index in range(len(parsed_line)):
+                                    if self._types[index] == 'n':
+                                        self._types[index] = self._infer_type(parsed_line[index])
                             for i in range(len(parsed_line)):
                                 parsed_line[i] = self._parse_field(parsed_line[i], i)
                         element = parsed_line
