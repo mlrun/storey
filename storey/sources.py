@@ -85,6 +85,9 @@ class FlowControllerBase:
             else:
                 key = []
                 for field in self._key_field:
+                    if body[field] is None:
+                        key = [None]
+                        break
                     key.append(body[field])
         if not event_time and self._time_field:
             event_time = _convert_to_datetime(body[self._time_field], self._time_format)
@@ -603,12 +606,15 @@ class CSVSource(_IterableSource):
                                 for single_key_field in self._key_field:
                                     if self._with_header and isinstance(single_key_field, str):
                                         single_key_field = field_name_to_index[single_key_field]
+                                    if parsed_line[single_key_field] is None:
+                                        key = [None]
+                                        break
                                     key.append(parsed_line[single_key_field])
                             else:
                                 key_field = self._key_field
                                 if self._with_header and isinstance(key_field, str):
                                     key_field = field_name_to_index[key_field]
-                                key = parsed_line[key_field]
+                                key = [parsed_line[key_field]]
                         if self._time_field:
                             time_field = self._time_field
                             if self._with_header and isinstance(time_field, str):
@@ -687,9 +693,12 @@ class DataframeSource(_IterableSource):
                     if isinstance(self._key_field, list):
                         key = []
                         for key_field in self._key_field:
+                            if body[key_field] is None:
+                                key = [None]
+                                break
                             key.append(body[key_field])
                     else:
-                        key = body[self._key_field]
+                        key = [body[self._key_field]]
                 time = None
                 if self._time_field:
                     time = body[self._time_field]

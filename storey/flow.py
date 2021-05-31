@@ -135,6 +135,10 @@ class Flow:
 
     async def _do_and_recover(self, event):
         try:
+            if event.key == [None]:
+                if self.context and hasattr(self.context, 'push_error'):
+                    self.context.push_error(event, f"For {event.body} value of key(s) is None", source=self.name)
+                return
             return await self._do(event)
         except BaseException as ex:
             if getattr(ex, '_raised_by_storey_step', None) is not None:
