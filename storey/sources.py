@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import csv
 import math
 import queue
@@ -510,7 +511,7 @@ class CSVSource(_IterableSource):
     def _init(self):
         self._event_buffer = queue.Queue(1024)
         self._types = []
-        self._none_columns = []
+        self._none_columns = set()
 
     def _infer_type(self, value):
         lowercase = value.lower()
@@ -593,10 +594,13 @@ class CSVSource(_IterableSource):
                                     type_field = self._infer_type(field)
                                     self._types.append(type_field)
                                     if type_field == 'n':
-                                        self._none_columns.append(index)
+                                        self._none_columns.add(index)
                             else:
-                                for index in self._none_columns:
-                                    self._types[index] = self._infer_type(parsed_line[index])
+                                for index in copy.copy(self._none_columns):
+                                    type_field = self._infer_type(parsed_line[index])
+                                    if type_field != 'n':
+                                        self._types[index] = type_field
+                                        self._none_columns.remove(index)
                             for i in range(len(parsed_line)):
                                 parsed_line[i] = self._parse_field(parsed_line[i], i)
                         element = parsed_line
