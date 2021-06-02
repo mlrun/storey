@@ -2,6 +2,7 @@ import base64
 import json
 import os
 from datetime import datetime, timedelta
+from enum import Enum
 from typing import Optional
 from collections import OrderedDict
 import pandas as pd
@@ -9,9 +10,13 @@ import pandas as pd
 import v3io
 import v3io.aio.dataplane
 from v3io.dataplane import kv_array
+from redis import Redis
+from rediscluster import RedisCluster
 
 from .dtypes import V3ioError
 from .utils import schema_file_name
+import asyncio
+from functools import partial
 
 
 class Driver:
@@ -505,3 +510,42 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
 
         return await self._v3io_client.kv.get(container, table_path, str(key), attribute_names=attributes,
                                               raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
+
+
+class RedisType(Enum):
+    STANDALONE = 1
+    CLUSTER = 2
+
+
+class RedisDriver(Driver):
+    def __init__(self, connection_string: str = None,
+                 redis_type: RedisType = RedisType.STANDALONE,
+                 key_prefix: str = ""):
+        connection_string = connection_string or os.getenv('REDIS_CONNECTION')
+        if not connection_string:
+            raise ValueError('Missing connection_string parameter or REDIS_CONNECTION '
+                             'environment variable')
+
+        self._conn_str = connection_string
+        self._redis = None
+        self._key_prefix = key_prefix
+        self._type = redis_type
+
+    @property
+    def redis(self):
+        if self._redis:
+            return self._redis
+        if self._type is RedisType.STANDALONE:
+            return Redis.from_url(self._conn_str)
+        self._redis = RedisCluster.from_url(self._conn_str)
+        return self._redis
+
+    def make_key(self, table_path, key):
+        return "{}{}{}".format(self._key_prefix, table_path, key)
+
+    async def _save_key(self, container, table_path, key, aggr_item, partitioned_by_key, additional_data):
+        redis_key = self.make_key(table_path, key)
+        loop = asyncio.get_event_loop()
+        async_hset = partial(self.redis.hset, redis_key, mapping=additional_data)
+        return await loop.run_in_executor(None, async_hset)
+
