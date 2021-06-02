@@ -4,7 +4,7 @@ from array import array
 from urllib.parse import urlparse
 import fsspec
 
-bucketPerWindow = 1
+bucketPerWindow = 2
 schema_file_name = '.schema'
 
 
