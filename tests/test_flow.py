@@ -407,6 +407,7 @@ def test_write_parquet_read_parquet_partitioned(tmpdir):
 
 
 from unittest.mock import MagicMock
+from storey.drivers import RedisDriver
 
 
 async def async_test_write_parquet_flush(tmpdir):
@@ -3324,3 +3325,17 @@ def test_rename():
     controller.terminate()
     termination_result = controller.await_termination()
     assert termination_result == [{'b': 1, 'c': 3, 'e': 5}]
+
+def test_redis_driver():
+    driver = RedisDriver()
+    controller = build_flow([
+        SyncEmitSource(),
+        NoSqlTarget(Table('test', driver)),
+        Complete()
+    ]).run()
+    controller.emit({'col1': 0}, 'key').await_result()
+    controller.terminate()
+    controller.await_termination()
+
+    data = driver.redis.hgetall("/key")
+    assert data == {b"col1": b"0"}
