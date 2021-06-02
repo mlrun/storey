@@ -355,6 +355,7 @@ def test_write_parquet_read_parquet_partitioned(tmpdir):
 
 
 from unittest.mock import MagicMock
+from storey.drivers import RedisDriver
 
 
 async def async_test_write_parquet_flush(tmpdir):
@@ -2576,3 +2577,17 @@ def test_csv_none_value_first_row(tmpdir):
     for c in columns:
         assert read_back_df.dtypes.to_dict()[c] == data.dtypes.to_dict()[c]
 
+
+def test_redis_driver():
+    driver = RedisDriver()
+    controller = build_flow([
+        SyncEmitSource(),
+        NoSqlTarget(Table('test', driver)),
+        Complete()
+    ]).run()
+    controller.emit({'col1': 0}, 'key').await_result()
+    controller.terminate()
+    controller.await_termination()
+
+    data = driver.redis.hgetall("/key")
+    assert data == {b"col1": b"0"}
