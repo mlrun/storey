@@ -17,6 +17,7 @@ from .dtypes import V3ioError
 from .utils import schema_file_name
 import asyncio
 from functools import partial
+import concurrent
 
 
 class Driver:
@@ -542,6 +543,7 @@ class RedisDriver(Driver):
     async def _save_key(self, container, table_path, key, aggr_item, partitioned_by_key, additional_data):
         redis_key = self.make_key(table_path, key)
         loop = asyncio.get_event_loop()
-        async_hset = partial(self.redis.hset, redis_key, mapping=additional_data)
-        return await loop.run_in_executor(None, async_hset)
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            partial_hset = partial(self.redis.hset, redis_key, mapping=additional_data)
+            return await loop.run_in_executor(pool, partial_hset)
 
