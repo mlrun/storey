@@ -471,4 +471,3 @@ class RedisDriver(Driver):
         with concurrent.futures.ThreadPoolExecutor() as pool:
             partial_hset = partial(self.redis.hset, redis_key, mapping=additional_data)
             return await loop.run_in_executor(pool, partial_hset)
-
