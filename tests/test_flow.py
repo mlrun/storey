@@ -23,6 +23,7 @@ from storey import build_flow, SyncEmitSource, Map, Filter, FlatMap, Reduce, Map
     ParquetTarget, QueryByKey, \
     TSDBTarget, Extend, SendToHttp, HttpRequest, NoSqlTarget, NoopDriver, Driver, Recover, V3ioDriver, ParquetSource
 from storey.flow import _ConcurrentJobExecution, Context, ReifyMetadata, Rename
+from integration.integration_test_utils import append_return
 
 
 class ATestException(Exception):
@@ -408,6 +409,8 @@ def test_write_parquet_read_parquet_partitioned(tmpdir):
 
 from unittest.mock import MagicMock
 from storey.drivers import RedisDriver
+from storey.aggregations import AggregateByKey
+from storey.dtypes import FieldAggregator, FixedWindows
 
 
 async def async_test_write_parquet_flush(tmpdir):
@@ -3326,7 +3329,7 @@ def test_rename():
     termination_result = controller.await_termination()
     assert termination_result == [{'b': 1, 'c': 3, 'e': 5}]
 
-def test_redis_driver():
+def test_redis_driver_write():
     driver = RedisDriver()
     controller = build_flow([
         SyncEmitSource(),
@@ -3339,3 +3342,27 @@ def test_redis_driver():
 
     data = driver.redis.hgetall("/key")
     assert data == {b"col1": b"0"}
+
+
+def test_redis_driver_join():
+    driver= RedisDriver()
+    table = Table('test', driver)
+    target = NoSqlTarget(table)
+
+    # Create the data we'll join with in Redis.
+    driver.redis.hset("/1", mapping={"name": "1234"})
+
+    controller = build_flow([
+        SyncEmitSource(),
+        JoinWithTable(table, lambda x: x['col2']),
+        Reduce([], lambda acc, x: append_return(acc, x))
+    ]).run()
+
+    controller.emit({'col1': 1, 'col2': '1'}, 'key')
+    controller.emit({'col1': 1, 'col2': '1'}, 'key')
+    controller.terminate()
+    termination_result = controller.await_termination()
+
+    assert termination_result == [
+        {'col1': 1, 'col2': '1', b'name': b'1234'},
+        {'col1': 1, 'col2': '1', b'name': b'1234'}]
