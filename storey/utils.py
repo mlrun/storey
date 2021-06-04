@@ -5,6 +5,9 @@ import struct
 from array import array
 from urllib.parse import urlparse
 import fsspec
+import asyncio
+import concurrent
+from functools import partial
 
 bucketPerWindow = 2
 schema_file_name = '.schema'
@@ -304,3 +307,21 @@ def find_filters(partitions_time_attributes, start, end, filters, filter_column)
     # for start=1.2.2018 08:53:15, end=5.2.2018 16:24:31, this method will append to filters
     # [(year=2018, month=2,day<=5, filter_column<5.2.2018 16:24:31)]
     _find_filter_helper(partitions_time_attributes, end, "<", "<=", first_uncommon, filters, filter_column)
+
+
+def drop_reserved_columns(df):
+    cols_to_drop = []
+    for col in df.columns:
+        if col.startswith('igzpart_'):
+            cols_to_drop.append(col)
+    df.drop(labels=cols_to_drop, axis=1, inplace=True, errors='ignore')
+
+
+def asyncify(fn):
+    """Run a synchronous function asynchronously."""
+    async def inner_fn(*args, **kwargs):
+        loop = asyncio.get_event_loop()
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            partial_hset = partial(fn, *args, **kwargs)
+            return await loop.run_in_executor(pool, partial_hset)
+    return inner_fn

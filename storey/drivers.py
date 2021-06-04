@@ -3,21 +3,21 @@ import json
 import os
 from datetime import datetime, timedelta
 from enum import Enum
+from functools import partial
 from typing import Optional
 from collections import OrderedDict
 import pandas as pd
 
+import redis
+import rediscluster
 import v3io
 import v3io.aio.dataplane
 from v3io.dataplane import kv_array
 from redis import Redis
 from rediscluster import RedisCluster
 
-from .dtypes import V3ioError
-from .utils import schema_file_name
-import asyncio
-from functools import partial
-import concurrent
+from .dtypes import V3ioError, RedisError
+from .utils import schema_file_name, asyncify
 
 
 class Driver:
@@ -35,7 +35,7 @@ class Driver:
     async def _load_aggregates_by_key(self, container, table_path, key):
         return None, None
 
-    async def _load_by_key(self, container, table_path, key, attribute):
+    async def _load_by_key(self, container, table_path, key, attributes):
         pass
 
     async def close(self):
@@ -521,7 +521,10 @@ class RedisType(Enum):
 class RedisDriver(Driver):
     def __init__(self, connection_string: str = None,
                  redis_type: RedisType = RedisType.STANDALONE,
-                 key_prefix: str = ""):
+                 key_prefix: str = "",
+                 aggregation_attribute_prefix: str = 'aggr_',
+                 aggregation_time_attribute_prefix: str = 't_'):
+
         connection_string = connection_string or os.getenv('REDIS_CONNECTION')
         if not connection_string:
             raise ValueError('Missing connection_string parameter or REDIS_CONNECTION '
@@ -531,14 +534,16 @@ class RedisDriver(Driver):
         self._redis = None
         self._key_prefix = key_prefix
         self._type = redis_type
+        self._aggregation_attribute_prefix = aggregation_attribute_prefix
+        self._aggregation_time_attribute_prefix = aggregation_time_attribute_prefix
 
     @property
     def redis(self):
         if self._redis:
             return self._redis
         if self._type is RedisType.STANDALONE:
-            return Redis.from_url(self._conn_str)
-        self._redis = RedisCluster.from_url(self._conn_str)
+            return redis.Redis.from_url(self._conn_str)
+        self._redis = rediscluster.RedisCluster.from_url(self._conn_str)
         return self._redis
 
     def make_key(self, table_path, key):
@@ -546,7 +551,25 @@ class RedisDriver(Driver):
 
     async def _save_key(self, container, table_path, key, aggr_item, partitioned_by_key, additional_data):
         redis_key = self.make_key(table_path, key)
-        loop = asyncio.get_event_loop()
-        with concurrent.futures.ThreadPoolExecutor() as pool:
-            partial_hset = partial(self.redis.hset, redis_key, mapping=additional_data)
-            return await loop.run_in_executor(pool, partial_hset)
+        return await asyncify(self.redis.hset)(redis_key, mapping=additional_data)
+
+    async def _load_by_key(self, container, table_path, key, attributes):
+        redis_key = self.make_key(table_path, key)
+        aggregation_prefixes = (self._aggregation_attribute_prefix,
+                                self._aggregation_time_attribute_prefix)
+        non_aggregation_attrs = [
+            name for name in attributes
+            if not name.startswith(aggregation_prefixes)
+        ]
+
+        if attributes == "*":
+            command = partial(asyncify(self.redis.hgetall), redis_key)
+        else:
+            command = partial(asyncify(self.redis.hmget), redis_key, non_aggregation_attrs)
+
+        try:
+            values = await command()
+        except redis.ResponseError as e:
+            raise RedisError(f'Failed to get item. Response error was: {e}')
+
+        return values
