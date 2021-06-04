@@ -3,6 +3,9 @@ import struct
 from array import array
 from urllib.parse import urlparse
 import fsspec
+import asyncio
+import concurrent
+from functools import partial
 
 bucketPerWindow = 2
 schema_file_name = '.schema'
@@ -262,3 +265,13 @@ def drop_reserved_columns(df):
         if col.startswith('igzpart_'):
             cols_to_drop.append(col)
     df.drop(labels=cols_to_drop, axis=1, inplace=True, errors='ignore')
+
+
+def asyncify(fn):
+    """Run a synchronous function asynchronously."""
+    async def inner_fn(*args, **kwargs):
+        loop = asyncio.get_event_loop()
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            partial_hset = partial(fn, *args, **kwargs)
+            return await loop.run_in_executor(pool, partial_hset)
+    return inner_fn

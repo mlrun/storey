@@ -73,6 +73,10 @@ class V3ioError(Exception):
     pass
 
 
+class RedisError(Exception):
+    pass
+
+
 class FlowError(Exception):
     pass
 
