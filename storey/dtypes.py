@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Union, Optional, Callable, List
 from copy import deepcopy
+from operator import itemgetter
 
 from .utils import parse_duration, bucketPerWindow, get_one_unit_of_duration
 from .aggregation_utils import get_all_raw_aggregates
@@ -154,7 +155,7 @@ class WindowsBase:
                 self.smallest_window_millis = new.smallest_window_millis
             if self.total_number_of_buckets < new.total_number_of_buckets:
                 self.total_number_of_buckets = new.total_number_of_buckets
-            sorted(set(self.windows), key=lambda tup: tup[0])
+            sorted(set(self.windows), key=itemgetter(0))
 
 
 def sort_windows_and_convert_to_millis(windows):
@@ -164,7 +165,7 @@ def sort_windows_and_convert_to_millis(windows):
     if isinstance(windows[0], str):
         # Validate windows order
         windows_tuples = [(parse_duration(window), window) for window in windows]
-        windows_tuples.sort(key=lambda tup: tup[0])
+        windows_tuples.sort(key=itemgetter(0))
     else:
         # Internally windows can be passed as tuples
         windows_tuples = windows
@@ -364,6 +365,9 @@ class FieldAggregator:
             self.value_extractor = field
         elif isinstance(field, str):
             self.value_extractor = lambda element: element.get(field)
+        else:
+            typ = type(field).__name__
+            raise TypeError(f'bad field type: {typ!r}, expected callable or str')
 
         self.name = name
         self.aggregations = aggr
