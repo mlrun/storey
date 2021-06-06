@@ -5,8 +5,8 @@ import pandas as pd
 import pytest
 
 from storey import SyncEmitSource, Map, Reduce, build_flow, Complete, Driver, FieldAggregator, AggregateByKey, Table, Batch, AsyncEmitSource, \
-    DataframeSource, NoopDriver
-from storey.dtypes import SlidingWindows, FixedWindows
+    DataframeSource
+from storey.dtypes import SlidingWindows
 
 test_base_time = datetime.fromisoformat("2020-07-21T21:40:00+00:00")
 
@@ -23,7 +23,7 @@ def test_simple_flow_n_events(benchmark, n):
         for i in range(n):
             controller.emit(i)
         controller.terminate()
-        termination_result = controller.await_termination()
+        controller.await_termination()
 
     benchmark(inner)
 
@@ -40,7 +40,7 @@ def test_simple_async_flow_n_events(benchmark, n):
         for i in range(n):
             await controller.emit(i)
         await controller.terminate()
-        termination_result = await controller.await_termination()
+        await controller.await_termination()
 
     def inner():
         asyncio.run(async_inner())
@@ -126,13 +126,45 @@ def test_aggregate_df_86420_events(benchmark):
     benchmark(inner)
 
 
+def test_async_aggregate_df_86420_events(benchmark):
+    df = pd.read_csv('bench/early_sense.csv', parse_dates=['timestamp'])
+    rows = [row.to_dict() for _, row in df.iterrows()]
+
+    async def async_inner():
+        driver = Driver()
+        table = Table('test', driver)
+        src = AsyncEmitSource()
+
+        controller = await build_flow([
+            src,
+            AggregateByKey([FieldAggregator("hr", "hr", ["avg", "min", "max"],
+                                            SlidingWindows(['1h', '2h'], '10m')),
+                            FieldAggregator("rr", "rr", ["avg", "min", "max"],
+                                            SlidingWindows(['1h', '2h'], '10m')),
+                            FieldAggregator("spo2", "spo2", ["avg", "min", "max"],
+                                            SlidingWindows(['1h', '2h'], '10m'))],
+                           table)
+        ]).run()
+
+        for row in rows:
+            await controller.emit(row)
+
+        await controller.terminate()
+        await controller.await_termination()
+
+    def inner():
+        asyncio.run(async_inner())
+
+    benchmark(inner)
+
+
 def test_aggregate_df_86420_events_basic(benchmark):
     df = pd.read_csv('bench/early_sense.csv')
     df['timestamp'] = pd.to_datetime(df['timestamp'])
 
     def inner():
         driver = Driver()
-        table = Table(f'test', driver)
+        table = Table('test', driver)
 
         controller = build_flow([
             DataframeSource(df, key_field='patient_id', time_field='timestamp'),
@@ -145,39 +177,6 @@ def test_aggregate_df_86420_events_basic(benchmark):
                            table),
         ]).run()
 
-        controller.await_termination()
-
-    benchmark(inner)
-
-
-def test_perf(benchmark):
-
-    def inner():
-        table = Table('bigdata/gal', NoopDriver())
-        controller = build_flow([
-            SyncEmitSource(key_field='key', time_field='time'),
-            AggregateByKey([
-                FieldAggregator(
-                    'sum_me_up',
-                    'int',
-                    ['sum', 'avg', 'min', 'max', 'sqr'],
-                    FixedWindows(['30m', '2h'])
-                )],
-                table),
-        ]).run()
-
-        start = datetime.now()
-        delta = timedelta(minutes=7)
-        for i in range(10_000):
-            time = start + i * delta
-            event = {
-                'time': time.isoformat(),
-                'key': str(i % 6),
-                'int': i,
-            }
-            controller.emit(event)
-
-        controller.terminate()
         controller.await_termination()
 
     benchmark(inner)
