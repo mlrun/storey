@@ -9,6 +9,8 @@ import warnings
 from datetime import datetime
 from typing import List, Optional, Union, Callable, Coroutine, Iterable
 import pyarrow.parquet as pq
+from collections import deque
+from time import sleep
 
 import pandas
 import pytz
@@ -47,15 +49,17 @@ class AwaitableResult:
 def _convert_to_datetime(obj, time_format: Optional[str] = None):
     if isinstance(obj, datetime):
         return obj
-    elif isinstance(obj, float) or isinstance(obj, int):
+
+    if isinstance(obj, (float, int)):
         return datetime.fromtimestamp(obj, tz=pytz.utc)
-    elif isinstance(obj, str):
+
+    if isinstance(obj, str):
         if time_format is None:
             return datetime.fromisoformat(obj)
         else:
             return datetime.strptime(obj, time_format)
-    else:
-        raise ValueError(f"Could not parse '{obj}' (of type {type(obj)}) as a time.")
+
+    raise ValueError(f"Could not parse '{obj}' (of type {type(obj)}) as a time.")
 
 
 class FlowControllerBase:
@@ -108,11 +112,12 @@ class FlowController(FlowControllerBase):
     """
 
     def __init__(self, emit_fn, await_termination_fn, return_awaitable_result, key_field: Optional[str] = None,
-                 time_field: Optional[str] = None, time_format: Optional[str] = None):
+                 time_field: Optional[str] = None, time_format: Optional[str] = None, flush=None):
         super().__init__(key_field, time_field, time_format)
         self._emit_fn = emit_fn
         self._await_termination_fn = await_termination_fn
         self._return_awaitable_result = return_awaitable_result
+        self._flush = flush
 
     def emit(self, element: object, key: Optional[Union[str, List[str]]] = None, event_time: Optional[datetime] = None,
              return_awaitable_result: Optional[bool] = None):
@@ -140,6 +145,7 @@ class FlowController(FlowControllerBase):
 
     def terminate(self):
         """Terminates the associated flow."""
+        self._flush()
         self._emit_fn(_termination_obj)
 
     def await_termination(self):
@@ -186,12 +192,22 @@ class SyncEmitSource(Flow):
         if buffer_size <= 0:
             raise ValueError('Buffer size must be positive')
         self._q = queue.Queue(buffer_size)
+        self._buffer = deque()
         self._key_field = key_field
         self._time_field = time_field
         self._time_format = time_format
         self._termination_q = queue.Queue(1)
         self._ex = None
         self._closeables = []
+        threading.Thread(target=self._pusher, daemon=True).start()
+
+    def _pusher(self):
+        while True:
+            try:
+                item = self._buffer.popleft()
+                self._q.put(item)
+            except IndexError:
+                sleep(0.01)
 
     async def _run_loop(self):
         loop = asyncio.get_running_loop()
@@ -232,7 +248,9 @@ class SyncEmitSource(Flow):
     def _emit(self, event):
         if event is not _termination_obj:
             self._raise_on_error(self._ex)
-        self._q.put(event)
+        self._buffer.append(event)
+        # self._q.put(event)
+        # self._ex might change during put, check again for error
         if event is not _termination_obj:
             self._raise_on_error(self._ex)
 
@@ -250,7 +268,15 @@ class SyncEmitSource(Flow):
         has_complete = self._check_step_in_flow(Complete)
 
         return FlowController(self._emit, raise_error_or_return_termination_result, has_complete, self._key_field, self._time_field,
-                              self._time_format)
+                              self._time_format, self.flush)
+
+    def flush(self):
+        while self._buffer:
+            try:
+                item = self._buffer.popleft()
+                self._q.put(item)
+            except IndexError:
+                break
 
 
 class AsyncAwaitableResult:

@@ -5,8 +5,8 @@ import pandas as pd
 import pytest
 
 from storey import SyncEmitSource, Map, Reduce, build_flow, Complete, Driver, FieldAggregator, AggregateByKey, Table, Batch, AsyncEmitSource, \
-    DataframeSource
-from storey.dtypes import SlidingWindows
+    DataframeSource, NoopDriver
+from storey.dtypes import SlidingWindows, FixedWindows
 
 test_base_time = datetime.fromisoformat("2020-07-21T21:40:00+00:00")
 
@@ -104,12 +104,11 @@ def test_batch_n_events(benchmark, n):
 
 
 def test_aggregate_df_86420_events(benchmark):
-    df = pd.read_csv('bench/early_sense.csv')
-    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    df = pd.read_csv('bench/early_sense.csv', parse_dates=['timestamp'])
 
     def inner():
         driver = Driver()
-        table = Table(f'test', driver)
+        table = Table('test', driver)
 
         controller = build_flow([
             DataframeSource(df, key_field='patient_id', time_field='timestamp'),
@@ -146,6 +145,39 @@ def test_aggregate_df_86420_events_basic(benchmark):
                            table),
         ]).run()
 
+        controller.await_termination()
+
+    benchmark(inner)
+
+
+def test_perf(benchmark):
+
+    def inner():
+        table = Table('bigdata/gal', NoopDriver())
+        controller = build_flow([
+            SyncEmitSource(key_field='key', time_field='time'),
+            AggregateByKey([
+                FieldAggregator(
+                    'sum_me_up',
+                    'int',
+                    ['sum', 'avg', 'min', 'max', 'sqr'],
+                    FixedWindows(['30m', '2h'])
+                )],
+                table),
+        ]).run()
+
+        start = datetime.now()
+        delta = timedelta(minutes=7)
+        for i in range(10_000):
+            time = start + i * delta
+            event = {
+                'time': time.isoformat(),
+                'key': str(i % 6),
+                'int': i,
+            }
+            controller.emit(event)
+
+        controller.terminate()
         controller.await_termination()
 
     benchmark(inner)

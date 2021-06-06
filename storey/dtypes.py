@@ -7,6 +7,7 @@ from .utils import parse_duration, bucketPerWindow, get_one_unit_of_duration
 from .aggregation_utils import get_all_raw_aggregates
 
 _termination_obj = object()
+_none_type = type(None)
 
 
 class Event:
@@ -29,7 +30,7 @@ class Event:
                  content_type=None, awaitable_result=None):
         self.body = body
         self.key = key
-        if time is not None and not isinstance(time, datetime):
+        if not isinstance(time, (_none_type, datetime)):
             raise TypeError(f'Event time parameter must be a datetime. Got {type(time)} instead.')
         self.time = time or datetime.now(timezone.utc)
         self.id = id
