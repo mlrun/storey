@@ -1605,6 +1605,8 @@ def test_write_to_parquet(tmpdir):
     controller.await_termination()
 
     read_back_df = pd.read_parquet(out_dir, columns=columns)
+    # MT: Fix test with pyarrow 4
+    read_back_df['my_int'] = read_back_df['my_int'].astype('int32')
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
 
 
