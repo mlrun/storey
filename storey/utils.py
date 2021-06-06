@@ -4,7 +4,7 @@ from array import array
 from urllib.parse import urlparse
 import fsspec
 
-bucketPerWindow = 10
+bucketPerWindow = 2
 schema_file_name = '.schema'
 
 
@@ -102,11 +102,17 @@ def _split_path(path):
         return parts[0], f'/{parts[1]}'
 
 
-def url_to_file_system(url):
-    parsed_url = urlparse(url)
-    schema = parsed_url.scheme.lower()
-    load_fs_dependencies(schema)
-    return fsspec.filesystem(schema), parsed_url.path
+def url_to_file_system(url, storage_options):
+    schema = ""
+    if "://" in url:
+        parsed_url = urlparse(url)
+        schema = parsed_url.scheme.lower()
+        load_fs_dependencies(schema)
+        url = parsed_url.path
+    if storage_options:
+        return fsspec.filesystem(schema, **storage_options), url
+    else:
+        return fsspec.filesystem(schema), url
 
 
 def load_fs_dependencies(schema):
@@ -116,6 +122,13 @@ def load_fs_dependencies(schema):
         except ImportError:
             raise StoreyMissingDependencyError(
                 "s3 packages are missing, use pip install storey[s3]"
+            )
+    if schema == "az":
+        try:
+            import adlfs  # noqa: F401
+        except ImportError:
+            raise StoreyMissingDependencyError(
+                "azure packages are missing, use pip install storey[az]"
             )
 
 
@@ -148,3 +161,104 @@ def update_in(obj, key, value):
 
     last_key = parts[-1]
     obj[last_key] = value
+
+
+def hash_list(list_to_hash):
+    str_concatted = ''.join(list_to_hash)
+    hash_value = hash(str_concatted)
+    return hash_value
+
+
+def stringify_key(key_list):
+    if isinstance(key_list, list):
+        if len(key_list) >= 3:
+            return str(key_list[0]) + "." + str(hash_list(key_list[1:]))
+        if len(key_list) == 2:
+            return str(key_list[0]) + "." + str(key_list[1])
+        return key_list[0]
+    else:
+        return key_list
+
+
+def _create_filter_tuple(dtime, attr, sign, list_tuples):
+    if attr:
+        value = getattr(dtime, attr, None)
+        tuple1 = (attr, sign, value)
+        list_tuples.append(tuple1)
+
+
+def _find_filter_helper(list_partitions, dtime, sign, first_sign, first_uncommon, filters, filter_column=None):
+    single_filter = []
+    if len(list_partitions) == 0 or first_uncommon is None:
+        return
+    last_partition = list_partitions[-1]
+    if len(list_partitions) == 1 or last_partition == first_uncommon:
+        return
+    list_partitions_without_last_element = list_partitions[:-1]
+    for partition in list_partitions_without_last_element:
+        _create_filter_tuple(dtime, partition, "=", single_filter)
+    if first_sign:
+        # only for the first iteration we need to have ">="/"<=" instead of ">"/"<"
+        _create_filter_tuple(dtime, last_partition, first_sign, single_filter)
+        tuple_last_range = (filter_column, sign, dtime)
+        single_filter.append(tuple_last_range)
+    else:
+        _create_filter_tuple(dtime, last_partition, sign, single_filter)
+    _find_filter_helper(list_partitions_without_last_element, dtime, sign, None, first_uncommon, filters)
+    filters.append(single_filter)
+
+
+def _get_filters_for_filter_column(start, end, filter_column, side_range):
+    lower_limit_tuple = (filter_column, ">=", start)
+    upper_limit_tuple = (filter_column, "<=", end)
+    side_range.append(lower_limit_tuple)
+    side_range.append(upper_limit_tuple)
+
+
+def find_filters(partitions_time_attributes, start, end, filters, filter_column):
+    # this method build filters to be used by
+    # https://arrow.apache.org/docs/python/generated/pyarrow.parquet.ParquetDataset.html
+    common_partitions = []
+    first_uncommon = None
+    # finding the common attributes. for example for start=1.2.2018 08:53:15, end=5.2.2018 16:24:31, partitioned by
+    # year, month, day, hour. common_partions=[year, month], first_uncommon=day
+    for part in partitions_time_attributes:
+        value_start = getattr(start, part, None)
+        value_end = getattr(end, part, None)
+        if value_end == value_start:
+            common_partitions.append(part)
+        else:
+            first_uncommon = part
+            break
+
+    # for start=1.2.2018 08:53:15, end=5.2.2018 16:24:31, this method will append to filters
+    # [(year=2018, month=2,day>=1, filter_column>1.2.2018 08:53:15)]
+    _find_filter_helper(partitions_time_attributes, start, ">", ">=", first_uncommon, filters, filter_column)
+
+    middle_range_filter = []
+    for partition in common_partitions:
+        _create_filter_tuple(start, partition, "=", middle_range_filter)
+
+    if len(filters) == 0:
+        # creating only the middle range
+        _create_filter_tuple(start, first_uncommon, ">=", middle_range_filter)
+        _create_filter_tuple(end, first_uncommon, "<=", middle_range_filter)
+        _get_filters_for_filter_column(start, end, filter_column, middle_range_filter)
+    else:
+        _create_filter_tuple(start, first_uncommon, ">", middle_range_filter)
+        _create_filter_tuple(end, first_uncommon, "<", middle_range_filter)
+    # for start=1.2.2018 08:53:15, end=5.2.2018 16:24:31, this will append to filters
+    # [(year=2018, month=2, 1<day<5)]
+    filters.append(middle_range_filter)
+
+    # for start=1.2.2018 08:53:15, end=5.2.2018 16:24:31, this method will append to filters
+    # [(year=2018, month=2,day<=5, filter_column<5.2.2018 16:24:31)]
+    _find_filter_helper(partitions_time_attributes, end, "<", "<=", first_uncommon, filters, filter_column)
+
+
+def drop_reserved_columns(df):
+    cols_to_drop = []
+    for col in df.columns:
+        if col.startswith('igzpart_'):
+            cols_to_drop.append(col)
+    df.drop(labels=cols_to_drop, axis=1, inplace=True, errors='ignore')

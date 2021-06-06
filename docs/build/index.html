@@ -1,0 +1,300 @@
+
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta charset="utf-8" />
+    <title>Storey Package Documentation &#8212; storey  documentation</title>
+    
+  <link rel="stylesheet" href="_static/css/index.f658d18f9b420779cfdf24aa0a7e2d77.css">
+
+    
+  <link rel="stylesheet"
+    href="_static/vendor/fontawesome/5.13.0/css/all.min.css">
+  <link rel="preload" as="font" type="font/woff2" crossorigin
+    href="_static/vendor/fontawesome/5.13.0/webfonts/fa-solid-900.woff2">
+  <link rel="preload" as="font" type="font/woff2" crossorigin
+    href="_static/vendor/fontawesome/5.13.0/webfonts/fa-brands-400.woff2">
+
+    
+      
+  <link rel="stylesheet"
+    href="_static/vendor/open-sans_all/1.44.1/index.css">
+  <link rel="stylesheet"
+    href="_static/vendor/lato_latin-ext/1.44.1/index.css">
+
+    
+    <link rel="stylesheet" href="_static/sphinx-book-theme.c441f2ba0852f4cabcb80105e3a46ae6.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+  <link rel="preload" as="script" href="_static/js/index.d3f166471bb80abb5163.js">
+
+    <script id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+    <script src="_static/jquery.js"></script>
+    <script src="_static/underscore.js"></script>
+    <script src="_static/doctools.js"></script>
+    <script src="_static/language_data.js"></script>
+    <script src="_static/sphinx-book-theme.7d483ff0a819d6edff12ce0b1ead3928.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Storey examples" href="examples.html" />
+
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="docsearch:language" content="en" />
+
+
+
+  </head>
+  <body data-spy="scroll" data-target="#bd-toc-nav" data-offset="80">
+    
+
+    <div class="container-xl">
+      <div class="row">
+          
+<div class="col-12 col-md-3 bd-sidebar site-navigation show" id="site-navigation">
+    
+        <div class="navbar-brand-box">
+<a class="navbar-brand text-wrap" href="#">
+  
+  
+  <h1 class="site-logo" id="site-title">storey  documentation</h1>
+  
+</a>
+</div><form class="bd-search d-flex align-items-center" action="search.html" method="get">
+  <i class="icon fas fa-search"></i>
+  <input type="search" class="form-control" name="q" id="search-input" placeholder="Search the docs ..." aria-label="Search the docs ..." autocomplete="off" >
+</form>
+<nav class="bd-links" id="bd-docs-nav" aria-label="Main navigation">
+    <p class="caption collapsible-parent">
+ <span class="caption-text">
+  Contents:
+ </span>
+</p>
+<ul class="nav sidenav_l1">
+ <li class="toctree-l1">
+  <a class="reference internal" href="examples.html">
+   Storey examples
+  </a>
+ </li>
+ <li class="toctree-l1">
+  <a class="reference internal" href="api.html">
+   Storey api
+  </a>
+ </li>
+</ul>
+
+</nav> <!-- To handle the deprecated key -->
+
+<div class="navbar_extra_footer">
+  Theme by the <a href="https://ebp.jupyterbook.org">Executable Book Project</a>
+</div>
+
+</div>
+
+
+          
+
+
+          
+<main class="col py-md-3 pl-md-4 bd-content overflow-auto" role="main">
+    
+    <div class="topbar container-xl fixed-top">
+    <div class="topbar-contents row">
+        <div class="col-12 col-md-3 bd-topbar-whitespace site-navigation show"></div>
+        <div class="col pl-md-4 topbar-main">
+            
+            <button id="navbar-toggler" class="navbar-toggler ml-0" type="button" data-toggle="collapse"
+                data-toggle="tooltip" data-placement="bottom" data-target=".site-navigation" aria-controls="navbar-menu"
+                aria-expanded="true" aria-label="Toggle navigation" aria-controls="site-navigation"
+                title="Toggle navigation" data-toggle="tooltip" data-placement="left">
+                <i class="fas fa-bars"></i>
+                <i class="fas fa-arrow-left"></i>
+                <i class="fas fa-arrow-up"></i>
+            </button>
+            
+            
+<div class="dropdown-buttons-trigger">
+    <button id="dropdown-buttons-trigger" class="btn btn-secondary topbarbtn" aria-label="Download this page"><i
+            class="fas fa-download"></i></button>
+
+    <div class="dropdown-buttons">
+        <!-- ipynb file if we had a myst markdown file -->
+        
+        <!-- Download raw file -->
+        <a class="dropdown-buttons" href="_sources/index.rst.txt"><button type="button"
+                class="btn btn-secondary topbarbtn" title="Download source file" data-toggle="tooltip"
+                data-placement="left">.rst</button></a>
+        <!-- Download PDF via print -->
+        <button type="button" id="download-print" class="btn btn-secondary topbarbtn" title="Print to PDF"
+            onClick="window.print()" data-toggle="tooltip" data-placement="left">.pdf</button>
+    </div>
+</div>
+
+            <!-- Source interaction buttons -->
+
+
+            <!-- Full screen (wrap in <a> to have style consistency -->
+            <a class="full-screen-button"><button type="button" class="btn btn-secondary topbarbtn" data-toggle="tooltip"
+                    data-placement="bottom" onclick="toggleFullScreen()" aria-label="Fullscreen mode"
+                    title="Fullscreen mode"><i
+                        class="fas fa-expand"></i></button></a>
+
+            <!-- Launch buttons -->
+
+        </div>
+
+        <!-- Table of contents -->
+        <div class="d-none d-md-block col-md-2 bd-toc show">
+            
+        <div class="tocsection onthispage pt-5 pb-3">
+            <i class="fas fa-list"></i>
+            Contents
+        </div>
+        <nav id="bd-toc-nav">
+            <ul class="nav section-nav flex-column">
+ <li class="toc-h1 nav-item toc-entry">
+  <a class="reference internal nav-link" href="#">
+   Storey Package Documentation
+  </a>
+ </li>
+ <li class="toc-h1 nav-item toc-entry">
+  <a class="reference internal nav-link" href="#introduction">
+   Introduction
+  </a>
+ </li>
+ <li class="toc-h1 nav-item toc-entry">
+  <a class="reference internal nav-link" href="#indices-and-tables">
+   Indices and tables
+  </a>
+ </li>
+</ul>
+
+        </nav>
+        
+        </div>
+    </div>
+</div>
+    <div id="main-content" class="row">
+        <div class="col-12 col-md-9 pl-md-3 pr-md-0">
+        
+              <div>
+                
+  <div class="section" id="storey-package-documentation">
+<h1>Storey Package Documentation<a class="headerlink" href="#storey-package-documentation" title="Permalink to this headline">¶</a></h1>
+</div>
+<div class="section" id="introduction">
+<h1>Introduction<a class="headerlink" href="#introduction" title="Permalink to this headline">¶</a></h1>
+<p>Storey is streaming library for real time event processing and feature extraction. It’s based on <a class="reference external" href="https://docs.python.org/3/library/asyncio.html">asyncio</a> and offers both synchronous and
+asynchronous APIs. Storey flows are graphs of steps that perform computational and IO tasks. A basic synchronous flow is created and run as
+such:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">storey</span> <span class="kn">import</span> <span class="n">build_flow</span><span class="p">,</span> <span class="n">SyncEmitSource</span><span class="p">,</span> <span class="n">CSVTarget</span>
+
+<span class="n">controller</span> <span class="o">=</span> <span class="n">build_flow</span><span class="p">([</span>
+    <span class="n">SyncEmitSource</span><span class="p">(),</span>
+    <span class="n">CSVTarget</span><span class="p">(</span><span class="s1">&#39;myfile.csv&#39;</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;n&#39;</span><span class="p">,</span> <span class="s1">&#39;n*10&#39;</span><span class="p">],</span> <span class="n">header</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="p">])</span><span class="o">.</span><span class="n">run</span><span class="p">()</span>
+
+<span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">10</span><span class="p">):</span>
+    <span class="n">controller</span><span class="o">.</span><span class="n">emit</span><span class="p">({</span><span class="s1">&#39;n&#39;</span><span class="p">:</span> <span class="n">i</span><span class="p">,</span> <span class="s1">&#39;n*10&#39;</span><span class="p">:</span> <span class="mi">10</span> <span class="o">*</span> <span class="n">i</span><span class="p">})</span>
+
+<span class="n">controller</span><span class="o">.</span><span class="n">terminate</span><span class="p">()</span>
+<span class="n">controller</span><span class="o">.</span><span class="n">await_termination</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>This example constructs a flow that writes events to a CSV file, runs it, then pushes events into that flow.</p>
+<p>The same example can also be run from within an async context:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">storey</span> <span class="kn">import</span> <span class="n">build_flow</span><span class="p">,</span> <span class="n">AsyncEmitSource</span><span class="p">,</span> <span class="n">CSVTarget</span>
+
+<span class="n">controller</span> <span class="o">=</span> <span class="k">await</span> <span class="n">build_flow</span><span class="p">([</span>
+    <span class="n">AsyncEmitSource</span><span class="p">(),</span>
+    <span class="n">CSVTarget</span><span class="p">(</span><span class="s1">&#39;myfile.csv&#39;</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;n&#39;</span><span class="p">,</span> <span class="s1">&#39;n*10&#39;</span><span class="p">],</span> <span class="n">header</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="p">])</span><span class="o">.</span><span class="n">run</span><span class="p">()</span>
+
+<span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">10</span><span class="p">):</span>
+    <span class="k">await</span> <span class="n">controller</span><span class="o">.</span><span class="n">emit</span><span class="p">({</span><span class="s1">&#39;n&#39;</span><span class="p">:</span> <span class="n">i</span><span class="p">,</span> <span class="s1">&#39;n*10&#39;</span><span class="p">:</span> <span class="mi">10</span> <span class="o">*</span> <span class="n">i</span><span class="p">})</span>
+
+<span class="k">await</span> <span class="n">controller</span><span class="o">.</span><span class="n">terminate</span><span class="p">()</span>
+<span class="k">await</span> <span class="n">controller</span><span class="o">.</span><span class="n">await_termination</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>The following more interesting example takes a dataframe, aggregates its data using a sliding window, and persists the result to a
+V3IO key-value store.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">storey</span> <span class="kn">import</span> <span class="n">build_flow</span><span class="p">,</span> <span class="n">DataframeSource</span><span class="p">,</span> <span class="n">AggregateByKey</span><span class="p">,</span> <span class="n">FieldAggregator</span><span class="p">,</span> <span class="n">SlidingWindows</span><span class="p">,</span> <span class="n">NoSqlTarget</span><span class="p">,</span> <span class="n">V3ioDriver</span><span class="p">,</span> <span class="n">Table</span>
+
+<span class="n">table</span> <span class="o">=</span> <span class="n">Table</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;users/me/destination&#39;</span><span class="p">,</span> <span class="n">V3ioDriver</span><span class="p">())</span>
+
+<span class="n">controller</span> <span class="o">=</span> <span class="n">build_flow</span><span class="p">([</span>
+    <span class="n">DataframeSource</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">key_column</span><span class="o">=</span><span class="s1">&#39;user_id&#39;</span><span class="p">,</span> <span class="n">time_column</span><span class="o">=</span><span class="s1">&#39;timestamp&#39;</span><span class="p">),</span>
+    <span class="n">AggregateByKey</span><span class="p">([</span>
+        <span class="n">FieldAggregator</span><span class="p">(</span><span class="s2">&quot;feature1&quot;</span><span class="p">,</span> <span class="s2">&quot;field1&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;avg&quot;</span><span class="p">,</span> <span class="s2">&quot;min&quot;</span><span class="p">,</span> <span class="s2">&quot;max&quot;</span><span class="p">],</span>
+                        <span class="n">SlidingWindows</span><span class="p">([</span><span class="s1">&#39;1h&#39;</span><span class="p">,</span> <span class="s1">&#39;2h&#39;</span><span class="p">],</span> <span class="s1">&#39;10m&#39;</span><span class="p">)),</span>
+        <span class="n">FieldAggregator</span><span class="p">(</span><span class="s2">&quot;feature2&quot;</span><span class="p">,</span> <span class="s2">&quot;field2&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;avg&quot;</span><span class="p">,</span> <span class="s2">&quot;min&quot;</span><span class="p">,</span> <span class="s2">&quot;max&quot;</span><span class="p">],</span>
+                        <span class="n">SlidingWindows</span><span class="p">([</span><span class="s1">&#39;1h&#39;</span><span class="p">,</span> <span class="s1">&#39;2h&#39;</span><span class="p">],</span> <span class="s1">&#39;10m&#39;</span><span class="p">)),</span>
+        <span class="n">FieldAggregator</span><span class="p">(</span><span class="s2">&quot;feature3&quot;</span><span class="p">,</span> <span class="s2">&quot;field3&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;avg&quot;</span><span class="p">,</span> <span class="s2">&quot;min&quot;</span><span class="p">,</span> <span class="s2">&quot;max&quot;</span><span class="p">],</span>
+                        <span class="n">SlidingWindows</span><span class="p">([</span><span class="s1">&#39;1h&#39;</span><span class="p">,</span> <span class="s1">&#39;2h&#39;</span><span class="p">],</span> <span class="s1">&#39;10m&#39;</span><span class="p">))</span>
+    <span class="p">],</span>
+        <span class="n">table</span><span class="p">),</span>
+    <span class="n">NoSqlTarget</span><span class="p">(</span><span class="n">table</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;feature1&#39;</span><span class="p">,</span> <span class="s1">&#39;feature2&#39;</span><span class="p">,</span> <span class="s1">&#39;feature3&#39;</span><span class="p">]),</span>
+<span class="p">])</span><span class="o">.</span><span class="n">run</span><span class="p">()</span>
+
+<span class="n">controller</span><span class="o">.</span><span class="n">await_termination</span><span class="p">()</span>
+</pre></div>
+</div>
+<div class="toctree-wrapper compound">
+<p class="caption"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Storey examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api.html">Storey api</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="api.html#module-storey.targets">Targets:</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api.html#module-storey.sources">Sources:</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api.html#module-storey.transformations">Transformations:</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api.html#module-storey.drivers">Miscellaneous:</a></li>
+</ul>
+</li>
+</ul>
+</div>
+</div>
+<div class="section" id="indices-and-tables">
+<h1>Indices and tables<a class="headerlink" href="#indices-and-tables" title="Permalink to this headline">¶</a></h1>
+<ul class="simple">
+<li><p><a class="reference internal" href="genindex.html"><span class="std std-ref">Index</span></a></p></li>
+<li><p><a class="reference internal" href="py-modindex.html"><span class="std std-ref">Module Index</span></a></p></li>
+<li><p><a class="reference internal" href="search.html"><span class="std std-ref">Search Page</span></a></p></li>
+</ul>
+</div>
+
+
+              </div>
+              
+        
+        <div class='prev-next-bottom'>
+            
+    <a class='right-next' id="next-link" href="examples.html" title="next page">Storey examples</a>
+
+        </div>
+        
+        </div>
+    </div>
+    <footer class="footer mt-5 mt-md-0">
+    <div class="container">
+      <p>
+        
+          By Iguazio<br/>
+        
+            &copy; Copyright 2021, Iguazio.<br/>
+      </p>
+    </div>
+  </footer>
+</main>
+
+
+      </div>
+    </div>
+
+    
+  <script src="_static/js/index.d3f166471bb80abb5163.js"></script>
+
+
+    
+  </body>
+</html>

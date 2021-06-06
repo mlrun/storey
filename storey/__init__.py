@@ -13,20 +13,21 @@ from .drivers import (  # noqa: F401
     Driver, NoopDriver, V3ioDriver
 )
 from .dtypes import (  # noqa: F401
-    Event, FieldAggregator
+    Event, FieldAggregator, SlidingWindows, FixedWindows, EmissionType, EmitPolicy, EmitAfterPeriod, EmitAfterWindow, EmitAfterMaxEvent,
+    EmitAfterDelay, EmitEveryEvent, LateDataHandling
 )
 from .flow import (  # noqa: F401
     Filter, FlatMap, Flow, FlowError, JoinWithV3IOTable, SendToHttp, JoinWithTable, Map, Extend, Reduce, Batch,
     MapWithState, MapClass, Complete, Choice, Recover, HttpRequest, HttpResponse, build_flow, Context
 )
 from .sources import (  # noqa: F401
-    Source, AsyncSource, DataframeSource, ReadCSV, ReadParquet
+    SyncEmitSource, AsyncEmitSource, DataframeSource, CSVSource, ParquetSource
 )
 from .table import (  # noqa: F401
     Table
 )
-from .writers import (  # noqa: F401
-    WriteToV3IOStream, WriteToCSV, WriteToParquet, WriteToTSDB, WriteToTable
+from .targets import (  # noqa: F401
+    StreamTarget, CSVTarget, ParquetTarget, TSDBTarget, NoSqlTarget
 )
 
 # clear module namespace

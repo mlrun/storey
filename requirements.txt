@@ -1,7 +1,8 @@
-aiohttp~=3.7
-v3io~=0.5
+aiohttp~=3.6
+v3io~=0.5.8
 pandas~=1.0
-pyarrow~=3.0
+numpy>=1.16.5, <1.20.0
+pyarrow~=1.0
 grpcio-tools~=1.30.0
 grpcio~=1.30.0
 v3io-frames~=0.8

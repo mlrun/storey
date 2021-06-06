@@ -1,8 +1,9 @@
+import math
+import queue
 from datetime import datetime, timedelta
 
-from storey import build_flow, Source, Reduce, Table, AggregateByKey, FieldAggregator, NoopDriver
-from storey.dtypes import SlidingWindows, FixedWindows, EmitAfterMaxEvent
-import queue
+from storey import build_flow, SyncEmitSource, Reduce, Table, AggregateByKey, FieldAggregator, NoopDriver
+from storey.dtypes import SlidingWindows, FixedWindows, EmitAfterMaxEvent, EmitEveryEvent
 
 test_base_time = datetime.fromisoformat("2020-07-21T21:40:00+00:00")
 
@@ -14,7 +15,7 @@ def append_return(lst, x):
 
 def test_sliding_window_simple_aggregation_flow():
     controller = build_flow([
-        Source(),
+        SyncEmitSource(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg", "min", "max"],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
                        Table("test", NoopDriver())),
@@ -64,9 +65,299 @@ def test_sliding_window_simple_aggregation_flow():
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
 
+def test_sliding_window_sparse_data():
+    controller = build_flow([
+        SyncEmitSource(),
+        AggregateByKey(
+            [FieldAggregator("number_of_stuff1", "col1", ["sum", "avg", "min", "max"], SlidingWindows(['1h', '2h', '24h'], '10m')),
+             FieldAggregator("number_of_stuff2", "col2", ["sum", "avg", "min", "max"], SlidingWindows(['1h', '2h', '24h'], '10m'))],
+            Table("test", NoopDriver())),
+        Reduce([], lambda acc, x: append_return(acc, x)),
+    ]).run()
+
+    for i in range(10):
+        controller.emit({'col1': i}, 'tal', test_base_time + timedelta(minutes=25 * i))
+        controller.emit({'col2': i}, 'tal', test_base_time + timedelta(minutes=25 * i))
+
+    controller.terminate()
+    actual = controller.await_termination()
+    expected_results = [{'col1': 0, 'number_of_stuff1_avg_1h': 0.0, 'number_of_stuff1_avg_24h': 0.0, 'number_of_stuff1_avg_2h': 0.0,
+                         'number_of_stuff1_max_1h': 0, 'number_of_stuff1_max_24h': 0, 'number_of_stuff1_max_2h': 0,
+                         'number_of_stuff1_min_1h': 0, 'number_of_stuff1_min_24h': 0, 'number_of_stuff1_min_2h': 0,
+                         'number_of_stuff1_sum_1h': 0, 'number_of_stuff1_sum_24h': 0, 'number_of_stuff1_sum_2h': 0,
+                         'number_of_stuff2_avg_1h': math.nan, 'number_of_stuff2_avg_24h': math.nan, 'number_of_stuff2_avg_2h': math.nan,
+                         'number_of_stuff2_max_1h': math.nan, 'number_of_stuff2_max_24h': math.nan, 'number_of_stuff2_max_2h': math.nan,
+                         'number_of_stuff2_min_1h': math.nan, 'number_of_stuff2_min_24h': math.nan, 'number_of_stuff2_min_2h': math.nan,
+                         'number_of_stuff2_sum_1h': 0, 'number_of_stuff2_sum_24h': 0, 'number_of_stuff2_sum_2h': 0},
+                        {'col2': 0, 'number_of_stuff1_avg_1h': 0.0, 'number_of_stuff1_avg_24h': 0.0, 'number_of_stuff1_avg_2h': 0.0,
+                         'number_of_stuff1_max_1h': 0, 'number_of_stuff1_max_24h': 0, 'number_of_stuff1_max_2h': 0,
+                         'number_of_stuff1_min_1h': 0, 'number_of_stuff1_min_24h': 0, 'number_of_stuff1_min_2h': 0,
+                         'number_of_stuff1_sum_1h': 0, 'number_of_stuff1_sum_24h': 0, 'number_of_stuff1_sum_2h': 0,
+                         'number_of_stuff2_avg_1h': 0.0, 'number_of_stuff2_avg_24h': 0.0, 'number_of_stuff2_avg_2h': 0.0,
+                         'number_of_stuff2_max_1h': 0, 'number_of_stuff2_max_24h': 0, 'number_of_stuff2_max_2h': 0,
+                         'number_of_stuff2_min_1h': 0, 'number_of_stuff2_min_24h': 0, 'number_of_stuff2_min_2h': 0,
+                         'number_of_stuff2_sum_1h': 0, 'number_of_stuff2_sum_24h': 0, 'number_of_stuff2_sum_2h': 0},
+                        {'col1': 1, 'number_of_stuff1_avg_1h': 0.5, 'number_of_stuff1_avg_24h': 0.5, 'number_of_stuff1_avg_2h': 0.5,
+                         'number_of_stuff1_max_1h': 1, 'number_of_stuff1_max_24h': 1, 'number_of_stuff1_max_2h': 1,
+                         'number_of_stuff1_min_1h': 0, 'number_of_stuff1_min_24h': 0, 'number_of_stuff1_min_2h': 0,
+                         'number_of_stuff1_sum_1h': 1, 'number_of_stuff1_sum_24h': 1, 'number_of_stuff1_sum_2h': 1,
+                         'number_of_stuff2_avg_1h': 0.0, 'number_of_stuff2_avg_24h': 0.0, 'number_of_stuff2_avg_2h': 0.0,
+                         'number_of_stuff2_max_1h': 0, 'number_of_stuff2_max_24h': 0, 'number_of_stuff2_max_2h': 0,
+                         'number_of_stuff2_min_1h': 0, 'number_of_stuff2_min_24h': 0, 'number_of_stuff2_min_2h': 0,
+                         'number_of_stuff2_sum_1h': 0, 'number_of_stuff2_sum_24h': 0, 'number_of_stuff2_sum_2h': 0},
+                        {'col2': 1, 'number_of_stuff1_avg_1h': 0.5, 'number_of_stuff1_avg_24h': 0.5, 'number_of_stuff1_avg_2h': 0.5,
+                         'number_of_stuff1_max_1h': 1, 'number_of_stuff1_max_24h': 1, 'number_of_stuff1_max_2h': 1,
+                         'number_of_stuff1_min_1h': 0, 'number_of_stuff1_min_24h': 0, 'number_of_stuff1_min_2h': 0,
+                         'number_of_stuff1_sum_1h': 1, 'number_of_stuff1_sum_24h': 1, 'number_of_stuff1_sum_2h': 1,
+                         'number_of_stuff2_avg_1h': 0.5, 'number_of_stuff2_avg_24h': 0.5, 'number_of_stuff2_avg_2h': 0.5,
+                         'number_of_stuff2_max_1h': 1, 'number_of_stuff2_max_24h': 1, 'number_of_stuff2_max_2h': 1,
+                         'number_of_stuff2_min_1h': 0, 'number_of_stuff2_min_24h': 0, 'number_of_stuff2_min_2h': 0,
+                         'number_of_stuff2_sum_1h': 1, 'number_of_stuff2_sum_24h': 1, 'number_of_stuff2_sum_2h': 1},
+                        {'col1': 2, 'number_of_stuff1_avg_1h': 1.0, 'number_of_stuff1_avg_24h': 1.0, 'number_of_stuff1_avg_2h': 1.0,
+                         'number_of_stuff1_max_1h': 2, 'number_of_stuff1_max_24h': 2, 'number_of_stuff1_max_2h': 2,
+                         'number_of_stuff1_min_1h': 0, 'number_of_stuff1_min_24h': 0, 'number_of_stuff1_min_2h': 0,
+                         'number_of_stuff1_sum_1h': 3, 'number_of_stuff1_sum_24h': 3, 'number_of_stuff1_sum_2h': 3,
+                         'number_of_stuff2_avg_1h': 0.5, 'number_of_stuff2_avg_24h': 0.5, 'number_of_stuff2_avg_2h': 0.5,
+                         'number_of_stuff2_max_1h': 1, 'number_of_stuff2_max_24h': 1, 'number_of_stuff2_max_2h': 1,
+                         'number_of_stuff2_min_1h': 0, 'number_of_stuff2_min_24h': 0, 'number_of_stuff2_min_2h': 0,
+                         'number_of_stuff2_sum_1h': 1, 'number_of_stuff2_sum_24h': 1, 'number_of_stuff2_sum_2h': 1},
+                        {'col2': 2, 'number_of_stuff1_avg_1h': 1.0, 'number_of_stuff1_avg_24h': 1.0, 'number_of_stuff1_avg_2h': 1.0,
+                         'number_of_stuff1_max_1h': 2, 'number_of_stuff1_max_24h': 2, 'number_of_stuff1_max_2h': 2,
+                         'number_of_stuff1_min_1h': 0, 'number_of_stuff1_min_24h': 0, 'number_of_stuff1_min_2h': 0,
+                         'number_of_stuff1_sum_1h': 3, 'number_of_stuff1_sum_24h': 3, 'number_of_stuff1_sum_2h': 3,
+                         'number_of_stuff2_avg_1h': 1.0, 'number_of_stuff2_avg_24h': 1.0, 'number_of_stuff2_avg_2h': 1.0,
+                         'number_of_stuff2_max_1h': 2, 'number_of_stuff2_max_24h': 2, 'number_of_stuff2_max_2h': 2,
+                         'number_of_stuff2_min_1h': 0, 'number_of_stuff2_min_24h': 0, 'number_of_stuff2_min_2h': 0,
+                         'number_of_stuff2_sum_1h': 3, 'number_of_stuff2_sum_24h': 3, 'number_of_stuff2_sum_2h': 3},
+                        {'col1': 3, 'number_of_stuff1_avg_1h': 2.0, 'number_of_stuff1_avg_24h': 1.5, 'number_of_stuff1_avg_2h': 1.5,
+                         'number_of_stuff1_max_1h': 3, 'number_of_stuff1_max_24h': 3, 'number_of_stuff1_max_2h': 3,
+                         'number_of_stuff1_min_1h': 1, 'number_of_stuff1_min_24h': 0, 'number_of_stuff1_min_2h': 0,
+                         'number_of_stuff1_sum_1h': 6, 'number_of_stuff1_sum_24h': 6, 'number_of_stuff1_sum_2h': 6,
+                         'number_of_stuff2_avg_1h': 1.0, 'number_of_stuff2_avg_24h': 1.0, 'number_of_stuff2_avg_2h': 1.0,
+                         'number_of_stuff2_max_1h': 2, 'number_of_stuff2_max_24h': 2, 'number_of_stuff2_max_2h': 2,
+                         'number_of_stuff2_min_1h': 0, 'number_of_stuff2_min_24h': 0, 'number_of_stuff2_min_2h': 0,
+                         'number_of_stuff2_sum_1h': 3, 'number_of_stuff2_sum_24h': 3, 'number_of_stuff2_sum_2h': 3},
+                        {'col2': 3, 'number_of_stuff1_avg_1h': 2.0, 'number_of_stuff1_avg_24h': 1.5, 'number_of_stuff1_avg_2h': 1.5,
+                         'number_of_stuff1_max_1h': 3, 'number_of_stuff1_max_24h': 3, 'number_of_stuff1_max_2h': 3,
+                         'number_of_stuff1_min_1h': 1, 'number_of_stuff1_min_24h': 0, 'number_of_stuff1_min_2h': 0,
+                         'number_of_stuff1_sum_1h': 6, 'number_of_stuff1_sum_24h': 6, 'number_of_stuff1_sum_2h': 6,
+                         'number_of_stuff2_avg_1h': 2.0, 'number_of_stuff2_avg_24h': 1.5, 'number_of_stuff2_avg_2h': 1.5,
+                         'number_of_stuff2_max_1h': 3, 'number_of_stuff2_max_24h': 3, 'number_of_stuff2_max_2h': 3,
+                         'number_of_stuff2_min_1h': 1, 'number_of_stuff2_min_24h': 0, 'number_of_stuff2_min_2h': 0,
+                         'number_of_stuff2_sum_1h': 6, 'number_of_stuff2_sum_24h': 6, 'number_of_stuff2_sum_2h': 6},
+                        {'col1': 4, 'number_of_stuff1_avg_1h': 3.0, 'number_of_stuff1_avg_24h': 2.0, 'number_of_stuff1_avg_2h': 2.0,
+                         'number_of_stuff1_max_1h': 4, 'number_of_stuff1_max_24h': 4, 'number_of_stuff1_max_2h': 4,
+                         'number_of_stuff1_min_1h': 2, 'number_of_stuff1_min_24h': 0, 'number_of_stuff1_min_2h': 0,
+                         'number_of_stuff1_sum_1h': 9, 'number_of_stuff1_sum_24h': 10, 'number_of_stuff1_sum_2h': 10,
+                         'number_of_stuff2_avg_1h': 2.0, 'number_of_stuff2_avg_24h': 1.5, 'number_of_stuff2_avg_2h': 1.5,
+                         'number_of_stuff2_max_1h': 3, 'number_of_stuff2_max_24h': 3, 'number_of_stuff2_max_2h': 3,
+                         'number_of_stuff2_min_1h': 1, 'number_of_stuff2_min_24h': 0, 'number_of_stuff2_min_2h': 0,
+                         'number_of_stuff2_sum_1h': 6, 'number_of_stuff2_sum_24h': 6, 'number_of_stuff2_sum_2h': 6},
+                        {'col2': 4, 'number_of_stuff1_avg_1h': 3.0, 'number_of_stuff1_avg_24h': 2.0, 'number_of_stuff1_avg_2h': 2.0,
+                         'number_of_stuff1_max_1h': 4, 'number_of_stuff1_max_24h': 4, 'number_of_stuff1_max_2h': 4,
+                         'number_of_stuff1_min_1h': 2, 'number_of_stuff1_min_24h': 0, 'number_of_stuff1_min_2h': 0,
+                         'number_of_stuff1_sum_1h': 9, 'number_of_stuff1_sum_24h': 10, 'number_of_stuff1_sum_2h': 10,
+                         'number_of_stuff2_avg_1h': 3.0, 'number_of_stuff2_avg_24h': 2.0, 'number_of_stuff2_avg_2h': 2.0,
+                         'number_of_stuff2_max_1h': 4, 'number_of_stuff2_max_24h': 4, 'number_of_stuff2_max_2h': 4,
+                         'number_of_stuff2_min_1h': 2, 'number_of_stuff2_min_24h': 0, 'number_of_stuff2_min_2h': 0,
+                         'number_of_stuff2_sum_1h': 9, 'number_of_stuff2_sum_24h': 10, 'number_of_stuff2_sum_2h': 10},
+                        {'col1': 5, 'number_of_stuff1_avg_1h': 4.0, 'number_of_stuff1_avg_24h': 2.5, 'number_of_stuff1_avg_2h': 3.0,
+                         'number_of_stuff1_max_1h': 5, 'number_of_stuff1_max_24h': 5, 'number_of_stuff1_max_2h': 5,
+                         'number_of_stuff1_min_1h': 3, 'number_of_stuff1_min_24h': 0, 'number_of_stuff1_min_2h': 1,
+                         'number_of_stuff1_sum_1h': 12, 'number_of_stuff1_sum_24h': 15, 'number_of_stuff1_sum_2h': 15,
+                         'number_of_stuff2_avg_1h': 3.0, 'number_of_stuff2_avg_24h': 2.0, 'number_of_stuff2_avg_2h': 2.0,
+                         'number_of_stuff2_max_1h': 4, 'number_of_stuff2_max_24h': 4, 'number_of_stuff2_max_2h': 4,
+                         'number_of_stuff2_min_1h': 2, 'number_of_stuff2_min_24h': 0, 'number_of_stuff2_min_2h': 0,
+                         'number_of_stuff2_sum_1h': 9, 'number_of_stuff2_sum_24h': 10, 'number_of_stuff2_sum_2h': 10},
+                        {'col2': 5, 'number_of_stuff1_avg_1h': 4.0, 'number_of_stuff1_avg_24h': 2.5, 'number_of_stuff1_avg_2h': 3.0,
+                         'number_of_stuff1_max_1h': 5, 'number_of_stuff1_max_24h': 5, 'number_of_stuff1_max_2h': 5,
+                         'number_of_stuff1_min_1h': 3, 'number_of_stuff1_min_24h': 0, 'number_of_stuff1_min_2h': 1,
+                         'number_of_stuff1_sum_1h': 12, 'number_of_stuff1_sum_24h': 15, 'number_of_stuff1_sum_2h': 15,
+                         'number_of_stuff2_avg_1h': 4.0, 'number_of_stuff2_avg_24h': 2.5, 'number_of_stuff2_avg_2h': 3.0,
+                         'number_of_stuff2_max_1h': 5, 'number_of_stuff2_max_24h': 5, 'number_of_stuff2_max_2h': 5,
+                         'number_of_stuff2_min_1h': 3, 'number_of_stuff2_min_24h': 0, 'number_of_stuff2_min_2h': 1,
+                         'number_of_stuff2_sum_1h': 12, 'number_of_stuff2_sum_24h': 15, 'number_of_stuff2_sum_2h': 15},
+                        {'col1': 6, 'number_of_stuff1_avg_1h': 5.0, 'number_of_stuff1_avg_24h': 3.0, 'number_of_stuff1_avg_2h': 4.0,
+                         'number_of_stuff1_max_1h': 6, 'number_of_stuff1_max_24h': 6, 'number_of_stuff1_max_2h': 6,
+                         'number_of_stuff1_min_1h': 4, 'number_of_stuff1_min_24h': 0, 'number_of_stuff1_min_2h': 2,
+                         'number_of_stuff1_sum_1h': 15, 'number_of_stuff1_sum_24h': 21, 'number_of_stuff1_sum_2h': 20,
+                         'number_of_stuff2_avg_1h': 4.0, 'number_of_stuff2_avg_24h': 2.5, 'number_of_stuff2_avg_2h': 3.0,
+                         'number_of_stuff2_max_1h': 5, 'number_of_stuff2_max_24h': 5, 'number_of_stuff2_max_2h': 5,
+                         'number_of_stuff2_min_1h': 3, 'number_of_stuff2_min_24h': 0, 'number_of_stuff2_min_2h': 1,
+                         'number_of_stuff2_sum_1h': 12, 'number_of_stuff2_sum_24h': 15, 'number_of_stuff2_sum_2h': 15},
+                        {'col2': 6, 'number_of_stuff1_avg_1h': 5.0, 'number_of_stuff1_avg_24h': 3.0, 'number_of_stuff1_avg_2h': 4.0,
+                         'number_of_stuff1_max_1h': 6, 'number_of_stuff1_max_24h': 6, 'number_of_stuff1_max_2h': 6,
+                         'number_of_stuff1_min_1h': 4, 'number_of_stuff1_min_24h': 0, 'number_of_stuff1_min_2h': 2,
+                         'number_of_stuff1_sum_1h': 15, 'number_of_stuff1_sum_24h': 21, 'number_of_stuff1_sum_2h': 20,
+                         'number_of_stuff2_avg_1h': 5.0, 'number_of_stuff2_avg_24h': 3.0, 'number_of_stuff2_avg_2h': 4.0,
+                         'number_of_stuff2_max_1h': 6, 'number_of_stuff2_max_24h': 6, 'number_of_stuff2_max_2h': 6,
+                         'number_of_stuff2_min_1h': 4, 'number_of_stuff2_min_24h': 0, 'number_of_stuff2_min_2h': 2,
+                         'number_of_stuff2_sum_1h': 15, 'number_of_stuff2_sum_24h': 21, 'number_of_stuff2_sum_2h': 20},
+                        {'col1': 7, 'number_of_stuff1_avg_1h': 6.0, 'number_of_stuff1_avg_24h': 3.5, 'number_of_stuff1_avg_2h': 5.0,
+                         'number_of_stuff1_max_1h': 7, 'number_of_stuff1_max_24h': 7, 'number_of_stuff1_max_2h': 7,
+                         'number_of_stuff1_min_1h': 5, 'number_of_stuff1_min_24h': 0, 'number_of_stuff1_min_2h': 3,
+                         'number_of_stuff1_sum_1h': 18, 'number_of_stuff1_sum_24h': 28, 'number_of_stuff1_sum_2h': 25,
+                         'number_of_stuff2_avg_1h': 5.0, 'number_of_stuff2_avg_24h': 3.0, 'number_of_stuff2_avg_2h': 4.0,
+                         'number_of_stuff2_max_1h': 6, 'number_of_stuff2_max_24h': 6, 'number_of_stuff2_max_2h': 6,
+                         'number_of_stuff2_min_1h': 4, 'number_of_stuff2_min_24h': 0, 'number_of_stuff2_min_2h': 2,
+                         'number_of_stuff2_sum_1h': 15, 'number_of_stuff2_sum_24h': 21, 'number_of_stuff2_sum_2h': 20},
+                        {'col2': 7, 'number_of_stuff1_avg_1h': 6.0, 'number_of_stuff1_avg_24h': 3.5, 'number_of_stuff1_avg_2h': 5.0,
+                         'number_of_stuff1_max_1h': 7, 'number_of_stuff1_max_24h': 7, 'number_of_stuff1_max_2h': 7,
+                         'number_of_stuff1_min_1h': 5, 'number_of_stuff1_min_24h': 0, 'number_of_stuff1_min_2h': 3,
+                         'number_of_stuff1_sum_1h': 18, 'number_of_stuff1_sum_24h': 28, 'number_of_stuff1_sum_2h': 25,
+                         'number_of_stuff2_avg_1h': 6.0, 'number_of_stuff2_avg_24h': 3.5, 'number_of_stuff2_avg_2h': 5.0,
+                         'number_of_stuff2_max_1h': 7, 'number_of_stuff2_max_24h': 7, 'number_of_stuff2_max_2h': 7,
+                         'number_of_stuff2_min_1h': 5, 'number_of_stuff2_min_24h': 0, 'number_of_stuff2_min_2h': 3,
+                         'number_of_stuff2_sum_1h': 18, 'number_of_stuff2_sum_24h': 28, 'number_of_stuff2_sum_2h': 25},
+                        {'col1': 8, 'number_of_stuff1_avg_1h': 7.0, 'number_of_stuff1_avg_24h': 4.0, 'number_of_stuff1_avg_2h': 6.0,
+                         'number_of_stuff1_max_1h': 8, 'number_of_stuff1_max_24h': 8, 'number_of_stuff1_max_2h': 8,
+                         'number_of_stuff1_min_1h': 6, 'number_of_stuff1_min_24h': 0, 'number_of_stuff1_min_2h': 4,
+                         'number_of_stuff1_sum_1h': 21, 'number_of_stuff1_sum_24h': 36, 'number_of_stuff1_sum_2h': 30,
+                         'number_of_stuff2_avg_1h': 6.0, 'number_of_stuff2_avg_24h': 3.5, 'number_of_stuff2_avg_2h': 5.0,
+                         'number_of_stuff2_max_1h': 7, 'number_of_stuff2_max_24h': 7, 'number_of_stuff2_max_2h': 7,
+                         'number_of_stuff2_min_1h': 5, 'number_of_stuff2_min_24h': 0, 'number_of_stuff2_min_2h': 3,
+                         'number_of_stuff2_sum_1h': 18, 'number_of_stuff2_sum_24h': 28, 'number_of_stuff2_sum_2h': 25},
+                        {'col2': 8, 'number_of_stuff1_avg_1h': 7.0, 'number_of_stuff1_avg_24h': 4.0, 'number_of_stuff1_avg_2h': 6.0,
+                         'number_of_stuff1_max_1h': 8, 'number_of_stuff1_max_24h': 8, 'number_of_stuff1_max_2h': 8,
+                         'number_of_stuff1_min_1h': 6, 'number_of_stuff1_min_24h': 0, 'number_of_stuff1_min_2h': 4,
+                         'number_of_stuff1_sum_1h': 21, 'number_of_stuff1_sum_24h': 36, 'number_of_stuff1_sum_2h': 30,
+                         'number_of_stuff2_avg_1h': 7.0, 'number_of_stuff2_avg_24h': 4.0, 'number_of_stuff2_avg_2h': 6.0,
+                         'number_of_stuff2_max_1h': 8, 'number_of_stuff2_max_24h': 8, 'number_of_stuff2_max_2h': 8,
+                         'number_of_stuff2_min_1h': 6, 'number_of_stuff2_min_24h': 0, 'number_of_stuff2_min_2h': 4,
+                         'number_of_stuff2_sum_1h': 21, 'number_of_stuff2_sum_24h': 36, 'number_of_stuff2_sum_2h': 30},
+                        {'col1': 9, 'number_of_stuff1_avg_1h': 8.0, 'number_of_stuff1_avg_24h': 4.5, 'number_of_stuff1_avg_2h': 7.0,
+                         'number_of_stuff1_max_1h': 9, 'number_of_stuff1_max_24h': 9, 'number_of_stuff1_max_2h': 9,
+                         'number_of_stuff1_min_1h': 7, 'number_of_stuff1_min_24h': 0, 'number_of_stuff1_min_2h': 5,
+                         'number_of_stuff1_sum_1h': 24, 'number_of_stuff1_sum_24h': 45, 'number_of_stuff1_sum_2h': 35,
+                         'number_of_stuff2_avg_1h': 7.0, 'number_of_stuff2_avg_24h': 4.0, 'number_of_stuff2_avg_2h': 6.0,
+                         'number_of_stuff2_max_1h': 8, 'number_of_stuff2_max_24h': 8, 'number_of_stuff2_max_2h': 8,
+                         'number_of_stuff2_min_1h': 6, 'number_of_stuff2_min_24h': 0, 'number_of_stuff2_min_2h': 4,
+                         'number_of_stuff2_sum_1h': 21, 'number_of_stuff2_sum_24h': 36, 'number_of_stuff2_sum_2h': 30},
+                        {'col2': 9, 'number_of_stuff1_avg_1h': 8.0, 'number_of_stuff1_avg_24h': 4.5, 'number_of_stuff1_avg_2h': 7.0,
+                         'number_of_stuff1_max_1h': 9, 'number_of_stuff1_max_24h': 9, 'number_of_stuff1_max_2h': 9,
+                         'number_of_stuff1_min_1h': 7, 'number_of_stuff1_min_24h': 0, 'number_of_stuff1_min_2h': 5,
+                         'number_of_stuff1_sum_1h': 24, 'number_of_stuff1_sum_24h': 45, 'number_of_stuff1_sum_2h': 35,
+                         'number_of_stuff2_avg_1h': 8.0, 'number_of_stuff2_avg_24h': 4.5, 'number_of_stuff2_avg_2h': 7.0,
+                         'number_of_stuff2_max_1h': 9, 'number_of_stuff2_max_24h': 9, 'number_of_stuff2_max_2h': 9,
+                         'number_of_stuff2_min_1h': 7, 'number_of_stuff2_min_24h': 0, 'number_of_stuff2_min_2h': 5,
+                         'number_of_stuff2_sum_1h': 24, 'number_of_stuff2_sum_24h': 45, 'number_of_stuff2_sum_2h': 35}]
+
+    assert actual == expected_results, \
+        f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
+
+
+def test_sliding_window_sparse_data_uneven_feature_occurrence():
+    controller = build_flow([
+        SyncEmitSource(),
+        AggregateByKey(
+            [FieldAggregator("number_of_stuff1", "col1", ["sum", "avg", "min", "max"], SlidingWindows(['1h', '2h', '24h'], '10m')),
+             FieldAggregator("number_of_stuff2", "col2", ["sum", "avg", "min", "max"], SlidingWindows(['1h', '2h', '24h'], '10m'))],
+            Table("test", NoopDriver())),
+        Reduce([], lambda acc, x: append_return(acc, x)),
+    ]).run()
+
+    controller.emit({'col1': 0}, 'tal', test_base_time)
+    for i in range(10):
+        controller.emit({'col2': i}, 'tal', test_base_time + timedelta(minutes=25 * i))
+
+    controller.terminate()
+    actual = controller.await_termination()
+    expected_results = [{'col1': 0, 'number_of_stuff1_avg_1h': 0.0, 'number_of_stuff1_avg_24h': 0.0, 'number_of_stuff1_avg_2h': 0.0,
+                         'number_of_stuff1_max_1h': 0, 'number_of_stuff1_max_24h': 0, 'number_of_stuff1_max_2h': 0,
+                         'number_of_stuff1_min_1h': 0, 'number_of_stuff1_min_24h': 0, 'number_of_stuff1_min_2h': 0,
+                         'number_of_stuff1_sum_1h': 0, 'number_of_stuff1_sum_24h': 0, 'number_of_stuff1_sum_2h': 0,
+                         'number_of_stuff2_avg_1h': math.nan, 'number_of_stuff2_avg_24h': math.nan, 'number_of_stuff2_avg_2h': math.nan,
+                         'number_of_stuff2_max_1h': math.nan, 'number_of_stuff2_max_24h': math.nan, 'number_of_stuff2_max_2h': math.nan,
+                         'number_of_stuff2_min_1h': math.nan, 'number_of_stuff2_min_24h': math.nan, 'number_of_stuff2_min_2h': math.nan,
+                         'number_of_stuff2_sum_1h': 0, 'number_of_stuff2_sum_24h': 0, 'number_of_stuff2_sum_2h': 0},
+                        {'col2': 0, 'number_of_stuff1_avg_1h': 0.0, 'number_of_stuff1_avg_24h': 0.0, 'number_of_stuff1_avg_2h': 0.0,
+                         'number_of_stuff1_max_1h': 0, 'number_of_stuff1_max_24h': 0, 'number_of_stuff1_max_2h': 0,
+                         'number_of_stuff1_min_1h': 0, 'number_of_stuff1_min_24h': 0, 'number_of_stuff1_min_2h': 0,
+                         'number_of_stuff1_sum_1h': 0, 'number_of_stuff1_sum_24h': 0, 'number_of_stuff1_sum_2h': 0,
+                         'number_of_stuff2_avg_1h': 0.0, 'number_of_stuff2_avg_24h': 0.0, 'number_of_stuff2_avg_2h': 0.0,
+                         'number_of_stuff2_max_1h': 0, 'number_of_stuff2_max_24h': 0, 'number_of_stuff2_max_2h': 0,
+                         'number_of_stuff2_min_1h': 0, 'number_of_stuff2_min_24h': 0, 'number_of_stuff2_min_2h': 0,
+                         'number_of_stuff2_sum_1h': 0, 'number_of_stuff2_sum_24h': 0, 'number_of_stuff2_sum_2h': 0},
+                        {'col2': 1, 'number_of_stuff1_avg_1h': 0.0, 'number_of_stuff1_avg_24h': 0.0, 'number_of_stuff1_avg_2h': 0.0,
+                         'number_of_stuff1_max_1h': 0, 'number_of_stuff1_max_24h': 0, 'number_of_stuff1_max_2h': 0,
+                         'number_of_stuff1_min_1h': 0, 'number_of_stuff1_min_24h': 0, 'number_of_stuff1_min_2h': 0,
+                         'number_of_stuff1_sum_1h': 0, 'number_of_stuff1_sum_24h': 0, 'number_of_stuff1_sum_2h': 0,
+                         'number_of_stuff2_avg_1h': 0.5, 'number_of_stuff2_avg_24h': 0.5, 'number_of_stuff2_avg_2h': 0.5,
+                         'number_of_stuff2_max_1h': 1, 'number_of_stuff2_max_24h': 1, 'number_of_stuff2_max_2h': 1,
+                         'number_of_stuff2_min_1h': 0, 'number_of_stuff2_min_24h': 0, 'number_of_stuff2_min_2h': 0,
+                         'number_of_stuff2_sum_1h': 1, 'number_of_stuff2_sum_24h': 1, 'number_of_stuff2_sum_2h': 1},
+                        {'col2': 2, 'number_of_stuff1_avg_1h': 0.0, 'number_of_stuff1_avg_24h': 0.0, 'number_of_stuff1_avg_2h': 0.0,
+                         'number_of_stuff1_max_1h': 0, 'number_of_stuff1_max_24h': 0, 'number_of_stuff1_max_2h': 0,
+                         'number_of_stuff1_min_1h': 0, 'number_of_stuff1_min_24h': 0, 'number_of_stuff1_min_2h': 0,
+                         'number_of_stuff1_sum_1h': 0, 'number_of_stuff1_sum_24h': 0, 'number_of_stuff1_sum_2h': 0,
+                         'number_of_stuff2_avg_1h': 1.0, 'number_of_stuff2_avg_24h': 1.0, 'number_of_stuff2_avg_2h': 1.0,
+                         'number_of_stuff2_max_1h': 2, 'number_of_stuff2_max_24h': 2, 'number_of_stuff2_max_2h': 2,
+                         'number_of_stuff2_min_1h': 0, 'number_of_stuff2_min_24h': 0, 'number_of_stuff2_min_2h': 0,
+                         'number_of_stuff2_sum_1h': 3, 'number_of_stuff2_sum_24h': 3, 'number_of_stuff2_sum_2h': 3},
+                        {'col2': 3, 'number_of_stuff1_avg_1h': 0.0, 'number_of_stuff1_avg_24h': 0.0, 'number_of_stuff1_avg_2h': 0.0,
+                         'number_of_stuff1_max_1h': 0, 'number_of_stuff1_max_24h': 0, 'number_of_stuff1_max_2h': 0,
+                         'number_of_stuff1_min_1h': 0, 'number_of_stuff1_min_24h': 0, 'number_of_stuff1_min_2h': 0,
+                         'number_of_stuff1_sum_1h': 0, 'number_of_stuff1_sum_24h': 0, 'number_of_stuff1_sum_2h': 0,
+                         'number_of_stuff2_avg_1h': 2.0, 'number_of_stuff2_avg_24h': 1.5, 'number_of_stuff2_avg_2h': 1.5,
+                         'number_of_stuff2_max_1h': 3, 'number_of_stuff2_max_24h': 3, 'number_of_stuff2_max_2h': 3,
+                         'number_of_stuff2_min_1h': 1, 'number_of_stuff2_min_24h': 0, 'number_of_stuff2_min_2h': 0,
+                         'number_of_stuff2_sum_1h': 6, 'number_of_stuff2_sum_24h': 6, 'number_of_stuff2_sum_2h': 6},
+                        {'col2': 4, 'number_of_stuff1_avg_1h': 0.0, 'number_of_stuff1_avg_24h': 0.0, 'number_of_stuff1_avg_2h': 0.0,
+                         'number_of_stuff1_max_1h': 0, 'number_of_stuff1_max_24h': 0, 'number_of_stuff1_max_2h': 0,
+                         'number_of_stuff1_min_1h': 0, 'number_of_stuff1_min_24h': 0, 'number_of_stuff1_min_2h': 0,
+                         'number_of_stuff1_sum_1h': 0, 'number_of_stuff1_sum_24h': 0, 'number_of_stuff1_sum_2h': 0,
+                         'number_of_stuff2_avg_1h': 3.0, 'number_of_stuff2_avg_24h': 2.0, 'number_of_stuff2_avg_2h': 2.0,
+                         'number_of_stuff2_max_1h': 4, 'number_of_stuff2_max_24h': 4, 'number_of_stuff2_max_2h': 4,
+                         'number_of_stuff2_min_1h': 2, 'number_of_stuff2_min_24h': 0, 'number_of_stuff2_min_2h': 0,
+                         'number_of_stuff2_sum_1h': 9, 'number_of_stuff2_sum_24h': 10, 'number_of_stuff2_sum_2h': 10},
+                        {'col2': 5, 'number_of_stuff1_avg_1h': 0.0, 'number_of_stuff1_avg_24h': 0.0, 'number_of_stuff1_avg_2h': 0.0,
+                         'number_of_stuff1_max_1h': 0, 'number_of_stuff1_max_24h': 0, 'number_of_stuff1_max_2h': 0,
+                         'number_of_stuff1_min_1h': 0, 'number_of_stuff1_min_24h': 0, 'number_of_stuff1_min_2h': 0,
+                         'number_of_stuff1_sum_1h': 0, 'number_of_stuff1_sum_24h': 0, 'number_of_stuff1_sum_2h': 0,
+                         'number_of_stuff2_avg_1h': 4.0, 'number_of_stuff2_avg_24h': 2.5, 'number_of_stuff2_avg_2h': 3.0,
+                         'number_of_stuff2_max_1h': 5, 'number_of_stuff2_max_24h': 5, 'number_of_stuff2_max_2h': 5,
+                         'number_of_stuff2_min_1h': 3, 'number_of_stuff2_min_24h': 0, 'number_of_stuff2_min_2h': 1,
+                         'number_of_stuff2_sum_1h': 12, 'number_of_stuff2_sum_24h': 15, 'number_of_stuff2_sum_2h': 15},
+                        {'col2': 6, 'number_of_stuff1_avg_1h': 0.0, 'number_of_stuff1_avg_24h': 0.0, 'number_of_stuff1_avg_2h': 0.0,
+                         'number_of_stuff1_max_1h': 0, 'number_of_stuff1_max_24h': 0, 'number_of_stuff1_max_2h': 0,
+                         'number_of_stuff1_min_1h': 0, 'number_of_stuff1_min_24h': 0, 'number_of_stuff1_min_2h': 0,
+                         'number_of_stuff1_sum_1h': 0, 'number_of_stuff1_sum_24h': 0, 'number_of_stuff1_sum_2h': 0,
+                         'number_of_stuff2_avg_1h': 5.0, 'number_of_stuff2_avg_24h': 3.0, 'number_of_stuff2_avg_2h': 4.0,
+                         'number_of_stuff2_max_1h': 6, 'number_of_stuff2_max_24h': 6, 'number_of_stuff2_max_2h': 6,
+                         'number_of_stuff2_min_1h': 4, 'number_of_stuff2_min_24h': 0, 'number_of_stuff2_min_2h': 2,
+                         'number_of_stuff2_sum_1h': 15, 'number_of_stuff2_sum_24h': 21, 'number_of_stuff2_sum_2h': 20},
+                        {'col2': 7, 'number_of_stuff1_avg_1h': 0.0, 'number_of_stuff1_avg_24h': 0.0, 'number_of_stuff1_avg_2h': 0.0,
+                         'number_of_stuff1_max_1h': 0, 'number_of_stuff1_max_24h': 0, 'number_of_stuff1_max_2h': 0,
+                         'number_of_stuff1_min_1h': 0, 'number_of_stuff1_min_24h': 0, 'number_of_stuff1_min_2h': 0,
+                         'number_of_stuff1_sum_1h': 0, 'number_of_stuff1_sum_24h': 0, 'number_of_stuff1_sum_2h': 0,
+                         'number_of_stuff2_avg_1h': 6.0, 'number_of_stuff2_avg_24h': 3.5, 'number_of_stuff2_avg_2h': 5.0,
+                         'number_of_stuff2_max_1h': 7, 'number_of_stuff2_max_24h': 7, 'number_of_stuff2_max_2h': 7,
+                         'number_of_stuff2_min_1h': 5, 'number_of_stuff2_min_24h': 0, 'number_of_stuff2_min_2h': 3,
+                         'number_of_stuff2_sum_1h': 18, 'number_of_stuff2_sum_24h': 28, 'number_of_stuff2_sum_2h': 25},
+                        {'col2': 8, 'number_of_stuff1_avg_1h': 0.0, 'number_of_stuff1_avg_24h': 0.0, 'number_of_stuff1_avg_2h': 0.0,
+                         'number_of_stuff1_max_1h': 0, 'number_of_stuff1_max_24h': 0, 'number_of_stuff1_max_2h': 0,
+                         'number_of_stuff1_min_1h': 0, 'number_of_stuff1_min_24h': 0, 'number_of_stuff1_min_2h': 0,
+                         'number_of_stuff1_sum_1h': 0, 'number_of_stuff1_sum_24h': 0, 'number_of_stuff1_sum_2h': 0,
+                         'number_of_stuff2_avg_1h': 7.0, 'number_of_stuff2_avg_24h': 4.0, 'number_of_stuff2_avg_2h': 6.0,
+                         'number_of_stuff2_max_1h': 8, 'number_of_stuff2_max_24h': 8, 'number_of_stuff2_max_2h': 8,
+                         'number_of_stuff2_min_1h': 6, 'number_of_stuff2_min_24h': 0, 'number_of_stuff2_min_2h': 4,
+                         'number_of_stuff2_sum_1h': 21, 'number_of_stuff2_sum_24h': 36, 'number_of_stuff2_sum_2h': 30},
+                        {'col2': 9, 'number_of_stuff1_avg_1h': 0.0, 'number_of_stuff1_avg_24h': 0.0, 'number_of_stuff1_avg_2h': 0.0,
+                         'number_of_stuff1_max_1h': 0, 'number_of_stuff1_max_24h': 0, 'number_of_stuff1_max_2h': 0,
+                         'number_of_stuff1_min_1h': 0, 'number_of_stuff1_min_24h': 0, 'number_of_stuff1_min_2h': 0,
+                         'number_of_stuff1_sum_1h': 0, 'number_of_stuff1_sum_24h': 0, 'number_of_stuff1_sum_2h': 0,
+                         'number_of_stuff2_avg_1h': 8.0, 'number_of_stuff2_avg_24h': 4.5, 'number_of_stuff2_avg_2h': 7.0,
+                         'number_of_stuff2_max_1h': 9, 'number_of_stuff2_max_24h': 9, 'number_of_stuff2_max_2h': 9,
+                         'number_of_stuff2_min_1h': 7, 'number_of_stuff2_min_24h': 0, 'number_of_stuff2_min_2h': 5,
+                         'number_of_stuff2_sum_1h': 24, 'number_of_stuff2_sum_24h': 45, 'number_of_stuff2_sum_2h': 35}]
+
+    assert actual == expected_results, \
+        f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
+
+
 def test_sliding_window_multiple_keys_aggregation_flow():
     controller = build_flow([
-        Source(),
+        SyncEmitSource(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg"],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
                        Table("test", NoopDriver())),
@@ -107,7 +398,7 @@ def test_sliding_window_multiple_keys_aggregation_flow():
 
 def test_sliding_window_aggregations_with_filters_flow():
     controller = build_flow([
-        Source(),
+        SyncEmitSource(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg"],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'),
                                         aggr_filter=lambda element: element['is_valid'] == 0)],
@@ -158,7 +449,7 @@ def test_sliding_window_aggregations_with_filters_flow():
 
 def test_sliding_window_aggregations_with_max_values_flow():
     controller = build_flow([
-        Source(),
+        SyncEmitSource(),
         AggregateByKey([FieldAggregator("num_hours_with_stuff_in_the_last_24h", "col1", ["count"],
                                         SlidingWindows(['24h'], '1h'),
                                         max_value=1)],
@@ -189,7 +480,7 @@ def test_sliding_window_aggregations_with_max_values_flow():
 
 def test_sliding_window_simple_aggregation_flow_multiple_fields():
     controller = build_flow([
-        Source(),
+        SyncEmitSource(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg"],
                                         SlidingWindows(['1h', '2h', '24h'], '10m')),
                         FieldAggregator("number_of_things", "col2", ["count"],
@@ -246,7 +537,7 @@ def test_sliding_window_simple_aggregation_flow_multiple_fields():
 
 def test_fixed_window_simple_aggregation_flow():
     controller = build_flow([
-        Source(),
+        SyncEmitSource(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["count"],
                                         FixedWindows(['1h', '2h', '3h', '24h']))],
                        Table("test", NoopDriver())),
@@ -286,7 +577,7 @@ def test_fixed_window_simple_aggregation_flow():
 
 def test_emit_max_event_sliding_window_multiple_keys_aggregation_flow():
     controller = build_flow([
-        Source(),
+        SyncEmitSource(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg"],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
                        Table("test", NoopDriver()), emit_policy=EmitAfterMaxEvent(3)),
@@ -313,6 +604,14 @@ def test_emit_max_event_sliding_window_multiple_keys_aggregation_flow():
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
 
+def test_error_on_bad_emit_policy():
+    try:
+        AggregateByKey([], Table("test", NoopDriver()), emit_policy=EmitEveryEvent),
+        assert False
+    except TypeError:
+        pass
+
+
 def test_emit_delay_aggregation_flow():
     q = queue.Queue(1)
 
@@ -323,7 +622,7 @@ def test_emit_delay_aggregation_flow():
         return acc
 
     controller = build_flow([
-        Source(),
+        SyncEmitSource(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "count"],
                                         SlidingWindows(['1h'], '10m'))],
                        Table("test", NoopDriver()), emit_policy=EmitAfterMaxEvent(4, 1)),
@@ -354,7 +653,7 @@ def test_aggregate_dict_simple_aggregation_flow():
                      'windows': ['1h', '2h', '24h'],
                      'period': '10m'}]
     controller = build_flow([
-        Source(),
+        SyncEmitSource(),
         AggregateByKey(aggregations, Table("test", NoopDriver())),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
@@ -408,7 +707,7 @@ def test_aggregate_dict_fixed_window():
                      'operations': ["count"],
                      'windows': ['1h', '2h', '3h', '24h']}]
     controller = build_flow([
-        Source(),
+        SyncEmitSource(),
         AggregateByKey(aggregations, Table("test", NoopDriver())),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
@@ -446,7 +745,7 @@ def test_aggregate_dict_fixed_window():
 
 def test_sliding_window_old_event():
     controller = build_flow([
-        Source(),
+        SyncEmitSource(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg", "min", "max"],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
                        Table("test", NoopDriver())),
@@ -480,7 +779,7 @@ def test_sliding_window_old_event():
 
 def test_fixed_window_old_event():
     controller = build_flow([
-        Source(),
+        SyncEmitSource(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["count"],
                                         FixedWindows(['1h', '2h', '3h', '24h']))],
                        Table("test", NoopDriver())),
@@ -509,7 +808,7 @@ def test_fixed_window_old_event():
 
 def test_fixed_window_out_of_order_event():
     controller = build_flow([
-        Source(),
+        SyncEmitSource(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["count"],
                                         FixedWindows(['1h', '2h']))],
                        Table("test", NoopDriver())),
@@ -537,7 +836,7 @@ def test_fixed_window_out_of_order_event():
 
 def test_fixed_window_roll_cached_buckets():
     controller = build_flow([
-        Source(),
+        SyncEmitSource(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["count"],
                                         FixedWindows(['1h', '2h', '3h']))],
                        Table("test", NoopDriver())),
@@ -567,7 +866,7 @@ def test_fixed_window_roll_cached_buckets():
 
 def test_sliding_window_roll_cached_buckets():
     controller = build_flow([
-        Source(),
+        SyncEmitSource(),
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg", "min", "max"],
                                         SlidingWindows(['1h', '2h'], '10m'))],
                        Table("test", NoopDriver())),
@@ -610,7 +909,7 @@ def test_sliding_window_roll_cached_buckets():
 def test_aggregation_unique_fields():
     try:
         build_flow([
-            Source(),
+            SyncEmitSource(),
             AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg"],
                                             SlidingWindows(['1h', '2h', '24h'], '10m')),
                             FieldAggregator("number_of_stuff", "col1", ["count"],

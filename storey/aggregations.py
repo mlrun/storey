@@ -3,11 +3,13 @@ from datetime import datetime
 import time
 import re
 from typing import Optional, Union, Callable, List, Dict
+import pandas as pd
 
 from .dtypes import EmitEveryEvent, FixedWindows, SlidingWindows, EmitAfterPeriod, EmitAfterWindow, EmitAfterMaxEvent, \
-    _dict_to_emit_policy, FieldAggregator
+    _dict_to_emit_policy, FieldAggregator, EmitPolicy
 from .table import Table
 from .flow import Flow, _termination_obj, Event
+from .utils import stringify_key
 
 _default_emit_policy = EmitEveryEvent()
 
@@ -16,23 +18,23 @@ class AggregateByKey(Flow):
     """
     Aggregates the data into the table object provided for later persistence, and outputs an event enriched with the requested aggregation
     features.
-    Persistence is done via the `WriteToTable` step and based on the Cache object persistence settings.
+    Persistence is done via the `NoSqlTarget` step and based on the Cache object persistence settings.
 
     :param aggregates: List of aggregates to apply for each event.
-    :param table: A Table object or name for persistence of aggregations. If a table name is provided, it will be looked up in the context.
+        accepts either list of FieldAggregators or a dictionary describing FieldAggregators.
+    :param table: A Table object or name for persistence of aggregations.
+        If a table name is provided, it will be looked up in the context object passed in kwargs.
     :param key: Key field to aggregate by, accepts either a string representing the key field or a key extracting function.
      Defaults to the key in the event's metadata. (Optional)
-    :param emit_policy: Policy indicating when the data will be emitted. Defaults to EmitEveryEvent. (Optional)
+    :param emit_policy: Policy indicating when the data will be emitted. Defaults to EmitEveryEvent
     :param augmentation_fn: Function that augments the features into the event's body. Defaults to updating a dict. (Optional)
     :param enrich_with: List of attributes names from the associated storage object to be fetched and added to every event. (Optional)
     :param aliases: Dictionary specifying aliases to the enriched columns, of the format `{'col_name': 'new_col_name'}`. (Optional)
-    :param context: Context object that holds global configurations and secrets.
     """
 
     def __init__(self, aggregates: Union[List[FieldAggregator], List[Dict[str, object]]], table: Union[Table, str],
                  key: Union[str, Callable[[Event], object], None] = None,
-                 emit_policy: Union[EmitEveryEvent, FixedWindows, SlidingWindows, EmitAfterPeriod, EmitAfterWindow,
-                                    EmitAfterMaxEvent, Dict[str, object]] = _default_emit_policy,
+                 emit_policy: Union[EmitPolicy, Dict[str, object]] = _default_emit_policy,
                  augmentation_fn: Optional[Callable[[Event, Dict[str, object]], Event]] = None, enrich_with: Optional[List[str]] = None,
                  aliases: Optional[Dict[str, str]] = None, use_windows_from_schema: bool = False, **kwargs):
         Flow.__init__(self, **kwargs)
@@ -51,13 +53,13 @@ class AggregateByKey(Flow):
 
         self._enrich_with = enrich_with or []
         self._aliases = aliases or {}
+
+        if not isinstance(emit_policy, EmitPolicy) and not isinstance(emit_policy, Dict):
+            raise TypeError(f'emit_policy parameter must be of type EmitPolicy, or dict. Found {type(emit_policy)} instead.')
+
         self._emit_policy = emit_policy
         if isinstance(self._emit_policy, dict):
             self._emit_policy = _dict_to_emit_policy(self._emit_policy)
-        self._events_in_batch = {}
-        self._emit_worker_running = False
-        self._terminate_worker = False
-        self._timeout_task: Optional[asyncio.Task] = None
 
         self._augmentation_fn = augmentation_fn
         if not augmentation_fn:
@@ -72,9 +74,18 @@ class AggregateByKey(Flow):
             if callable(key):
                 self.key_extractor = key
             elif isinstance(key, str):
-                self.key_extractor = lambda element: element[key]
+                self.key_extractor = lambda element: element.get(key)
+            elif isinstance(key, list):
+                self.key_extractor = lambda element: [element.get(single_key) for single_key in key]
             else:
                 raise TypeError(f'key is expected to be either a callable or string but got {type(key)}')
+
+    def _init(self):
+        super()._init()
+        self._events_in_batch = {}
+        self._emit_worker_running = False
+        self._terminate_worker = False
+        self._timeout_task: Optional[asyncio.Task] = None
 
     def _check_unique_names(self, aggregates):
         unique_aggr_names = set()
@@ -105,6 +116,16 @@ class AggregateByKey(Flow):
 
         raise TypeError('aggregates should be a list of FieldAggregator/dictionaries')
 
+    def _get_timestamp(self, event):
+        event_timestamp = event.time
+        if isinstance(event_timestamp, datetime):
+            if isinstance(event_timestamp, pd.Timestamp) and event_timestamp.tzinfo is None:
+                # timestamp for pandas timestamp gives the wrong result in case there is no timezone (ML-313)
+                local_time_zone = datetime.now().astimezone().tzinfo
+                event_timestamp = event_timestamp.replace(tzinfo=local_time_zone)
+            event_timestamp = event_timestamp.timestamp() * 1000
+        return event_timestamp
+
     async def _do(self, event):
         if event == _termination_obj:
             self._terminate_worker = True
@@ -122,26 +143,25 @@ class AggregateByKey(Flow):
             if self.key_extractor:
                 key = self.key_extractor(element)
 
-            event_timestamp = event.time
-            if isinstance(event_timestamp, datetime):
-                event_timestamp = event_timestamp.timestamp() * 1000
+            event_timestamp = self._get_timestamp(event)
 
-            await self._table._lazy_load_key_with_aggregates(key, event_timestamp)
-            await self._table._aggregate(key, element, event_timestamp)
+            safe_key = stringify_key(key)
+            await self._table._lazy_load_key_with_aggregates(safe_key, event_timestamp)
+            await self._table._aggregate(safe_key, element, event_timestamp)
 
             if isinstance(self._emit_policy, EmitEveryEvent):
                 await self._emit_event(key, event)
             elif isinstance(self._emit_policy, EmitAfterMaxEvent):
-                if key in self._events_in_batch:
-                    self._events_in_batch[key]['counter'] += 1
+                if safe_key in self._events_in_batch:
+                    self._events_in_batch[safe_key]['counter'] += 1
                 else:
                     event_dict = {'counter': 1, 'time': time.monotonic()}
-                    self._events_in_batch[key] = event_dict
-                self._events_in_batch[key]['event'] = event
+                    self._events_in_batch[safe_key] = event_dict
+                self._events_in_batch[safe_key]['event'] = event
                 if self._emit_policy.timeout_secs and self._timeout_task is None:
                     self._timeout_task = asyncio.get_running_loop().create_task(self._sleep_and_emit())
-                if self._events_in_batch[key]['counter'] == self._emit_policy.max_events:
-                    event_from_batch = self._events_in_batch.pop(key, None)
+                if self._events_in_batch[safe_key]['counter'] == self._emit_policy.max_events:
+                    event_from_batch = self._events_in_batch.pop(safe_key, None)
                     if event_from_batch is not None:
                         await self._emit_event(key, event_from_batch['event'])
         except Exception as ex:
@@ -161,18 +181,17 @@ class AggregateByKey(Flow):
 
     # Emit a single event for the requested key
     async def _emit_event(self, key, event):
-        event_timestamp = event.time
-        if isinstance(event_timestamp, datetime):
-            event_timestamp = event_timestamp.timestamp() * 1000
+        event_timestamp = self._get_timestamp(event)
 
-        await self._table._lazy_load_key_with_aggregates(key, event_timestamp)
-        features = await self._table._get_features(key, event_timestamp)
+        safe_key = stringify_key(key)
+        await self._table._lazy_load_key_with_aggregates(safe_key, event_timestamp)
+        features = await self._table._get_features(safe_key, event_timestamp)
         features = self._augmentation_fn(event.body, features)
 
         for col in self._enrich_with:
             emitted_attr_name = self._aliases.get(col, None) or col
-            if col in self._table._get_static_attrs(key):
-                features[emitted_attr_name] = self._table._get_static_attrs(key)[col]
+            if col in self._table._get_static_attrs(safe_key):
+                features[emitted_attr_name] = self._table._get_static_attrs(safe_key)[col]
         event.key = key
         event.body = features
         await self._do_downstream(event)
@@ -208,15 +227,15 @@ class QueryByKey(AggregateByKey):
     Query features by name
 
     :param features: List of features to get.
-    :param table: A Table object or name for persistence of aggregations. If a table name is provided, it will be looked up in the context.
+    :param table: A Table object or name for persistence of aggregations.
+        If a table name is provided, it will be looked up in the context object passed in kwargs.
     :param key: Key field to aggregate by, accepts either a string representing the key field or a key extracting function.
-     Defaults to the key in the event's metadata. (Optional)
+     Defaults to the key in the event's metadata. (Optional). Can be list of keys
     :param augmentation_fn: Function that augments the features into the event's body. Defaults to updating a dict. (Optional)
     :param aliases: Dictionary specifying aliases to the enriched columns, of the format `{'col_name': 'new_col_name'}`. (Optional)
-    :param context: Context object that holds global configurations and secrets.
     """
 
-    def __init__(self, features: List[str], table: Union[Table, str], key: Union[str, Callable[[Event], object], None] = None,
+    def __init__(self, features: List[str], table: Union[Table, str], key: Union[str, List[str], Callable[[Event], object], None] = None,
                  augmentation_fn: Optional[Callable[[Event, Dict[str, object]], Event]] = None,
                  aliases: Optional[Dict[str, str]] = None, **kwargs):
         self._aggrs = []
@@ -244,15 +263,16 @@ class QueryByKey(AggregateByKey):
             self._terminate_worker = True
             return await self._do_downstream(_termination_obj)
 
-        try:
-            element = event.body
-            key = event.key
-            if self.key_extractor:
+        element = event.body
+        key = event.key
+        if self.key_extractor:
+            if element:
                 key = self.key_extractor(element)
-            await self._emit_event(key, event)
-
-        except Exception as ex:
-            raise ex
+            if key is None or element is None:
+                event.body = None
+                await self._do_downstream(event)
+                return
+        await self._emit_event(key, event)
 
     def _check_unique_names(self, aggregates):
         pass

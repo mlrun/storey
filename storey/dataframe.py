@@ -1,4 +1,5 @@
 import pandas as pd
+from typing import Optional, List
 
 from .flow import _termination_obj, Flow
 
@@ -7,34 +8,36 @@ class ReduceToDataFrame(Flow):
     """Builds a pandas DataFrame from events and returns that DataFrame on flow termination.
 
     :param index: Name of the column to be used as index. Optional. If not set, DataFrame will be range indexed.
-    :type index: string
     :param columns: List of column names to be passed as-is to the DataFrame constructor. Optional.
-    :type columns: list of string
     :param insert_key_column_as: Name of the column to be inserted for event keys. Optional.
-    If not set, event keys will not be inserted into the DataFrame.
-    :type insert_key_column_as: string
+        If not set, event keys will not be inserted into the DataFrame.
     :param insert_time_column_as: Name of the column to be inserted for event times. Optional.
-    If not set, event times will not be inserted into the DataFrame.
-    :type insert_time_column_as: string
+        If not set, event times will not be inserted into the DataFrame.
     :param insert_id_column_as: Name of the column to be inserted for event IDs. Optional.
-    If not set, event IDs will not be inserted into the DataFrame.
-    :type insert_id_column_as: string
+        If not set, event IDs will not be inserted into the DataFrame.
+
+    for additional params, see documentation of  :class:`storey.flow.Flow`
+
     """
 
-    def __init__(self, index=None, columns=None, insert_key_column_as=None, insert_time_column_as=None,
-                 insert_id_column_as=None, **kwargs):
+    def __init__(self, index: Optional[str] = None, columns: Optional[List[str]] = None, insert_key_column_as: Optional[str] = None,
+                 insert_time_column_as: Optional[str] = None, insert_id_column_as: Optional[str] = None, **kwargs):
         super().__init__(**kwargs)
         self._index = index
         self._columns = columns
         self._insert_key_column_as = insert_key_column_as
-        self._key_column = []
         self._insert_time_column_as = insert_time_column_as
-        self._time_column = []
         self._insert_id_column_as = insert_id_column_as
+
+    def _init(self):
+        super()._init()
+        self._key_column = []
+        self._time_column = []
         self._id_column = []
         self._data = []
 
     def to(self, outlet):
+        """Pipe this step to next one. Throws exception since illegal"""
         raise ValueError("ToDataFrame is a terminal step. It cannot be piped further.")
 
     async def _do(self, event):
@@ -64,7 +67,14 @@ class ReduceToDataFrame(Flow):
 
 
 class ToDataFrame(Flow):
-    def __init__(self, index=None, columns=None, **kwargs):
+    """Create pandas data frame from events. Can appear in the middle of the flow, as opposed to ReduceToDataFrame
+
+    :param index: Name of the column to be used as index. Optional. If not set, DataFrame will be range indexed.
+    :param columns: List of column names to be passed as-is to the DataFrame constructor. Optional.
+
+    for additional params, see documentation of  :class:`storey.flow.Flow`
+    """
+    def __init__(self, index: Optional[str] = None, columns: Optional[List[str]] = None, **kwargs):
         super().__init__(**kwargs)
         self._index = index
         self._columns = columns

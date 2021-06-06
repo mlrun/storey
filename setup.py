@@ -25,6 +25,7 @@ install_requires = load_deps('requirements.txt')
 tests_require = load_deps('dev-requirements.txt')
 extras_require = {
     "s3": ["s3fs~=0.5"],
+    "az": ["adlfs~=0.5"],
 }
 
 

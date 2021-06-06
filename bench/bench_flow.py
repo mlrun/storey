@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 import pytest
 
-from storey import Source, Map, Reduce, build_flow, Complete, Driver, FieldAggregator, AggregateByKey, Table, Batch, AsyncSource, \
+from storey import SyncEmitSource, Map, Reduce, build_flow, Complete, Driver, FieldAggregator, AggregateByKey, Table, Batch, AsyncEmitSource, \
     DataframeSource
 from storey.dtypes import SlidingWindows
 
@@ -15,7 +15,7 @@ test_base_time = datetime.fromisoformat("2020-07-21T21:40:00+00:00")
 def test_simple_flow_n_events(benchmark, n):
     def inner():
         controller = build_flow([
-            Source(),
+            SyncEmitSource(),
             Map(lambda x: x + 1),
             Reduce(0, lambda acc, x: acc + x),
         ]).run()
@@ -32,7 +32,7 @@ def test_simple_flow_n_events(benchmark, n):
 def test_simple_async_flow_n_events(benchmark, n):
     async def async_inner():
         controller = await build_flow([
-            AsyncSource(),
+            AsyncEmitSource(),
             Map(lambda x: x + 1),
             Reduce(0, lambda acc, x: acc + x),
         ]).run()
@@ -52,7 +52,7 @@ def test_simple_async_flow_n_events(benchmark, n):
 def test_complete_flow_n_events(benchmark, n):
     def inner():
         controller = build_flow([
-            Source(),
+            SyncEmitSource(),
             Map(lambda x: x + 1),
             Complete()
         ]).run()
@@ -70,7 +70,7 @@ def test_complete_flow_n_events(benchmark, n):
 def test_aggregate_by_key_n_events(benchmark, n):
     def inner():
         controller = build_flow([
-            Source(),
+            SyncEmitSource(),
             AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg", "min", "max"],
                                             SlidingWindows(['1h', '2h', '24h'], '10m'))],
                            Table("test", Driver())),
@@ -90,7 +90,7 @@ def test_aggregate_by_key_n_events(benchmark, n):
 def test_batch_n_events(benchmark, n):
     def inner():
         controller = build_flow([
-            Source(),
+            SyncEmitSource(),
             Batch(4, 100),
         ]).run()
 
@@ -112,7 +112,7 @@ def test_aggregate_df_86420_events(benchmark):
         table = Table(f'test', driver)
 
         controller = build_flow([
-            DataframeSource(df, key_column='patient_id', time_column='timestamp'),
+            DataframeSource(df, key_field='patient_id', time_field='timestamp'),
             AggregateByKey([FieldAggregator("hr", "hr", ["avg", "min", "max"],
                                             SlidingWindows(['1h', '2h'], '10m')),
                             FieldAggregator("rr", "rr", ["avg", "min", "max"],
@@ -136,7 +136,7 @@ def test_aggregate_df_86420_events_basic(benchmark):
         table = Table(f'test', driver)
 
         controller = build_flow([
-            DataframeSource(df, key_column='patient_id', time_column='timestamp'),
+            DataframeSource(df, key_field='patient_id', time_field='timestamp'),
             AggregateByKey([FieldAggregator("hr", "hr", ["sum", "count"],
                                             SlidingWindows(['1h', '2h'], '10m')),
                             FieldAggregator("rr", "rr", ["sum", "count"],
