@@ -1,9 +1,11 @@
 import asyncio
+import math
 import sys
 import random as rand
 
 from .integration_test_utils import setup_teardown_test, _generate_table_name, V3ioHeaders, V3ioError
-from storey import build_flow, CSVSource, CSVTarget, SyncEmitSource, Reduce, Map, FlatMap, AsyncEmitSource, ParquetTarget, ParquetSource, DataframeSource
+from storey import build_flow, CSVSource, CSVTarget, SyncEmitSource, Reduce, Map, FlatMap, AsyncEmitSource, ParquetTarget, ParquetSource, \
+    DataframeSource
 import pandas as pd
 import aiohttp
 import pytest
@@ -250,6 +252,37 @@ def test_write_to_parquet_to_v3io_with_indices(setup_teardown_test):
 
     read_back_df = pd.read_parquet(out_file, columns=columns)
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+
+
+# ML-602
+def test_write_to_parquet_to_v3io_with_nulls(setup_teardown_test):
+    out_dir = f'v3io:///{setup_teardown_test}/test_write_to_parquet_to_v3io_with_nulls{uuid.uuid4().hex}/'
+    flow = build_flow([
+        SyncEmitSource(),
+        ParquetTarget(out_dir, columns=[('key=$key', 'str'), ('my_int', 'int'), ('my_string', 'str'), ('my_datetime', 'datetime')],
+                      partition_cols=[], max_events=1)
+    ])
+
+    expected = []
+    my_time = datetime.datetime(2021, 1, 1)
+
+    controller = flow.run()
+    controller.emit({'my_int': 0, 'my_string': 'hello', 'my_datetime': my_time}, key=f'key1')
+    expected.append(['key1', 0, 'hello', my_time])
+    controller.terminate()
+    controller.await_termination()
+
+    controller = flow.run()
+    controller.emit({}, key=f'key2')
+    expected.append(['key2', None, None, None])
+    controller.terminate()
+    controller.await_termination()
+
+    read_back_df = pd.read_parquet(out_dir)
+    read_back_df.sort_values('key', inplace=True)
+    read_back_df.reset_index(inplace=True, drop=True)
+    expected = pd.DataFrame(expected, columns=['key', 'my_int', 'my_string', 'my_datetime'])
+    assert read_back_df.compare(expected).empty
 
 
 def append_and_return(lst, x):
