@@ -3,7 +3,6 @@ import copy
 from asyncio import Lock
 import asyncio
 import math
-from datetime import datetime
 from .drivers import Driver
 from .dtypes import FieldAggregator, SlidingWindows, FixedWindows, FlowError, _termination_obj
 

@@ -1316,31 +1316,31 @@ def test_separate_aggregate_steps(setup_teardown_test):
 def test_write_read_first_last(setup_teardown_test):
     table = Table(setup_teardown_test, V3ioDriver(), flush_interval_secs=None)
     controller = build_flow([
-        Source(),
+        SyncEmitSource(),
         AggregateByKey([FieldAggregator('attr', 'attr', ['first', 'last'], SlidingWindows(['1h'], '10m'))], table),
-        WriteToTable(table)
+        NoSqlTarget(table)
     ]).run()
 
     try:
         for i in range(10):
             controller.emit({'attr': i}, key='onekey', event_time=test_base_time + timedelta(minutes=i))
-            controller.emit({'attr': i * 10}, key='onekey', event_time=test_base_time + timedelta(hours=2, minutes=i))
+            controller.emit({'attr': i * 10}, key='onekey', event_time=test_base_time + timedelta(hours=1, minutes=i))
     finally:
         controller.terminate()
         controller.await_termination()
 
     table = Table(setup_teardown_test, V3ioDriver())
     controller = build_flow([
-        Source(),
+        SyncEmitSource(),
         QueryByKey(['attr_first_1h', 'attr_last_1h'], table, key='mykey'),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
     controller.emit({'mykey': 'onekey'}, event_time=test_base_time + timedelta(minutes=10))
-    controller.emit({'mykey': 'onekey'}, event_time=test_base_time + timedelta(hours=2))
+    controller.emit({'mykey': 'onekey'}, event_time=test_base_time + timedelta(hours=1, minutes=10))
 
     controller.terminate()
     result = controller.await_termination()
 
-    assert result == [{'mykey': 'onekey', 'attr_first_1h': 1, 'attr_last_1h': 9},
-                      {'mykey': 'onekey', 'attr_first_1h': 10, 'attr_last_1h': 99}]
+    assert result == [{'mykey': 'onekey', 'attr_first_1h': 0.0, 'attr_last_1h': 9.0},
+                      {'mykey': 'onekey', 'attr_first_1h': 0.0, 'attr_last_1h': 90.0}]
