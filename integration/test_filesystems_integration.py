@@ -264,11 +264,12 @@ def test_write_to_parquet_to_v3io_with_nulls(setup_teardown_test):
     ])
 
     expected = []
-    my_time = datetime.datetime(2021, 1, 1)
+    my_time = datetime.datetime(2021, 1, 1, tzinfo=datetime.timezone(datetime.timedelta(hours=5)))
 
     controller = flow.run()
     controller.emit({'my_int': 0, 'my_string': 'hello', 'my_datetime': my_time}, key=f'key1')
-    expected.append(['key1', 0, 'hello', my_time])
+    # TODO: Expect correct time zone. Can be done in _Writer, but requires fix for ARROW-10511, which is pyarrow>=3.
+    expected.append(['key1', 0, 'hello', my_time.astimezone(datetime.timezone(datetime.timedelta())).replace(tzinfo=None)])
     controller.terminate()
     controller.await_termination()
 
