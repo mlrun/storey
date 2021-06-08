@@ -346,7 +346,8 @@ class ParquetTarget(_Batching, _Writer):
         to refer to metadata ($key, event_time=$time).If None (default), no index is set.
     :param columns: Fields to be written to parquet. Will be extracted from events when an event is a dictionary
         (lists will be written as is). Use = notation for renaming fields (e.g. write_this=event_field).
-        Use $ notation to refer to metadata ($key, event_time=$time).
+        Use $ notation to refer to metadata ($key, event_time=$time). Can be a list of (name, type) tuples in order to set the
+        schema explicitly, e.g. ('my_field', 'str'). Supported types: str, int32, int, float32, float, bool, datetime.
         Optional. Defaults to None (will be inferred if event is dictionary).
     :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries.
         If True, columns will be inferred from data and used in place of explicit columns list if none was provided, or appended to the
