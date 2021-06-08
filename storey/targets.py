@@ -106,6 +106,7 @@ class _Writer:
         'str': pyarrow.string(),
         'int': pyarrow.int64(),
         'float': pyarrow.float64(),
+        'bool': pyarrow.bool_(),
         'datetime': pyarrow.timestamp('ns'),
     }
 
