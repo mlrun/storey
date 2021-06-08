@@ -3329,8 +3329,8 @@ def test_rename():
     termination_result = controller.await_termination()
     assert termination_result == [{'b': 1, 'c': 3, 'e': 5}]
 
-def test_redis_driver_write(redis_url):
-    driver = RedisDriver(redis_url)
+def test_redis_driver_write(redis):
+    driver = RedisDriver(redis)
     controller = build_flow([
         SyncEmitSource(),
         NoSqlTarget(Table('test', driver)),
@@ -3344,8 +3344,8 @@ def test_redis_driver_write(redis_url):
     assert data == {b"col1": b"0"}
 
 
-def test_redis_driver_join(redis_url):
-    driver= RedisDriver(redis_url)
+def test_redis_driver_join(redis):
+    driver= RedisDriver(redis)
     table = Table('test', driver)
     target = NoSqlTarget(table)
 

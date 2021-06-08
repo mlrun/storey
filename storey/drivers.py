@@ -6,6 +6,7 @@ from enum import Enum
 from functools import partial
 from typing import Optional
 from collections import OrderedDict
+from typing import Optional, Union
 import pandas as pd
 
 import redis
@@ -515,19 +516,14 @@ class RedisType(Enum):
 
 
 class RedisDriver(Driver):
-    def __init__(self, connection_string: str = None,
+    def __init__(self, redis_client: Optional[Union[redis.Redis, rediscluster.RedisCluster]] = None,
                  redis_type: RedisType = RedisType.STANDALONE,
                  key_prefix: str = "",
                  aggregation_attribute_prefix: str = 'aggr_',
                  aggregation_time_attribute_prefix: str = 't_'):
 
-        connection_string = connection_string or os.getenv('REDIS_CONNECTION')
-        if not connection_string:
-            raise ValueError('Missing connection_string parameter or REDIS_CONNECTION '
-                             'environment variable')
-
-        self._conn_str = connection_string
-        self._redis = None
+        self._redis = redis_client
+        self._conn_str = os.getenv('REDIS_CONNECTION', 'redis://localhost:6379')
         self._key_prefix = key_prefix
         self._type = redis_type
         self._aggregation_attribute_prefix = aggregation_attribute_prefix

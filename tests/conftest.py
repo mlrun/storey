@@ -1,6 +1,7 @@
 import os
+import fakeredis
 import pytest
 
 @pytest.fixture
-def redis_url():
-    return os.environ.get('REDIS_CONNECTION', 'redis://localhost:6379')
+def redis():
+    return fakeredis.FakeRedis()
