@@ -98,7 +98,9 @@ class _Writer:
 
     _type_string_to_pyarrow_type = {
         'str': pyarrow.string(),
+        'int32': pyarrow.int32(),
         'int': pyarrow.int64(),
+        'float32': pyarrow.float32(),
         'float': pyarrow.float64(),
         'bool': pyarrow.bool_(),
         'datetime': pyarrow.timestamp('ns'),
