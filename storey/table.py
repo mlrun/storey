@@ -993,6 +993,13 @@ class LastValue(AggregationValue):
     def get_update_expression(self, old):
         return f'{self.value}'
 
+    def reset(self, value=None):
+        self.time = -math.inf
+        if value is None:
+            self.value = self.default_value
+        else:
+            self.value = value
+
 
 class FirstValue(AggregationValue):
     name = 'first'
