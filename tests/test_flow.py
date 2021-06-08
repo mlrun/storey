@@ -2581,8 +2581,8 @@ def test_csv_none_value_first_row(tmpdir):
         assert read_back_df.dtypes.to_dict()[c] == data.dtypes.to_dict()[c]
 
 
-def test_redis_driver_write(redis_url):
-    driver = RedisDriver(redis_url)
+def test_redis_driver_write(redis):
+    driver = RedisDriver(redis)
     controller = build_flow([
         SyncEmitSource(),
         NoSqlTarget(Table('test', driver)),
@@ -2596,8 +2596,8 @@ def test_redis_driver_write(redis_url):
     assert data == {b"col1": b"0"}
 
 
-def test_redis_driver_join(redis_url):
-    driver= RedisDriver(redis_url)
+def test_redis_driver_join(redis):
+    driver= RedisDriver(redis)
     table = Table('test', driver)
     target = NoSqlTarget(table)
 
