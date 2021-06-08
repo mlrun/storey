@@ -4,8 +4,8 @@ python:
   - "3.7"
   - "3.8"
 
-services:
-  - redis-server
+before_script:
+    - sudo redis-server /etc/redis/redis.conf
 
 install:
   - make dev-env
