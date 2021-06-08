@@ -268,7 +268,7 @@ class QueryByKey(AggregateByKey):
         if self.key_extractor:
             if element:
                 key = self.key_extractor(element)
-            if key is None or element is None:
+            if key is None or key == [None] or element is None:
                 event.body = None
                 await self._do_downstream(event)
                 return

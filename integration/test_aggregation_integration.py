@@ -1166,7 +1166,7 @@ def test_aggregate_multiple_keys(setup_teardown_test):
     controller = build_flow([
         SyncEmitSource(),
         QueryByKey(['number_of_stuff_sum_1h'],
-                   other_table, keys=['first_name', 'last_name']),
+                   other_table, key=['first_name', 'last_name']),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -1299,7 +1299,7 @@ def test_separate_aggregate_steps(setup_teardown_test):
     controller = build_flow([
         SyncEmitSource(),
         QueryByKey(['number_of_stuff_avg_1h', 'number_of_stuff2_sum_2h'],
-                   other_table, keys=['first_name']),
+                   other_table, key=['first_name']),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -1344,3 +1344,23 @@ def test_write_read_first_last(setup_teardown_test):
 
     assert result == [{'mykey': 'onekey', 'attr_first_1h': 0.0, 'attr_last_1h': 9.0},
                       {'mykey': 'onekey', 'attr_first_1h': 0.0, 'attr_last_1h': 90.0}]
+
+
+def test_non_existing_key_query_by_key_from_v3io_key_is_list(setup_teardown_test):
+    table = Table(setup_teardown_test, V3ioDriver())
+    df = pd.DataFrame([['katya', 'green', 'hod hasharon'], ['dina', 'blue', 'ramat gan']], columns=['name', 'color', 'city'])
+    controller = build_flow([
+        DataframeSource(df, key_field='name'),
+        NoSqlTarget(table),
+    ]).run()
+    controller.await_termination()
+
+    controller = build_flow([
+        SyncEmitSource(),
+        QueryByKey(["color"], table, key=["name"]),
+        QueryByKey(["city"], table, key="name"),
+    ]).run()
+
+    controller.emit({'nameeeee': 'katya'}, 'katya')
+    controller.terminate()
+    controller.await_termination()
