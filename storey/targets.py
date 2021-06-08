@@ -22,7 +22,7 @@ from .utils import url_to_file_system, stringify_key
 
 class _Writer:
     def __init__(self, columns: Union[str, List[Union[str, Tuple[str, str]]], None], infer_columns_from_data: Optional[bool],
-                 index_cols: Union[str, List[Union[str, Tuple[str, str]]], None] = None, partition_cols: Union[str, List[str], None] = None,
+                 index_cols: Union[str, List[str], None] = None, partition_cols: Union[str, List[str], None] = None,
                  retain_dict: bool = False, storage_options: Optional[dict] = None):
         if infer_columns_from_data is None:
             infer_columns_from_data = not bool(columns)
@@ -66,26 +66,20 @@ class _Writer:
         else:
             columns_no_types = columns
 
-        index_column_types = []
-        if index_cols and isinstance(index_cols[0], Tuple):
-            index_columns_no_types = []
-            for index_col in index_cols:
-                name, column_type = index_col
-                index_columns_no_types.append(name)
-                index_column_types.append(column_type)
-        else:
-            index_columns_no_types = index_cols
-
         self._initial_columns = parse_notation(columns_no_types, self._metadata_columns, self._rename_columns)
-        self._initial_index_cols = parse_notation(index_columns_no_types, self._metadata_index_columns, self._rename_index_columns)
+        self._initial_index_cols = parse_notation(index_cols, self._metadata_index_columns, self._rename_index_columns)
 
-        column_types.extend(index_column_types)
         if column_types:
             fields = []
+            for index_column in self._initial_index_cols:
+                field = pyarrow.field(index_column, pyarrow.string(), True)
+                fields.append(field)
             for i in range(len(column_types)):
                 type_name = column_types[i]
                 typ = self._type_string_to_pyarrow_type[type_name]
-                name = self._initial_columns[i] if i < len(self._initial_columns) else self._initial_index_cols
+                name = self._initial_columns[i]
+                if name in partition_cols:
+                    continue
                 field = pyarrow.field(name, typ, True)
                 fields.append(field)
             self._schema = pyarrow.schema(fields)
