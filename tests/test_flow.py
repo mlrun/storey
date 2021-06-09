@@ -3456,7 +3456,7 @@ def test_redis_driver_write(redis):
 
 
 def test_redis_driver_join(redis):
-    driver= RedisDriver(redis)
+    driver = RedisDriver(redis)
     table = Table('test', driver)
     target = NoSqlTarget(table)
 
