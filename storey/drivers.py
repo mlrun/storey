@@ -7,6 +7,7 @@ from functools import partial
 from typing import Optional
 from collections import OrderedDict
 from typing import Optional, Union
+from typing import List, Optional, Union
 import pandas as pd
 
 import redis
@@ -528,6 +529,8 @@ class RedisDriver(Driver):
         self._type = redis_type
         self._aggregation_attribute_prefix = aggregation_attribute_prefix
         self._aggregation_time_attribute_prefix = aggregation_time_attribute_prefix
+        self._aggregation_prefixes = (self._aggregation_attribute_prefix,
+                                      self._aggregation_time_attribute_prefix)
 
     @property
     def redis(self):
@@ -545,23 +548,29 @@ class RedisDriver(Driver):
         redis_key = self.make_key(table_path, key)
         return await asyncify(self.redis.hset)(redis_key, mapping=additional_data)
 
-    async def _load_by_key(self, container, table_path, key, attributes):
-        redis_key = self.make_key(table_path, key)
-        aggregation_prefixes = (self._aggregation_attribute_prefix,
-                                self._aggregation_time_attribute_prefix)
+    async def _get_all_fields(self, redis_key: str):
+        try:
+            values = await asyncify(self.redis.hgetall)(redis_key)
+        except redis.ResponseError as e:
+            raise RedisError(f'Failed to get key {redis_key}. Response error was: {e}')
+        return {key: val for key, val in values.items()
+                if not str(key).startswith(self._aggregation_prefixes)}
+
+    async def _get_specific_fields(self, redis_key: str, attributes: List[str]):
         non_aggregation_attrs = [
             name for name in attributes
-            if not name.startswith(aggregation_prefixes)
+            if not name.startswith(self._aggregation_prefixes)
         ]
-
-        if attributes == "*":
-            command = partial(asyncify(self.redis.hgetall), redis_key)
-        else:
-            command = partial(asyncify(self.redis.hmget), redis_key, non_aggregation_attrs)
-
         try:
-            values = await command()
+            values = await asyncify(self.redis.hmget)(redis_key, non_aggregation_attrs)
         except redis.ResponseError as e:
-            raise RedisError(f'Failed to get item. Response error was: {e}')
+            raise RedisError(f'Failed to get key {redis_key}. Response error was: {e}')
+        return values
 
+    async def _load_by_key(self, container, table_path, key, attributes):
+        redis_key = self.make_key(table_path, key)
+        if attributes == "*":
+            values = await self._get_all_fields(redis_key)
+        else:
+            values = await self._get_specific_fields(redis_key, attributes)
         return values
