@@ -91,7 +91,7 @@ def test_csv_reader_from_v3io_error_on_file_not_found():
 
 
 async def async_test_write_csv_to_v3io(v3io_teardown_csv):
-    controller = await build_flow([
+    controller = build_flow([
         AsyncEmitSource(),
         CSVTarget(f'v3io:///{v3io_teardown_csv}', columns=['n', 'n*10'], header=True)
     ]).run()

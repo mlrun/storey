@@ -98,7 +98,7 @@ def test_csv_reader_from_azure_error_on_file_not_found():
 
 
 async def async_test_write_csv_to_azure(azure_teardown_csv):
-    controller = await build_flow([
+    controller = build_flow([
         AsyncEmitSource(),
         CSVTarget(f'az:///{azure_teardown_csv}', columns=['n', 'n*10'], header=True, storage_options=storage_options)
     ]).run()

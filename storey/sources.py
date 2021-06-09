@@ -393,7 +393,7 @@ class AsyncEmitSource(Flow):
         if event is not _termination_obj:
             self._raise_on_error()
 
-    async def run(self):
+    def run(self):
         """Starts the flow"""
         self._closeables = super().run()
         loop_task = asyncio.get_running_loop().create_task(self._run_loop())
