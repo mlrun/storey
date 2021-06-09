@@ -587,6 +587,7 @@ class CSVSource(_IterableSource):
                         for i in range(len(header)):
                             field_name_to_index[header[i]] = i
                     for line in f:
+                        create_event = True
                         parsed_line = next(csv.reader([line]))
                         if self._type_inference:
                             if not self._types:
@@ -619,20 +620,33 @@ class CSVSource(_IterableSource):
                                 for single_key_field in self._key_field:
                                     if self._with_header and isinstance(single_key_field, str):
                                         single_key_field = field_name_to_index[single_key_field]
+                                    if parsed_line[single_key_field] is None:
+                                        create_event = False
+                                        break
                                     key.append(parsed_line[single_key_field])
                             else:
                                 key_field = self._key_field
                                 if self._with_header and isinstance(key_field, str):
                                     key_field = field_name_to_index[key_field]
                                 key = parsed_line[key_field]
-                        if self._time_field:
-                            time_field = self._time_field
-                            if self._with_header and isinstance(time_field, str):
-                                time_field = field_name_to_index[time_field]
-                            time_as_datetime = parsed_line[time_field]
+                                if key is None:
+                                    create_event = False
+                        if create_event:
+                            if self._time_field:
+                                time_field = self._time_field
+                                if self._with_header and isinstance(time_field, str):
+                                    time_field = field_name_to_index[time_field]
+                                time_as_datetime = parsed_line[time_field]
+                            else:
+                                time_as_datetime = datetime.now()
+                            event = Event(element, key=key, time=time_as_datetime)
+                            self._event_buffer.put(event)
                         else:
-                            time_as_datetime = datetime.now()
-                        self._event_buffer.put(Event(element, key=key, time=time_as_datetime))
+                            if self.context:
+                                self.context.logger.error(
+                                    f"For {parsed_line} value of key {key_field} is None"
+                                )
+
         except BaseException as ex:
             self._event_buffer.put(ex)
         self._event_buffer.put(_termination_obj)
@@ -690,6 +704,7 @@ class DataframeSource(_IterableSource):
     async def _run_loop(self):
         for df in self._dfs:
             for namedtuple in df.itertuples():
+                create_event = True
                 body = namedtuple._asdict()
                 index = body.pop('Index')
                 if len(df.index.names) > 1:
@@ -703,17 +718,28 @@ class DataframeSource(_IterableSource):
                     if isinstance(self._key_field, list):
                         key = []
                         for key_field in self._key_field:
+                            if body[key_field] is None:
+                                create_event = False
+                                break
                             key.append(body[key_field])
                     else:
                         key = body[self._key_field]
-                time = None
-                if self._time_field:
-                    time = body[self._time_field]
-                id = None
-                if self._id_field:
-                    id = body[self._id_field]
-                event = Event(body, key=key, time=time, id=id)
-                await self._do_downstream(event)
+                        if key is None:
+                            create_event = False
+                if create_event:
+                    time = None
+                    if self._time_field:
+                        time = body[self._time_field]
+                    id = None
+                    if self._id_field:
+                        id = body[self._id_field]
+                    event = Event(body, key=key, time=time, id=id)
+                    await self._do_downstream(event)
+                else:
+                    if self.context:
+                        self.context.logger.error(
+                            f"For {body} value of key {key_field} is None"
+                        )
         return await self._do_downstream(_termination_obj)
 
 

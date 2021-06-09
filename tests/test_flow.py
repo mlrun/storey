@@ -2556,6 +2556,20 @@ def test_custom_string_time_input():
     assert result.time == datetime(2021, 5, 9, 14, 5, 27, tzinfo=pytz.utc)
 
 
+def test_none_key_is_not_written():
+    data = pd.DataFrame({'first_name': ['moshe', None, 'katya'], 'some_data': [1, 2, 3]})
+    data.set_index(keys=['first_name'], inplace=True)
+
+    controller = build_flow([
+        DataframeSource(data, key_field=['first_name']),
+        Reduce([], append_and_return),
+    ]).run()
+    result = controller.await_termination()
+    expected = [{'first_name': 'moshe', 'some_data': 1}, {'first_name': 'katya', 'some_data': 3}]
+
+    assert result == expected
+
+
 def test_csv_none_value_first_row(tmpdir):
     out_file_par = f'{tmpdir}/test_csv_none_value_first_row_{uuid.uuid4().hex}.parquet'
     out_file_csv = f'{tmpdir}/test_csv_none_value_first_row_{uuid.uuid4().hex}.csv'
