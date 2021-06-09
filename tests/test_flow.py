@@ -2567,8 +2567,7 @@ def test_none_key_is_not_written():
     result = controller.await_termination()
     expected = [{'first_name': 'moshe', 'some_data': 1}, {'first_name': 'katya', 'some_data': 3}]
 
-    assert result == expected, \
-        f'actual did not match expected. \n actual: {result} \n expected: {expected}'
+    assert result == expected
 
 
 def test_csv_none_value_first_row(tmpdir):

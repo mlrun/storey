@@ -638,8 +638,8 @@ class CSVSource(_IterableSource):
                             time_as_datetime = parsed_line[time_field]
                         else:
                             time_as_datetime = datetime.now()
-                        event = Event(element, key=key, time=time_as_datetime)
                         if create_event:
+                            event = Event(element, key=key, time=time_as_datetime)
                             self._event_buffer.put(event)
                         else:
                             if self.context:
