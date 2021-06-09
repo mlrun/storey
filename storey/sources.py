@@ -631,14 +631,14 @@ class CSVSource(_IterableSource):
                                 key = parsed_line[key_field]
                                 if key is None:
                                     create_event = False
-                        if self._time_field:
-                            time_field = self._time_field
-                            if self._with_header and isinstance(time_field, str):
-                                time_field = field_name_to_index[time_field]
-                            time_as_datetime = parsed_line[time_field]
-                        else:
-                            time_as_datetime = datetime.now()
                         if create_event:
+                            if self._time_field:
+                                time_field = self._time_field
+                                if self._with_header and isinstance(time_field, str):
+                                    time_field = field_name_to_index[time_field]
+                                time_as_datetime = parsed_line[time_field]
+                            else:
+                                time_as_datetime = datetime.now()
                             event = Event(element, key=key, time=time_as_datetime)
                             self._event_buffer.put(event)
                         else:
@@ -726,13 +726,13 @@ class DataframeSource(_IterableSource):
                         key = body[self._key_field]
                         if key is None:
                             create_event = False
-                time = None
-                if self._time_field:
-                    time = body[self._time_field]
-                id = None
-                if self._id_field:
-                    id = body[self._id_field]
                 if create_event:
+                    time = None
+                    if self._time_field:
+                        time = body[self._time_field]
+                    id = None
+                    if self._id_field:
+                        id = body[self._id_field]
                     event = Event(body, key=key, time=time, id=id)
                     await self._do_downstream(event)
                 else:
