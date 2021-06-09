@@ -86,9 +86,6 @@ class FlowControllerBase:
             else:
                 key = []
                 for field in self._key_field:
-                    if body[field] is None:
-                        key = [None]
-                        break
                     key.append(body[field])
         if not event_time and self._time_field:
             event_time = _convert_to_datetime(body[self._time_field], self._time_format)
