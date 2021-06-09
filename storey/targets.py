@@ -10,6 +10,7 @@ from typing import Optional, Union, List, Callable, Tuple
 from urllib.parse import urlparse
 
 import pandas as pd
+import pyarrow
 import v3io_frames as frames
 
 from . import Driver
@@ -20,7 +21,7 @@ from .utils import url_to_file_system, stringify_key
 
 
 class _Writer:
-    def __init__(self, columns: Union[str, List[str], None], infer_columns_from_data: Optional[bool],
+    def __init__(self, columns: Union[str, List[Union[str, Tuple[str, str]]], None], infer_columns_from_data: Optional[bool],
                  index_cols: Union[str, List[str], None] = None, partition_cols: Union[str, List[str], None] = None,
                  retain_dict: bool = False, storage_options: Optional[dict] = None):
         if infer_columns_from_data is None:
@@ -55,8 +56,35 @@ class _Writer:
                     result.append(col)
             return result
 
-        self._initial_columns = parse_notation(columns, self._metadata_columns, self._rename_columns)
+        column_types = []
+        if columns and isinstance(columns[0], Tuple):
+            columns_no_types = []
+            for column in columns:
+                name, column_type = column
+                columns_no_types.append(name)
+                column_types.append(column_type)
+        else:
+            columns_no_types = columns
+
+        self._initial_columns = parse_notation(columns_no_types, self._metadata_columns, self._rename_columns)
         self._initial_index_cols = parse_notation(index_cols, self._metadata_index_columns, self._rename_index_columns)
+
+        if column_types:
+            fields = []
+            for index_column in self._initial_index_cols:
+                field = pyarrow.field(index_column, pyarrow.string(), True)
+                fields.append(field)
+            for i in range(len(column_types)):
+                type_name = column_types[i]
+                typ = self._type_string_to_pyarrow_type[type_name]
+                name = self._initial_columns[i]
+                if name in partition_cols:
+                    continue
+                field = pyarrow.field(name, typ, True)
+                fields.append(field)
+            self._schema = pyarrow.schema(fields)
+        else:
+            self._schema = None
 
         if isinstance(partition_cols, str):
             partition_cols = [partition_cols]
@@ -67,6 +95,16 @@ class _Writer:
             if cols_both_partition_and_index:
                 raise ValueError(f'The following columns are used both for partitioning and indexing, which is not allowed: '
                                  f'{list(cols_both_partition_and_index)}')
+
+    _type_string_to_pyarrow_type = {
+        'str': pyarrow.string(),
+        'int32': pyarrow.int32(),
+        'int': pyarrow.int64(),
+        'float32': pyarrow.float32(),
+        'float': pyarrow.float64(),
+        'bool': pyarrow.bool_(),
+        'datetime': pyarrow.timestamp('ns'),
+    }
 
     def _init(self):
         self._columns = copy.copy(self._initial_columns)
@@ -308,7 +346,8 @@ class ParquetTarget(_Batching, _Writer):
         to refer to metadata ($key, event_time=$time).If None (default), no index is set.
     :param columns: Fields to be written to parquet. Will be extracted from events when an event is a dictionary
         (lists will be written as is). Use = notation for renaming fields (e.g. write_this=event_field).
-        Use $ notation to refer to metadata ($key, event_time=$time).
+        Use $ notation to refer to metadata ($key, event_time=$time). Can be a list of (name, type) tuples in order to set the
+        schema explicitly, e.g. ('my_field', 'str'). Supported types: str, int32, int, float32, float, bool, datetime.
         Optional. Defaults to None (will be inferred if event is dictionary).
     :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries.
         If True, columns will be inferred from data and used in place of explicit columns list if none was provided, or appended to the
@@ -330,7 +369,8 @@ class ParquetTarget(_Batching, _Writer):
     :type storage_options: dict
     """
 
-    def __init__(self, path: str, index_cols: Union[str, List[str], None] = None, columns: Union[str, List[str], None] = None,
+    def __init__(self, path: str, index_cols: Union[str, List[str], None] = None,
+                 columns: Union[str, List[Union[str, Tuple[str, str]]], None] = None,
                  partition_cols: Union[str, List[Union[str, Tuple[(str, int)]]], None] = None,
                  infer_columns_from_data: Optional[bool] = None, max_events: Optional[int] = None,
                  flush_after_seconds: Optional[int] = None, **kwargs):
@@ -401,7 +441,10 @@ class ParquetTarget(_Batching, _Writer):
         if pd.core.dtypes.common.is_datetime64_dtype(df.index):
             df.index = df.index.floor('u')
         with self._file_system.open(file_path, 'wb') as file:
-            df.to_parquet(path=file, index=bool(self._index_cols))
+            kwargs = {}
+            if self._schema is not None:
+                kwargs['schema'] = self._schema
+            df.to_parquet(path=file, index=bool(self._index_cols), **kwargs)
 
 
 class TSDBTarget(_Batching, _Writer):
