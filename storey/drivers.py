@@ -1,6 +1,7 @@
 import base64
 import json
 import os
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 from functools import partial
@@ -550,7 +551,32 @@ class RedisDriver(Driver):
 
     async def _save_key(self, container, table_path, key, aggr_item, partitioned_by_key, additional_data):
         redis_key = self.make_key(table_path, key)
-        return await asyncify(self.redis.hset)(redis_key, mapping=additional_data)
+        data = {key: str(val) for key, val in additional_data.items()}
+        return await asyncify(self.redis.hset)(redis_key, mapping=data)
+
+    async def _describe(self, container, stream_path):
+        class Info:
+            shard_count = 1
+        return Info()
+
+    async def _put_records(self, container, stream_path, payload):
+        @dataclass
+        class Output:
+            failed_record_count: int
+
+        @dataclass
+        class Response:
+            output: Output
+
+        redis_key = f"{container}:{stream_path}"
+        with self.redis.pipeline(transaction=False) as p:
+            for data in payload:
+                p.xadd(redis_key, data)
+        try:
+            await asyncify(p.execute)()
+        except redis.ResponseError:
+            return Response(Output(failed_record_count=len(payload)))
+        return Response(Output(failed_record_count=0))
 
     async def _get_all_fields(self, redis_key: str):
         try:
