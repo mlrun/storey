@@ -569,14 +569,13 @@ class RedisDriver(Driver):
             output: Output
 
         redis_key = f"{container}:{stream_path}"
-        with self.redis.pipeline(transaction=False) as p:
-            for data in payload:
-                p.xadd(redis_key, data)
-        try:
-            await asyncify(p.execute)()
-        except redis.ResponseError:
-            return Response(Output(failed_record_count=len(payload)))
-        return Response(Output(failed_record_count=0))
+        failed = 0
+        for data in payload:
+            try:
+                await asyncify(self.redis.xadd)(redis_key, json.loads(data['data']))
+            except redis.ResponseError:
+                failed += 1
+        return Response(Output(failed_record_count=failed))
 
     async def _get_all_fields(self, redis_key: str):
         try:
