@@ -97,7 +97,7 @@ def test_csv_reader_from_s3_error_on_file_not_found():
 
 
 async def async_test_write_csv_to_s3(s3_teardown_csv):
-    controller = await build_flow([
+    controller = build_flow([
         AsyncEmitSource(),
         CSVTarget(f's3:///{s3_teardown_csv}', columns=['n', 'n*10'], header=True)
     ]).run()

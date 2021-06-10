@@ -31,7 +31,7 @@ The same example can also be run from within an async context:
 
     from storey import build_flow, AsyncEmitSource, CSVTarget
 
-    controller = await build_flow([
+    controller = build_flow([
         AsyncEmitSource(),
         CSVTarget('myfile.csv', columns=['n', 'n*10'], header=True)
     ]).run()

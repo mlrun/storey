@@ -368,7 +368,7 @@ async def async_test_write_parquet_flush(tmpdir):
     mock = MagicMock(return_value=asyncio.get_running_loop().create_task(f()))
     target._emit = mock
 
-    controller = await build_flow([
+    controller = build_flow([
         AsyncEmitSource(),
         target,
     ]).run()
@@ -734,7 +734,7 @@ def test_double_completion():
 
 
 async def async_test_async_double_completion():
-    controller = await build_flow([
+    controller = build_flow([
         AsyncEmitSource(),
         Complete(),
         Complete(),
@@ -775,7 +775,7 @@ async def async_test_async_awaitable_result_error():
     def boom(_):
         raise ValueError('boom')
 
-    controller = await build_flow([
+    controller = build_flow([
         AsyncEmitSource(),
         Map(boom),
         Complete()
@@ -794,7 +794,7 @@ def test_async_awaitable_result_error():
 
 
 async def async_test_async_source():
-    controller = await build_flow([
+    controller = build_flow([
         AsyncEmitSource(),
         Map(lambda x: x + 1, termination_result_fn=lambda _, x: x),
         [
@@ -819,7 +819,7 @@ def test_async_source():
 
 
 async def async_test_error_async_flow():
-    controller = await build_flow([
+    controller = build_flow([
         AsyncEmitSource(),
         Map(lambda x: x + 1),
         Map(RaiseEx(5).raise_ex),
@@ -847,7 +847,7 @@ def test_awaitable_result_error_in_async_downstream():
 
 
 async def async_test_async_awaitable_result_error_in_async_downstream():
-    controller = await build_flow([
+    controller = build_flow([
         AsyncEmitSource(),
         SendToHttp(lambda _: HttpRequest('GET', 'bad_url', ''), lambda _, response: response.status),
         Complete()
@@ -1198,7 +1198,7 @@ def test_batch_with_timeout():
 
 async def async_test_write_csv(tmpdir):
     file_path = f'{tmpdir}/test_write_csv/out.csv'
-    controller = await build_flow([
+    controller = build_flow([
         AsyncEmitSource(),
         CSVTarget(file_path, columns=['n', 'n*10'], header=True)
     ]).run()
@@ -1224,7 +1224,7 @@ async def async_test_write_csv_error(tmpdir):
     file_path = f'{tmpdir}/test_write_csv_error.csv'
 
     write_csv = CSVTarget(file_path)
-    controller = await build_flow([
+    controller = build_flow([
         AsyncEmitSource(),
         write_csv
     ]).run()
@@ -2177,7 +2177,7 @@ def test_time_parsed_on_emit():
 
 
 async def async_test_async_metadata_fields():
-    controller = await build_flow([
+    controller = build_flow([
         AsyncEmitSource(key_field='mykey', time_field='mytime'),
         Reduce([], append_and_return, full_event=True)
     ]).run()
@@ -2589,4 +2589,3 @@ def test_csv_none_value_first_row(tmpdir):
 
     for c in columns:
         assert read_back_df.dtypes.to_dict()[c] == data.dtypes.to_dict()[c]
-

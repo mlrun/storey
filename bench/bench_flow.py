@@ -4,7 +4,8 @@ from datetime import datetime, timedelta
 import pandas as pd
 import pytest
 
-from storey import SyncEmitSource, Map, Reduce, build_flow, Complete, Driver, FieldAggregator, AggregateByKey, Table, Batch, AsyncEmitSource, \
+from storey import SyncEmitSource, Map, Reduce, build_flow, Complete, Driver, FieldAggregator, AggregateByKey, Table, Batch, \
+    AsyncEmitSource, \
     DataframeSource
 from storey.dtypes import SlidingWindows
 
@@ -31,7 +32,7 @@ def test_simple_flow_n_events(benchmark, n):
 @pytest.mark.parametrize('n', [0, 1, 1000, 5000])
 def test_simple_async_flow_n_events(benchmark, n):
     async def async_inner():
-        controller = await build_flow([
+        controller = build_flow([
             AsyncEmitSource(),
             Map(lambda x: x + 1),
             Reduce(0, lambda acc, x: acc + x),
