@@ -126,7 +126,7 @@ class _Writer:
                 col = f'igzpart_hash{hash_into}_{col}'
                 if isinstance(val, list):
                     val = '.'.join(map(str, val))
-                val = hash(val) / hash_into
+                val = hash(val) % hash_into
             elif is_meta:
                 col = f'igzpart_{col}'
 
