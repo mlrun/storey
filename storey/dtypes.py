@@ -4,6 +4,7 @@ from typing import Union, Optional, Callable, List
 
 from .aggregation_utils import get_all_raw_aggregates
 from .utils import parse_duration, bucketPerWindow, get_one_unit_of_duration
+import numpy
 
 _termination_obj = object()
 
@@ -111,13 +112,28 @@ class SlidingWindow(WindowBase):
         return datetime.now().timestamp() * 1000
 
 
+def get_window_optimal_size_millis(windows_tuples):
+    windows_list = []
+    for window_tuple in windows_tuples:
+        windows_list.append(window_tuple[0])
+    return numpy.lcm.reduce(windows_list)
+
+
+def get_window_optimal_period_millis(windows_tuples):
+    windows_list = []
+    for window_tuple in windows_tuples:
+        windows_list.append(window_tuple[0])
+    return numpy.gcd.reduce(windows_list)
+
+
 class WindowsBase:
     def __init__(self, period, windows):
         self.max_window_millis = windows[-1][0]
         self.smallest_window_millis = windows[0][0]
         self.period_millis = period
         self.windows = windows  # list of tuples of the form (3600000, '1h')
-        self.total_number_of_buckets = int(self.max_window_millis / self.period_millis)
+        self.window_millis = get_window_optimal_size_millis(windows)
+        self.total_number_of_buckets = int(self.window_millis / self.period_millis)
 
     def merge(self, new):
         if self.period_millis != new.period_millis:
@@ -164,7 +180,8 @@ class FixedWindows(WindowsBase):
         # The period should be a divisor of the unit of the smallest window,
         # for example if the smallest request window is 2h, the period will be 1h / `bucketPerWindow`
         self.smallest_window_unit_millis = get_one_unit_of_duration(windows_tuples[0][1])
-        WindowsBase.__init__(self, self.smallest_window_unit_millis / bucketPerWindow, windows_tuples)
+        period = get_window_optimal_period_millis(windows_tuples) / bucketPerWindow
+        WindowsBase.__init__(self, period, windows_tuples)
 
     def round_up_time_to_window(self, timestamp):
         return int(
@@ -174,7 +191,9 @@ class FixedWindows(WindowsBase):
         return int(timestamp / self.period_millis) * self.period_millis
 
     def get_window_start_time_by_time(self, reference_timestamp):
-        return self.get_period_by_time(reference_timestamp)
+        window_seconds = int(self.window_millis / 1000)
+        timestamp_seconds = int(reference_timestamp / 1000)
+        return int(timestamp_seconds / window_seconds) * window_seconds * 1000
 
 
 class SlidingWindows(WindowsBase):
