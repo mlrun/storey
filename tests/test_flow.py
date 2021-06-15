@@ -2595,8 +2595,8 @@ def test_csv_none_value_string(tmpdir):
     out_file_par = f'{tmpdir}/test_csv_none_value_first_row_{uuid.uuid4().hex}.parquet'
     out_file_csv = f'{tmpdir}/test_csv_none_value_first_row_{uuid.uuid4().hex}.csv'
 
-    columns = ['first_name', "str"]
-    data = pd.DataFrame([['katya', "strrrr"], ['dina', None]],
+    columns = ['first_name', 'str']
+    data = pd.DataFrame([['katya', 'strrrr'], ['dina', None]],
                         columns=columns)
     data.to_csv(out_file_csv)
 
@@ -2612,4 +2612,4 @@ def test_csv_none_value_string(tmpdir):
     u.to_parquet(out_file_par)
     r2 = pd.read_parquet(out_file_par)
 
-    assert r2["str"].compare(read_back_df["str"]).empty
+    assert r2['str'].compare(read_back_df['str']).empty
