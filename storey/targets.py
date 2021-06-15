@@ -22,7 +22,7 @@ from .utils import url_to_file_system, stringify_key
 
 class _Writer:
     def __init__(self, columns: Union[str, List[Union[str, Tuple[str, str]]], None], infer_columns_from_data: Optional[bool],
-                 index_cols: Union[str, List[str], None] = None, partition_cols: Union[str, List[str], None] = None,
+                 index_cols: Union[str, List[Union[str, Tuple[str, str]]], None] = None, partition_cols: Union[str, List[str], None] = None,
                  retain_dict: bool = False, storage_options: Optional[dict] = None):
         if infer_columns_from_data is None:
             infer_columns_from_data = not bool(columns)
@@ -56,29 +56,37 @@ class _Writer:
                     result.append(col)
             return result
 
-        column_types = []
-        if columns and isinstance(columns[0], Tuple):
-            columns_no_types = []
-            for column in columns:
-                name, column_type = column
-                columns_no_types.append(name)
-                column_types.append(column_type)
-        else:
-            columns_no_types = columns
+        def unzip_cols(columns):
+            column_types = []
+            if columns and isinstance(columns[0], Tuple):
+                columns_no_types = []
+                for column in columns:
+                    name, column_type = column
+                    columns_no_types.append(name)
+                    column_types.append(column_type)
+            else:
+                columns_no_types = columns
+            return columns_no_types, column_types
+
+        columns_no_types, column_types = unzip_cols(columns)
+        index_cols_no_types, index_cols_column_types = unzip_cols(index_cols)
 
         self._initial_columns = parse_notation(columns_no_types, self._metadata_columns, self._rename_columns)
-        self._initial_index_cols = parse_notation(index_cols, self._metadata_index_columns, self._rename_index_columns)
+        self._initial_index_cols = parse_notation(index_cols_no_types, self._metadata_index_columns, self._rename_index_columns)
 
         if column_types:
             fields = []
-            for index_column in self._initial_index_cols:
-                field = pyarrow.field(index_column, pyarrow.string(), True)
+            for i in range(len(index_cols_column_types)):
+                index_column = index_cols_no_types[i]
+                type_name = index_cols_column_types[i]
+                typ = self._type_string_to_pyarrow_type[type_name]
+                field = pyarrow.field(index_column, typ, True)
                 fields.append(field)
             for i in range(len(column_types)):
                 type_name = column_types[i]
                 typ = self._type_string_to_pyarrow_type[type_name]
                 name = self._initial_columns[i]
-                if name in partition_cols:
+                if partition_cols and name in partition_cols:
                     continue
                 field = pyarrow.field(name, typ, True)
                 fields.append(field)
