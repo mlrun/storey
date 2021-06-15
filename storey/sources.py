@@ -544,6 +544,8 @@ class CSVSource(_IterableSource):
     def _parse_field(self, field, index):
         typ = self._types[index]
         if typ == 's':
+            if field == '':
+                return None
             return field
         if typ == 'f':
             return float(field) if field != '' else math.nan

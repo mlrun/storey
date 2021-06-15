@@ -2589,3 +2589,27 @@ def test_csv_none_value_first_row(tmpdir):
 
     for c in columns:
         assert read_back_df.dtypes.to_dict()[c] == data.dtypes.to_dict()[c]
+
+
+def test_csv_none_value_string(tmpdir):
+    out_file_par = f'{tmpdir}/test_csv_none_value_first_row_{uuid.uuid4().hex}.parquet'
+    out_file_csv = f'{tmpdir}/test_csv_none_value_first_row_{uuid.uuid4().hex}.csv'
+
+    columns = ['first_name', 'str']
+    data = pd.DataFrame([['katya', 'strrrr'], ['dina', None]],
+                        columns=columns)
+    data.to_csv(out_file_csv)
+
+    controller = build_flow([
+        CSVSource(out_file_csv, header=True, key_field='first_name', build_dict=True),
+        ParquetTarget(out_file_par)
+    ]).run()
+
+    controller.await_termination()
+    read_back_df = pd.read_parquet(out_file_par)
+
+    u = pd.read_csv(out_file_csv)
+    u.to_parquet(out_file_par)
+    r2 = pd.read_parquet(out_file_par)
+
+    assert r2['str'].compare(read_back_df['str']).empty
