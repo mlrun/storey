@@ -242,18 +242,17 @@ def test_dataframe_source_with_metadata():
 
 async def async_dataframe_source():
     df = pd.DataFrame([['hello', 1, 1.5], ['world', 2, 2.5]], columns=['string', 'int', 'float'])
-    controller = await build_flow([
+    termination_result = await build_flow([
         DataframeSource(df),
         Reduce([], append_and_return),
     ]).run_async()
 
-    termination_result = await controller.await_termination()
     expected = [{'string': 'hello', 'int': 1, 'float': 1.5}, {'string': 'world', 'int': 2, 'float': 2.5}]
     assert termination_result == expected
 
 
-def test_async_source():
-    asyncio.run(async_test_async_source())
+def test_async_dataframe_source():
+    asyncio.run(async_dataframe_source())
 
 
 def test_write_parquet_timestamp_nanosecs(tmpdir):
