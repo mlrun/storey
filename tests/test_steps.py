@@ -361,7 +361,7 @@ def test_flatten():
 def test_flatten_forces_full_event_false():
     controller = build_flow(
         [
-            SyncEmitSource(),
+            EmitSource(),
             Flatten(full_event=True),
             Assert().contains_all_of([1, 2, 3, 4, 5, 6])
         ]
