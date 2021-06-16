@@ -11,8 +11,7 @@ import pytest
 import pytz
 from aiohttp import InvalidURL
 
-from storey import build_flow, SyncEmitSource, Map, Filter, FlatMap, Reduce, MapWithState, CSVSource, Complete, \
-    AsyncEmitSource, Choice, \
+from storey import build_flow, EmitSource, Map, Filter, FlatMap, Reduce, MapWithState, CSVSource, Complete, Choice, \
     Event, Batch, Table, CSVTarget, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, \
     ParquetTarget, QueryByKey, \
     TSDBTarget, Extend, SendToHttp, HttpRequest, NoSqlTarget, NoopDriver, Driver, Recover, V3ioDriver, ParquetSource
@@ -37,7 +36,7 @@ class RaiseEx:
 
 def test_functional_flow():
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         Map(lambda x: x + 1),
         Filter(lambda x: x < 3),
         FlatMap(lambda x: [x, x * 10]),
@@ -53,7 +52,7 @@ def test_functional_flow():
 
 
 def test_multiple_upstreams():
-    source = SyncEmitSource()
+    source = EmitSource()
     map1 = Map(lambda x: x + 1)
     map2 = Map(lambda x: x * 10)
     reduce = Reduce(0, lambda x, y: x + y)
@@ -79,7 +78,7 @@ def test_recover():
 
     reduce = Reduce(0, lambda x, y: x + y)
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         Recover({ValueError: reduce}),
         Map(increment_maybe_boom),
         reduce
@@ -252,7 +251,7 @@ async def async_dataframe_source():
     assert termination_result == expected
 
 
-def test_async_dataframe_source():
+def test_async_source():
     asyncio.run(async_test_async_source())
 
 
@@ -310,7 +309,7 @@ def test_write_parquet_read_parquet(tmpdir):
     out_dir = f'{tmpdir}/test_write_parquet_read_parquet/{uuid.uuid4().hex}/'
     columns = ['my_int', 'my_string']
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         ParquetTarget(out_dir, columns=columns, partition_cols=[])
     ]).run()
 
@@ -334,7 +333,7 @@ def test_write_parquet_read_parquet_partitioned(tmpdir):
     out_dir = f'{tmpdir}/test_write_parquet_read_parquet_partitioned/{uuid.uuid4().hex}/'
     columns = ['my_int', 'my_string']
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         ParquetTarget(out_dir, partition_cols='my_int', columns=columns)
     ]).run()
 
@@ -369,7 +368,7 @@ async def async_test_write_parquet_flush(tmpdir):
     target._emit = mock
 
     controller = build_flow([
-        AsyncEmitSource(),
+        EmitSource(),
         target,
     ]).run()
 
@@ -391,7 +390,7 @@ def test_write_parquet_flush(tmpdir):
 
 def test_error_flow():
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         Map(lambda x: x + 1),
         Map(RaiseEx(500).raise_ex),
         Reduce(0, lambda acc, x: acc + x),
@@ -410,7 +409,7 @@ def test_error_flow():
 def test_error_recovery():
     reduce = Reduce(0, lambda acc, x: acc + x)
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         Map(lambda x: x + 1),
         Map(RaiseEx(5).raise_ex, recovery_step=reduce),
         reduce,
@@ -427,7 +426,7 @@ def test_error_recovery():
 def test_set_recovery_step():
     reduce = Reduce(0, lambda acc, x: acc + x)
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         Map(lambda x: x + 1),
         Map(RaiseEx(5).raise_ex).set_recovery_step(reduce),
         reduce,
@@ -444,7 +443,7 @@ def test_set_recovery_step():
 def test_error_specific_recovery():
     reduce = Reduce(0, lambda acc, x: acc + x)
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         Map(lambda x: x + 1),
         Map(RaiseEx(5).raise_ex, recovery_step={ATestException: reduce}),
         reduce,
@@ -461,7 +460,7 @@ def test_error_specific_recovery():
 def test_error_specific_recovery_check_exception():
     reduce = Reduce([], lambda acc, event: append_and_return(acc, type(event.error)), full_event=True)
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         Map(RaiseEx(2).raise_ex, recovery_step={ATestException: reduce}),
         reduce
     ]).run()
@@ -477,7 +476,7 @@ def test_error_specific_recovery_check_exception():
 def test_error_nonrecovery():
     reduce = Reduce(0, lambda acc, x: acc + x)
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         Map(lambda x: x + 1),
         Map(RaiseEx(5).raise_ex, recovery_step={ValueError: reduce}),
         reduce,
@@ -496,7 +495,7 @@ def test_error_nonrecovery():
 def test_error_recovery_containment():
     reduce = Reduce(0, lambda acc, x: acc + x)
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         Map(lambda x: x + 1, recovery_step=reduce),
         Map(RaiseEx(5).raise_ex),
         reduce,
@@ -514,7 +513,7 @@ def test_error_recovery_containment():
 
 def test_broadcast():
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         Map(lambda x: x + 1),
         Filter(lambda x: x < 3, termination_result_fn=lambda x, y: x + y),
         [
@@ -534,7 +533,7 @@ def test_broadcast():
 
 def test_broadcast_complex():
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         Map(lambda x: x + 1),
         Filter(lambda x: x < 3, termination_result_fn=lambda x, y: x + y),
         [
@@ -559,7 +558,7 @@ def test_broadcast_complex():
 
 # Same as test_broadcast_complex but without using build_flow
 def test_broadcast_complex_no_sugar():
-    source = SyncEmitSource()
+    source = EmitSource()
     filter = Filter(lambda x: x < 3, termination_result_fn=lambda x, y: x + y)
     source.to(Map(lambda x: x + 1)).to(filter)
     filter.to(Reduce(0, lambda acc, x: acc + x), )
@@ -576,7 +575,7 @@ def test_broadcast_complex_no_sugar():
 
 def test_nested_branching():
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         [
             [
                 Reduce(0, lambda acc, x: acc + x)
@@ -603,7 +602,7 @@ def test_nested_branching():
 
 def test_map_with_state_flow():
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         MapWithState(1000, lambda x, state: (state, x)),
         Reduce(0, lambda acc, x: acc + x),
     ]).run()
@@ -626,7 +625,7 @@ def test_map_with_cache_state_flow():
         return event, state
 
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         MapWithState(table_object, lambda x, state: enrich(x, state), group_by_key=True),
         Reduce([], append_and_return),
     ]).run()
@@ -668,7 +667,7 @@ def test_map_with_empty_cache_state_flow():
         return event, state
 
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         MapWithState(table_object, lambda x, state: enrich(x, state), group_by_key=True),
         Reduce([], append_and_return),
     ]).run()
@@ -699,7 +698,7 @@ def test_map_with_empty_cache_state_flow():
 
 def test_awaitable_result():
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         Map(lambda x: x + 1, termination_result_fn=lambda _, x: x),
         [
             Complete()
@@ -719,7 +718,7 @@ def test_awaitable_result():
 
 def test_double_completion():
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         Complete(),
         Complete(),
         Reduce(0, lambda acc, x: acc + x)
@@ -735,7 +734,7 @@ def test_double_completion():
 
 async def async_test_async_double_completion():
     controller = build_flow([
-        AsyncEmitSource(),
+        EmitSource(),
         Complete(),
         Complete(),
         Reduce(0, lambda acc, x: acc + x)
@@ -758,7 +757,7 @@ def test_awaitable_result_error():
         raise ValueError('boom')
 
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         Map(boom),
         Complete()
     ]).run()
@@ -776,7 +775,7 @@ async def async_test_async_awaitable_result_error():
         raise ValueError('boom')
 
     controller = build_flow([
-        AsyncEmitSource(),
+        EmitSource(),
         Map(boom),
         Complete()
     ]).run()
@@ -795,7 +794,7 @@ def test_async_awaitable_result_error():
 
 async def async_test_async_source():
     controller = build_flow([
-        AsyncEmitSource(),
+        EmitSource(),
         Map(lambda x: x + 1, termination_result_fn=lambda _, x: x),
         [
             Complete()
@@ -820,7 +819,7 @@ def test_async_source():
 
 async def async_test_error_async_flow():
     controller = build_flow([
-        AsyncEmitSource(),
+        EmitSource(),
         Map(lambda x: x + 1),
         Map(RaiseEx(5).raise_ex),
         Reduce(0, lambda acc, x: acc + x),
@@ -835,7 +834,7 @@ async def async_test_error_async_flow():
 
 def test_awaitable_result_error_in_async_downstream():
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         SendToHttp(lambda _: HttpRequest('GET', 'bad_url', ''), lambda _, response: response.status),
         Complete()
     ]).run()
@@ -848,7 +847,7 @@ def test_awaitable_result_error_in_async_downstream():
 
 async def async_test_async_awaitable_result_error_in_async_downstream():
     controller = build_flow([
-        AsyncEmitSource(),
+        EmitSource(),
         SendToHttp(lambda _: HttpRequest('GET', 'bad_url', ''), lambda _, response: response.status),
         Complete()
     ]).run()
@@ -869,7 +868,7 @@ def test_awaitable_result_error_in_by_key_async_downstream():
             raise ValueError('boom')
 
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         NoSqlTarget(Table('test', DriverBoom())),
         Complete()
     ]).run()
@@ -896,7 +895,7 @@ def test_choice():
     ])
 
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         Choice([(big_reduce, lambda x: x % 2 == 0)],
                default=small_reduce,
                termination_result_fn=lambda x, y: x + y)
@@ -921,7 +920,7 @@ def test_metadata():
         return acc
 
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         Map(mapf, full_event=True),
         Reduce({}, redf, full_event=True)
     ]).run()
@@ -939,7 +938,7 @@ def test_metadata_immutability():
         return x
 
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         Map(lambda x: 'new body'),
         Map(mapf, full_event=True),
         Complete(full_event=True)
@@ -958,7 +957,7 @@ def test_metadata_immutability():
 
 def test_batch():
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         Batch(4, 100),
         Reduce([], lambda acc, x: append_and_return(acc, x)),
     ]).run()
@@ -979,7 +978,7 @@ def test_batch_full_event():
         return lst
 
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         Batch(4, 100, full_event=True),
         Reduce([], lambda acc, x: append_body_and_return(acc, x)),
     ]).run()
@@ -998,7 +997,7 @@ def test_batch_by_user_key():
 
     controller = build_flow(
         [
-            SyncEmitSource(),
+            EmitSource(),
             Batch(2, 100, "value"),
             Reduce([], lambda acc, x: append_and_return(acc, x)),
         ]
@@ -1043,7 +1042,7 @@ def test_batch_by_event_key():
 
     controller = build_flow(
         [
-            SyncEmitSource(),
+            EmitSource(),
             Batch(5, 100, "$key"),
             Reduce([], lambda acc, x: append_and_return(acc, x)),
         ]
@@ -1077,7 +1076,7 @@ def test_batch_by_field_value_key_extractor():
 
     controller = build_flow(
         [
-            SyncEmitSource(),
+            EmitSource(),
             Batch(3, 100, "field"),
             Reduce([], lambda acc, x: append_and_return(acc, x)),
         ]
@@ -1115,7 +1114,7 @@ def test_batch_by_function_key_extractor():
 
     controller = build_flow(
         [
-            SyncEmitSource(),
+            EmitSource(),
             Batch(10, 100, lambda event: event.body % 3 == 0),
             Reduce([], lambda acc, x: append_and_return(acc, x)),
         ]
@@ -1149,7 +1148,7 @@ def test_batch_grouping_with_timeout():
 
     controller = build_flow(
         [
-            SyncEmitSource(),
+            EmitSource(),
             Batch(3, 1, "$key"),
             Reduce([], lambda acc, x: reduce_fn(acc, x)),
         ]
@@ -1182,7 +1181,7 @@ def test_batch_with_timeout():
         return acc
 
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         Batch(4, 1),
         Reduce([], reduce_fn),
     ]).run()
@@ -1199,7 +1198,7 @@ def test_batch_with_timeout():
 async def async_test_write_csv(tmpdir):
     file_path = f'{tmpdir}/test_write_csv/out.csv'
     controller = build_flow([
-        AsyncEmitSource(),
+        EmitSource(),
         CSVTarget(file_path, columns=['n', 'n*10'], header=True)
     ]).run()
 
@@ -1225,7 +1224,7 @@ async def async_test_write_csv_error(tmpdir):
 
     write_csv = CSVTarget(file_path)
     controller = build_flow([
-        AsyncEmitSource(),
+        EmitSource(),
         write_csv
     ]).run()
 
@@ -1246,7 +1245,7 @@ def test_write_csv_error(tmpdir):
 def test_write_csv_with_dict(tmpdir):
     file_path = f'{tmpdir}/test_write_csv_with_dict.csv'
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         CSVTarget(file_path, columns=['n', 'n*10'], header=True)
     ]).run()
 
@@ -1266,7 +1265,7 @@ def test_write_csv_with_dict(tmpdir):
 def test_write_csv_infer_columns(tmpdir):
     file_path = f'{tmpdir}/test_write_csv_infer_columns.csv'
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         CSVTarget(file_path, header=True)
     ]).run()
 
@@ -1286,7 +1285,7 @@ def test_write_csv_infer_columns(tmpdir):
 def test_write_csv_infer_columns_without_header(tmpdir):
     file_path = f'{tmpdir}/test_write_csv_infer_columns_without_header.csv'
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         CSVTarget(file_path)
     ]).run()
 
@@ -1306,7 +1305,7 @@ def test_write_csv_infer_columns_without_header(tmpdir):
 def test_write_csv_with_metadata(tmpdir):
     file_path = f'{tmpdir}/test_write_csv_with_metadata.csv'
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         CSVTarget(file_path, columns=['event_key=$key', 'n', 'n*10'], header=True)
     ]).run()
 
@@ -1327,7 +1326,7 @@ def test_write_csv_with_metadata(tmpdir):
 def test_write_csv_with_metadata_no_rename(tmpdir):
     file_path = f'{tmpdir}/test_write_csv_with_metadata_no_rename.csv'
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         CSVTarget(file_path, columns=['$key', 'n', 'n*10'], header=True)
     ]).run()
 
@@ -1348,7 +1347,7 @@ def test_write_csv_with_metadata_no_rename(tmpdir):
 def test_write_csv_with_rename(tmpdir):
     file_path = f'{tmpdir}/test_write_csv_with_rename.csv'
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         CSVTarget(file_path, columns=['n', 'n x 10=n*10'], header=True)
     ]).run()
 
@@ -1368,7 +1367,7 @@ def test_write_csv_with_rename(tmpdir):
 def test_write_csv_from_lists_with_metadata(tmpdir):
     file_path = f'{tmpdir}/test_write_csv_with_metadata.csv'
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         CSVTarget(file_path, columns=['event_key=$key', 'n', 'n*10'], header=True)
     ]).run()
 
@@ -1389,7 +1388,7 @@ def test_write_csv_from_lists_with_metadata(tmpdir):
 def test_write_csv_from_lists_with_metadata_and_column_pruning(tmpdir):
     file_path = f'{tmpdir}/test_write_csv_from_lists_with_metadata_and_column_pruning.csv'
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         CSVTarget(file_path, columns=['event_key=$key', 'n*10'], header=True)
     ]).run()
 
@@ -1409,7 +1408,7 @@ def test_write_csv_from_lists_with_metadata_and_column_pruning(tmpdir):
 def test_write_csv_infer_with_metadata_columns(tmpdir):
     file_path = f'{tmpdir}/test_write_csv_infer_with_metadata_columns.csv'
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         CSVTarget(file_path, columns=['event_key=$key'], header=True, infer_columns_from_data=True)
     ]).run()
 
@@ -1430,7 +1429,7 @@ def test_write_csv_infer_with_metadata_columns(tmpdir):
 def test_write_csv_fail_to_infer_columns(tmpdir):
     file_path = f'{tmpdir}/test_write_csv_fail_to_infer_columns.csv'
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         CSVTarget(file_path, header=True)
     ]).run()
 
@@ -1445,7 +1444,7 @@ def test_write_csv_fail_to_infer_columns(tmpdir):
 
 def test_reduce_to_dataframe():
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         ReduceToDataFrame()
     ]).run()
 
@@ -1462,7 +1461,7 @@ def test_reduce_to_dataframe():
 def test_reduce_to_dataframe_with_index():
     index = 'my_int'
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         ReduceToDataFrame(index=index)
     ]).run()
 
@@ -1480,7 +1479,7 @@ def test_reduce_to_dataframe_with_index():
 def test_reduce_to_dataframe_with_index_from_lists():
     index = 'my_int'
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         ReduceToDataFrame(index=index, columns=['my_int', 'my_string'])
     ]).run()
 
@@ -1498,7 +1497,7 @@ def test_reduce_to_dataframe_with_index_from_lists():
 def test_reduce_to_dataframe_indexed_by_key():
     index = 'my_key'
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         ReduceToDataFrame(index=index, insert_key_column_as=index)
     ]).run()
 
@@ -1516,7 +1515,7 @@ def test_reduce_to_dataframe_indexed_by_key():
 def test_to_dataframe_with_index():
     index = 'my_int'
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         Batch(5),
         ToDataFrame(index=index),
         Reduce([], append_and_return, full_event=True)
@@ -1560,7 +1559,7 @@ def test_map_class():
             return event
 
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         MyMap(2),
         Reduce(0, lambda acc, x: acc + x['xx']),
     ]).run()
@@ -1575,7 +1574,7 @@ def test_map_class():
 
 def test_extend():
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         Extend(lambda x: {'bid2': x['bid'] + 1}),
         Reduce([], append_and_return),
     ]).run()
@@ -1592,7 +1591,7 @@ def test_write_to_parquet(tmpdir):
     out_dir = f'{tmpdir}/test_write_to_parquet/{uuid.uuid4().hex}/'
     columns = ['my_int', 'my_string']
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         ParquetTarget(out_dir, partition_cols='my_int', columns=columns, max_events=1)
     ]).run()
 
@@ -1612,7 +1611,7 @@ def test_write_sparse_data_to_parquet(tmpdir):
     out_dir = f'{tmpdir}/test_write_sparse_data_to_parquet/{uuid.uuid4().hex}'
     columns = ['my_int', 'my_string']
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         ParquetTarget(out_dir, columns=columns)
     ]).run()
 
@@ -1634,7 +1633,7 @@ def test_write_to_parquet_single_file_on_termination(tmpdir):
     out_file = f'{tmpdir}/test_write_to_parquet_single_file_on_termination_{uuid.uuid4().hex}/out.parquet'
     columns = ['my_int', 'my_string']
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         ParquetTarget(out_file, columns=columns)
     ]).run()
 
@@ -1655,7 +1654,7 @@ def test_write_to_parquet_with_metadata(tmpdir):
     out_file = f'{tmpdir}/test_write_to_parquet_with_metadata{uuid.uuid4().hex}/'
     columns = ['event_key', 'my_int', 'my_string']
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         ParquetTarget(out_file, columns=['event_key=$key', 'my_int', 'my_string'],
                       partition_cols=['$year', '$month', '$day', '$hour'])
     ]).run()
@@ -1675,7 +1674,7 @@ def test_write_to_parquet_with_metadata(tmpdir):
 def test_write_to_parquet_with_indices(tmpdir):
     out_file = f'{tmpdir}/test_write_to_parquet_with_indices{uuid.uuid4().hex}'
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         ParquetTarget(out_file, index_cols='event_key=$key', columns=['my_int', 'my_string'],
                       partition_cols=['$year', '$month', '$day', '$hour'])
     ]).run()
@@ -1697,7 +1696,7 @@ def test_write_to_parquet_with_indices(tmpdir):
 def test_write_to_parquet_partition_by_date(tmpdir):
     out_file = f'{tmpdir}/test_write_to_parquet_partition_by_date{uuid.uuid4().hex}'
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         ParquetTarget(out_file, partition_cols=['$date'], columns=['my_int', 'my_string'])
     ]).run()
 
@@ -1720,7 +1719,7 @@ def test_write_to_parquet_partition_by_date(tmpdir):
 def test_write_to_parquet_partition_by_hash(tmpdir):
     out_file = f'{tmpdir}/test_write_to_parquet_partition_by_hash{uuid.uuid4().hex}'
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         ParquetTarget(out_file, columns=['my_int', 'my_string'])
     ]).run()
 
@@ -1744,7 +1743,7 @@ def test_write_to_parquet_partition_by_hash(tmpdir):
 def test_write_to_parquet_partition_by_column(tmpdir):
     out_file = f'{tmpdir}/test_write_to_parquet_partition_by_column{uuid.uuid4().hex}'
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         ParquetTarget(out_file, columns=['my_int', 'my_string', 'even'], partition_cols=['even'])
     ]).run()
 
@@ -1770,7 +1769,7 @@ def test_write_to_parquet_partition_by_column(tmpdir):
 def test_write_to_parquet_with_inference(tmpdir):
     out_dir = f'{tmpdir}/test_write_to_parquet_with_inference{uuid.uuid4().hex}/'
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         ParquetTarget(out_dir, index_cols='$key', partition_cols=[])
     ]).run()
 
@@ -1801,7 +1800,7 @@ def test_join_by_key():
     table._update_static_attrs(7, {'age': 3, 'color': 'blue7'})
 
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         Filter(lambda x: x['col1'] > 8),
         JoinWithTable(table, lambda x: x['col1']),
         Reduce([], lambda acc, x: append_and_return(acc, x))
@@ -1821,7 +1820,7 @@ def test_join_by_string_key():
     table._update_static_attrs(7, {'age': 3, 'color': 'blue7'})
 
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         Filter(lambda x: x['col1'] > 8),
         JoinWithTable(table, 'col1'),
         Reduce([], lambda acc, x: append_and_return(acc, x))
@@ -1837,7 +1836,7 @@ def test_join_by_string_key():
 
 def test_termination_result_order():
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         [Reduce(1, lambda acc, x: acc)],
         [Reduce(2, lambda acc, x: acc)]
     ]).run()
@@ -1849,7 +1848,7 @@ def test_termination_result_order():
 
 def test_termination_result_on_none():
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         [Reduce(None, lambda acc, x: acc)],
         [Reduce(2, lambda acc, x: acc)]
     ]).run()
@@ -1879,7 +1878,7 @@ def test_write_to_tsdb():
     mock_frames_client = MockFramesClient()
 
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         TSDBTarget(path='container/some/path', time_col='time', index_cols='node', columns=['cpu', 'disk'], rate='1/h',
                    max_events=1,
                    frames_client=mock_frames_client)
@@ -1915,7 +1914,7 @@ def test_write_to_tsdb_with_key_index():
     mock_frames_client = MockFramesClient()
 
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         TSDBTarget(path='container/some/path', time_col='time', index_cols='node=$key', columns=['cpu', 'disk'], rate='1/h',
                    max_events=1, frames_client=mock_frames_client)
     ]).run()
@@ -1950,7 +1949,7 @@ def test_write_to_tsdb_with_key_index_and_default_time():
     mock_frames_client = MockFramesClient()
 
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         TSDBTarget(path='container/some/path', index_cols='node=$key', columns=['cpu', 'disk'], rate='1/h',
                    max_events=1, frames_client=mock_frames_client)
     ]).run()
@@ -2025,7 +2024,7 @@ def test_error_in_concurrent_by_key_task():
     table = Table('table', V3ioDriver(webapi='https://localhost:12345', access_key='abc'))
 
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         NoSqlTarget(table, columns=['twice_total_activities']),
     ]).run()
 
@@ -2042,7 +2041,7 @@ def test_async_task_error_and_complete():
     table = Table('table', NoopDriver())
 
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         NoSqlTarget(table),
         Map(RaiseEx(1).raise_ex),
         Complete()
@@ -2067,7 +2066,7 @@ def test_async_task_error_and_complete_repeated_emits():
     table = Table('table', NoopDriver())
 
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         NoSqlTarget(table),
         Map(RaiseEx(1).raise_ex),
         Complete()
@@ -2099,7 +2098,7 @@ def test_push_error():
 
     context = PushErrorContext()
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         Map(RaiseEx(1).raise_ex, context=context),
         Reduce(0, lambda acc, x: acc + x),
     ]).run()
@@ -2117,7 +2116,7 @@ def test_push_error():
 
 def test_metadata_fields():
     controller = build_flow([
-        SyncEmitSource(key_field='mykey', time_field='mytime'),
+        EmitSource(key_field='mykey', time_field='mytime'),
         Reduce([], append_and_return, full_event=True)
     ]).run()
 
@@ -2147,7 +2146,7 @@ def test_metadata_fields():
 
 def test_time_parsed_on_emit():
     controller = build_flow([
-        SyncEmitSource(key_field='mykey', time_field='mytime'),
+        EmitSource(key_field='mykey', time_field='mytime'),
         Reduce([], append_and_return, full_event=True)
     ]).run()
 
@@ -2178,7 +2177,7 @@ def test_time_parsed_on_emit():
 
 async def async_test_async_metadata_fields():
     controller = build_flow([
-        AsyncEmitSource(key_field='mykey', time_field='mytime'),
+        EmitSource(key_field='mykey', time_field='mytime'),
         Reduce([], append_and_return, full_event=True)
     ]).run()
 
@@ -2199,7 +2198,7 @@ def test_async_metadata_fields():
 
 def test_uuid():
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         Map(lambda event: event.copy(body=event.id), full_event=True),
         Reduce([], append_and_return)
     ]).run()
@@ -2220,7 +2219,7 @@ def test_uuid():
 
 def test_input_path():
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         Filter(lambda x: x < 5, input_path="col2.col3"),  # filter emits the full event
         Map(lambda x: x + 1, input_path="col2.col3"),
         Reduce(0, lambda acc, x: acc + x),
@@ -2236,7 +2235,7 @@ def test_input_path():
 
 def test_result_path():
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         Map(lambda x: {"new_field": 5}, result_path="step_result"),
         Reduce(0, lambda acc, x: x),
     ]).run()
@@ -2248,15 +2247,15 @@ def test_result_path():
 
 
 def test_to_dict():
-    source = SyncEmitSource(name='my_source', buffer_size=5)
+    source = EmitSource(name='my_source', buffer_size=5)
     identity = Map(lambda x: x, full_event=False)
-    assert source.to_dict() == {'class_name': 'storey.sources.SyncEmitSource', 'class_args': {'buffer_size': 5}, 'name': 'my_source',
+    assert source.to_dict() == {'class_name': 'storey.sources.EmitSource', 'class_args': {'buffer_size': 5}, 'name': 'my_source',
                                 'full_event': False}
     assert identity.to_dict() == {'class_name': 'storey.flow.Map', 'class_args': {}, 'full_event': False}
 
 
 def test_flow_reuse():
-    flow = build_flow([SyncEmitSource(), Map(lambda x: x + 1), Reduce(0, lambda acc, x: acc + x)])
+    flow = build_flow([EmitSource(), Map(lambda x: x + 1), Reduce(0, lambda acc, x: acc + x)])
 
     for _ in range(3):
         controller = flow.run()
@@ -2334,19 +2333,19 @@ def test_flow_to_dict_dataframe_source():
 
 def test_to_code():
     flow = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         Batch(5),
         ToDataFrame(index=[]),
         Reduce([], append_and_return, full_event=True)
     ])
 
     reconstructed_code = flow.to_code()
-    expected = """sync_emit_source0 = SyncEmitSource()
+    expected = """emit_source0 = EmitSource()
 batch0 = Batch(max_events=5)
 to_data_frame0 = ToDataFrame()
 reduce0 = Reduce(initial_value=[], full_event=True)
 
-sync_emit_source0.to(batch0)
+emit_source0.to(batch0)
 batch0.to(to_data_frame0)
 to_data_frame0.to(reduce0)
 """
@@ -2355,7 +2354,7 @@ to_data_frame0.to(reduce0)
 
 def test_split_flow_to_code():
     flow = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         [
             Batch(5),
             Reduce([], lambda x: len(x))
@@ -2366,16 +2365,16 @@ def test_split_flow_to_code():
     ])
 
     reconstructed_code = flow.to_code()
-    expected = """sync_emit_source0 = SyncEmitSource()
+    expected = """emit_source0 = EmitSource()
 batch0 = Batch(max_events=5)
 reduce0 = Reduce(initial_value=[])
 batch1 = Batch(max_events=5)
 to_data_frame0 = ToDataFrame()
 reduce1 = Reduce(initial_value=[], full_event=True)
 
-sync_emit_source0.to(batch0)
+emit_source0.to(batch0)
 batch0.to(reduce0)
-sync_emit_source0.to(batch1)
+emit_source0.to(batch1)
 batch1.to(to_data_frame0)
 to_data_frame0.to(reduce1)
 """
@@ -2422,7 +2421,7 @@ def test_illegal_step_source_not_first_step():
 def test_writer_downstream(tmpdir):
     file_path = f'{tmpdir}/test_writer_downstream/out.csv'
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         CSVTarget(file_path, columns=['n', 'n*10'], header=True),
         Reduce(0, lambda acc, x: acc + x[0])
     ]).run()
@@ -2441,7 +2440,7 @@ def test_complete_in_error_flow():
         Reduce(0, lambda acc, x: acc + x)
     ])
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         Map(lambda x: x + 1),
         Map(RaiseEx(5).raise_ex, recovery_step=reduce),
         Map(lambda x: x * 100),
@@ -2469,7 +2468,7 @@ def test_non_existing_key_query_by_key():
     controller.await_termination()
 
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         QueryByKey(["color"], table, key="name"),
         QueryByKey(["city"], table, key="name"),
     ]).run()
@@ -2498,7 +2497,7 @@ def test_csv_reader_with_none_values():
 
 def test_bad_time_string_input():
     controller = build_flow([
-        SyncEmitSource(time_field='time'),
+        EmitSource(time_field='time'),
     ]).run()
 
     try:
@@ -2510,7 +2509,7 @@ def test_bad_time_string_input():
 
 def test_bad_time_input():
     controller = build_flow([
-        SyncEmitSource(time_field='time'),
+        EmitSource(time_field='time'),
     ]).run()
 
     try:
@@ -2522,7 +2521,7 @@ def test_bad_time_input():
 
 def test_epoch_time_input():
     controller = build_flow([
-        SyncEmitSource(time_field='time'),
+        EmitSource(time_field='time'),
         Complete(full_event=True)
     ]).run()
 
@@ -2534,7 +2533,7 @@ def test_epoch_time_input():
 
 def test_iso_string_time_input():
     controller = build_flow([
-        SyncEmitSource(time_field='time'),
+        EmitSource(time_field='time'),
         Complete(full_event=True)
     ]).run()
 
@@ -2546,7 +2545,7 @@ def test_iso_string_time_input():
 
 def test_custom_string_time_input():
     controller = build_flow([
-        SyncEmitSource(time_field='time', time_format='%Y-%m-%dT%H:%M:%S%z'),
+        EmitSource(time_field='time', time_format='%Y-%m-%dT%H:%M:%S%z'),
         Complete(full_event=True)
     ]).run()
 

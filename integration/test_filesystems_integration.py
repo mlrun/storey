@@ -1,10 +1,9 @@
 import asyncio
-import math
 import sys
 import random as rand
 
 from .integration_test_utils import setup_teardown_test, _generate_table_name, V3ioHeaders, V3ioError
-from storey import build_flow, CSVSource, CSVTarget, SyncEmitSource, Reduce, Map, FlatMap, AsyncEmitSource, ParquetTarget, ParquetSource, \
+from storey import build_flow, CSVSource, CSVTarget, EmitSource, Reduce, Map, FlatMap, ParquetTarget, ParquetSource, \
     DataframeSource
 import pandas as pd
 import aiohttp
@@ -92,7 +91,7 @@ def test_csv_reader_from_v3io_error_on_file_not_found():
 
 async def async_test_write_csv_to_v3io(v3io_teardown_csv):
     controller = build_flow([
-        AsyncEmitSource(),
+        EmitSource(),
         CSVTarget(f'v3io:///{v3io_teardown_csv}', columns=['n', 'n*10'], header=True)
     ]).run()
 
@@ -121,7 +120,7 @@ def test_write_csv_to_v3io(v3io_teardown_file):
 def test_write_csv_with_dict_to_v3io(v3io_teardown_file):
     file_path = f'v3io:///{v3io_teardown_file}'
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         CSVTarget(file_path, columns=['n', 'n*10'], header=True)
     ]).run()
 
@@ -146,7 +145,7 @@ def test_write_csv_with_dict_to_v3io(v3io_teardown_file):
 def test_write_csv_infer_columns_without_header_to_v3io(v3io_teardown_file):
     file_path = f'v3io:///{v3io_teardown_file}'
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         CSVTarget(file_path)
     ]).run()
 
@@ -171,7 +170,7 @@ def test_write_csv_infer_columns_without_header_to_v3io(v3io_teardown_file):
 def test_write_csv_from_lists_with_metadata_and_column_pruning_to_v3io(v3io_teardown_file):
     file_path = f'v3io:///{v3io_teardown_file}'
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         CSVTarget(file_path, columns=['event_key=$key', 'n*10'], header=True)
     ]).run()
 
@@ -197,7 +196,7 @@ def test_write_to_parquet_to_v3io(setup_teardown_test):
     out_dir = f'v3io:///{setup_teardown_test}'
     columns = ['my_int', 'my_string']
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         ParquetTarget(out_dir, partition_cols='my_int', columns=columns, max_events=1)
     ]).run()
 
@@ -217,7 +216,7 @@ def test_write_to_parquet_to_v3io_single_file_on_termination(setup_teardown_test
     out_file = f'v3io:///{setup_teardown_test}/out.parquet'
     columns = ['my_int', 'my_string']
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         ParquetTarget(out_file, columns=columns)
     ]).run()
 
@@ -236,7 +235,7 @@ def test_write_to_parquet_to_v3io_single_file_on_termination(setup_teardown_test
 def test_write_to_parquet_to_v3io_with_indices(setup_teardown_test):
     out_file = f'v3io:///{setup_teardown_test}/test_write_to_parquet_with_indices{uuid.uuid4().hex}.parquet'
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         ParquetTarget(out_file, index_cols='event_key=$key', columns=['my_int', 'my_string'])
     ]).run()
 
@@ -258,7 +257,7 @@ def test_write_to_parquet_to_v3io_with_indices(setup_teardown_test):
 def test_write_to_parquet_to_v3io_with_nulls(setup_teardown_test):
     out_dir = f'v3io:///{setup_teardown_test}/test_write_to_parquet_to_v3io_with_nulls{uuid.uuid4().hex}/'
     flow = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         ParquetTarget(out_dir, columns=[('key=$key', 'str'), ('my_int', 'int'), ('my_string', 'str'), ('my_datetime', 'datetime')],
                       partition_cols=[], max_events=1)
     ])

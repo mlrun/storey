@@ -159,100 +159,6 @@ class FlowAwaiter:
         return self._await_termination_fn()
 
 
-class SyncEmitSource(Flow):
-    """Synchronous entry point into a flow. Produces a FlowController when run, for use from inside a synchronous context. See AsyncEmitSource
-    for use from inside an async context.
-
-    :param buffer_size: size of the incoming event buffer. Defaults to 1024.
-    :param key_field: Field to extract and use as the key. Optional.
-    :param time_field: Field to extract and use as the time. Optional.
-    :param time_format: Format of the event time. Needed when a nonstandard string timestamp is used (i.e. not ISO or epoch). Optional.
-    :param name: Name of this step, as it should appear in logs. Defaults to class name (SyncEmitSource).
-    :type name: string
-
-    for additional params, see documentation of  :class:`storey.flow.Flow`
-    """
-    _legal_first_step = True
-
-    def __init__(self, buffer_size: Optional[int] = None, key_field: Union[list, str, None] = None, time_field: Optional[str] = None,
-                 time_format: Optional[str] = None, **kwargs):
-        if buffer_size is None:
-            buffer_size = 1024
-        else:
-            kwargs['buffer_size'] = buffer_size
-        if key_field is not None:
-            kwargs['key_field'] = key_field
-        super().__init__(**kwargs)
-        if buffer_size <= 0:
-            raise ValueError('Buffer size must be positive')
-        self._q = queue.Queue(buffer_size)
-        self._key_field = key_field
-        self._time_field = time_field
-        self._time_format = time_format
-        self._termination_q = queue.Queue(1)
-        self._ex = None
-        self._closeables = []
-
-    async def _run_loop(self):
-        loop = asyncio.get_running_loop()
-        self._termination_future = asyncio.get_running_loop().create_future()
-
-        while True:
-            event = await loop.run_in_executor(None, self._q.get)
-            try:
-                termination_result = await self._do_downstream(event)
-                if event is _termination_obj:
-                    self._termination_future.set_result(termination_result)
-            except BaseException as ex:
-                if event is not _termination_obj and event._awaitable_result:
-                    event._awaitable_result._set_error(ex)
-                self._ex = ex
-                if not self._q.empty():
-                    event = self._q.get()
-                    if event is not _termination_obj and event._awaitable_result:
-                        event._awaitable_result._set_error(ex)
-                self._termination_future.set_result(None)
-                break
-            if event is _termination_obj:
-                break
-
-        for closeable in self._closeables:
-            await closeable.close()
-
-    def _loop_thread_main(self):
-        asyncio.run(self._run_loop())
-        self._termination_q.put(self._ex)
-
-    def _raise_on_error(self, ex):
-        if ex:
-            if self.verbose:
-                raise type(self._ex)('Flow execution terminated') from self._ex
-            raise self._ex
-
-    def _emit(self, event):
-        if event is not _termination_obj:
-            self._raise_on_error(self._ex)
-        self._q.put(event)
-        if event is not _termination_obj:
-            self._raise_on_error(self._ex)
-
-    def run(self):
-        """Starts the flow"""
-        self._closeables = super().run()
-
-        thread = threading.Thread(target=self._loop_thread_main)
-        thread.start()
-
-        def raise_error_or_return_termination_result():
-            self._raise_on_error(self._termination_q.get())
-            return self._termination_future.result()
-
-        has_complete = self._check_step_in_flow(Complete)
-
-        return FlowController(self._emit, raise_error_or_return_termination_result, has_complete, self._key_field, self._time_field,
-                              self._time_format)
-
-
 class AsyncAwaitableResult:
     """Future result of a computation. Calling await_result() will return with the result once the computation is completed.
     Same as AwaitableResult but for an async context."""
@@ -332,34 +238,70 @@ class AsyncFlowController(FlowControllerBase):
         return await self._loop_task
 
 
-class AsyncEmitSource(Flow):
-    """
-    Asynchronous entry point into a flow. Produces an AsyncFlowController when run, for use from inside an async def.
-    See SyncEmitSource for use from inside a synchronous context.
+class EmitSource(Flow):
+    """Entry point into a flow. Produces an AsyncFlowController when run from inside an asyncio loop, and a FlowController otherwise.
 
     :param buffer_size: size of the incoming event buffer. Defaults to 1024.
-    :param name: Name of this step, as it should appear in logs. Defaults to class name (AsyncEmitSource).
-    :type name: string
+    :param key_field: Field to extract and use as the key. Optional.
     :param time_field: Field to extract and use as the time. Optional.
     :param time_format: Format of the event time. Needed when a nonstandard string timestamp is used (i.e. not ISO or epoch). Optional.
+    :param force: Can be set to 'sync' or 'async' to force sync or async behavior. By default, async behavior follows only when the flow is
+        run from inside an asyncio loop.
+    :param name: Name of this step, as it should appear in logs. Defaults to class name (EmitSource).
+    :type name: string
 
-    for additional params, see documentation of  :class:`~storey.flow.Flow`
+    for additional params, see documentation of  :class:`storey.flow.Flow`
     """
     _legal_first_step = True
 
-    def __init__(self, buffer_size: int = 1024, key_field: Union[list, str, None] = None, time_field: Optional[str] = None,
-                 time_format: Optional[str] = None, **kwargs):
+    def __init__(self, buffer_size: Optional[int] = None, key_field: Union[list, str, None] = None, time_field: Optional[str] = None,
+                 time_format: Optional[str] = None, force: Optional[str] = None, **kwargs):
+        if buffer_size is None:
+            buffer_size = 1024
+        else:
+            kwargs['buffer_size'] = buffer_size
+        self._buffer_size = buffer_size
+        if key_field is not None:
+            kwargs['key_field'] = key_field
+        if force is not None:
+            if force not in ['sync', 'async']:
+                raise ValueError(f"force can only be set to 'sync' or 'async', not '{force}'")
+            kwargs['force'] = force
+        self._force = force
         super().__init__(**kwargs)
         if buffer_size <= 0:
             raise ValueError('Buffer size must be positive')
-        self._q = asyncio.Queue(buffer_size)
         self._key_field = key_field
         self._time_field = time_field
         self._time_format = time_format
+        self._termination_q = queue.Queue(1)
         self._ex = None
         self._closeables = []
 
-    async def _run_loop(self):
+    async def _sync_run_loop(self):
+        loop = asyncio.get_running_loop()
+        self._termination_future = asyncio.get_running_loop().create_future()
+
+        while True:
+            event = await loop.run_in_executor(None, self._q.get)
+            try:
+                termination_result = await self._do_downstream(event)
+                if event is _termination_obj:
+                    self._termination_future.set_result(termination_result)
+            except BaseException as ex:
+                if event is not _termination_obj and event._awaitable_result:
+                    event._awaitable_result._set_error(ex)
+                self._ex = ex
+                if not self._q.empty():
+                    event = self._q.get()
+                    if event is not _termination_obj and event._awaitable_result:
+                        event._awaitable_result._set_error(ex)
+                self._termination_future.set_result(None)
+                break
+            if event is _termination_obj:
+                break
+
+    async def _async_run_loop(self):
         while True:
             event = await self._q.get()
             try:
@@ -380,25 +322,105 @@ class AsyncEmitSource(Flow):
                     for closeable in self._closeables:
                         await closeable.close()
 
-    def _raise_on_error(self):
-        if self._ex:
+    def _loop_thread_main(self):
+        asyncio.run(self._sync_run_loop())
+        self._termination_q.put(self._ex)
+
+    def _raise_on_error(self, ex):
+        if ex:
             if self.verbose:
                 raise type(self._ex)('Flow execution terminated') from self._ex
             raise self._ex
 
-    async def _emit(self, event):
+    def _emit_sync(self, event):
         if event is not _termination_obj:
-            self._raise_on_error()
+            self._raise_on_error(self._ex)
+        self._q.put(event)
+        if event is not _termination_obj:
+            self._raise_on_error(self._ex)
+
+    async def _emit_async(self, event):
+        if event is not _termination_obj:
+            self._raise_on_error(self._ex)
         await self._q.put(event)
         if event is not _termination_obj:
-            self._raise_on_error()
+            self._raise_on_error(self._ex)
+
+    def _run_sync(self):
+        thread = threading.Thread(target=self._loop_thread_main)
+        thread.start()
+
+        def raise_error_or_return_termination_result():
+            self._raise_on_error(self._termination_q.get())
+            return self._termination_future.result()
+
+        has_complete = self._check_step_in_flow(Complete)
+
+        return FlowController(self._emit_sync, raise_error_or_return_termination_result, has_complete, self._key_field, self._time_field,
+                              self._time_format)
+
+    def _run_async(self):
+        self._q = asyncio.Queue(self._buffer_size)
+        loop_task = asyncio.get_running_loop().create_task(self._async_run_loop())
+        has_complete = self._check_step_in_flow(Complete)
+        return AsyncFlowController(self._emit_async, loop_task, has_complete, self._key_field, self._time_field)
 
     def run(self):
-        """Starts the flow"""
+        self._q = queue.Queue(self._buffer_size)
         self._closeables = super().run()
-        loop_task = asyncio.get_running_loop().create_task(self._run_loop())
-        has_complete = self._check_step_in_flow(Complete)
-        return AsyncFlowController(self._emit, loop_task, has_complete, self._key_field, self._time_field)
+
+        is_async = False
+        if self._force:
+            is_async = self._force == 'async'
+        else:
+            try:
+                asyncio.get_running_loop()
+                is_async = True
+            except RuntimeError:
+                pass
+
+        if is_async:
+            return self._run_async()
+        else:
+            return self._run_sync()
+
+
+class SyncEmitSource(EmitSource):
+    """Synchronous entry point into a flow. Produces a FlowController when run, for use from inside a synchronous context. See AsyncEmitSource
+    for use from inside an async context.
+
+    :param buffer_size: size of the incoming event buffer. Defaults to 1024.
+    :param key_field: Field to extract and use as the key. Optional.
+    :param time_field: Field to extract and use as the time. Optional.
+    :param time_format: Format of the event time. Needed when a nonstandard string timestamp is used (i.e. not ISO or epoch). Optional.
+    :param name: Name of this step, as it should appear in logs. Defaults to class name (SyncEmitSource).
+    :type name: string
+
+    for additional params, see documentation of  :class:`storey.flow.Flow`
+    """
+
+    def __init__(self, **kwargs):
+        kwargs['force'] = 'sync'
+        super().__init__(**kwargs)
+
+
+class AsyncEmitSource(EmitSource):
+    """
+    Asynchronous entry point into a flow. Produces an AsyncFlowController when run, for use from inside an async def.
+    See SyncEmitSource for use from inside a synchronous context.
+
+    :param buffer_size: size of the incoming event buffer. Defaults to 1024.
+    :param name: Name of this step, as it should appear in logs. Defaults to class name (AsyncEmitSource).
+    :type name: string
+    :param time_field: Field to extract and use as the time. Optional.
+    :param time_format: Format of the event time. Needed when a nonstandard string timestamp is used (i.e. not ISO or epoch). Optional.
+
+    for additional params, see documentation of  :class:`~storey.flow.Flow`
+    """
+
+    def __init__(self, **kwargs):
+        kwargs['force'] = 'async'
+        super().__init__(**kwargs)
 
 
 class _IterableSource(Flow):

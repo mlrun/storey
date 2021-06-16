@@ -1,17 +1,16 @@
 import asyncio
-import time
-from datetime import datetime, timedelta
+from datetime import timedelta
 import pytest
 import math
 import pandas as pd
 
-from storey import build_flow, SyncEmitSource, Reduce, Table, V3ioDriver, MapWithState, AggregateByKey, FieldAggregator, \
+from storey import build_flow, EmitSource, Reduce, Table, V3ioDriver, MapWithState, AggregateByKey, FieldAggregator, \
     QueryByKey, NoSqlTarget, Context, DataframeSource, Map
 
 from storey.dtypes import SlidingWindows, FixedWindows, EmitAfterMaxEvent
 from storey.utils import _split_path
 
-from .integration_test_utils import setup_teardown_test, append_return, test_base_time, V3ioHeaders
+from .integration_test_utils import setup_teardown_test, append_return, test_base_time
 
 
 @pytest.mark.parametrize('partitioned_by_key', [True, False])
@@ -20,7 +19,7 @@ def test_aggregate_and_query_with_different_windows(setup_teardown_test, partiti
     table = Table(setup_teardown_test, V3ioDriver(), partitioned_by_key=partitioned_by_key, flush_interval_secs=flush_interval)
 
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         AggregateByKey([FieldAggregator('number_of_stuff', 'col1', ['sum', 'avg', 'min', 'max', 'sqr'],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
                        table),
@@ -83,7 +82,7 @@ def test_aggregate_and_query_with_different_windows(setup_teardown_test, partiti
 
     other_table = Table(setup_teardown_test, V3ioDriver())
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         QueryByKey(['number_of_stuff_sum_1h', 'number_of_stuff_avg_1h', 'number_of_stuff_min_1h', 'number_of_stuff_max_1h'],
                    other_table),
         Reduce([], lambda acc, x: append_return(acc, x)),
@@ -109,7 +108,7 @@ def test_aggregate_and_query_with_different_windows(setup_teardown_test, partiti
 def test_query_virtual_aggregations_flow(setup_teardown_test):
     table = Table(setup_teardown_test, V3ioDriver())
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         AggregateByKey([FieldAggregator('number_of_stuff', 'col1', ['avg', 'stddev', 'stdvar'],
                                         SlidingWindows(['24h'], '10m'))],
                        table),
@@ -145,7 +144,7 @@ def test_query_virtual_aggregations_flow(setup_teardown_test):
 
     other_table = Table(setup_teardown_test, V3ioDriver())
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         QueryByKey(['number_of_stuff_avg_1h', 'number_of_stuff_stdvar_2h', 'number_of_stuff_stddev_3h'],
                    other_table),
         Reduce([], lambda acc, x: append_return(acc, x)),
@@ -174,7 +173,7 @@ def test_query_aggregate_by_key(setup_teardown_test, partitioned_by_key, flush_i
     table = Table(setup_teardown_test, V3ioDriver(), partitioned_by_key=partitioned_by_key, flush_interval_secs=flush_interval)
 
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         AggregateByKey([FieldAggregator('number_of_stuff', 'col1', ['sum', 'avg', 'min', 'max', 'sqr'],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
                        table),
@@ -237,7 +236,7 @@ def test_query_aggregate_by_key(setup_teardown_test, partitioned_by_key, flush_i
 
     other_table = Table(setup_teardown_test, V3ioDriver())
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         QueryByKey(['number_of_stuff_sum_1h', 'number_of_stuff_sum_2h', 'number_of_stuff_sum_24h',
                     'number_of_stuff_avg_1h', 'number_of_stuff_avg_2h', 'number_of_stuff_avg_24h',
                     'number_of_stuff_min_1h', 'number_of_stuff_min_2h', 'number_of_stuff_min_24h',
@@ -269,7 +268,7 @@ def test_aggregate_and_query_with_dependent_aggrs_different_windows(setup_teardo
     table = Table(setup_teardown_test, V3ioDriver())
 
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         AggregateByKey([FieldAggregator('number_of_stuff', 'col1', ['sum', 'avg'],
                                         SlidingWindows(['1h', '2h'], '10m'))],
                        table),
@@ -312,7 +311,7 @@ def test_aggregate_and_query_with_dependent_aggrs_different_windows(setup_teardo
 
     other_table = Table(setup_teardown_test, V3ioDriver())
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         QueryByKey(query_aggregations,
                    other_table),
         Reduce([], lambda acc, x: append_return(acc, x)),
@@ -352,7 +351,7 @@ def test_aggregate_by_key_one_underlying_window(setup_teardown_test, partitioned
 
         table = Table(setup_teardown_test, V3ioDriver(), partitioned_by_key=partitioned_by_key, flush_interval_secs=flush_interval)
         controller = build_flow([
-            SyncEmitSource(),
+            EmitSource(),
             AggregateByKey([FieldAggregator('number_of_stuff', 'col1', ['count'],
                                             SlidingWindows(['1h'], '10m')),
                             FieldAggregator('other_stuff', 'col1', ['sum'],
@@ -392,7 +391,7 @@ def test_aggregate_by_key_two_underlying_windows(setup_teardown_test, partitione
 
         table = Table(setup_teardown_test, V3ioDriver(), partitioned_by_key=partitioned_by_key)
         controller = build_flow([
-            SyncEmitSource(),
+            EmitSource(),
             AggregateByKey([FieldAggregator('number_of_stuff', 'col1', ['count'],
                                             SlidingWindows(['24h'], '10m')),
                             FieldAggregator('other_stuff', 'col1', ['sum'],
@@ -430,7 +429,7 @@ def test_aggregate_by_key_with_extra_aliases(setup_teardown_test):
         return event, state
 
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         MapWithState(table, enrich, group_by_key=True, full_event=True),
         AggregateByKey([FieldAggregator('number_of_stuff', 'col1', ['sum', 'avg'],
                                         SlidingWindows(['2h'], '10m'))],
@@ -474,7 +473,7 @@ def test_aggregate_by_key_with_extra_aliases(setup_teardown_test):
     other_table = Table(setup_teardown_test, V3ioDriver())
 
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         QueryByKey(['number_of_stuff_sum_2h', 'number_of_stuff_avg_2h', 'color', 'age', 'iss', 'sometime'],
                    other_table, aliases={'color': 'external.color', 'iss': 'external.iss'}),
         Reduce([], lambda acc, x: append_return(acc, x)),
@@ -511,7 +510,7 @@ def test_write_cache_with_aggregations(setup_teardown_test, flush_interval):
         return event, state
 
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         MapWithState(table, enrich, group_by_key=True, full_event=True),
         AggregateByKey([FieldAggregator('number_of_stuff', 'col1', ['sum', 'avg'],
                                         SlidingWindows(['2h'], '10m'))],
@@ -555,7 +554,7 @@ def test_write_cache_with_aggregations(setup_teardown_test, flush_interval):
     other_table = Table(setup_teardown_test, V3ioDriver(), flush_interval_secs=flush_interval)
 
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         QueryByKey(['number_of_stuff_sum_2h', 'number_of_stuff_avg_2h', 'color', 'age', 'iss', 'sometime'],
                    other_table),
         Reduce([], lambda acc, x: append_return(acc, x)),
@@ -592,7 +591,7 @@ def test_write_cache(setup_teardown_test, flush_interval):
         return event, state
 
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         MapWithState(table, enrich, group_by_key=True, full_event=True),
         NoSqlTarget(table),
         Reduce([], lambda acc, x: append_return(acc, x)),
@@ -623,7 +622,7 @@ def test_write_cache(setup_teardown_test, flush_interval):
     other_table = Table(setup_teardown_test, V3ioDriver())
 
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         MapWithState(other_table, enrich, group_by_key=True, full_event=True),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
@@ -646,7 +645,7 @@ def test_aggregate_with_string_table(setup_teardown_test):
     table_name = 'tals-table'
     context = Context(initial_tables={table_name: table})
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         AggregateByKey([FieldAggregator('number_of_stuff', 'col1', ['sum', 'avg', 'min', 'max', 'sqr'],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
                        table_name, context=context),
@@ -728,7 +727,7 @@ def test_modify_schema(setup_teardown_test):
     table = Table(setup_teardown_test, V3ioDriver())
 
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         AggregateByKey([FieldAggregator('number_of_stuff', 'col1', ['sum', 'avg', 'min', 'max'],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
                        table),
@@ -790,7 +789,7 @@ def test_modify_schema(setup_teardown_test):
 
     other_table = Table(setup_teardown_test, V3ioDriver())
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         AggregateByKey([FieldAggregator('number_of_stuff', 'col1', ['sum', 'avg', 'min', 'max'],
                                         SlidingWindows(['1h', '2h', '24h'], '10m')),
                         FieldAggregator('new_aggr', 'col1', ['min', 'max'],
@@ -825,7 +824,7 @@ def test_invalid_modify_schema(setup_teardown_test):
     table = Table(setup_teardown_test, V3ioDriver())
 
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         AggregateByKey([FieldAggregator('number_of_stuff', 'col1', ['sum', 'avg', 'min', 'max'],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
                        table),
@@ -889,7 +888,7 @@ def test_invalid_modify_schema(setup_teardown_test):
 
     try:
         controller = build_flow([
-            SyncEmitSource(),
+            EmitSource(),
             AggregateByKey([FieldAggregator('number_of_stuff', 'col1', ['sum', 'avg', 'min', 'max'],
                                             SlidingWindows(['1h', '24h'], '3m'))],
                            other_table),
@@ -910,7 +909,7 @@ def test_query_aggregate_by_key_sliding_window_new_time_exceeds_stored_window(se
     table = Table(setup_teardown_test, V3ioDriver())
 
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         AggregateByKey([FieldAggregator('number_of_stuff', 'col1', ['count'],
                                         SlidingWindows(['30m', '2h'], '1m'))],
                        table),
@@ -936,7 +935,7 @@ def test_query_aggregate_by_key_sliding_window_new_time_exceeds_stored_window(se
 
     other_table = Table(setup_teardown_test, V3ioDriver())
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         QueryByKey(['number_of_stuff_count_30m', 'number_of_stuff_count_2h'],
                    other_table),
         Reduce([], lambda acc, x: append_return(acc, x)),
@@ -960,7 +959,7 @@ def test_query_aggregate_by_key_fixed_window_new_time_exceeds_stored_window(setu
     table = Table(setup_teardown_test, V3ioDriver())
 
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         AggregateByKey([FieldAggregator('number_of_stuff', 'col1', ['count'],
                                         FixedWindows(['30m', '2h']))],
                        table),
@@ -986,7 +985,7 @@ def test_query_aggregate_by_key_fixed_window_new_time_exceeds_stored_window(setu
 
     other_table = Table(setup_teardown_test, V3ioDriver())
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         QueryByKey(['number_of_stuff_count_30m', 'number_of_stuff_count_2h'],
                    other_table),
         Reduce([], lambda acc, x: append_return(acc, x)),
@@ -1010,7 +1009,7 @@ def test_sliding_query_time_exceeds_stored_window_by_more_than_window(setup_tear
     table = Table(setup_teardown_test, V3ioDriver())
 
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         AggregateByKey([FieldAggregator('number_of_stuff', 'col1', ['count'],
                                         SlidingWindows(['30m', '2h'], '1m'))],
                        table),
@@ -1036,7 +1035,7 @@ def test_sliding_query_time_exceeds_stored_window_by_more_than_window(setup_tear
 
     other_table = Table(setup_teardown_test, V3ioDriver())
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         QueryByKey(['number_of_stuff_count_30m', 'number_of_stuff_count_2h'],
                    other_table),
         Reduce([], lambda acc, x: append_return(acc, x)),
@@ -1060,7 +1059,7 @@ def test_fixed_query_time_exceeds_stored_window_by_more_than_window(setup_teardo
     table = Table(setup_teardown_test, V3ioDriver())
 
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         AggregateByKey([FieldAggregator('number_of_stuff', 'col1', ['count'],
                                         FixedWindows(['30m', '2h']))],
                        table),
@@ -1086,7 +1085,7 @@ def test_fixed_query_time_exceeds_stored_window_by_more_than_window(setup_teardo
 
     other_table = Table(setup_teardown_test, V3ioDriver())
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         QueryByKey(['number_of_stuff_count_30m', 'number_of_stuff_count_2h'],
                    other_table),
         Reduce([], lambda acc, x: append_return(acc, x)),
@@ -1109,7 +1108,7 @@ def test_fixed_query_time_exceeds_stored_window_by_more_than_window(setup_teardo
 def test_write_to_table_reuse(setup_teardown_test):
     table = Table(setup_teardown_test, V3ioDriver())
     flow = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         AggregateByKey([FieldAggregator('number_of_stuff', 'col1', ['count'], FixedWindows(['30m', '2h']))], table),
         NoSqlTarget(table), Reduce([], lambda acc, x: append_return(acc, x))
     ])
@@ -1164,7 +1163,7 @@ def test_aggregate_multiple_keys(setup_teardown_test):
 
     other_table = Table(setup_teardown_test, V3ioDriver())
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         QueryByKey(['number_of_stuff_sum_1h'],
                    other_table, key=['first_name', 'last_name']),
         Reduce([], lambda acc, x: append_return(acc, x)),
@@ -1211,7 +1210,7 @@ def test_read_non_existing_key(setup_teardown_test):
 
     other_table = Table(setup_teardown_test, V3ioDriver())
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         QueryByKey(['number_of_stuff_sum_1h'],
                    other_table, keys='first_name'),
         Reduce([], lambda acc, x: append_return(acc, x)),
@@ -1231,12 +1230,12 @@ def test_concurrent_updates_to_kv_table(setup_teardown_test):
     table1 = Table(setup_teardown_test, V3ioDriver(), flush_interval_secs=None)
     table2 = Table(setup_teardown_test, V3ioDriver(), flush_interval_secs=None)
     controller1 = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         AggregateByKey([FieldAggregator('attr1', 'attr1', ['sum'], SlidingWindows(['1h'], '10m'))], table1),
         NoSqlTarget(table1)
     ]).run()
     controller2 = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         AggregateByKey([FieldAggregator('attr2', 'attr2', ['sum'], SlidingWindows(['1h'], '10m'))], table2),
         NoSqlTarget(table2)
     ]).run()
@@ -1253,7 +1252,7 @@ def test_concurrent_updates_to_kv_table(setup_teardown_test):
 
     table = Table(setup_teardown_test, V3ioDriver())
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         QueryByKey(['attr1', 'attr2'], table, key='mykey'),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
@@ -1297,7 +1296,7 @@ def test_separate_aggregate_steps(setup_teardown_test):
 
     other_table = Table(setup_teardown_test, V3ioDriver())
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         QueryByKey(['number_of_stuff_avg_1h', 'number_of_stuff2_sum_2h'],
                    other_table, key=['first_name']),
         Reduce([], lambda acc, x: append_return(acc, x)),
@@ -1316,7 +1315,7 @@ def test_separate_aggregate_steps(setup_teardown_test):
 def test_write_read_first_last(setup_teardown_test):
     table = Table(setup_teardown_test, V3ioDriver(), flush_interval_secs=None)
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         AggregateByKey([FieldAggregator('attr', 'attr', ['first', 'last'], SlidingWindows(['1h'], '10m'))], table),
         NoSqlTarget(table)
     ]).run()
@@ -1331,7 +1330,7 @@ def test_write_read_first_last(setup_teardown_test):
 
     table = Table(setup_teardown_test, V3ioDriver())
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         QueryByKey(['attr_first_1h', 'attr_last_1h'], table, key='mykey'),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
@@ -1356,7 +1355,7 @@ def test_non_existing_key_query_by_key_from_v3io_key_is_list(setup_teardown_test
     controller.await_termination()
 
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         QueryByKey(["color"], table, key=["name"]),
         QueryByKey(["city"], table, key="name"),
     ]).run()

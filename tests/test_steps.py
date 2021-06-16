@@ -1,6 +1,6 @@
 from pytest import fail
 
-from storey import build_flow, SyncEmitSource
+from storey import build_flow, EmitSource
 from storey.dtypes import Event
 from storey.steps import Flatten, SampleWindow, EmitPeriod, Assert, ForEach, Partition
 
@@ -9,7 +9,7 @@ def test_assert_each_event():
     try:
         controller = build_flow(
             [
-                SyncEmitSource(),
+                EmitSource(),
                 Assert().each_event(lambda event: event > 10)
             ]
         ).run()
@@ -25,7 +25,7 @@ def test_assert_greater_or_equal_to():
     try:
         controller = build_flow(
             [
-                SyncEmitSource(),
+                EmitSource(),
                 Assert().greater_or_equal_to(2)
             ]
         ).run()
@@ -39,7 +39,7 @@ def test_assert_greater_or_equal_to():
     try:
         controller = build_flow(
             [
-                SyncEmitSource(),
+                EmitSource(),
                 Assert().greater_or_equal_to(2)
             ]
         ).run()
@@ -55,7 +55,7 @@ def test_assert_greater_than():
     try:
         controller = build_flow(
             [
-                SyncEmitSource(),
+                EmitSource(),
                 Assert().greater_than(1)]
         ).run()
         controller.emit(1)
@@ -68,7 +68,7 @@ def test_assert_greater_than():
     try:
         controller = build_flow(
             [
-                SyncEmitSource(),
+                EmitSource(),
                 Assert().greater_than(1)
             ]
         ).run()
@@ -84,7 +84,7 @@ def test_assert_less_or_equal():
     try:
         controller = build_flow(
             [
-                SyncEmitSource(),
+                EmitSource(),
                 Assert().less_or_equal_to(2)
             ]
         ).run()
@@ -100,7 +100,7 @@ def test_assert_less_or_equal():
     try:
         controller = build_flow(
             [
-                SyncEmitSource(),
+                EmitSource(),
                 Assert().less_or_equal_to(2)
             ]
         ).run()
@@ -116,7 +116,7 @@ def test_assert_exactly():
     try:
         controller = build_flow(
             [
-                SyncEmitSource(),
+                EmitSource(),
                 Assert().exactly(2)
             ]
         ).run()
@@ -130,7 +130,7 @@ def test_assert_exactly():
     try:
         controller = build_flow(
             [
-                SyncEmitSource(),
+                EmitSource(),
                 Assert().exactly(2)
             ]
         ).run()
@@ -146,7 +146,7 @@ def test_assert_exactly():
     try:
         controller = build_flow(
             [
-                SyncEmitSource(),
+                EmitSource(),
                 Assert().exactly(2)
             ]
         ).run()
@@ -162,7 +162,7 @@ def test_assert_match_exactly():
     try:
         controller = build_flow(
             [
-                SyncEmitSource(),
+                EmitSource(),
                 Assert(full_event=False).match_exactly([1, 1, 1])
             ]
         ).run()
@@ -177,7 +177,7 @@ def test_assert_match_exactly():
     try:
         controller = build_flow(
             [
-                SyncEmitSource(),
+                EmitSource(),
                 Assert().match_exactly([1, 1, 1])
             ]
         ).run()
@@ -194,7 +194,7 @@ def test_assert_all_of():
     try:
         controller = build_flow(
             [
-                SyncEmitSource(),
+                EmitSource(),
                 Assert().contains_all_of([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
             ]
         ).run()
@@ -209,7 +209,7 @@ def test_assert_all_of():
     try:
         controller = build_flow(
             [
-                SyncEmitSource(),
+                EmitSource(),
                 Assert().contains_all_of([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
             ]
         ).run()
@@ -226,7 +226,7 @@ def test_assert_any_of():
     try:
         controller = build_flow(
             [
-                SyncEmitSource(),
+                EmitSource(),
                 Assert().contains_any_of([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
             ]
         ).run()
@@ -240,7 +240,7 @@ def test_assert_any_of():
     try:
         controller = build_flow(
             [
-                SyncEmitSource(),
+                EmitSource(),
                 Assert().contains_any_of([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
             ]
         ).run()
@@ -255,7 +255,7 @@ def test_assert_none_of():
     try:
         controller = build_flow(
             [
-                SyncEmitSource(),
+                EmitSource(),
                 Assert().contains_none_of([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
             ]
         ).run()
@@ -268,7 +268,7 @@ def test_assert_none_of():
     try:
         controller = build_flow(
             [
-                SyncEmitSource(),
+                EmitSource(),
                 Assert().contains_none_of([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
             ]
         ).run()
@@ -283,7 +283,7 @@ def test_assert_none_of():
 def test_sample_emit_first():
     controller = build_flow(
         [
-            SyncEmitSource(),
+            EmitSource(),
             Assert().exactly(5),
             SampleWindow(5),
             Assert().exactly(1).match_exactly([0]),
@@ -299,7 +299,7 @@ def test_sample_emit_first():
 def test_sample_emit_first_with_emit_before_termination():
     controller = build_flow(
         [
-            SyncEmitSource(),
+            EmitSource(),
             Assert().exactly(5),
             SampleWindow(5, emit_before_termination=True),
             Assert().exactly(2).match_exactly([0, 4]),
@@ -315,7 +315,7 @@ def test_sample_emit_first_with_emit_before_termination():
 def test_sample_emit_last():
     controller = build_flow(
         [
-            SyncEmitSource(),
+            EmitSource(),
             Assert().exactly(5),
             SampleWindow(5, emit_period=EmitPeriod.LAST),
             Assert().exactly(1).match_exactly([4]),
@@ -331,7 +331,7 @@ def test_sample_emit_last():
 def test_sample_emit_last_with_emit_before_termination():
     controller = build_flow(
         [
-            SyncEmitSource(),
+            EmitSource(),
             Assert().exactly(5),
             SampleWindow(5, emit_period=EmitPeriod.LAST, emit_before_termination=True),
             Assert().exactly(1).match_exactly([4]),
@@ -347,7 +347,7 @@ def test_sample_emit_last_with_emit_before_termination():
 def test_flatten():
     controller = build_flow(
         [
-            SyncEmitSource(),
+            EmitSource(),
             Flatten(),
             Assert().contains_all_of([1, 2, 3, 4, 5, 6])
         ]
@@ -362,7 +362,7 @@ def test_foreach():
     event_ids = set()
     controller = build_flow(
         [
-            SyncEmitSource(),
+            EmitSource(),
             ForEach(lambda e: event_ids.add(e.id), full_event=True),
             Assert(full_event=True).each_event(lambda event: event.id in event_ids),
         ]
@@ -390,7 +390,7 @@ def test_partition():
 
     controller = build_flow(
         [
-            SyncEmitSource(),
+            EmitSource(),
             Assert().exactly(6),
             Partition(lambda event: event.body % 2 == 0),
             Assert().exactly(6),

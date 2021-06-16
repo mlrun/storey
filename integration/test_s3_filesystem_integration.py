@@ -5,7 +5,7 @@ import uuid
 import pandas as pd
 import pytest
 
-from storey import build_flow, CSVSource, CSVTarget, SyncEmitSource, Reduce, Map, FlatMap, AsyncEmitSource, ParquetTarget
+from storey import build_flow, CSVSource, CSVTarget, EmitSource, Reduce, Map, FlatMap, ParquetTarget
 from .integration_test_utils import _generate_table_name
 
 has_s3_credentials = os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY") and os.getenv("AWS_BUCKET")
@@ -98,7 +98,7 @@ def test_csv_reader_from_s3_error_on_file_not_found():
 
 async def async_test_write_csv_to_s3(s3_teardown_csv):
     controller = build_flow([
-        AsyncEmitSource(),
+        EmitSource(),
         CSVTarget(f's3:///{s3_teardown_csv}', columns=['n', 'n*10'], header=True)
     ]).run()
 
@@ -123,7 +123,7 @@ def test_write_csv_to_s3(s3_teardown_file):
 def test_write_csv_with_dict_to_s3(s3_teardown_file):
     file_path = f's3:///{s3_teardown_file}'
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         CSVTarget(file_path, columns=['n', 'n*10'], header=True)
     ]).run()
 
@@ -142,7 +142,7 @@ def test_write_csv_with_dict_to_s3(s3_teardown_file):
 def test_write_csv_infer_columns_without_header_to_s3(s3_teardown_file):
     file_path = f's3:///{s3_teardown_file}'
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         CSVTarget(file_path)
     ]).run()
 
@@ -161,7 +161,7 @@ def test_write_csv_infer_columns_without_header_to_s3(s3_teardown_file):
 def test_write_csv_from_lists_with_metadata_and_column_pruning_to_s3(s3_teardown_file):
     file_path = f's3:///{s3_teardown_file}'
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         CSVTarget(file_path, columns=['event_key=$key', 'n*10'], header=True)
     ]).run()
 
@@ -181,7 +181,7 @@ def test_write_to_parquet_to_s3(s3_setup_teardown_test):
     out_dir = f's3:///{s3_setup_teardown_test}/'
     columns = ['my_int', 'my_string']
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         ParquetTarget(out_dir, partition_cols='my_int', columns=columns, max_events=1)
     ]).run()
 
@@ -202,7 +202,7 @@ def test_write_to_parquet_to_s3_single_file_on_termination(s3_setup_teardown_tes
     out_file = f's3:///{s3_setup_teardown_test}/'
     columns = ['my_int', 'my_string']
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         ParquetTarget(out_file, columns=columns)
     ]).run()
 
@@ -222,7 +222,7 @@ def test_write_to_parquet_to_s3_single_file_on_termination(s3_setup_teardown_tes
 def test_write_to_parquet_to_s3_with_indices(s3_setup_teardown_test):
     out_file = f's3:///{s3_setup_teardown_test}/test_write_to_parquet_with_indices{uuid.uuid4().hex}/'
     controller = build_flow([
-        SyncEmitSource(),
+        EmitSource(),
         ParquetTarget(out_file, index_cols='event_key=$key', columns=['my_int', 'my_string'])
     ]).run()
 
