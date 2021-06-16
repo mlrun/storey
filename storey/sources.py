@@ -347,6 +347,8 @@ class EmitSource(Flow):
             self._raise_on_error(self._ex)
 
     def _run_sync(self):
+        self._q = queue.Queue(self._buffer_size)
+
         thread = threading.Thread(target=self._loop_thread_main)
         thread.start()
 
@@ -366,7 +368,6 @@ class EmitSource(Flow):
         return AsyncFlowController(self._emit_async, loop_task, has_complete, self._key_field, self._time_field)
 
     def run(self):
-        self._q = queue.Queue(self._buffer_size)
         self._closeables = super().run()
 
         is_async = False
