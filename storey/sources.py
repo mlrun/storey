@@ -301,6 +301,9 @@ class EmitSource(Flow):
             if event is _termination_obj:
                 break
 
+        for closeable in self._closeables:
+            await closeable.close()
+
     async def _async_run_loop(self):
         while True:
             event = await self._q.get()
