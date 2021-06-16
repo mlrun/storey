@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import math
 import os
 import queue
@@ -2198,9 +2199,14 @@ def test_async_metadata_fields():
 
 
 def test_uuid():
+    def copy_and_set_body(event):
+        copy_event = copy.copy(event)
+        copy_event.body = copy_event.id
+        return copy_event
+
     controller = build_flow([
         SyncEmitSource(),
-        Map(lambda event: event.copy(body=event.id), full_event=True),
+        Map(copy_and_set_body, full_event=True),
         Reduce([], append_and_return)
     ]).run()
 
