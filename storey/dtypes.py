@@ -1,10 +1,9 @@
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Union, Optional, Callable, List
-from copy import deepcopy
 
-from .utils import parse_duration, bucketPerWindow, get_one_unit_of_duration
 from .aggregation_utils import get_all_raw_aggregates
+from .utils import parse_duration, bucketPerWindow, get_one_unit_of_duration
 
 _termination_obj = object()
 
@@ -49,24 +48,6 @@ class Event:
 
     def __str__(self):
         return f'Event(id={self.id}, key={str(self.key)}, time={self.time}, body={self.body})'
-
-    def copy(self, body=None, key=None, time=None, id=None, headers=None, method=None, path=None, content_type=None,
-             awaitable_result=None,
-             deep_copy=False) -> 'Event':
-        if deep_copy and body is None and self.body is not None:
-            body = deepcopy(self.body)
-
-        return Event(
-            body=body or self.body,
-            key=key or self.key,
-            time=time or self.time,
-            id=id or self.id,
-            headers=headers or self.headers,
-            method=method or self.method,
-            path=path or self.path,
-            content_type=content_type or self.content_type,
-            awaitable_result=awaitable_result or self._awaitable_result
-        )
 
 
 class V3ioError(Exception):

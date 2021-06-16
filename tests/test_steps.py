@@ -358,6 +358,20 @@ def test_flatten():
     controller.await_termination()
 
 
+def test_flatten_forces_full_event_false():
+    controller = build_flow(
+        [
+            SyncEmitSource(),
+            Flatten(full_event=True),
+            Assert().contains_all_of([1, 2, 3, 4, 5, 6])
+        ]
+    ).run()
+
+    controller.emit([1, 2, 3, 4, 5, 6])
+    controller.terminate()
+    controller.await_termination()
+
+
 def test_foreach():
     event_ids = set()
     controller = build_flow(
