@@ -1149,7 +1149,7 @@ class AggregationBuckets:
             return bucket_index
         else:
             self.advance_window_period(timestamp)
-            return self.total_number_of_buckets - 1  # return last index
+            return self.get_bucket_index_by_timestamp(timestamp)
 
     #  Get the index of the bucket corresponding to the requested timestamp
     #  Note: This method can return indexes outside the 'buckets' array
@@ -1162,13 +1162,24 @@ class AggregationBuckets:
     def remove_old_values_from_pre_aggregations(self, timestamp):
         if self._precalculated_aggregations:
             for (aggr_name, current_window_millis), aggr in self._current_aggregate_values.items():
-                previous_window_start = self.get_window_range(self.get_end_bucket(self._last_data_point_timestamp), current_window_millis)
-                current_window_start = self.get_window_range(self.get_end_bucket(timestamp), current_window_millis)
+                self.is_fixed_window = isinstance(self.explicit_windows, FixedWindows)
+                if self.is_fixed_window:
+                    previous_window_start_time = \
+                        self.get_window_start_time_from_timestamp(self._last_data_point_timestamp, current_window_millis)
+                    previous_window_start = self.get_bucket_index_by_timestamp(previous_window_start_time)
+                    current_window_start_time = \
+                        self.get_window_start_time_from_timestamp(timestamp, current_window_millis)
+                    current_window_start = self.get_bucket_index_by_timestamp(current_window_start_time)
+                else:
+                    previous_window_start = \
+                        self.get_window_range(self.get_end_bucket(self._last_data_point_timestamp), current_window_millis)
+                    current_window_start = \
+                        self.get_window_range(self.get_end_bucket(timestamp), current_window_millis)
 
-                previous_window_start = max(0, previous_window_start)
-                current_window_start = max(0, current_window_start)
-                previous_window_start = min(len(self.buckets) - 1, previous_window_start)
-                current_window_start = min(len(self.buckets), current_window_start)
+                    previous_window_start = max(0, previous_window_start)
+                    current_window_start = max(0, current_window_start)
+                    previous_window_start = min(len(self.buckets) - 1, previous_window_start)
+                    current_window_start = min(len(self.buckets), current_window_start)
 
                 for bucket_id in range(previous_window_start, current_window_start):
                     current_pre_aggregated_value = aggr.value
@@ -1183,6 +1194,8 @@ class AggregationBuckets:
     def advance_window_period(self, advance_to):
         desired_bucket_index = int((advance_to - self.first_bucket_start_time) / self.period_millis)
         buckets_to_advance = desired_bucket_index - (self.total_number_of_buckets - 1)
+        if self.is_fixed_window:
+            buckets_to_advance = max(self.total_number_of_buckets, buckets_to_advance)
 
         if buckets_to_advance > 0:
             if buckets_to_advance > self.total_number_of_buckets:
@@ -1213,6 +1226,9 @@ class AggregationBuckets:
         num_of_buckets_in_window = int(windows_millis / self.period_millis)
         return end_bucket - num_of_buckets_in_window + 1
 
+    def get_window_start_time_from_timestamp(self, timestamp, window_millis):
+        return int((timestamp - self.first_bucket_start_time) / window_millis) * window_millis + self.first_bucket_start_time
+
     def aggregate(self, timestamp, value):
         index = self.get_or_advance_bucket_index_by_timestamp(timestamp)
 
@@ -1223,11 +1239,15 @@ class AggregationBuckets:
             self.add_to_pending(timestamp, value)
 
             if self._precalculated_aggregations:
-                end_bucket = self.get_end_bucket(self._last_data_point_timestamp)
                 for (_, current_window_millis), aggr in self._current_aggregate_values.items():
-                    start = self.get_window_range(end_bucket, current_window_millis)
+                    current_window_start_time = self.get_window_start_time_from_timestamp(timestamp, current_window_millis)
+                    current_window_start_index = self.get_bucket_index_by_timestamp(current_window_start_time)
 
-                    if timestamp > self._last_data_point_timestamp or index >= start:
+                    current_window_end_time = current_window_start_time + current_window_millis
+                    current_window_end_index = self.get_bucket_index_by_timestamp(current_window_end_time) - 1
+
+                    if timestamp >= self._last_data_point_timestamp \
+                       and index in range(current_window_start_index, current_window_end_index + 1):
                         aggr.aggregate(timestamp, value)
                 if timestamp > self._last_data_point_timestamp:
                     self._last_data_point_timestamp = timestamp
