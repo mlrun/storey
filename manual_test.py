@@ -5,7 +5,6 @@ from storey.dtypes import SlidingWindows
 
 driver = RedisDriver()
 table_object = Table('/test/my_features', driver)
-stream = Table('/test/stream', driver)
 
 
 def enrich(event, state):
@@ -29,13 +28,12 @@ if __name__ == '__main__':
                                         SlidingWindows(['1h'], '10m'),
                                         aggr_filter=lambda element: element['activity_status'] == 'fail')],
                        table_object),
-        NoSqlTarget(table_object),
-        StreamTarget(driver, 'features_stream')
+        NoSqlTarget(table_object)
     ]).run()
 
     controller.emit({'clicks': 1, 'purchase_amount': 1.99, 'activity': 1, 'activity_status': 'success'}, 'key')
-    controller.emit({'clicks': 1, 'purchase_amount': 1.99, 'activity': 1, 'activity_status': 'success'}, 'key')
-    controller.emit({'clicks': 1, 'purchase_amount': 1.99, 'activity': 1, 'activity_status': 'fail'}, 'key')
+    controller.emit({'clicks': 1, 'purchase_amount': 3.99, 'activity': 1, 'activity_status': 'success'}, 'key')
+    controller.emit({'clicks': 1, 'purchase_amount': 10.99, 'activity': 1, 'activity_status': 'fail'}, 'key')
     controller.terminate()
     termination_result = controller.await_termination()
     print(termination_result)
