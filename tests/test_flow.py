@@ -410,7 +410,7 @@ def test_write_parquet_read_parquet_partitioned(tmpdir):
 from unittest.mock import MagicMock
 from storey.drivers import RedisDriver
 from storey.aggregations import AggregateByKey
-from storey.dtypes import FieldAggregator, FixedWindows
+from storey.dtypes import FieldAggregator, FixedWindows, SlidingWindows
 
 
 async def async_test_write_parquet_flush(tmpdir):
@@ -3365,3 +3365,24 @@ def test_redis_driver_join(redis):
     assert termination_result == [
         {'col1': 1, 'col2': '1', b'name': b'1234'},
         {'col1': 1, 'col2': '1', b'name': b'1234'}]
+
+
+def test_redis_driver_read(redis):
+    driver = RedisDriver(redis)
+    table = Table('test', driver)
+
+    write_controller = build_flow([
+        SyncEmitSource(),
+        NoSqlTarget(Table('test', driver)),
+        Complete()
+    ]).run()
+    write_controller.emit({'col1': 0}, 'key').await_result()
+    write_controller.terminate()
+    write_controller.await_termination()
+
+    read_controller = build_flow([
+        SyncEmitSource(),
+        QueryByKey(['col1'], table, 'key')
+    ]).run()
+    read_controller.terminate()
+    print(read_controller.await_termination())
