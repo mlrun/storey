@@ -1,6 +1,7 @@
 import base64
 import json
 import os
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
@@ -18,8 +19,10 @@ import v3io.aio.dataplane
 from v3io.dataplane import kv_array
 from redis import Redis
 from rediscluster import RedisCluster
+from redis import WatchError
+from redis.client import Pipeline
 
-from .dtypes import V3ioError, RedisError
+from .dtypes import V3ioError, RedisError, RedisTimeoutError
 from .utils import schema_file_name, asyncify
 
 
@@ -522,6 +525,9 @@ class RedisType(Enum):
 
 
 class RedisDriver(Driver):
+    REDIS_TIMEOUT = 10  # Seconds
+    REDIS_WATCH_INTERVAL = 2  # Seconds
+
     def __init__(self, redis_client: Optional[Union[redis.Redis, rediscluster.RedisCluster]] = None,
                  redis_type: RedisType = RedisType.STANDALONE,
                  key_prefix: str = "",
@@ -549,33 +555,133 @@ class RedisDriver(Driver):
     def make_key(self, table_path, key):
         return "{}{}{}".format(self._key_prefix, table_path, key)
 
+    async def _lincr(self, key: str, index_to_update: int, incr_by: float):
+        """Atomically increment the numeric value at an index in a list.
+
+        This is, in effect, a client-side LINCR command (list-increment) -- a command
+        that does not exist in Redis.
+        """
+        timeout = datetime.now() + timedelta(seconds=self.REDIS_TIMEOUT)
+        with self.redis.pipeline() as pipeline:
+            while True:
+                try:
+                    pipeline.watch(key)
+                    old = pipeline.lindex(key, index_to_update)
+                    pipeline.multi()
+                    pipeline.lset(key, index_to_update, old + incr_by)
+                    return await asyncify(pipeline.execute)()
+                except WatchError:
+                    if datetime.now() < timeout:
+                        time.sleep(self.REDIS_WATCH_INTERVAL)
+                        continue
+                    raise RedisTimeoutError(f"Timed out trying to increment key {key}")
+
+    @staticmethod
+    def _convert_python_obj_to_redis_value(value):
+        if isinstance(value, datetime):
+            if pd.isnull(value):
+                return None
+            timestamp = value.timestamp()
+            secs = int(timestamp)
+            nanosecs = int((timestamp - secs) * 1e+9)
+            return f'{secs}:{nanosecs}'
+        elif isinstance(value, timedelta):
+            return str(value.total_seconds())
+        else:
+            return str(value)
+
+    def _discard_old_pending_items(self, pending, max_window_millis):
+        res = {}
+        if pending:
+            last_time = int(list(pending.keys())[-1] / max_window_millis) * max_window_millis
+            min_time = last_time - max_window_millis
+            for time, value in pending.items():
+                if time > min_time:
+                    res[time] = value
+        return res
+
+    def _build_simplified_feature_store_request(self, aggregation_element, pipeline):
+        atomic_updates = []
+        times_updates = {}
+        new_cached_times = {}
+        pending_updates = {}
+        initialized_attributes = {}
+
+        for name, bucket in aggregation_element.aggregation_buckets.items():
+            # Only save raw aggregates, not virtual
+            if bucket.should_persist:
+
+                # In case we have pending data that spreads over more then 2 windows, discard the old ones.
+                pending_updates[name] = self._discard_old_pending_items(bucket.get_and_flush_pending(),
+                                                                        bucket.max_window_millis)
+                for bucket_start_time, aggregation_values in pending_updates[name].items():
+                    # the relevant attribute out of the 2 feature attributes
+                    feature_attr = 'a' if int(bucket_start_time / bucket.max_window_millis) % 2 == 0 else 'b'
+
+                    array_time_attribute_name = f'{self._aggregation_time_attribute_prefix}{bucket.name}_{feature_attr}'
+
+                    cached_time = bucket.storage_specific_cache.get(array_time_attribute_name, 0)
+
+                    expected_time = int(bucket_start_time / bucket.max_window_millis) * bucket.max_window_millis
+                    expected_time_expr = self._convert_python_obj_to_redis_value(
+                        datetime.fromtimestamp(expected_time / 1000))
+                    index_to_update = int((bucket_start_time - expected_time) / bucket.period_millis)
+
+                    for aggregation, aggregation_value in aggregation_values.items():
+                        list_attribute_key = f'{self._aggregation_attribute_prefix}{name}_{aggregation}_{feature_attr}'
+                        if cached_time < expected_time:
+                            if not initialized_attributes.get(list_attribute_key, 0) == expected_time:
+                                initialized_attributes[list_attribute_key] = expected_time
+                                pipeline.lset(list_attribute_key, 0, aggregation_value.default_value)
+                            if array_time_attribute_name not in times_updates:
+                                times_updates[array_time_attribute_name] = expected_time_expr
+                            new_cached_times[name] = (array_time_attribute_name, expected_time)
+
+                        # Updating the specific cells
+                        if cached_time <= expected_time:
+                            # Increment the value in the list index by the new value
+                            atomic_updates.append(
+                                partial(self._lincr, list_attribute_key, index_to_update, aggregation_value.value))
+
+        for atomic_update in atomic_updates:
+            # TODO: Check result, handle RedisError
+            await atomic_update()
+
+        # Separating time attribute updates, so that they will be executed in the end
+        # and only once per feature name.
+        for array_time_attribute_name, expected_time_expr in times_updates.items():
+            pipeline.set(array_time_attribute_name, expected_time_expr)
+
+        for name, new_value in new_cached_times.items():
+            attribute_name = new_value[0]
+            new_time = new_value[1]
+            aggregation_element.aggregation_buckets[name].storage_specific_cache[attribute_name] = new_time
+        return pending_updates
+
+    def _build_updates(self, aggregation_element, additional_data, partitioned_by_key, pipeline):
+        if aggregation_element:
+            # In case we get an indication the data is (probably) not updated from
+            # multiple workers (for example: pre sharded by key), run a simpler expression.
+            if partitioned_by_key:
+                self._build_simplified_feature_store_request(aggregation_element, pipeline)
+            else:
+                # TODO
+                # self._build_conditioned_feature_store_request(aggregation_element, pipeline)
+                pass
+
+        if additional_data:
+            # TODO: Is `name` the right key to use in Redis, or should we namespace it?
+            for name, value in additional_data.items():
+                expression_value = self._convert_python_obj_to_redis_value(value)
+                if expression_value:
+                    pipeline.set(name, self._convert_python_obj_to_redis_value(value))
+                else:
+                    pipeline.delete(name)
+
     async def _save_key(self, container, table_path, key, aggr_item, partitioned_by_key, additional_data):
-        redis_key = self.make_key(table_path, key)
-        data = {key: str(val) for key, val in additional_data.items()}
-        return await asyncify(self.redis.hset)(redis_key, mapping=data)
-
-    async def _describe(self, container, stream_path):
-        class Info:
-            shard_count = 1
-        return Info()
-
-    async def _put_records(self, container, stream_path, payload):
-        @dataclass
-        class Output:
-            failed_record_count: int
-
-        @dataclass
-        class Response:
-            output: Output
-
-        redis_key = f"{container}:{stream_path}"
-        failed = 0
-        for data in payload:
-            try:
-                await asyncify(self.redis.xadd)(redis_key, json.loads(data['data']))
-            except redis.ResponseError:
-                failed += 1
-        return Response(Output(failed_record_count=failed))
+        with self.redis.pipeline(transaction=False) as p:
+            self._build_updates(aggr_item, additional_data, partitioned_by_key, p)
+            return await asyncify(p.execute)()
 
     async def _get_all_fields(self, redis_key: str):
         try:
