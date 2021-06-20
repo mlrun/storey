@@ -164,6 +164,7 @@ def update_in(obj, key, value):
 
 
 def hash_list(list_to_hash):
+    list_to_hash = [str(element) for element in list_to_hash]
     str_concatted = ''.join(list_to_hash)
     hash_value = hash(str_concatted)
     return hash_value

@@ -1363,3 +1363,46 @@ def test_non_existing_key_query_by_key_from_v3io_key_is_list(setup_teardown_test
     controller.emit({'nameeeee': 'katya'}, 'katya')
     controller.terminate()
     controller.await_termination()
+
+
+def test_multiple_keys_int(setup_teardown_test):
+    t0 = pd.Timestamp(test_base_time)
+    data = pd.DataFrame(
+        {
+            'key_column1': [10, 20], 'key_column2': [30, 40], 'key_column3': [5, 6], 'key_column4': [50, 60],
+            'some_data': [1, 2],
+            'time': [t0 - pd.Timedelta(minutes=25), t0 - pd.Timedelta(minutes=30)]
+        }
+    )
+
+    keys = ['key_column1', 'key_column2', 'key_column3', 'key_column4']
+    table = Table(setup_teardown_test, V3ioDriver())
+    controller = build_flow([
+        DataframeSource(data, key_field=keys, time_field='time'),
+        AggregateByKey([FieldAggregator('number_of_stuff', 'some_data', ['sum'],
+                                        SlidingWindows(['1h'], '10m'))],
+                       table, emit_policy=EmitAfterMaxEvent(1)),
+        NoSqlTarget(table),
+    ]).run()
+
+    actual = controller.await_termination()
+
+    other_table = Table(setup_teardown_test, V3ioDriver())
+    controller = build_flow([
+        SyncEmitSource(),
+        QueryByKey(['number_of_stuff_sum_1h'],
+                   other_table, key=keys),
+        Reduce([], lambda acc, x: append_return(acc, x)),
+    ]).run()
+
+    controller.emit({'key_column1': 10, 'key_column2': 30, 'key_column3': 5, 'key_column4': 50},
+                    key=[10, 30, 5, 50], event_time=test_base_time)
+
+    controller.terminate()
+    actual = controller.await_termination()
+    expected_results = [
+        {'number_of_stuff_sum_1h': 1.0, 'key_column1': 10, 'key_column2': 30, 'key_column3': 5, 'key_column4': 50}
+    ]
+
+    assert actual == expected_results, \
+        f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
