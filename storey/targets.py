@@ -444,7 +444,8 @@ class ParquetTarget(_Batching, _Writer):
         file_path = self._path if self._single_file_mode else f'{dir_path}{uuid.uuid4()}.parquet'
         # Remove nanosecs from timestamp columns & index
         for name, _ in df.items():
-            if pd.core.dtypes.common.is_datetime64_dtype(df[name]):
+            if pd.core.dtypes.common.is_datetime64_dtype(df[name]) or \
+                    self._schema and isinstance(self._schema.field(name).type, pyarrow.TimestampType):
                 df[name] = df[name].astype('datetime64[us]')
         if pd.core.dtypes.common.is_datetime64_dtype(df.index):
             df.index = df.index.floor('u')
