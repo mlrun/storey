@@ -976,8 +976,8 @@ def test_query_aggregate_by_key_fixed_window_new_time_exceeds_stored_window(setu
     actual = controller.await_termination()
     expected_results = [
         {'col1': 0, 'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 1},
-        {'col1': 1, 'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 1},
-        {'col1': 2, 'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 2},
+        {'col1': 1, 'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 2},
+        {'col1': 2, 'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 3},
     ]
 
     assert actual == expected_results, \
@@ -998,7 +998,7 @@ def test_query_aggregate_by_key_fixed_window_new_time_exceeds_stored_window(setu
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [
-        {'col1': 3, 'number_of_stuff_count_30m': 0, 'number_of_stuff_count_2h': 0}
+        {'col1': 3, 'number_of_stuff_count_30m': 0, 'number_of_stuff_count_2h': 1}
     ]
 
     assert actual == expected_results, \
@@ -1076,8 +1076,8 @@ def test_fixed_query_time_exceeds_stored_window_by_more_than_window(setup_teardo
     actual = controller.await_termination()
     expected_results = [
         {'col1': 0, 'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 1},
-        {'col1': 1, 'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 1},
-        {'col1': 2, 'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 2},
+        {'col1': 1, 'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 2},
+        {'col1': 2, 'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 3},
     ]
 
     assert actual == expected_results, \
@@ -1116,14 +1116,14 @@ def test_write_to_table_reuse(setup_teardown_test):
 
     expected_results = [
         [{'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 1, 'col1': 0},
-         {'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 1, 'col1': 1},
-         {'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 2, 'col1': 2}],
+         {'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 2, 'col1': 1},
+         {'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 3, 'col1': 2}],
         [{'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 1, 'col1': 0},
-         {'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 1, 'col1': 1},
-         {'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 2, 'col1': 2},
-         {'col1': 0},
-         {'number_of_stuff_count_30m': 2, 'number_of_stuff_count_2h': 2, 'col1': 1},
-         {'number_of_stuff_count_30m': 2, 'number_of_stuff_count_2h': 3, 'col1': 2}],
+         {'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 2, 'col1': 1},
+         {'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 3, 'col1': 2},
+         {'number_of_stuff_count_30m': 2, 'number_of_stuff_count_2h': 2, 'col1': 0},
+         {'number_of_stuff_count_30m': 2, 'number_of_stuff_count_2h': 4, 'col1': 1},
+         {'number_of_stuff_count_30m': 2, 'number_of_stuff_count_2h': 4, 'col1': 2}],
     ]
 
     for iteration in range(2):

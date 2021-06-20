@@ -126,6 +126,13 @@ def get_window_optimal_period_millis(windows_tuples):
     return numpy.gcd.reduce(windows_list)
 
 
+def get_window_start_time_alignment(smallest_window_unit_millis):
+    if smallest_window_unit_millis == 1000:
+        return 60 * 1000  # 60 seconds
+    else:
+        return 10 * 60 * 1000  # 10 minutes
+
+
 class WindowsBase:
     def __init__(self, period, windows):
         self.max_window_millis = windows[-1][0]
@@ -190,10 +197,9 @@ class FixedWindows(WindowsBase):
     def get_period_by_time(self, timestamp):
         return int(timestamp / self.period_millis) * self.period_millis
 
-    def get_window_start_time_by_time(self, reference_timestamp):
-        window_seconds = int(self.window_millis / 1000)
-        timestamp_seconds = int(reference_timestamp / 1000)
-        return int(timestamp_seconds / window_seconds) * window_seconds * 1000
+    def get_window_start_time_by_time(self, timestamp):
+        align = get_window_start_time_alignment(self.smallest_window_unit_millis)
+        return int(timestamp / align) * align
 
 
 class SlidingWindows(WindowsBase):
@@ -207,6 +213,7 @@ class SlidingWindows(WindowsBase):
 
     def __init__(self, windows: List[str], period: Optional[str] = None):
         windows_tuples = sort_windows_and_convert_to_millis(windows)
+        self.smallest_window_unit_millis = get_one_unit_of_duration(windows_tuples[0][1])
 
         if period:
             period_millis = parse_duration(period)
@@ -219,13 +226,13 @@ class SlidingWindows(WindowsBase):
         else:
             # The period should be a divisor of the unit of the smallest window,
             # for example if the smallest request window is 2h, the period will be 1h / `bucketPerWindow`
-            smallest_window_unit_millis = get_one_unit_of_duration(windows_tuples[0][1])
-            period_millis = smallest_window_unit_millis / bucketPerWindow
 
+            period_millis = self.smallest_window_unit_millis / bucketPerWindow
         WindowsBase.__init__(self, period_millis, windows_tuples)
 
     def get_window_start_time_by_time(self, timestamp):
-        return timestamp
+        align = get_window_start_time_alignment(self.smallest_window_unit_millis)
+        return int(timestamp / align) * align
 
 
 class EmissionType(Enum):
