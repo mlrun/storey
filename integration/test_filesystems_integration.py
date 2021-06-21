@@ -410,7 +410,7 @@ def test_filter_before_after_partitioned_inner_other_partition(setup_teardown_te
     after = pd.Timestamp('2019-07-01 00:00:00')
 
     controller = build_flow([
-        ParquetSource(out_file, end_filter=before, start_filter=after, filter_column='my_time'),
+        ParquetSource(out_file, end_filter=before, start_filter=after, filter_column='my_time', columns=columns),
         Reduce([], append_and_return)
     ]).run()
     read_back_result = controller.await_termination()
@@ -443,7 +443,7 @@ def test_filter_before_after_partitioned_outer_other_partition(setup_teardown_te
     after = pd.Timestamp('2020-12-30 08:53:00')
 
     controller = build_flow([
-        ParquetSource(out_file, end_filter=before, start_filter=after, filter_column='my_time'),
+        ParquetSource(out_file, end_filter=before, start_filter=after, filter_column='my_time', columns=columns),
         Reduce([], append_and_return)
     ]).run()
     read_back_result = controller.await_termination()

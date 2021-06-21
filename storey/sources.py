@@ -15,7 +15,7 @@ import pytz
 
 from .dtypes import _termination_obj, Event, legal_time_units
 from .flow import Flow, Complete
-from .utils import url_to_file_system, drop_reserved_columns, find_filters
+from .utils import url_to_file_system, find_filters
 
 
 class AwaitableResult:
@@ -795,5 +795,4 @@ class ParquetSource(DataframeSource):
                 df = self._read_filtered_parquet(path)
             else:
                 df = pandas.read_parquet(path, columns=self._columns, storage_options=self._storage_options)
-            drop_reserved_columns(df)
             self._dfs.append(df)
