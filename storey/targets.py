@@ -163,10 +163,8 @@ class _Writer:
                 else:
                     val = event.body[col]
 
-            is_meta = False
             if col.startswith('$'):
                 col = col[1:]
-                is_meta = True
 
             if hash_into:
                 col = f'hash{hash_into}_{col}'
