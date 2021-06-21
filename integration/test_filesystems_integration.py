@@ -233,6 +233,28 @@ def test_write_to_parquet_to_v3io_single_file_on_termination(setup_teardown_test
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
 
 
+# ML-701
+def test_write_to_parquet_to_v3io_force_string_to_timestamp(setup_teardown_test):
+    out_file = f'v3io:///{setup_teardown_test}/out.parquet'
+    columns = ['time']
+    controller = build_flow([
+        SyncEmitSource(),
+        ParquetTarget(out_file, columns=[('time', 'datetime')])
+    ]).run()
+
+    expected = []
+    for i in range(10):
+        t = '2021-03-02T19:45:00'
+        controller.emit([t])
+        expected.append([datetime.datetime.fromisoformat(t)])
+    expected = pd.DataFrame(expected, columns=columns)
+    controller.terminate()
+    controller.await_termination()
+
+    read_back_df = pd.read_parquet(out_file, columns=columns)
+    assert read_back_df.equals(expected)
+
+
 def test_write_to_parquet_to_v3io_with_indices(setup_teardown_test):
     out_file = f'v3io:///{setup_teardown_test}/test_write_to_parquet_with_indices{uuid.uuid4().hex}.parquet'
     controller = build_flow([

@@ -715,6 +715,7 @@ class _Batching(Flow):
         self._batch_first_event_time: Dict[Optional[str], datetime.datetime] = {}
         self._batch_start_time: Dict[Optional[str], float] = {}
         self._timeout_task: Optional[Task] = None
+        self._timeout_task_ex: Optional[Exception] = None
 
     @staticmethod
     def _create_key_extractor(key) -> Callable:
@@ -748,6 +749,9 @@ class _Batching(Flow):
             self._batch_first_event_time[key] = event.time
             self._batch_start_time[key] = time.monotonic()
 
+        if self._timeout_task_ex:
+            raise self._timeout_task_ex
+
         if self._flush_after_seconds is not None and self._timeout_task is None:
             self._timeout_task = asyncio.get_running_loop().create_task(self._sleep_and_emit())
 
@@ -760,12 +764,15 @@ class _Batching(Flow):
             await self._do_downstream(event)
 
     async def _sleep_and_emit(self):
-        while self._batch:
-            key = next(iter(self._batch.keys()))
-            delta_seconds = time.monotonic() - self._batch_start_time[key]
-            if delta_seconds < self._flush_after_seconds:
-                await asyncio.sleep(self._flush_after_seconds - delta_seconds)
-            await self._emit_batch(key)
+        try:
+            while self._batch:
+                key = next(iter(self._batch.keys()))
+                delta_seconds = time.monotonic() - self._batch_start_time[key]
+                if delta_seconds < self._flush_after_seconds:
+                    await asyncio.sleep(self._flush_after_seconds - delta_seconds)
+                await self._emit_batch(key)
+        except Exception as ex:
+            self._timeout_task_ex = ex
 
         self._timeout_task = None
 
