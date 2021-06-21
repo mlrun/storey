@@ -225,7 +225,7 @@ class SlidingWindows(WindowsBase):
         WindowsBase.__init__(self, period_millis, windows_tuples)
 
     def get_window_start_time_by_time(self, timestamp):
-        return timestamp
+        return int(timestamp / self.period_millis) * self.period_millis
 
 
 class EmissionType(Enum):
