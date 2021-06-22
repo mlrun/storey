@@ -322,7 +322,7 @@ def test_filter_before_after_non_partitioned(setup_teardown_test):
                       columns=columns)
     df.set_index('my_string')
 
-    out_file = f'v3io:///{setup_teardown_test}/'
+    out_file = f'v3io:///{setup_teardown_test}/before_after_non_partioned/'
     controller = build_flow([
         DataframeSource(df),
         ParquetTarget(out_file, columns=columns, partition_cols=[]),
@@ -350,7 +350,6 @@ def test_filter_before_after_partitioned_random(setup_teardown_test):
 
     seed_value = rand.randrange(sys.maxsize)
     print('Seed value:', seed_value)
-
     rand.seed(seed_value)
 
     random_second = rand.randrange(int(delta.total_seconds()))
@@ -385,7 +384,7 @@ def test_filter_before_after_partitioned_random(setup_teardown_test):
     partition_columns = all_partition_columns[:num_part_columns]
     print("partitioned by " + str(partition_columns))
 
-    out_file = f'v3io:///{setup_teardown_test}/'
+    out_file = f'v3io:///{setup_teardown_test}/random/'
     controller = build_flow([
         DataframeSource(df, time_field='datetime'),
         ParquetTarget(out_file, columns=['string', 'datetime'], partition_cols=partition_columns),
@@ -421,7 +420,7 @@ def test_filter_before_after_partitioned_inner_other_partition(setup_teardown_te
                       columns=columns)
     df.set_index('my_string')
 
-    out_file = f'v3io:///{setup_teardown_test}/'
+    out_file = f'v3io:///{setup_teardown_test}/inner_other_partition/'
     controller = build_flow([
         DataframeSource(df, time_field='my_time'),
         ParquetTarget(out_file, columns=columns, partition_cols=['$year', '$month', '$day', '$hour', 'my_city']),
@@ -446,31 +445,33 @@ def test_filter_before_after_partitioned_inner_other_partition(setup_teardown_te
 def test_filter_before_after_partitioned_outer_other_partition(setup_teardown_test):
     columns = ['my_string', 'my_time', 'my_city']
 
-    df = pd.DataFrame([['hello', pd.Timestamp('2020-12-31 15:05:00'), 'tel aviv'],
-                       ['world', pd.Timestamp('2020-12-30 09:00:00'), 'haifa'],
+    df = pd.DataFrame([['shining', pd.Timestamp('2020-12-30 08:53:00'), 'ramat gan'],
+                       ['hello', pd.Timestamp('2020-12-31 15:05:00'), 'tel aviv'],
+                       ['beautiful', pd.Timestamp('2020-12-30 09:00:00'), 'haifa'],
                        ['sun', pd.Timestamp('2020-12-29 09:00:00'), 'tel aviv'],
-                       ['is', pd.Timestamp('2020-12-30 15:00:45'), 'hod hasharon'],
-                       ['shining', pd.Timestamp('2020-12-31 13:00:56'), 'hod hasharon']],
+                       ['world', pd.Timestamp('2020-12-30 15:00:45'), 'hod hasharon'],
+                       ['is', pd.Timestamp('2020-12-31 13:00:56'), 'hod hasharon']],
                       columns=columns)
     df.set_index('my_string')
 
-    out_file = f'v3io:///{setup_teardown_test}/'
+    out_file = f'v3io:///{setup_teardown_test}/outer_other_partition/'
     controller = build_flow([
         DataframeSource(df, time_field='my_time'),
         ParquetTarget(out_file, columns=columns, partition_cols=['my_city', '$year', '$month', '$day', '$hour']),
     ]).run()
     controller.await_termination()
 
-    before = pd.Timestamp('2020-12-31 14:00:00')
-    after = pd.Timestamp('2020-12-30 08:53:00')
+    start = pd.Timestamp('2020-12-30 08:53:00')
+    end = pd.Timestamp('2020-12-31 14:00:00')
 
     controller = build_flow([
-        ParquetSource(out_file, end_filter=before, start_filter=after, filter_column='my_time', columns=columns),
+        ParquetSource(out_file, start_filter=start, end_filter=end, filter_column='my_time', columns=columns),
         Reduce([], append_and_return)
     ]).run()
     read_back_result = controller.await_termination()
-    expected = [{'my_string': 'world', 'my_time': pd.Timestamp('2020-12-30 09:00:00'), 'my_city': 'haifa'},
-                {'my_string': 'is', 'my_time': pd.Timestamp('2020-12-30 15:00:45'), 'my_city': 'hod hasharon'},
-                {'my_string': 'shining', 'my_time': pd.Timestamp('2020-12-31 13:00:56'), 'my_city': 'hod hasharon'}]
+    expected = [{'my_string': 'beautiful', 'my_time': pd.Timestamp('2020-12-30 09:00:00'), 'my_city': 'haifa'},
+                {'my_string': 'world', 'my_time': pd.Timestamp('2020-12-30 15:00:45'), 'my_city': 'hod hasharon'},
+                {'my_string': 'is', 'my_time': pd.Timestamp('2020-12-31 13:00:56'), 'my_city': 'hod hasharon'},
+                {'my_string': 'shining', 'my_time': pd.Timestamp('2020-12-30 08:53:00'), 'my_city': 'ramat gan'}]
 
     assert read_back_result == expected, f"{read_back_result}\n!=\n{expected}"

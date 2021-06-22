@@ -201,7 +201,11 @@ def _find_filter_helper(list_partitions, dtime, sign, first_sign, first_uncommon
     if first_sign:
         # only for the first iteration we need to have ">="/"<=" instead of ">"/"<"
         _create_filter_tuple(dtime, last_partition, first_sign, single_filter)
-        tuple_last_range = (filter_column, sign, dtime)
+        # start needs to be >= and end needs to be "<"
+        if first_sign == ">=":
+            tuple_last_range = (filter_column, first_sign, dtime)
+        else:
+            tuple_last_range = (filter_column, sign, dtime)
         single_filter.append(tuple_last_range)
     else:
         _create_filter_tuple(dtime, last_partition, sign, single_filter)
