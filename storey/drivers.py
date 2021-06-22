@@ -586,6 +586,7 @@ class RedisDriver(Driver):
                 # self._build_conditioned_feature_store_request(aggregation_element, pipeline)
                 pass
 
+        # Static attributes, like "name," "age," -- everything that isn't an agg.
         if additional_data:
             # TODO: Is `name` the right key to use in Redis, or should we namespace it?
             for name, value in additional_data.items():
