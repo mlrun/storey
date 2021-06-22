@@ -524,7 +524,7 @@ class ReadOnlyAggregationBuckets:
             self._window_start_time = explicit_windows.get_window_start_time_by_time(base_time)
             if self._precalculated_aggregations:
                 for win in explicit_windows.windows:
-                    self._current_aggregate_values[win] = AggregationValue.new_from_name(aggregation)
+                    self._current_aggregate_values[win] = AggregationValue.new_from_name(aggregation, self.max_value)
         if hidden_windows:
             if not explicit_windows:
                 self.is_fixed_window = isinstance(self.explicit_windows, FixedWindows)
@@ -535,7 +535,7 @@ class ReadOnlyAggregationBuckets:
             if self._precalculated_aggregations:
                 for win in hidden_windows.windows:
                     if win not in self._current_aggregate_values:
-                        self._current_aggregate_values[win] = AggregationValue.new_from_name(aggregation)
+                        self._current_aggregate_values[win] = AggregationValue.new_from_name(aggregation, self.max_value)
 
         if initial_data:
             self.last_bucket_start_time = None
@@ -702,7 +702,7 @@ class ReadOnlyAggregationBuckets:
         if self.is_fixed_window:
             current_time_bucket_index = self.get_bucket_index_by_timestamp(self._round_time_func(timestamp) - 1)
 
-        aggregated_value = AggregationValue.new_from_name(self.get_aggregation_for_aggregation())
+        aggregated_value = AggregationValue.new_from_name(self.get_aggregation_for_aggregation(), self.max_value)
         prev_windows_millis = 0
         for win in windows:
             window_string = win[1]
@@ -734,7 +734,7 @@ class ReadOnlyAggregationBuckets:
 
             # Update the corresponding pre aggregate
             if self._precalculated_aggregations and self._need_to_recalculate_pre_aggregates:
-                new_aggr = AggregationValue.new_from_name(self.aggregation, set_data=current_aggregations_value)
+                new_aggr = AggregationValue.new_from_name(self.aggregation, self.max_value, set_data=current_aggregations_value)
                 new_aggr.time = aggregated_value.time
                 self._current_aggregate_values[win] = new_aggr
         self._need_to_recalculate_pre_aggregates = False
@@ -1104,7 +1104,7 @@ class AggregationBuckets:
         self._current_aggregate_values = {}
         self._intermediate_aggregation_values = {}
         for aggregation_name in self._all_raw_aggregates:
-            aggregation_value = AggregationValue.new_from_name(self.get_aggregation_for_aggregation(aggregation_name))
+            aggregation_value = AggregationValue.new_from_name(self.get_aggregation_for_aggregation(aggregation_name), self.max_value)
             self._intermediate_aggregation_values[aggregation_name] = aggregation_value
 
         # If a user specified a max_value we need to recalculated features on every event
@@ -1118,7 +1118,7 @@ class AggregationBuckets:
         if self._precalculated_aggregations:
             for (window_millis, _) in explicit_windows.windows:
                 for aggr in self._all_raw_aggregates:
-                    self._current_aggregate_values[(aggr, window_millis)] = AggregationValue.new_from_name(aggr)
+                    self._current_aggregate_values[(aggr, window_millis)] = AggregationValue.new_from_name(aggr, max_value)
 
         if initial_data:
             self.last_bucket_start_time = None
