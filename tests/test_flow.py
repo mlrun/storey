@@ -1601,12 +1601,15 @@ def test_write_to_parquet(tmpdir):
     for i in range(10):
         controller.emit([i, f'this is {i}'])
         expected.append([i, f'this is {i}'])
-    expected = pd.DataFrame(expected, columns=columns, dtype='int32')
+    expected_in_pyarrow1 = pd.DataFrame(expected, columns=columns)
+    expected_in_pyarrow3 = expected_in_pyarrow1.copy()
+    expected_in_pyarrow1['my_int'] = expected_in_pyarrow1['my_int'].astype('int32')
+    expected_in_pyarrow3['my_int'] = expected_in_pyarrow3['my_int'].astype('category')
     controller.terminate()
     controller.await_termination()
 
     read_back_df = pd.read_parquet(out_dir, columns=columns)
-    assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+    assert read_back_df.equals(expected_in_pyarrow1) or read_back_df.equals(expected_in_pyarrow3)
 
 
 def test_write_sparse_data_to_parquet(tmpdir):
