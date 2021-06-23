@@ -23,6 +23,7 @@ class Flow:
         self._termination_result_fn = termination_result_fn
         self.context = context
         self.verbose = context and getattr(context, 'verbose', False)
+        self.logger = getattr(self.context, 'logger', None) if self.context else None
 
         self._kwargs = kwargs
         self._full_event = kwargs.pop('full_event', False)
@@ -183,19 +184,14 @@ class Flow:
                 event_copy._awaitable_result = awaitable_result
                 tasks.append(asyncio.get_running_loop().create_task(self._outlets[i]._do_and_recover(event_copy)))
             event._awaitable_result = awaitable_result
-        if self.verbose and self.context:
-            logger = getattr(self.context, 'logger', None)
-            if logger:
-                step_name = type(self).__name__
-                event_string = self._event_string(event)
-                logger.debug(f'{step_name} -> {type(self._outlets[0]).__name__} | {event_string}')
+        if self.verbose and self.logger:
+            step_name = type(self).__name__
+            event_string = self._event_string(event)
+            self.logger.debug(f'{step_name} -> {type(self._outlets[0]).__name__} | {event_string}')
         await self._outlets[0]._do_and_recover(event)  # Optimization - avoids creating a task for the first outlet.
-        logger = None
-        if self.verbose and self.context:
-            logger = getattr(self.context, 'logger', None)
         for i, task in enumerate(tasks, start=1):
-            if self.verbose:
-                logger.debug(f'{step_name} -> {type(self._outlets[i]).__name__} | {event_string}')
+            if self.verbose and self.logger:
+                self.logger.debug(f'{step_name} -> {type(self._outlets[i]).__name__} | {event_string}')
             await task
 
     def _get_event_or_body(self, event):
