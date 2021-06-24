@@ -474,13 +474,15 @@ class CSVSource(_IterableSource):
         datetime.fromisoformat().
     :parameter type_inference: Whether to infer data types from the data (when True), or read all fields in as strings (when False).
         Defaults to True.
+    :parameter parse_dates: list of columns (names or integers) that will be attempted to parse as date column
 
     for additional params, see documentation of  :class:`~storey.flow.Flow`
     """
 
     def __init__(self, paths: Union[List[str], str], header: bool = False, build_dict: bool = False,
                  key_field: Union[int, str, List[int], List[str], None] = None, time_field: Union[int, str, None] = None,
-                 timestamp_format: Optional[str] = None, type_inference: bool = True, **kwargs):
+                 timestamp_format: Optional[str] = None, type_inference: bool = True,
+                 parse_dates: Optional[Union[List[int], List[str]]] = None, **kwargs):
         kwargs['paths'] = paths
         kwargs['header'] = header
         kwargs['build_dict'] = build_dict
@@ -502,9 +504,12 @@ class CSVSource(_IterableSource):
         self._timestamp_format = timestamp_format
         self._type_inference = type_inference
         self._storage_options = kwargs.get('storage_options')
-        self._time_field_index = None
+        self._parse_dates = parse_dates
+        self._dates_indexes = []
+        if isinstance(self._parse_dates, List) and isinstance(self._parse_dates[0], int):
+            self._dates_indexes = self._parse_dates
         if isinstance(self._time_field, int):
-            self._time_field_index = self._time_field
+            self._dates_indexes.append(self._time_field)
 
         if not header and isinstance(key_field, str):
             raise ValueError('key_field can only be set to an integer when with_header is false')
@@ -585,15 +590,15 @@ class CSVSource(_IterableSource):
                         field_name_to_index = {}
                         for i in range(len(header)):
                             field_name_to_index[header[i]] = i
-                            if header[i] == self._time_field: #or in list self._time_columns to pass
-                                self._time_field_index = i
+                            if header[i] == self._time_field or (self._parse_dates and header[i] in self._parse_dates):
+                                self._dates_indexes.append(i)
                     for line in f:
                         create_event = True
                         parsed_line = next(csv.reader([line]))
                         if self._type_inference:
                             if not self._types:
                                 for index, field in enumerate(parsed_line):
-                                    if index == self._time_field_index: # or index is in list self._time_columns to pass
+                                    if index in self._dates_indexes:
                                         self._types.append('t')
                                     else:
                                         type_field = self._infer_type(field)
