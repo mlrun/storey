@@ -502,6 +502,9 @@ class CSVSource(_IterableSource):
         self._timestamp_format = timestamp_format
         self._type_inference = type_inference
         self._storage_options = kwargs.get('storage_options')
+        self._time_field_index = None
+        if isinstance(self._time_field, int):
+            self._time_field_index = self._time_field
 
         if not header and isinstance(key_field, str):
             raise ValueError('key_field can only be set to an integer when with_header is false')
@@ -517,12 +520,6 @@ class CSVSource(_IterableSource):
         lowercase = value.lower()
         if lowercase == 'true' or lowercase == 'false':
             return 'b'
-
-        try:
-            self._datetime_from_timestamp(value)
-            return 't'
-        except ValueError:
-            pass
 
         try:
             int(value)
@@ -588,16 +585,21 @@ class CSVSource(_IterableSource):
                         field_name_to_index = {}
                         for i in range(len(header)):
                             field_name_to_index[header[i]] = i
+                            if header[i] == self._time_field: #or in list self._time_columns to pass
+                                self._time_field_index = i
                     for line in f:
                         create_event = True
                         parsed_line = next(csv.reader([line]))
                         if self._type_inference:
                             if not self._types:
                                 for index, field in enumerate(parsed_line):
-                                    type_field = self._infer_type(field)
-                                    self._types.append(type_field)
-                                    if type_field == 'n':
-                                        self._none_columns.add(index)
+                                    if index == self._time_field_index: # or index is in list self._time_columns to pass
+                                        self._types.append('t')
+                                    else:
+                                        type_field = self._infer_type(field)
+                                        self._types.append(type_field)
+                                        if type_field == 'n':
+                                            self._none_columns.add(index)
                             else:
                                 for index in copy.copy(self._none_columns):
                                     type_field = self._infer_type(parsed_line[index])

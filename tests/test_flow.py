@@ -2500,7 +2500,7 @@ def test_csv_reader_with_none_values():
 
     assert len(termination_result) == 2
     assert termination_result[0].key == 'a'
-    assert termination_result[0].body == ['a', True, False, 1, 2.3, datetime(2021, 4, 21, 15, 56, 53, 385444)]
+    assert termination_result[0].body == ['a', True, False, 1, 2.3, '2021-04-21 15:56:53.385444']
     assert termination_result[1].key == 'b'
     assert termination_result[1].body == ['b', True, None, math.nan, math.nan, None]
 
@@ -2596,8 +2596,12 @@ def test_csv_none_value_first_row(tmpdir):
     controller.await_termination()
     read_back_df = pd.read_parquet(out_file_par)
 
+    u = pd.read_csv(out_file_csv)
+    u.to_parquet(out_file_par)
+    r2 = pd.read_parquet(out_file_par)
+
     for c in columns:
-        assert read_back_df.dtypes.to_dict()[c] == data.dtypes.to_dict()[c]
+        assert read_back_df.dtypes.to_dict()[c] == r2.dtypes.to_dict()[c]
 
 
 def test_csv_none_value_string(tmpdir):
