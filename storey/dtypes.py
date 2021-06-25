@@ -190,10 +190,8 @@ class FixedWindows(WindowsBase):
     def get_period_by_time(self, timestamp):
         return int(timestamp / self.period_millis) * self.period_millis
 
-    def get_window_start_time_by_time(self, reference_timestamp):
-        window_seconds = int(self.window_millis / 1000)
-        timestamp_seconds = int(reference_timestamp / 1000)
-        return int(timestamp_seconds / window_seconds) * window_seconds * 1000
+    def get_window_start_time_by_time(self, timestamp):
+        return int(timestamp / self.window_millis) * self.window_millis
 
 
 class SlidingWindows(WindowsBase):
