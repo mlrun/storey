@@ -1162,7 +1162,6 @@ class AggregationBuckets:
     def remove_old_values_from_pre_aggregations(self, timestamp):
         if self._precalculated_aggregations:
             for (aggr_name, current_window_millis), aggr in self._current_aggregate_values.items():
-                self.is_fixed_window = isinstance(self.explicit_windows, FixedWindows)
                 if self.is_fixed_window:
                     previous_window_start_time = \
                         self.get_window_start_time_from_timestamp(self._last_data_point_timestamp, current_window_millis)
@@ -1211,10 +1210,19 @@ class AggregationBuckets:
                         aggr_value.reset()
                     self.buckets.append(bucket_to_reuse)
 
-            self.first_bucket_start_time = \
-                self.first_bucket_start_time + buckets_to_advance * self.period_millis
-            self.last_bucket_start_time = \
-                self.last_bucket_start_time + buckets_to_advance * self.period_millis
+            # fixed windows are advancing in integral window size
+            if self.is_fixed_window:
+                window_millis = self.last_bucket_start_time + self.period_millis - self.first_bucket_start_time
+                windows_to_advance = int((advance_to - self.first_bucket_start_time) / window_millis)
+                self.first_bucket_start_time = \
+                    self.first_bucket_start_time + windows_to_advance * window_millis
+                self.last_bucket_start_time = \
+                    self.last_bucket_start_time + windows_to_advance * window_millis
+            else:
+                self.first_bucket_start_time = \
+                    self.first_bucket_start_time + buckets_to_advance * self.period_millis
+                self.last_bucket_start_time = \
+                    self.last_bucket_start_time + buckets_to_advance * self.period_millis
 
     def get_end_bucket(self, timestamp):
         if self.is_fixed_window:
