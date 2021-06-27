@@ -2626,3 +2626,17 @@ def test_csv_none_value_string(tmpdir):
     r2 = pd.read_parquet(out_file_par)
 
     assert r2['str'].compare(read_back_df['str']).empty
+
+
+def test_csv_multiple_time_columns(tmpdir):
+    controller = build_flow([
+        CSVSource('tests/test-multiple-time-columns.csv', header=True, time_field='t1', parse_dates=["t2"]),
+        Reduce([], append_and_return),
+    ]).run()
+
+    termination_result = controller.await_termination()
+
+    expected = [['m1', datetime(2020, 6, 27, 10, 23, 8, 420581), datetime(2020, 6, 27, 12, 23, 8, 420581)],
+                ['m2', datetime(2021, 6, 27, 10, 23, 8, 420581), datetime(2021, 6, 27, 10, 21, 8, 420581)]]
+
+    assert termination_result == expected
