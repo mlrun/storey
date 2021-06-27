@@ -655,11 +655,8 @@ class CSVSource(_IterableSource):
                                 self.context.logger.error(
                                     f"For {parsed_line} value of key {key_field} is None"
                                 )
-                self._dates_indices = []
-                if isinstance(self._parse_dates, List) and isinstance(self._parse_dates[0], int):
-                    self._dates_indices = self._parse_dates
-                if isinstance(self._time_field, int):
-                    self._dates_indices.append(self._time_field)
+                if self._with_header:
+                    self._dates_indices = []
 
         except BaseException as ex:
             self._event_buffer.put(ex)
