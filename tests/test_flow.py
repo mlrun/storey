@@ -2636,7 +2636,7 @@ def test_csv_multiple_time_columns(tmpdir):
 
     termination_result = controller.await_termination()
 
-    expected = [['m1', datetime(2020, 6, 27, 10, 23, 8, 420581), datetime(2020, 6, 27, 12, 23, 8, 420581)],
-                ['m2', datetime(2021, 6, 27, 10, 23, 8, 420581), datetime(2021, 6, 27, 10, 21, 8, 420581)]]
+    expected = [['m1', datetime(2020, 6, 27, 10, 23, 8, 420581), 'katya', datetime(2020, 6, 27, 12, 23, 8, 420581)],
+                ['m2', datetime(2021, 6, 27, 10, 23, 8, 420581), 'dina', datetime(2021, 6, 27, 10, 21, 8, 420581)]]
 
     assert termination_result == expected
