@@ -505,11 +505,11 @@ class CSVSource(_IterableSource):
         self._type_inference = type_inference
         self._storage_options = kwargs.get('storage_options')
         self._parse_dates = parse_dates
-        self._dates_indexes = []
+        self._dates_indices = []
         if isinstance(self._parse_dates, List) and isinstance(self._parse_dates[0], int):
-            self._dates_indexes = self._parse_dates
+            self._dates_indices = self._parse_dates
         if isinstance(self._time_field, int):
-            self._dates_indexes.append(self._time_field)
+            self._dates_indices.append(self._time_field)
 
         if not header and isinstance(key_field, str):
             raise ValueError('key_field can only be set to an integer when with_header is false')
@@ -591,14 +591,14 @@ class CSVSource(_IterableSource):
                         for i in range(len(header)):
                             field_name_to_index[header[i]] = i
                             if header[i] == self._time_field or (self._parse_dates and header[i] in self._parse_dates):
-                                self._dates_indexes.append(i)
+                                self._dates_indices.append(i)
                     for line in f:
                         create_event = True
                         parsed_line = next(csv.reader([line]))
                         if self._type_inference:
                             if not self._types:
                                 for index, field in enumerate(parsed_line):
-                                    if index in self._dates_indexes:
+                                    if index in self._dates_indices:
                                         self._types.append('t')
                                     else:
                                         type_field = self._infer_type(field)
@@ -655,7 +655,11 @@ class CSVSource(_IterableSource):
                                 self.context.logger.error(
                                     f"For {parsed_line} value of key {key_field} is None"
                                 )
-                self._dates_indexes = []
+                self._dates_indices = []
+                if isinstance(self._parse_dates, List) and isinstance(self._parse_dates[0], int):
+                    self._dates_indices = self._parse_dates
+                if isinstance(self._time_field, int):
+                    self._dates_indices.append(self._time_field)
 
         except BaseException as ex:
             self._event_buffer.put(ex)
