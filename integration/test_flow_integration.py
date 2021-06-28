@@ -447,6 +447,52 @@ def test_write_multiple_keys_to_v3io_from_df(setup_teardown_test):
     assert expected == response.output.item
 
 
+def test_write_string_as_time_via_time_field(setup_teardown_test):
+    table = Table(setup_teardown_test, V3ioDriver())
+    t1 = "2020-03-16T05:00:00+00:00"
+    t2 = "2020-03-15T18:00:00+00:00"
+    df = pd.DataFrame(
+        {
+            "name": ["jack", "tuna"],
+            "time": [t1, t2],
+        }
+    )
+
+    controller = build_flow([
+        DataframeSource(df, key_field='name', time_field='time'),
+        NoSqlTarget(table, columns=['name', '$time']),
+    ]).run()
+    controller.await_termination()
+
+    response = asyncio.run(get_kv_item(setup_teardown_test, 'tuna'))
+    expected = {'name': 'tuna', 'time': datetime.fromisoformat(t2)}
+    assert response.status_code == 200
+    assert response.output.item == expected
+
+
+def test_write_string_as_time_via_schema(setup_teardown_test):
+    table = Table(setup_teardown_test, V3ioDriver())
+    t1 = "2020-03-16T05:00:00+00:00"
+    t2 = "2020-03-15T18:00:00+00:00"
+    df = pd.DataFrame(
+        {
+            "name": ["jack", "tuna"],
+            "time": [t1, t2],
+        }
+    )
+
+    controller = build_flow([
+        DataframeSource(df, key_field='name'),
+        NoSqlTarget(table, columns=[('name', 'str'), ('time', 'datetime')]),
+    ]).run()
+    controller.await_termination()
+
+    response = asyncio.run(get_kv_item(setup_teardown_test, 'tuna'))
+    expected = {'name': 'tuna', 'time': datetime.fromisoformat(t2)}
+    assert response.status_code == 200
+    assert response.output.item == expected
+
+
 def test_write_multiple_keys_to_v3io_from_csv(setup_teardown_test):
     table = Table(setup_teardown_test, V3ioDriver())
 
