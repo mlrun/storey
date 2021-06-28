@@ -504,17 +504,16 @@ class CSVSource(_IterableSource):
         self._timestamp_format = timestamp_format
         self._type_inference = type_inference
         self._storage_options = kwargs.get('storage_options')
-        self._dates_indices_col_nums = []
-        self._dates_indices_col_names = []
+        self._parse_dates = parse_dates
+        self._dates_indices = []
         if isinstance(parse_dates, List):
-            if isinstance(parse_dates[0], int):
-                self._dates_indices_col_nums = parse_dates
-            else:
-                self._dates_indices_col_names = parse_dates
+            if self._with_header and not all([isinstance(f, str) for f in self._parse_dates]):
+                raise ValueError('parse_dates can be list of int only when there is header')
+                self._dates_indices = parse_dates
         if isinstance(self._time_field, int):
-            self._dates_indices_col_nums.append(self._time_field)
-        if isinstance(self._time_field, str):
-            self._dates_indices_col_names.append(self._time_field)
+            if self._with_header:
+                raise ValueError('time field can be list of int only when there is header')
+            self._dates_indices.append(self._time_field)
 
         if not header and isinstance(key_field, str):
             raise ValueError('key_field can only be set to an integer when with_header is false')
@@ -595,15 +594,15 @@ class CSVSource(_IterableSource):
                         field_name_to_index = {}
                         for i in range(len(header)):
                             field_name_to_index[header[i]] = i
-                            if header[i] == self._time_field or header[i] in self._dates_indices_col_names:
-                                self._dates_indices_col_nums.append(i)
+                            if header[i] == self._time_field or (self._parse_dates and header[i] in self._parse_dates):
+                                self._dates_indices.append(i)
                     for line in f:
                         create_event = True
                         parsed_line = next(csv.reader([line]))
                         if self._type_inference:
                             if not self._types:
                                 for index, field in enumerate(parsed_line):
-                                    if index in self._dates_indices_col_nums:
+                                    if index in self._dates_indices:
                                         self._types.append('t')
                                     else:
                                         type_field = self._infer_type(field)
@@ -661,7 +660,7 @@ class CSVSource(_IterableSource):
                                     f"For {parsed_line} value of key {key_field} is None"
                                 )
                 if self._with_header:
-                    self._dates_indices_col_nums = []
+                    self._dates_indices = []
 
         except BaseException as ex:
             self._event_buffer.put(ex)
