@@ -15,7 +15,7 @@ from .integration_test_utils import setup_teardown_test, append_return, test_bas
 
 @pytest.mark.parametrize('partitioned_by_key', [True, False])
 @pytest.mark.parametrize('flush_interval', [None, 1])
-def test_aggregate_and_query_with_different_windows(setup_teardown_test, partitioned_by_key, flush_interval):
+def test_aggregate_and_query_with_different_sliding_windows(setup_teardown_test, partitioned_by_key, flush_interval):
     table = Table(setup_teardown_test, V3ioDriver(), partitioned_by_key=partitioned_by_key, flush_interval_secs=flush_interval)
 
     controller = build_flow([
@@ -99,6 +99,109 @@ def test_aggregate_and_query_with_different_windows(setup_teardown_test, partiti
         {'col1': 10, 'number_of_stuff_sum_1h': 17, 'number_of_stuff_min_1h': 8, 'number_of_stuff_max_1h': 9, 'number_of_stuff_avg_1h': 8.5},
         {'col1': 10, 'number_of_stuff_sum_1h': 9.0, 'number_of_stuff_min_1h': 9.0, 'number_of_stuff_max_1h': 9.0,
          'number_of_stuff_avg_1h': 9.0},
+    ]
+
+    assert actual == expected_results, \
+        f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
+
+
+@pytest.mark.parametrize('partitioned_by_key', [True, False])
+@pytest.mark.parametrize('flush_interval', [None, 1])
+def test_aggregate_and_query_with_different_fixed_windows(setup_teardown_test, partitioned_by_key, flush_interval):
+    table = Table(setup_teardown_test, V3ioDriver(), partitioned_by_key=partitioned_by_key, flush_interval_secs=flush_interval)
+
+    controller = build_flow([
+        SyncEmitSource(),
+        AggregateByKey([FieldAggregator('number_of_stuff', 'col1',
+                                        ['sum', 'avg', 'min', 'max', 'sqr'],
+                                        FixedWindows(['1h', '2h', '24h']))],
+                       table),
+        NoSqlTarget(table),
+        Reduce([], lambda acc, x: append_return(acc, x)),
+    ]).run()
+
+    items_in_ingest_batch = 10
+    for i in range(items_in_ingest_batch):
+        data = {'col1': i}
+        controller.emit(data, 'tal', test_base_time + timedelta(minutes=25 * i))
+
+    controller.terminate()
+    actual = controller.await_termination()
+    expected_results = [
+        {'number_of_stuff_max_1h': 0.0, 'number_of_stuff_max_2h': 0.0, 'number_of_stuff_max_24h': 0.0,
+         'number_of_stuff_sqr_1h': 0.0, 'number_of_stuff_sqr_2h': 0.0, 'number_of_stuff_sqr_24h': 0.0,
+         'number_of_stuff_sum_1h': 0.0, 'number_of_stuff_sum_2h': 0.0, 'number_of_stuff_sum_24h': 0.0,
+         'number_of_stuff_min_1h': 0.0, 'number_of_stuff_min_2h': 0.0, 'number_of_stuff_min_24h': 0.0,
+         'number_of_stuff_avg_1h': 0.0, 'number_of_stuff_avg_2h': 0.0, 'number_of_stuff_avg_24h': 0.0, 'col1': 0},
+        {'number_of_stuff_max_1h': 1.0, 'number_of_stuff_sqr_1h': 1.0, 'number_of_stuff_sum_1h': 1.0,
+         'number_of_stuff_min_1h': 1.0, 'number_of_stuff_max_2h': 1.0, 'number_of_stuff_sqr_2h': 1.0,
+         'number_of_stuff_sum_2h': 1.0, 'number_of_stuff_min_2h': 0.0, 'number_of_stuff_max_24h': 1.0,
+         'number_of_stuff_sqr_24h': 1.0, 'number_of_stuff_sum_24h': 1.0, 'number_of_stuff_min_24h': 0.0,
+         'number_of_stuff_avg_1h': 1.0, 'number_of_stuff_avg_2h': 0.5, 'number_of_stuff_avg_24h': 0.5, 'col1': 1},
+        {'number_of_stuff_max_1h': 2.0, 'number_of_stuff_max_2h': 2.0, 'number_of_stuff_max_24h': 2.0,
+         'number_of_stuff_sqr_1h': 5.0, 'number_of_stuff_sqr_2h': 5.0, 'number_of_stuff_sqr_24h': 5.0,
+         'number_of_stuff_sum_1h': 3.0, 'number_of_stuff_sum_2h': 3.0, 'number_of_stuff_sum_24h': 3.0,
+         'number_of_stuff_min_1h': 1.0, 'number_of_stuff_min_2h': 0.0, 'number_of_stuff_min_24h': 0.0,
+         'number_of_stuff_avg_1h': 1.5, 'number_of_stuff_avg_2h': 1.0, 'number_of_stuff_avg_24h': 1.0, 'col1': 2},
+        {'number_of_stuff_max_1h': 3.0, 'number_of_stuff_max_2h': 3.0, 'number_of_stuff_max_24h': 3.0,
+         'number_of_stuff_sqr_1h': 14.0, 'number_of_stuff_sqr_2h': 14.0, 'number_of_stuff_sqr_24h': 14.0,
+         'number_of_stuff_sum_1h': 6.0, 'number_of_stuff_sum_2h': 6.0, 'number_of_stuff_sum_24h': 6.0,
+         'number_of_stuff_min_1h': 1.0, 'number_of_stuff_min_2h': 0.0, 'number_of_stuff_min_24h': 0.0,
+         'number_of_stuff_avg_1h': 2.0, 'number_of_stuff_avg_2h': 1.5, 'number_of_stuff_avg_24h': 1.5, 'col1': 3},
+        {'number_of_stuff_max_1h': 4.0, 'number_of_stuff_sqr_1h': 16.0, 'number_of_stuff_sum_1h': 4.0,
+         'number_of_stuff_min_1h': 4.0, 'number_of_stuff_max_2h': 4.0, 'number_of_stuff_sqr_2h': 30.0,
+         'number_of_stuff_sum_2h': 10.0, 'number_of_stuff_min_2h': 1.0, 'number_of_stuff_max_24h': 4.0,
+         'number_of_stuff_sqr_24h': 30.0, 'number_of_stuff_sum_24h': 10.0, 'number_of_stuff_min_24h': 0.0,
+         'number_of_stuff_avg_1h': 4.0, 'number_of_stuff_avg_2h': 2.5, 'number_of_stuff_avg_24h': 2.0, 'col1': 4},
+        {'number_of_stuff_max_1h': 5.0, 'number_of_stuff_max_2h': 5.0, 'number_of_stuff_max_24h': 5.0,
+         'number_of_stuff_sqr_1h': 41.0, 'number_of_stuff_sqr_2h': 55.0, 'number_of_stuff_sqr_24h': 55.0,
+         'number_of_stuff_sum_1h': 9.0, 'number_of_stuff_sum_2h': 15.0, 'number_of_stuff_sum_24h': 15.0,
+         'number_of_stuff_min_1h': 4.0, 'number_of_stuff_min_2h': 1.0, 'number_of_stuff_min_24h': 0.0,
+         'number_of_stuff_avg_1h': 4.5, 'number_of_stuff_avg_2h': 3.0, 'number_of_stuff_avg_24h': 2.5, 'col1': 5},
+        {'number_of_stuff_max_1h': 6.0, 'number_of_stuff_sqr_1h': 36.0, 'number_of_stuff_sum_1h': 6.0,
+         'number_of_stuff_min_1h': 6.0, 'number_of_stuff_max_2h': 6.0, 'number_of_stuff_sqr_2h': 36.0,
+         'number_of_stuff_sum_2h': 6.0, 'number_of_stuff_min_2h': 6.0, 'number_of_stuff_max_24h': 6.0,
+         'number_of_stuff_sqr_24h': 36.0, 'number_of_stuff_sum_24h': 6.0, 'number_of_stuff_min_24h': 6.0,
+         'number_of_stuff_avg_1h': 6.0, 'number_of_stuff_avg_2h': 6.0, 'number_of_stuff_avg_24h': 6.0, 'col1': 6},
+        {'number_of_stuff_max_1h': 7.0, 'number_of_stuff_max_2h': 7.0, 'number_of_stuff_max_24h': 7.0,
+         'number_of_stuff_sqr_1h': 85.0, 'number_of_stuff_sqr_2h': 85.0, 'number_of_stuff_sqr_24h': 85.0,
+         'number_of_stuff_sum_1h': 13.0, 'number_of_stuff_sum_2h': 13.0, 'number_of_stuff_sum_24h': 13.0,
+         'number_of_stuff_min_1h': 6.0, 'number_of_stuff_min_2h': 6.0, 'number_of_stuff_min_24h': 6.0,
+         'number_of_stuff_avg_1h': 6.5, 'number_of_stuff_avg_2h': 6.5, 'number_of_stuff_avg_24h': 6.5, 'col1': 7},
+        {'number_of_stuff_max_1h': 8.0, 'number_of_stuff_sqr_1h': 64.0, 'number_of_stuff_sum_1h': 8.0,
+         'number_of_stuff_min_1h': 8.0, 'number_of_stuff_max_2h': 8.0, 'number_of_stuff_sqr_2h': 149.0,
+         'number_of_stuff_sum_2h': 21.0, 'number_of_stuff_min_2h': 6.0, 'number_of_stuff_max_24h': 8.0,
+         'number_of_stuff_sqr_24h': 149.0, 'number_of_stuff_sum_24h': 21.0, 'number_of_stuff_min_24h': 6.0,
+         'number_of_stuff_avg_1h': 8.0, 'number_of_stuff_avg_2h': 7.0, 'number_of_stuff_avg_24h': 7.0, 'col1': 8},
+        {'number_of_stuff_max_1h': 9.0, 'number_of_stuff_max_2h': 9.0, 'number_of_stuff_max_24h': 9.0,
+         'number_of_stuff_sqr_1h': 145.0, 'number_of_stuff_sqr_2h': 230.0, 'number_of_stuff_sqr_24h': 230.0,
+         'number_of_stuff_sum_1h': 17.0, 'number_of_stuff_sum_2h': 30.0, 'number_of_stuff_sum_24h': 30.0,
+         'number_of_stuff_min_1h': 8.0, 'number_of_stuff_min_2h': 6.0, 'number_of_stuff_min_24h': 6.0,
+         'number_of_stuff_avg_1h': 8.5, 'number_of_stuff_avg_2h': 7.5, 'number_of_stuff_avg_24h': 7.5, 'col1': 9}
+    ]
+
+    assert actual == expected_results, \
+        f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
+
+    other_table = Table(setup_teardown_test, V3ioDriver())
+    controller = build_flow([
+        SyncEmitSource(),
+        QueryByKey(['number_of_stuff_sum_1h', 'number_of_stuff_avg_1h', 'number_of_stuff_min_1h', 'number_of_stuff_max_1h'],
+                   other_table),
+        Reduce([], lambda acc, x: append_return(acc, x)),
+    ]).run()
+
+    base_time = test_base_time + timedelta(minutes=25 * items_in_ingest_batch)
+    data = {'col1': items_in_ingest_batch}
+    controller.emit(data, 'tal', base_time)
+    controller.emit(data, 'tal', base_time + timedelta(minutes=25))
+
+    controller.terminate()
+    actual = controller.await_termination()
+    expected_results = [
+        {'col1': 10, 'number_of_stuff_sum_1h': 17, 'number_of_stuff_min_1h': 8, 'number_of_stuff_max_1h': 9, 'number_of_stuff_avg_1h': 8.5},
+        {'col1': 10, 'number_of_stuff_sum_1h': 0.0, 'number_of_stuff_min_1h': math.inf, 'number_of_stuff_max_1h': -math.inf,
+         'number_of_stuff_avg_1h': math.nan},
     ]
 
     assert actual == expected_results, \
