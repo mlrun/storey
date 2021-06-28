@@ -2629,6 +2629,16 @@ def test_csv_none_value_string(tmpdir):
 
 
 def test_csv_multiple_time_columns(tmpdir):
+    try:
+        controller = build_flow([
+            CSVSource('tests/test-multiple-time-columns.csv', header=True, time_field='t1', parse_dates=[2]),
+            Reduce([], append_and_return),
+        ]).run()
+        assert False
+    except ValueError:
+        pass
+
+    # now do it correctly
     controller = build_flow([
         CSVSource('tests/test-multiple-time-columns.csv', header=True, time_field='t1', parse_dates=["t2"]),
         Reduce([], append_and_return),

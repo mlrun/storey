@@ -507,12 +507,13 @@ class CSVSource(_IterableSource):
         self._parse_dates = parse_dates
         self._dates_indices = []
         if isinstance(parse_dates, List):
-            if self._with_header and not all([isinstance(f, str) for f in self._parse_dates]):
-                raise ValueError('parse_dates can be list of int only when there is header')
+            if self._with_header and any([isinstance(f, int) for f in self._parse_dates]):
+                raise ValueError('parse_dates can be list of int only when there is no header')
+            if not self._with_header and all([isinstance(f, int) for f in self._parse_dates]):
                 self._dates_indices = parse_dates
         if isinstance(self._time_field, int):
             if self._with_header:
-                raise ValueError('time field can be list of int only when there is header')
+                raise ValueError('time field can be int only when there is no header')
             self._dates_indices.append(self._time_field)
 
         if not header and isinstance(key_field, str):
