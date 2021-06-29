@@ -35,7 +35,7 @@ class Event:
             elif isinstance(time, int):
                 time = datetime.utcfromtimestamp(time)
             else:
-                raise TypeError(f'Event time parameter must be a datetime. Got {type(time)} instead.')
+                raise TypeError(f'Event time parameter must be a datetime, string, or int. Got {type(time)} instead.')
         self.time = time or datetime.now(timezone.utc)
         self.id = id
         self.headers = headers
