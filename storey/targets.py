@@ -1,6 +1,7 @@
 import asyncio
 import copy
 import csv
+import datetime
 import json
 import os
 import queue
@@ -69,16 +70,18 @@ class _Writer:
             return columns_no_types, column_types
 
         columns_no_types, column_types = unzip_cols(columns)
-        index_cols_no_types, index_cols_column_types = unzip_cols(index_cols)
+        index_cols_no_types, index_cols_types = unzip_cols(index_cols)
 
         self._initial_columns = parse_notation(columns_no_types, self._metadata_columns, self._rename_columns)
         self._initial_index_cols = parse_notation(index_cols_no_types, self._metadata_index_columns, self._rename_index_columns)
+        self._column_types = column_types
+        self._index_column_types = index_cols_types
 
         if column_types:
             fields = []
-            for i in range(len(index_cols_column_types)):
+            for i in range(len(index_cols_types)):
                 index_column = index_cols_no_types[i]
-                type_name = index_cols_column_types[i]
+                type_name = index_cols_types[i]
                 typ = self._type_string_to_pyarrow_type[type_name]
                 field = pyarrow.field(index_column, typ, True)
                 fields.append(field)
@@ -124,14 +127,18 @@ class _Writer:
         self._partition_col_indices = []
         self._non_partition_columns = self._columns
 
+        self._non_partition_column_types = self._column_types
         if self._partition_cols is not None and self._columns is not None:
             self._non_partition_columns = []
+            self._non_partition_column_types = []
             for index, col in enumerate(self._columns):
                 if col in self._partition_cols:
                     self._partition_col_to_index[col] = index
                     self._partition_col_indices.append(index)
                 else:
                     self._non_partition_columns.append(col)
+                    if self._column_types:
+                        self._non_partition_column_types.append(self._column_types[index])
 
     def _path_from_event(self, event):
         res = '/'
@@ -175,9 +182,9 @@ class _Writer:
             res += f'{col}={val}/'
         return res
 
-    def _get_column_data_from_dict(self, new_data, event, columns, metadata_columns, rename_columns):
+    def _get_column_data_from_dict(self, new_data, event, columns, columns_types, metadata_columns, rename_columns):
         if columns:
-            for column in columns:
+            for index, column in enumerate(columns):
                 if column in metadata_columns:
                     metadata_attr = metadata_columns[column]
                     new_value = getattr(event, metadata_attr)
@@ -188,6 +195,14 @@ class _Writer:
 
                 if new_value is None and not self._write_missing_fields:
                     continue
+
+                if columns_types:
+                    column_type = columns_types[index]
+                    if column_type == 'datetime':
+                        if isinstance(new_value, str):
+                            new_value = datetime.datetime.fromisoformat(new_value)
+                        elif isinstance(new_value, int):
+                            new_value = datetime.datetime.utcfromtimestamp(new_value)
 
                 if isinstance(new_data, list):
                     new_data.append(new_value)
@@ -216,8 +231,10 @@ class _Writer:
                 self._infer_columns_from_data = False
                 self._init_partition_col_indices()
             data = {} if self._retain_dict else []
-            self._get_column_data_from_dict(data, event, self._index_cols, self._metadata_index_columns, self._rename_index_columns)
-            self._get_column_data_from_dict(data, event, self._non_partition_columns, self._metadata_columns, self._rename_columns)
+            self._get_column_data_from_dict(data, event, self._index_cols, self._index_column_types, self._metadata_index_columns,
+                                            self._rename_index_columns)
+            self._get_column_data_from_dict(data, event, self._non_partition_columns, self._non_partition_column_types,
+                                            self._metadata_columns, self._rename_columns)
         elif isinstance(data, list):
             for index in self._partition_col_indices:
                 del data[index]
@@ -703,8 +720,8 @@ class NoSqlTarget(_Writer, Flow):
     :type storage_options: dict
     """
 
-    def __init__(self, table: Union[Table, str], columns: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None,
-                 **kwargs):
+    def __init__(self, table: Union[Table, str], columns: Optional[List[Union[str, Tuple[str, str]]]] = None,
+                 infer_columns_from_data: Optional[bool] = None, **kwargs):
         kwargs['table'] = table
         if columns:
             kwargs['columns'] = columns

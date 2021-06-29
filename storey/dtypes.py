@@ -30,7 +30,12 @@ class Event:
         self.body = body
         self.key = key
         if time is not None and not isinstance(time, datetime):
-            raise TypeError(f'Event time parameter must be a datetime. Got {type(time)} instead.')
+            if isinstance(time, str):
+                time = datetime.fromisoformat(time)
+            elif isinstance(time, int):
+                time = datetime.utcfromtimestamp(time)
+            else:
+                raise TypeError(f'Event time parameter must be a datetime, string, or int. Got {type(time)} instead.')
         self.time = time or datetime.now(timezone.utc)
         self.id = id
         self.headers = headers
