@@ -527,9 +527,9 @@ class ReadOnlyAggregationBuckets:
                     self._current_aggregate_values[win] = AggregationValue.new_from_name(aggregation, self.max_value)
         if hidden_windows:
             if not explicit_windows:
-                self.is_fixed_window = isinstance(self.explicit_windows, FixedWindows)
+                self.is_fixed_window = isinstance(self.hidden_windows, FixedWindows)
                 if self.is_fixed_window:
-                    self._round_time_func = self.explicit_windows.round_up_time_to_window
+                    self._round_time_func = self.hidden_windows.round_up_time_to_window
                 self.period_millis = hidden_windows.period_millis
                 self._window_start_time = hidden_windows.get_window_start_time_by_time(base_time)
             if self._precalculated_aggregations:
@@ -757,11 +757,22 @@ class ReadOnlyAggregationBuckets:
             timestamp1, timestamp2 = aggregation_bucket_initial_data.keys()
             first_time, last_time = min(timestamp1, timestamp2), max(timestamp1, timestamp2)
 
-        bucket_index = self.total_number_of_buckets - 1
-        self.last_bucket_start_time = self._window_start_time
-        self.first_bucket_start_time = \
-            self.last_bucket_start_time - (self.total_number_of_buckets - 1) * period
+        if self.is_fixed_window:
+            window_millis = self.total_number_of_buckets * self.period_millis
+            self.first_bucket_start_time = int(base_time/window_millis) * window_millis
+            self.last_bucket_start_time = self.first_bucket_start_time + window_millis - self.period_millis
+        else:
+            self.last_bucket_start_time = self._window_start_time
+            self.first_bucket_start_time = \
+                self.last_bucket_start_time - (self.total_number_of_buckets - 1) * period
 
+        if self.is_fixed_window:
+            if last_time + (len(aggregation_bucket_initial_data[last_time]) - 1) * self.period_millis < self.first_bucket_start_time:
+                for i in range(len(aggregation_bucket_initial_data[last_time])):
+                    self.buckets[i] = self.new_aggregation_value()
+                return
+
+        bucket_index = self.total_number_of_buckets - 1
         start_index = int((base_time - last_time) / period)
 
         # In case base_time is newer than what is stored in the storage initialize the buckets until reaching the stored data
@@ -782,7 +793,7 @@ class ReadOnlyAggregationBuckets:
             if bucket_index < 0:
                 return
             curr_value = aggregation_bucket_initial_data[last_time][i]
-            curr_time = first_time + period * i
+            curr_time = last_time + period * i
             self.buckets[bucket_index] = AggregationValue.new_from_name(self.aggregation, self.max_value, curr_value, curr_time)
             bucket_index = bucket_index - 1
 
