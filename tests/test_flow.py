@@ -93,6 +93,29 @@ def test_recover():
     assert termination_result == 54
 
 
+# ML-777
+def test_emit_timeless_event():
+    class TimelessEvent:
+        pass
+
+    controller = build_flow([
+        SyncEmitSource(),
+        ReduceToDataFrame(insert_time_column_as='mytime')
+    ]).run()
+
+    event = TimelessEvent()
+    event.id = 'myevent'
+    event.body = {'salutation': 'hello'}
+    t = datetime(2020, 2, 15, 2, 0)
+    event.timestamp = t
+
+    controller.emit(event)
+    controller.terminate()
+    termination_result = controller.await_termination()
+    expected = pd.DataFrame([['hello', t]], columns=['salutation', 'mytime'])
+    assert termination_result.equals(expected)
+
+
 def test_csv_reader():
     controller = build_flow([
         CSVSource('tests/test.csv', header=True),

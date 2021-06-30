@@ -79,6 +79,8 @@ class FlowControllerBase:
         element_is_event = hasattr(element, 'id')
         if element_is_event:
             body = element.body
+            if not hasattr(element, 'time') and hasattr(element, 'timestamp'):
+                element.time = element.timestamp
 
         if not key and self._key_field:
             if isinstance(self._key_field, str) or isinstance(self._key_field, int):
