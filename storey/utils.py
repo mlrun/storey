@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import struct
 from array import array
 from urllib.parse import urlparse
@@ -166,14 +167,15 @@ def update_in(obj, key, value):
 def hash_list(list_to_hash):
     list_to_hash = [str(element) for element in list_to_hash]
     str_concatted = ''.join(list_to_hash)
-    hash_value = hash(str_concatted)
-    return hash_value
+    sha1 = hashlib.sha1()
+    sha1.update(str_concatted.encode('utf8'))
+    return sha1.hexdigest()
 
 
 def stringify_key(key_list):
     if isinstance(key_list, list):
         if len(key_list) >= 3:
-            return str(key_list[0]) + "." + str(hash_list(key_list[1:]))
+            return str(key_list[0]) + "." + hash_list(key_list[1:])
         if len(key_list) == 2:
             return str(key_list[0]) + "." + str(key_list[1])
         return key_list[0]

@@ -2,6 +2,7 @@ import asyncio
 import copy
 import csv
 import datetime
+import hashlib
 import json
 import os
 import queue
@@ -177,7 +178,11 @@ class _Writer:
                 col = f'hash{hash_into}_{col}'
                 if isinstance(val, list):
                     val = '.'.join(map(str, val))
-                val = hash(val) % hash_into
+                else:
+                    val = str(val)
+                sha1 = hashlib.sha1()
+                sha1.update(val.encode('utf8'))
+                val = int(sha1.hexdigest(), 16) % hash_into
 
             res += f'{col}={val}/'
         return res
@@ -391,8 +396,8 @@ class ParquetTarget(_Batching, _Writer):
     """
 
     def __init__(self, path: str, index_cols: Union[str, List[str], None] = None,
-                 columns: Union[str, List[Union[str, Tuple[str, str]]], None] = None,
-                 partition_cols: Union[str, List[Union[str, Tuple[(str, int)]]], None] = None,
+                 columns: Union[str, Union[List[str], List[Tuple[str, str]]], None] = None,
+                 partition_cols: Union[str, Union[List[str], List[Tuple[str, int]]], None] = None,
                  infer_columns_from_data: Optional[bool] = None, max_events: Optional[int] = None,
                  flush_after_seconds: Optional[int] = None, **kwargs):
         self._single_file_mode = False

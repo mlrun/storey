@@ -81,7 +81,7 @@ class FlowControllerBase:
             body = element.body
 
         if not key and self._key_field:
-            if isinstance(self._key_field, str):
+            if isinstance(self._key_field, str) or isinstance(self._key_field, int):
                 key = body[self._key_field]
             else:
                 key = []
@@ -174,8 +174,8 @@ class SyncEmitSource(Flow):
     """
     _legal_first_step = True
 
-    def __init__(self, buffer_size: Optional[int] = None, key_field: Union[list, str, None] = None, time_field: Optional[str] = None,
-                 time_format: Optional[str] = None, **kwargs):
+    def __init__(self, buffer_size: Optional[int] = None, key_field: Union[list, str, int, None] = None,
+                 time_field: Union[str, int, None] = None, time_format: Optional[str] = None, **kwargs):
         if buffer_size is None:
             buffer_size = 1024
         else:

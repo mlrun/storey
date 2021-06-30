@@ -1,5 +1,4 @@
 import asyncio
-import math
 import sys
 import random as rand
 
@@ -234,6 +233,30 @@ def test_write_to_parquet_to_v3io_single_file_on_termination(setup_teardown_test
     controller.await_termination()
 
     read_back_df = pd.read_parquet(out_file, columns=columns)
+    assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+
+
+# ML-775
+def test_write_to_parquet_key_hash_partitioning(setup_teardown_test):
+    out_dir = f'v3io:///{setup_teardown_test}/test_write_to_parquet_default_partitioning{uuid.uuid4().hex}/'
+    controller = build_flow([
+        SyncEmitSource(key_field=1),
+        ParquetTarget(out_dir, columns=['my_int', 'my_string'], partition_cols=[('$key', 4)])
+    ]).run()
+
+    expected = []
+    expected_buckets = [3, 0, 1, 3, 0, 3, 1, 1, 1, 2]
+    for i in range(10):
+        controller.emit([i, f'this is {i}'])
+        expected.append([i, f'this is {i}', expected_buckets[i]])
+    expected = pd.DataFrame(expected, columns=['my_int', 'my_string', 'hash4_key'])
+    controller.terminate()
+    controller.await_termination()
+
+    read_back_df = pd.read_parquet(out_dir)
+    read_back_df['hash4_key'] = read_back_df['hash4_key'].astype('int64')
+    read_back_df.sort_values('my_int', inplace=True)
+    read_back_df.reset_index(inplace=True, drop=True)
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
 
 
