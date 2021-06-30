@@ -13,7 +13,6 @@ import v3io_frames as frames
 from storey import Filter, JoinWithV3IOTable, SendToHttp, Map, Reduce, SyncEmitSource, HttpRequest, build_flow, \
     StreamTarget, V3ioDriver, TSDBTarget, Table, JoinWithTable, MapWithState, NoSqlTarget, DataframeSource, \
     CSVSource
-from storey.utils import hash_list
 from .integration_test_utils import V3ioHeaders, append_return, test_base_time, setup_kv_teardown_test, setup_teardown_test, \
     setup_stream_teardown_test
 
@@ -442,6 +441,7 @@ def test_write_two_keys_to_v3io_from_df(setup_teardown_test):
     assert expected == response.output.item
 
 
+# ML-775
 def test_write_three_keys_to_v3io_from_df(setup_teardown_test):
     table = Table(setup_teardown_test, V3ioDriver())
     data = pd.DataFrame(
@@ -460,7 +460,7 @@ def test_write_three_keys_to_v3io_from_df(setup_teardown_test):
     ]).run()
     controller.await_termination()
 
-    response = asyncio.run(get_kv_item(setup_teardown_test, 'moshe.328473447954659191'))
+    response = asyncio.run(get_kv_item(setup_teardown_test, 'moshe.dc1e617eaae40eea3449baf3795bb5b50676c963'))
     expected = {'city': 'tel aviv', 'first_name': 'moshe', 'middle_name': 'tuna', 'last_name': 'cohen'}
     assert response.status_code == 200
     assert expected == response.output.item

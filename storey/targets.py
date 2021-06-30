@@ -2,6 +2,7 @@ import asyncio
 import copy
 import csv
 import datetime
+import hashlib
 import json
 import os
 import queue
@@ -177,7 +178,11 @@ class _Writer:
                 col = f'hash{hash_into}_{col}'
                 if isinstance(val, list):
                     val = '.'.join(map(str, val))
-                val = hash(val) % hash_into
+                else:
+                    val = str(val)
+                sha1 = hashlib.sha1()
+                sha1.update(val.encode('utf8'))
+                val = int(sha1.hexdigest(), 16) % hash_into
 
             res += f'{col}={val}/'
         return res
