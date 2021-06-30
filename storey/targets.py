@@ -391,8 +391,8 @@ class ParquetTarget(_Batching, _Writer):
     """
 
     def __init__(self, path: str, index_cols: Union[str, List[str], None] = None,
-                 columns: Union[str, List[Union[str, Tuple[str, str]]], None] = None,
-                 partition_cols: Union[str, List[Union[str, Tuple[(str, int)]]], None] = None,
+                 columns: Union[str, Union[List[str], List[Tuple[str, str]]], None] = None,
+                 partition_cols: Union[str, Union[List[str], List[Tuple[str, int]]], None] = None,
                  infer_columns_from_data: Optional[bool] = None, max_events: Optional[int] = None,
                  flush_after_seconds: Optional[int] = None, **kwargs):
         self._single_file_mode = False

@@ -382,11 +382,6 @@ def test_write_table_metadata_columns(setup_teardown_test):
 
 async def get_kv_item(full_path, key):
     try:
-        if isinstance(key, list):
-            if len(key) >= 3:
-                key = key[0] + "." + str(hash_list(key[1:]))
-            else:
-                key = key[0] + "." + key[1]
         headers = V3ioHeaders()
         container, path = full_path.split('/', 1)
 
@@ -424,13 +419,13 @@ def test_writing_timedelta_key(setup_teardown_test):
     controller.await_termination()
 
 
-def test_write_multiple_keys_to_v3io_from_df(setup_teardown_test):
+def test_write_two_keys_to_v3io_from_df(setup_teardown_test):
     table = Table(setup_teardown_test, V3ioDriver())
     data = pd.DataFrame(
         {
-            "first_name": ["moshe", "yosi"],
-            "last_name": ["cohen", "levi"],
-            "city": ["tel aviv", "ramat gan"],
+            'first_name': ['moshe', 'yosi'],
+            'last_name': ['cohen', 'levi'],
+            'city': ['tel aviv', 'ramat gan'],
         }
     )
 
@@ -441,20 +436,44 @@ def test_write_multiple_keys_to_v3io_from_df(setup_teardown_test):
     ]).run()
     controller.await_termination()
 
-    response = asyncio.run(get_kv_item(setup_teardown_test, ['moshe', 'cohen']))
+    response = asyncio.run(get_kv_item(setup_teardown_test, 'moshe.cohen'))
     expected = {'city': 'tel aviv', 'first_name': 'moshe', 'last_name': 'cohen'}
+    assert response.status_code == 200
+    assert expected == response.output.item
+
+
+def test_write_three_keys_to_v3io_from_df(setup_teardown_test):
+    table = Table(setup_teardown_test, V3ioDriver())
+    data = pd.DataFrame(
+        {
+            'first_name': ['moshe', 'yosi'],
+            'middle_name': ['tuna', 'fluffy'],
+            'last_name': ['cohen', 'levi'],
+            'city': ['tel aviv', 'ramat gan'],
+        }
+    )
+
+    keys = ['first_name', 'middle_name', 'last_name']
+    controller = build_flow([
+        DataframeSource(data, key_field=keys),
+        NoSqlTarget(table),
+    ]).run()
+    controller.await_termination()
+
+    response = asyncio.run(get_kv_item(setup_teardown_test, 'moshe.328473447954659191'))
+    expected = {'city': 'tel aviv', 'first_name': 'moshe', 'middle_name': 'tuna', 'last_name': 'cohen'}
     assert response.status_code == 200
     assert expected == response.output.item
 
 
 def test_write_string_as_time_via_time_field(setup_teardown_test):
     table = Table(setup_teardown_test, V3ioDriver())
-    t1 = "2020-03-16T05:00:00+00:00"
-    t2 = "2020-03-15T18:00:00+00:00"
+    t1 = '2020-03-16T05:00:00+00:00'
+    t2 = '2020-03-15T18:00:00+00:00'
     df = pd.DataFrame(
         {
-            "name": ["jack", "tuna"],
-            "time": [t1, t2],
+            'name': ['jack', 'tuna'],
+            'time': [t1, t2],
         }
     )
 
@@ -472,12 +491,12 @@ def test_write_string_as_time_via_time_field(setup_teardown_test):
 
 def test_write_string_as_time_via_schema(setup_teardown_test):
     table = Table(setup_teardown_test, V3ioDriver())
-    t1 = "2020-03-16T05:00:00+00:00"
-    t2 = "2020-03-15T18:00:00+00:00"
+    t1 = '2020-03-16T05:00:00+00:00'
+    t2 = '2020-03-15T18:00:00+00:00'
     df = pd.DataFrame(
         {
-            "name": ["jack", "tuna"],
-            "time": [t1, t2],
+            'name': ['jack', 'tuna'],
+            'time': [t1, t2],
         }
     )
 
@@ -542,9 +561,9 @@ def test_write_none_time(setup_teardown_test):
     table = Table(setup_teardown_test, V3ioDriver())
     data = pd.DataFrame(
         {
-            "first_name": ["moshe", "yosi"],
-            "color": ['blue', 'yellow'],
-            "time": [test_base_time, None]
+            'first_name': ['moshe', 'yosi'],
+            'color': ['blue', 'yellow'],
+            'time': [test_base_time, None]
         }
     )
 
