@@ -80,29 +80,31 @@ def test_aggregate_and_query_with_different_sliding_windows(setup_teardown_test,
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
-    other_table = Table(setup_teardown_test, V3ioDriver())
-    controller = build_flow([
-        SyncEmitSource(),
-        QueryByKey(['number_of_stuff_sum_1h', 'number_of_stuff_avg_1h', 'number_of_stuff_min_1h', 'number_of_stuff_max_1h'],
-                   other_table),
-        Reduce([], lambda acc, x: append_return(acc, x)),
-    ]).run()
-
-    base_time = test_base_time + timedelta(minutes=25 * items_in_ingest_batch)
-    data = {'col1': items_in_ingest_batch}
-    controller.emit(data, 'tal', base_time)
-    controller.emit(data, 'tal', base_time + timedelta(minutes=25))
-
-    controller.terminate()
-    actual = controller.await_termination()
+    tables = [table, Table(setup_teardown_test, V3ioDriver())]  # test on previous table and on new table
     expected_results = [
-        {'col1': 10, 'number_of_stuff_sum_1h': 17, 'number_of_stuff_min_1h': 8, 'number_of_stuff_max_1h': 9, 'number_of_stuff_avg_1h': 8.5},
-        {'col1': 10, 'number_of_stuff_sum_1h': 9.0, 'number_of_stuff_min_1h': 9.0, 'number_of_stuff_max_1h': 9.0,
-         'number_of_stuff_avg_1h': 9.0},
+        {'col1': 10, 'number_of_stuff_sum_1h': 17.0, 'number_of_stuff_min_1h': 8.0,
+         'number_of_stuff_max_1h': 9.0, 'number_of_stuff_avg_1h': 8.5},
+        {'col1': 10, 'number_of_stuff_sum_1h': 9.0, 'number_of_stuff_min_1h': 9.0,
+         'number_of_stuff_max_1h': 9.0, 'number_of_stuff_avg_1h': 9.0},
     ]
+    for table in tables:
+        controller = build_flow([
+            SyncEmitSource(),
+            QueryByKey(['number_of_stuff_sum_1h', 'number_of_stuff_avg_1h', 'number_of_stuff_min_1h', 'number_of_stuff_max_1h'],
+                       table),
+            Reduce([], lambda acc, x: append_return(acc, x)),
+        ]).run()
 
-    assert actual == expected_results, \
-        f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
+        base_time = test_base_time + timedelta(minutes=25 * items_in_ingest_batch)
+        data = {'col1': items_in_ingest_batch}
+        controller.emit(data, 'tal', base_time)
+        controller.emit(data, 'tal', base_time + timedelta(minutes=25))
+
+        controller.terminate()
+        actual = controller.await_termination()
+
+        assert actual == expected_results, \
+            f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
 
 @pytest.mark.parametrize('partitioned_by_key', [True, False])
@@ -183,29 +185,31 @@ def test_aggregate_and_query_with_different_fixed_windows(setup_teardown_test, p
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
-    other_table = Table(setup_teardown_test, V3ioDriver())
-    controller = build_flow([
-        SyncEmitSource(),
-        QueryByKey(['number_of_stuff_sum_1h', 'number_of_stuff_avg_1h', 'number_of_stuff_min_1h', 'number_of_stuff_max_1h'],
-                   other_table),
-        Reduce([], lambda acc, x: append_return(acc, x)),
-    ]).run()
-
-    base_time = test_base_time + timedelta(minutes=25 * items_in_ingest_batch)
-    data = {'col1': items_in_ingest_batch}
-    controller.emit(data, 'tal', base_time)
-    controller.emit(data, 'tal', base_time + timedelta(minutes=25))
-
-    controller.terminate()
-    actual = controller.await_termination()
+    tables = [table, Table(setup_teardown_test, V3ioDriver())]  # test on previous table and on new table
     expected_results = [
-        {'col1': 10, 'number_of_stuff_sum_1h': 17, 'number_of_stuff_min_1h': 8, 'number_of_stuff_max_1h': 9, 'number_of_stuff_avg_1h': 8.5},
-        {'col1': 10, 'number_of_stuff_sum_1h': 0.0, 'number_of_stuff_min_1h': math.inf, 'number_of_stuff_max_1h': -math.inf,
-         'number_of_stuff_avg_1h': math.nan},
+        {'col1': 10, 'number_of_stuff_sum_1h': 17.0, 'number_of_stuff_min_1h': 8.0,
+         'number_of_stuff_max_1h': 9.0, 'number_of_stuff_avg_1h': 8.5},
+        {'col1': 10, 'number_of_stuff_sum_1h': 0.0, 'number_of_stuff_min_1h': math.inf,
+         'number_of_stuff_max_1h': -math.inf, 'number_of_stuff_avg_1h': math.nan},
     ]
+    for table in tables:
+        controller = build_flow([
+            SyncEmitSource(),
+            QueryByKey(['number_of_stuff_sum_1h', 'number_of_stuff_avg_1h', 'number_of_stuff_min_1h', 'number_of_stuff_max_1h'],
+                       table),
+            Reduce([], lambda acc, x: append_return(acc, x)),
+        ]).run()
 
-    assert actual == expected_results, \
-        f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
+        base_time = test_base_time + timedelta(minutes=25 * items_in_ingest_batch)
+        data = {'col1': items_in_ingest_batch}
+        controller.emit(data, 'tal', base_time)
+        controller.emit(data, 'tal', base_time + timedelta(minutes=25))
+
+        controller.terminate()
+        actual = controller.await_termination()
+
+        assert actual == expected_results, \
+            f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
 
 def test_query_virtual_aggregations_flow(setup_teardown_test):

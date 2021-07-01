@@ -45,6 +45,13 @@ class Table:
     def __str__(self):
         return f'{self._container}/{self._table_path}'
 
+    def _clone(self):
+        new_table = Table(self._table_path, self._storage, self._partitioned_by_key,
+                          self._flush_interval_secs, self._max_updates_in_flight)
+        new_table._container = self._container
+        new_table._table_path = self._table_path
+        return new_table
+
     def _get_lock(self, key):
         cache_element = self._attrs_cache.get(key)
         if cache_element is None:
