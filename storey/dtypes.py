@@ -366,6 +366,8 @@ class FieldAggregator:
             self.value_extractor = field
         elif isinstance(field, str):
             self.value_extractor = lambda element: element.get(field)
+        else:
+            raise TypeError(f"Bad field type '{type(field)}', expected callable or str.")
 
         self.name = name
         self.aggregations = aggr
