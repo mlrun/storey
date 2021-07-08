@@ -12,6 +12,9 @@ from storey.dtypes import SlidingWindows
 test_base_time = datetime.fromisoformat("2020-07-21T21:40:00+00:00")
 
 
+# Is CI broken?
+
+
 @pytest.mark.parametrize('n', [0, 1, 1000, 5000])
 def test_simple_flow_n_events(benchmark, n):
     def inner():
