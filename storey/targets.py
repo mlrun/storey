@@ -475,6 +475,9 @@ class ParquetTarget(_Batching, _Writer):
                 kwargs['schema'] = self._schema
             df.to_parquet(path=file, index=bool(self._index_cols), **kwargs)
 
+    async def _terminate(self):
+        print("calling the mlrun method " + str(self._batch_last_event_time))
+
 
 class TSDBTarget(_Batching, _Writer):
     """Writes incoming events to TSDB table.

@@ -8,6 +8,7 @@ from collections import defaultdict
 from typing import Optional, Union, Callable, List, Dict, Any, Set
 
 import aiohttp
+from pytz import utc
 
 from .dtypes import _termination_obj, Event, FlowError, V3ioError
 from .table import Table
@@ -714,6 +715,7 @@ class _Batching(Flow):
     def _init(self):
         self._batch: Dict[Optional[str], List[Any]] = defaultdict(list)
         self._batch_first_event_time: Dict[Optional[str], datetime.datetime] = {}
+        self._batch_last_event_time = datetime.datetime.min.replace(tzinfo=utc)
         self._batch_start_time: Dict[Optional[str], float] = {}
         self._timeout_task: Optional[Task] = None
         self._timeout_task_ex: Optional[Exception] = None
@@ -747,8 +749,14 @@ class _Batching(Flow):
         key = self._extract_key(event)
 
         if len(self._batch[key]) == 0:
+#            if key is not None:
+#                m = 6/0
+            print("ccccccccc " + str(key))
             self._batch_first_event_time[key] = event.time
             self._batch_start_time[key] = time.monotonic()
+
+        if self._batch_last_event_time < event.time:
+            self._batch_last_event_time = event.time
 
         if self._timeout_task_ex:
             raise self._timeout_task_ex
@@ -784,9 +792,13 @@ class _Batching(Flow):
         batch_to_emit = self._batch.pop(batch_key, None)
         if batch_to_emit is None:
             return
+        print("vvvvvvvvvvvvvvvvvvv " + str(batch_key))
         batch_time = self._batch_first_event_time.pop(batch_key)
         del self._batch_start_time[batch_key]
         await self._emit(batch_to_emit, batch_key, batch_time)
+
+        #this is per event!!!!!!!
+#        self._last_written = event.time
 
     async def _emit_all(self):
         for key in list(self._batch.keys()):
