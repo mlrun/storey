@@ -1509,3 +1509,44 @@ def test_multiple_keys_int(setup_teardown_test):
 
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
+
+
+def test_aggregate_float_key(setup_teardown_test):
+    t0 = pd.Timestamp(test_base_time)
+    data = pd.DataFrame(
+        {
+            'key_column2': [5.6, 8.6],
+            'some_data': [1, 2],
+            'time': [t0 - pd.Timedelta(minutes=25), t0 - pd.Timedelta(minutes=30)]
+        }
+    )
+
+    keys = ['key_column2']
+    table = Table(setup_teardown_test, V3ioDriver())
+    controller = build_flow([
+        DataframeSource(data, key_field=keys, time_field='time'),
+        AggregateByKey([FieldAggregator('number_of_stuff', 'some_data', ['sum'],
+                                        SlidingWindows(['1h'], '10m'))],
+                       table, emit_policy=EmitAfterMaxEvent(1)),
+        NoSqlTarget(table),
+    ]).run()
+
+    actual = controller.await_termination()
+
+    other_table = Table(setup_teardown_test, V3ioDriver())
+    controller = build_flow([
+        SyncEmitSource(),
+        QueryByKey(['number_of_stuff_sum_1h'],
+                   other_table, key=keys),
+        Reduce([], lambda acc, x: append_return(acc, x)),
+    ]).run()
+
+    controller.emit({'key_column2': 8.6},
+                    key=[8.6], event_time=test_base_time)
+
+    controller.terminate()
+    actual = controller.await_termination()
+    expected_results = [{'number_of_stuff_sum_1h': 2.0, 'key_column2': 8.6}]
+
+    assert actual == expected_results, \
+        f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
