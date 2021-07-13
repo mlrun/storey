@@ -217,7 +217,7 @@ def _find_filter_helper(list_partitions, dtime, sign, first_sign, first_uncommon
 
 def _get_filters_for_filter_column(start, end, filter_column, side_range):
     lower_limit_tuple = (filter_column, ">=", start)
-    upper_limit_tuple = (filter_column, "<=", end)
+    upper_limit_tuple = (filter_column, "<", end)
     side_range.append(lower_limit_tuple)
     side_range.append(upper_limit_tuple)
 

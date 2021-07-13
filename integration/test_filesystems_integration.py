@@ -1,6 +1,7 @@
 import asyncio
 import sys
 import random as rand
+import os
 
 from .integration_test_utils import setup_teardown_test, _generate_table_name, V3ioHeaders, V3ioError
 from storey import build_flow, CSVSource, CSVTarget, SyncEmitSource, Reduce, Map, FlatMap, AsyncEmitSource, ParquetTarget, ParquetSource, \
@@ -502,3 +503,31 @@ def test_filter_before_after_partitioned_outer_other_partition(setup_teardown_te
                 {'my_string': 'shining', 'my_time': pd.Timestamp('2020-12-30 08:53:00'), 'my_city': 'ramat gan'}]
 
     assert read_back_result == expected, f"{read_back_result}\n!=\n{expected}"
+
+
+def test_filter_by_time_non_partioned(setup_teardown_test):
+    columns = ['my_string', 'my_time', 'my_city']
+
+    df = pd.DataFrame([['dina', pd.Timestamp('2019-07-01 00:00:00'), 'tel aviv'],
+                       ['uri', pd.Timestamp('2018-12-30 09:00:00'), 'tel aviv'],
+                       ['katya', pd.Timestamp('2020-12-31 14:00:00'), 'hod hasharon']],
+                      columns=columns)
+    df.set_index('my_string')
+    path = '/tmp/test_filter_by_time_non_partioned.parquet'
+    df.to_parquet(path)
+    start = pd.Timestamp('2019-07-01 00:00:00')
+    end = pd.Timestamp('2020-12-31 14:00:00')
+
+    controller = build_flow([
+        ParquetSource(path, end_filter=end, start_filter=start, filter_column='my_time'),
+        Reduce([], append_and_return)
+    ]).run()
+
+    read_back_result = controller.await_termination()
+
+    expected = [{'my_string': 'dina', 'my_time': pd.Timestamp('2019-07-01 00:00:00'), 'my_city': 'tel aviv'}]
+
+    try:
+        assert read_back_result == expected, f"{read_back_result}\n!=\n{expected}"
+    finally:
+        os.remove(path)
