@@ -10,6 +10,7 @@ import random
 import uuid
 from typing import Optional, Union, List, Callable, Tuple
 from urllib.parse import urlparse
+import mlrun
 
 import pandas as pd
 import pyarrow
@@ -428,6 +429,7 @@ class ParquetTarget(_Batching, _Writer):
 
         storage_options = kwargs.get('storage_options')
         self._file_system, self._path = url_to_file_system(path, storage_options)
+        self._full_path = path
 
         path_from_event = self._path_from_event if partition_cols else None
 
@@ -436,6 +438,7 @@ class ParquetTarget(_Batching, _Writer):
 
         self._field_extractor = lambda event_body, field_name: event_body.get(field_name)
         self._write_missing_fields = True
+        self._fs_status = kwargs.get('featureset_status')
 
     def _init(self):
         _Batching._init(self)
@@ -476,7 +479,10 @@ class ParquetTarget(_Batching, _Writer):
             df.to_parquet(path=file, index=bool(self._index_cols), **kwargs)
 
     async def _terminate(self):
+        import mlrun
         print("calling the mlrun method " + str(self._batch_last_event_time))
+
+        self._fs_status.update_last_written_for_target(self._full_path, self._batch_last_event_time)
 
 
 class TSDBTarget(_Batching, _Writer):
