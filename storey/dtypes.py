@@ -198,6 +198,12 @@ class FixedWindows(WindowsBase):
     def get_window_start_time_by_time(self, timestamp):
         return int(timestamp / self.window_millis) * self.window_millis
 
+    def merge(self, new):
+        if isinstance(new, FixedWindows):
+            super(FixedWindows, self).merge(new)
+        else:
+            self.__init__(new.windows)
+
 
 class SlidingWindows(WindowsBase):
     """
