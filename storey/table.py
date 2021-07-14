@@ -600,7 +600,8 @@ class ReadOnlyAggregationBuckets:
                 for bucket_id in range(previous_window_start, current_window_start):
                     current_pre_aggregated_value = aggr.value
                     bucket_aggregated_value = self.buckets[bucket_id].value
-                    if self.aggregation == "min" or self.aggregation == "max":
+                    if self.aggregation == "min" or self.aggregation == "max" \
+                            or self.aggregation == "first" or self.aggregation == "last":
                         if current_pre_aggregated_value == bucket_aggregated_value:
                             self._need_to_recalculate_pre_aggregates = True
                             return
@@ -1022,7 +1023,8 @@ class FirstValue(AggregationValue):
 
     def aggregate(self, time, value):
         if time is not None and not math.isnan(value) and (self.time is None or time < self.time):
-            self._set_value(value)
+            if math.isnan(self.value) and math.isnan(self.default_value):
+                self._set_value(value)
             self.time = time
 
     def get_update_expression(self, old):
@@ -1194,7 +1196,7 @@ class AggregationBuckets:
                 for bucket_id in range(previous_window_start, current_window_start):
                     current_pre_aggregated_value = aggr.value
                     bucket_aggregated_value = self.buckets[bucket_id][aggr_name].value
-                    if aggr_name == "min" or aggr_name == "max":
+                    if aggr_name == "min" or aggr_name == "max" or aggr_name == "first" or aggr_name == "last":
                         if current_pre_aggregated_value == bucket_aggregated_value:
                             self._need_to_recalculate_pre_aggregates = True
                             return
