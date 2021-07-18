@@ -716,6 +716,7 @@ class DataframeSource(_IterableSource):
             dfs = [dfs]
         self._dfs = dfs
         self._key_field = key_field
+        print("nnnnnnnnnnnnnnn " + str(key_field))
         self._time_field = time_field
         self._id_field = id_field
 
@@ -781,6 +782,7 @@ class ParquetSource(DataframeSource):
             if filter_column is None:
                 raise TypeError('Filter column is required when passing start/end filters')
 
+        print("paths are " + str(paths))
         self._paths = paths
         if isinstance(paths, str):
             self._paths = [paths]
@@ -801,6 +803,7 @@ class ParquetSource(DataframeSource):
             partitions_time_attributes = []
         filters = []
         find_filters(partitions_time_attributes, self._start_filter, self._end_filter, filters, self._filter_column)
+        print("nnnnnnnnn3 " + str(filters))
         return pandas.read_parquet(path, columns=self._columns, filters=filters,
                                    storage_options=self._storage_options)
 
@@ -809,6 +812,7 @@ class ParquetSource(DataframeSource):
         for path in self._paths:
             if self._start_filter or self._end_filter:
                 df = self._read_filtered_parquet(path)
+                print("nnnnnnnn4 df is " + str(df))
             else:
                 df = pandas.read_parquet(path, columns=self._columns, storage_options=self._storage_options)
             self._dfs.append(df)

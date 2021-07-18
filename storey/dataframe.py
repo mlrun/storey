@@ -56,6 +56,7 @@ class ReduceToDataFrame(Flow):
             return df
         else:
             body = event.body
+            print("nnnnnnnnnn1 " + str(event.key))
             if isinstance(body, dict) or isinstance(body, list):
                 self._data.append(body)
                 if self._insert_key_column_as:
