@@ -340,8 +340,9 @@ def test_aggregate_and_query_with_different_fixed_windows(setup_teardown_test, p
             f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
 
-def test_query_virtual_aggregations_flow(setup_teardown_test):
-    table = Table(setup_teardown_test, V3ioDriver())
+@pytest.mark.parametrize('use_parallel_operations', [True, False])
+def test_query_virtual_aggregations_flow(setup_teardown_test, use_parallel_operations):
+    table = Table(setup_teardown_test, V3ioDriver(use_parallel_operations=use_parallel_operations))
     controller = build_flow([
         SyncEmitSource(),
         AggregateByKey([FieldAggregator('number_of_stuff', 'col1', ['avg', 'stddev', 'stdvar'],
@@ -377,7 +378,7 @@ def test_query_virtual_aggregations_flow(setup_teardown_test):
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
-    other_table = Table(setup_teardown_test, V3ioDriver())
+    other_table = Table(setup_teardown_test, V3ioDriver(use_parallel_operations=use_parallel_operations))
     controller = build_flow([
         SyncEmitSource(),
         QueryByKey(['number_of_stuff_avg_1h', 'number_of_stuff_stdvar_2h', 'number_of_stuff_stddev_3h'],
@@ -1745,6 +1746,62 @@ def test_aggregate_and_query_persist_before_advancing_window(setup_teardown_test
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [{'particles_count_30m': 10.0, 'sample': 'U235'}]
+    assert actual == expected_results, \
+        f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
+
+def test_aggregate_and_query_by_key_with_holes(setup_teardown_test):
+    table = Table(setup_teardown_test, V3ioDriver(), partitioned_by_key=False, flush_interval_secs=None)
+
+    controller = build_flow([
+        SyncEmitSource(),
+        AggregateByKey([FieldAggregator('number_of_stuff', 'col1', ['sum'],
+                                        SlidingWindows(['1h'], '10m'))],
+                       table),
+        NoSqlTarget(table),
+        Reduce([], lambda acc, x: append_return(acc, x)),
+    ]).run()
+
+    items_in_ingest_batch = 5
+    for i in range(items_in_ingest_batch):
+        data = {'col1': i}
+        controller.emit(data, 'tal', test_base_time + timedelta(minutes=25 * i))
+
+    controller.emit({'col1': 8}, 'tal', test_base_time + timedelta(minutes=25 * 8))
+    controller.emit({'col1': 9}, 'tal', test_base_time + timedelta(minutes=25 * 9))
+
+    controller.terminate()
+    actual = controller.await_termination()
+    expected_results = [
+        {'number_of_stuff_sum_1h': 0, 'col1': 0},
+        {'number_of_stuff_sum_1h': 1, 'col1': 1},
+        {'number_of_stuff_sum_1h': 3, 'col1': 2},
+        {'number_of_stuff_sum_1h': 6, 'col1': 3},
+        {'number_of_stuff_sum_1h': 9, 'col1': 4},
+        {'number_of_stuff_sum_1h': 8, 'col1': 8},
+        {'number_of_stuff_sum_1h': 17, 'col1': 9}
+    ]
+
+    assert actual == expected_results, \
+        f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
+
+    other_table = Table(setup_teardown_test, V3ioDriver())
+    controller = build_flow([
+        SyncEmitSource(),
+        QueryByKey(['number_of_stuff_sum_1h'],
+                   other_table),
+        Reduce([], lambda acc, x: append_return(acc, x)),
+    ]).run()
+
+    base_time = test_base_time + timedelta(minutes=25 * 10)
+    data = {'col1': 10}
+    controller.emit(data, 'tal', base_time)
+
+    controller.terminate()
+    actual = controller.await_termination()
+    expected_results = [
+        {'col1': 10, 'number_of_stuff_sum_1h': 17}
+    ]
+
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
