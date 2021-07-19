@@ -803,7 +803,6 @@ class ParquetSource(DataframeSource):
             partitions_time_attributes = []
         filters = []
         find_filters(partitions_time_attributes, self._start_filter, self._end_filter, filters, self._filter_column)
-        print("nnnnnnnnn3 " + str(filters))
         return pandas.read_parquet(path, columns=self._columns, filters=filters,
                                    storage_options=self._storage_options)
 
@@ -812,7 +811,6 @@ class ParquetSource(DataframeSource):
         for path in self._paths:
             if self._start_filter or self._end_filter:
                 df = self._read_filtered_parquet(path)
-                print("nnnnnnnn4 df is " + str(df))
             else:
                 df = pandas.read_parquet(path, columns=self._columns, storage_options=self._storage_options)
             self._dfs.append(df)
