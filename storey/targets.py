@@ -483,8 +483,6 @@ class ParquetTarget(_Batching, _Writer):
 
     async def _terminate(self):
         import mlrun
-        print("calling the mlrun method " + str(self._last_written_event))
-
         if self._fs_status:
             self._fs_status.update_last_written_for_target(self._full_path, self._last_written_event)
 

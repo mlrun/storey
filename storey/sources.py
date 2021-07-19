@@ -716,7 +716,6 @@ class DataframeSource(_IterableSource):
             dfs = [dfs]
         self._dfs = dfs
         self._key_field = key_field
-        print("nnnnnnnnnnnnnnn " + str(key_field))
         self._time_field = time_field
         self._id_field = id_field
 
@@ -782,7 +781,6 @@ class ParquetSource(DataframeSource):
             if filter_column is None:
                 raise TypeError('Filter column is required when passing start/end filters')
 
-        print("paths are " + str(paths))
         self._paths = paths
         if isinstance(paths, str):
             self._paths = [paths]

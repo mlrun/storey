@@ -789,14 +789,10 @@ class _Batching(Flow):
         batch_to_emit = self._batch.pop(batch_key, None)
         if batch_to_emit is None:
             return
-        print("vvvvvvvvvvvvvvvvvvv " + str(batch_key))
         batch_time = self._batch_first_event_time.pop(batch_key)
         last_event_time = self._batch_last_event_time.pop(batch_key)
         del self._batch_start_time[batch_key]
         await self._emit(batch_to_emit, batch_key, batch_time, last_event_time)
-
-        #this is per event!!!!!!!
-#        self._last_written = event.time
 
     async def _emit_all(self):
         for key in list(self._batch.keys()):
