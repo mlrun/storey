@@ -701,7 +701,7 @@ def test_fixed_window_aggregation_with_multiple_keys_flow():
         {'samples_count_10m': 2.0, 'samples_count_15m': 1.0,
          'sample_time': pd.Timestamp('2021-05-30 16:45:15.798000+0000', tz='UTC'), 'signal': 498.491, 'isotope': 'U235'},
         {'samples_count_10m': 1.0, 'samples_count_15m': 1.0,
-         'sample_time': pd.Timestamp('2021-05-30 16:48:15.799000+0000', tz='UTC'), 'signal': 34650.00343,'isotope': 'U238'},
+         'sample_time': pd.Timestamp('2021-05-30 16:48:15.799000+0000', tz='UTC'), 'signal': 34650.00343, 'isotope': 'U238'},
         {'samples_count_10m': 1.0, 'samples_count_15m': 2.0,
          'sample_time': pd.Timestamp('2021-05-30 16:51:15.800000+0000', tz='UTC'), 'signal': 189.823, 'isotope': 'U238'},
         {'samples_count_10m': 2.0, 'samples_count_15m': 3.0,
@@ -1166,3 +1166,185 @@ def test_aggregation_unique_fields():
         assert False
     except TypeError:
         pass
+
+
+def test_fixed_window_aggregation_with_first_and_last_aggregates():
+    df = pd.DataFrame(
+        {
+            "timestamp": [
+                pd.Timestamp("2021-07-13 06:43:01.084587+0000", tz="UTC"),
+                pd.Timestamp("2021-07-13 06:46:01.084587+0000", tz="UTC"),
+                pd.Timestamp("2021-07-13 06:49:01.084587+0000", tz="UTC"),
+                pd.Timestamp("2021-07-13 06:52:01.084587+0000", tz="UTC"),
+                pd.Timestamp("2021-07-13 06:55:01.084587+0000", tz="UTC"),
+                pd.Timestamp("2021-07-13 06:58:01.084587+0000", tz="UTC"),
+                pd.Timestamp("2021-07-13 07:01:01.084587+0000", tz="UTC"),
+                pd.Timestamp("2021-07-13 07:04:01.084587+0000", tz="UTC"),
+                pd.Timestamp("2021-07-13 07:07:01.084587+0000", tz="UTC"),
+                pd.Timestamp("2021-07-13 07:10:01.084587+0000", tz="UTC"),
+                pd.Timestamp("2021-07-13 07:13:01.084587+0000", tz="UTC"),
+                pd.Timestamp("2021-07-13 07:16:01.084587+0000", tz="UTC"),
+                pd.Timestamp("2021-07-13 07:19:01.084587+0000", tz="UTC"),
+            ],
+            "emission": [
+                16.44200,
+                64807.90231,
+                413.90100,
+                73621.21551,
+                53936.62158,
+                13582.52318,
+                966.80400,
+                450.40700,
+                4965.28760,
+                42982.57194,
+                1594.40460,
+                69601.73368,
+                48038.65572,
+            ],
+            "sensor_id": [
+                "0654-329-05",
+                "0654-329-05",
+                "0654-329-05",
+                "0654-329-05",
+                "0654-329-05",
+                "0654-329-05",
+                "0654-329-05",
+                "0654-329-05",
+                "0654-329-05",
+                "0654-329-05",
+                "0654-329-05",
+                "0654-329-05",
+                "0654-329-05",
+            ],
+        }
+    )
+
+    controller = build_flow(
+        [
+            DataframeSource(df, time_field="timestamp", key_field="sensor_id"),
+            AggregateByKey(
+                [
+                    FieldAggregator(
+                        "samples",
+                        "emission",
+                        ["last", "first", "count"],
+                        FixedWindows(["10m"]),
+                    )
+                ],
+                Table("MyTable", NoopDriver()),
+            ),
+            Reduce([], lambda acc, x: append_return(acc, x)),
+        ]
+    ).run()
+    termination_result = controller.await_termination()
+
+    expected = [
+        {
+            "samples_last_10m": 16.442,
+            "samples_count_10m": 1.0,
+            "samples_first_10m": 16.442,
+            "timestamp": pd.Timestamp("2021-07-13 06:43:01.084587+0000", tz="UTC"),
+            "emission": 16.442,
+            "sensor_id": "0654-329-05",
+        },
+        {
+            "samples_last_10m": 64807.90231,
+            "samples_count_10m": 2.0,
+            "samples_first_10m": 16.442,
+            "timestamp": pd.Timestamp("2021-07-13 06:46:01.084587+0000", tz="UTC"),
+            "emission": 64807.90231,
+            "sensor_id": "0654-329-05",
+        },
+        {
+            "samples_last_10m": 413.901,
+            "samples_count_10m": 3.0,
+            "samples_first_10m": 16.442,
+            "timestamp": pd.Timestamp("2021-07-13 06:49:01.084587+0000", tz="UTC"),
+            "emission": 413.901,
+            "sensor_id": "0654-329-05",
+        },
+        {
+            "samples_last_10m": 73621.21551,
+            "samples_count_10m": 1.0,
+            "samples_first_10m": 73621.21551,
+            "timestamp": pd.Timestamp("2021-07-13 06:52:01.084587+0000", tz="UTC"),
+            "emission": 73621.21551,
+            "sensor_id": "0654-329-05",
+        },
+        {
+            "samples_last_10m": 53936.62158,
+            "samples_count_10m": 2.0,
+            "samples_first_10m": 73621.21551,
+            "timestamp": pd.Timestamp("2021-07-13 06:55:01.084587+0000", tz="UTC"),
+            "emission": 53936.62158,
+            "sensor_id": "0654-329-05",
+        },
+        {
+            "samples_last_10m": 13582.52318,
+            "samples_count_10m": 3.0,
+            "samples_first_10m": 73621.21551,
+            "timestamp": pd.Timestamp("2021-07-13 06:58:01.084587+0000", tz="UTC"),
+            "emission": 13582.52318,
+            "sensor_id": "0654-329-05",
+        },
+        {
+            "samples_last_10m": 966.804,
+            "samples_count_10m": 1.0,
+            "samples_first_10m": 966.804,
+            "timestamp": pd.Timestamp("2021-07-13 07:01:01.084587+0000", tz="UTC"),
+            "emission": 966.804,
+            "sensor_id": "0654-329-05",
+        },
+        {
+            "samples_last_10m": 450.407,
+            "samples_count_10m": 2.0,
+            "samples_first_10m": 966.804,
+            "timestamp": pd.Timestamp("2021-07-13 07:04:01.084587+0000", tz="UTC"),
+            "emission": 450.407,
+            "sensor_id": "0654-329-05",
+        },
+        {
+            "samples_last_10m": 4965.2876,
+            "samples_count_10m": 3.0,
+            "samples_first_10m": 966.804,
+            "timestamp": pd.Timestamp("2021-07-13 07:07:01.084587+0000", tz="UTC"),
+            "emission": 4965.2876,
+            "sensor_id": "0654-329-05",
+        },
+        {
+            "samples_last_10m": 42982.57194,
+            "samples_count_10m": 1.0,
+            "samples_first_10m": 42982.57194,
+            "timestamp": pd.Timestamp("2021-07-13 07:10:01.084587+0000", tz="UTC"),
+            "emission": 42982.57194,
+            "sensor_id": "0654-329-05",
+        },
+        {
+            "samples_last_10m": 1594.4046,
+            "samples_count_10m": 2.0,
+            "samples_first_10m": 42982.57194,
+            "timestamp": pd.Timestamp("2021-07-13 07:13:01.084587+0000", tz="UTC"),
+            "emission": 1594.4046,
+            "sensor_id": "0654-329-05",
+        },
+        {
+            "samples_last_10m": 69601.73368,
+            "samples_count_10m": 3.0,
+            "samples_first_10m": 42982.57194,
+            "timestamp": pd.Timestamp("2021-07-13 07:16:01.084587+0000", tz="UTC"),
+            "emission": 69601.73368,
+            "sensor_id": "0654-329-05",
+        },
+        {
+            "samples_last_10m": 48038.65572,
+            "samples_count_10m": 4.0,
+            "samples_first_10m": 42982.57194,
+            "timestamp": pd.Timestamp("2021-07-13 07:19:01.084587+0000", tz="UTC"),
+            "emission": 48038.65572,
+            "sensor_id": "0654-329-05",
+        },
+    ]
+
+    assert (
+        termination_result == expected
+    ), f"actual did not match expected. \n actual: {termination_result} \n expected: {expected}"
