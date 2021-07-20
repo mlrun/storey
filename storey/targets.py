@@ -437,7 +437,7 @@ class ParquetTarget(_Batching, _Writer):
 
         self._field_extractor = lambda event_body, field_name: event_body.get(field_name)
         self._write_missing_fields = True
-        self._fs_status = kwargs.get('featureset_status')
+        self._mlrun_callback = kwargs.get('featureset_status')
         self._last_written_event = None
 
     def _init(self):
@@ -481,8 +481,8 @@ class ParquetTarget(_Batching, _Writer):
                 self._last_written_event = last_event_time
 
     async def _terminate(self):
-        if self._fs_status:
-            self._fs_status.update_last_written_for_target(self._full_path, self._last_written_event)
+        if self._mlrun_callback:
+            self._mlrun_callback(self._full_path, self._last_written_event)
 
 
 class TSDBTarget(_Batching, _Writer):
