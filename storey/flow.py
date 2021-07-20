@@ -8,7 +8,6 @@ from collections import defaultdict
 from typing import Optional, Union, Callable, List, Dict, Any, Set
 
 import aiohttp
-from pytz import utc
 
 from .dtypes import _termination_obj, Event, FlowError, V3ioError
 from .table import Table

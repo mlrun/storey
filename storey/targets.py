@@ -10,7 +10,6 @@ import random
 import uuid
 from typing import Optional, Union, List, Callable, Tuple
 from urllib.parse import urlparse
-import mlrun
 
 import pandas as pd
 import pyarrow
@@ -482,7 +481,6 @@ class ParquetTarget(_Batching, _Writer):
                 self._last_written_event = last_event_time
 
     async def _terminate(self):
-        import mlrun
         if self._fs_status:
             self._fs_status.update_last_written_for_target(self._full_path, self._last_written_event)
 
