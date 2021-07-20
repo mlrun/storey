@@ -437,7 +437,7 @@ class ParquetTarget(_Batching, _Writer):
 
         self._field_extractor = lambda event_body, field_name: event_body.get(field_name)
         self._write_missing_fields = True
-        self._mlrun_callback = kwargs.get('featureset_status')
+        self._mlrun_callback = kwargs.get('update_last_written')
         self._last_written_event = None
 
     def _init(self):
