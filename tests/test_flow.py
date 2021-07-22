@@ -11,6 +11,7 @@ import pandas as pd
 import pytest
 import pytz
 from aiohttp import InvalidURL
+from pandas.testing import assert_frame_equal
 
 from storey import build_flow, SyncEmitSource, Map, Filter, FlatMap, Reduce, MapWithState, CSVSource, Complete, \
     AsyncEmitSource, Choice, \
@@ -2673,3 +2674,26 @@ def test_csv_multiple_time_columns(tmpdir):
                 ['m2', datetime(2021, 6, 27, 10, 23, 8, 420581), 'dina', datetime(2021, 6, 27, 10, 21, 8, 420581)]]
 
     assert termination_result == expected
+
+
+# ML-846 (inserting multiple columns in pandas 1.3)
+def test_reduce_to_df_multiple_indexes():
+    index_columns = ['szc', 'gca', 'pzi']
+    controller = build_flow([
+        SyncEmitSource(key_field=index_columns),
+        ReduceToDataFrame(index=index_columns, insert_key_column_as=index_columns)
+    ]).run()
+
+    a1 = {'time_stamp': pd.Timestamp('2002-04-01 04:32:34'), 'szc': 0.4, 'itz': False, 'pzi': 2922242126195791, 'gca': 0.05}
+    a2 = {'time_stamp': pd.Timestamp('2002-04-01 15:05:37'), 'szc': 0.5, 'itz': True, 'pzi': -9144607787498184, 'gca': 0.79}
+
+    controller.emit(a1)
+    controller.emit(a2)
+
+    expected = pd.DataFrame([a1, a2], columns=None)
+    expected.set_index(index_columns, inplace=True)
+    controller.terminate()
+    termination_result = controller.await_termination()
+
+    assert_frame_equal(expected, termination_result)
+
