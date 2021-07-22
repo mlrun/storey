@@ -2676,6 +2676,7 @@ def test_csv_multiple_time_columns(tmpdir):
     assert termination_result == expected
 
 
+# ML-846 (inserting multiple columns in pandas 1.3)
 def test_reduce_to_df_multiple_indexes():
     index_columns = ['szc', 'gca', 'pzi']
     controller = build_flow([
