@@ -53,6 +53,19 @@ def s3_setup_teardown_test():
     s3_recursive_delete(table_name)
 
 
+@pytest.fixture()
+def s3_teardown_file_in_bucket():
+    # Setup
+    aws_bucket = os.getenv("AWS_BUCKET")
+    file_path = _generate_table_name(f'{aws_bucket}/file_in_bucket.csv')
+
+    # Test runs
+    yield file_path
+
+    # Teardown
+    _delete_file(file_path)
+
+
 def _write_test_csv(file_path):
     s3_fs = S3FileSystem()
     data = "n,n*10\n0,0\n1,10\n2,20\n3,30\n4,40\n5,50\n6,60\n7,70\n8,80\n9,90\n"
@@ -237,4 +250,26 @@ def test_write_to_parquet_to_s3_with_indices(s3_setup_teardown_test):
     controller.await_termination()
 
     read_back_df = pd.read_parquet(out_file, columns=columns)
+    # when reading from buckets lines order can be scrambled
+    read_back_df.sort_values('event_key', inplace=True)
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+
+
+@pytest.mark.skipif(not has_s3_credentials, reason='No s3 credentials found')
+def test_write_csv_to_s3_bucket_directly(s3_teardown_file_in_bucket):
+    file_path = f's3:///{s3_teardown_file_in_bucket}'
+
+    controller = build_flow([
+        SyncEmitSource(),
+        CSVTarget(file_path, columns=['n', 'n*10'], header=True)
+    ]).run()
+
+    for i in range(10):
+        controller.emit({'n': i, 'n*10': 10 * i})
+
+    controller.terminate()
+    controller.await_termination()
+
+    actual = S3FileSystem().open(s3_teardown_file_in_bucket).read()
+    expected = "n,n*10\n0,0\n1,10\n2,20\n3,30\n4,40\n5,50\n6,60\n7,70\n8,80\n9,90\n"
+    assert actual.decode("utf-8") == expected
