@@ -319,7 +319,7 @@ class CSVTarget(_Batching, _Writer):
             got_first_event = False
             fs, file_path = url_to_file_system(self._path, self._storage_options)
             dirname = os.path.dirname(self._path)
-            if dirname:
+            if dirname and not fs.exists(dirname):
                 fs.makedirs(dirname, exist_ok=True)
             with fs.open(file_path, mode='w') as f:
                 csv_writer = csv.writer(f, _V3ioCSVDialect())
@@ -457,7 +457,7 @@ class ParquetTarget(_Batching, _Writer):
             dir_path = f'{dir_path}{batch_key}'
         else:
             dir_path += '/'
-        if dir_path:
+        if dir_path and not self._file_system.exists(dir_path):
             self._file_system.makedirs(dir_path, exist_ok=True)
         file_path = self._path if self._single_file_mode else f'{dir_path}{uuid.uuid4()}.parquet'
         # Remove nanosecs from timestamp columns & index
