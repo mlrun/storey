@@ -55,15 +55,18 @@ def s3_setup_teardown_test():
 
 @pytest.fixture()
 def s3_teardown_file_in_bucket():
-    # Setup
-    aws_bucket = os.getenv("AWS_BUCKET")
-    file_path = _generate_table_name(f'{aws_bucket}/file_in_bucket.csv')
+    full_type_path = ""
 
-    # Test runs
-    yield file_path
+    def _create_file_name(file_type):
+        aws_bucket = os.getenv("AWS_BUCKET")
+        nonlocal full_type_path
+        full_type_path = f'{aws_bucket}/file_in_bucket.{file_type}'
+        return full_type_path
 
-    # Teardown
-    _delete_file(file_path)
+    yield _create_file_name
+
+        # Teardown
+    _delete_file(full_type_path)
 
 
 def _write_test_csv(file_path):
@@ -257,7 +260,7 @@ def test_write_to_parquet_to_s3_with_indices(s3_setup_teardown_test):
 
 @pytest.mark.skipif(not has_s3_credentials, reason='No s3 credentials found')
 def test_write_csv_to_s3_bucket_directly(s3_teardown_file_in_bucket):
-    file_path = f's3:///{s3_teardown_file_in_bucket}'
+    file_path = f's3:///{s3_teardown_file_in_bucket("csv")}'
 
     controller = build_flow([
         SyncEmitSource(),
@@ -270,6 +273,31 @@ def test_write_csv_to_s3_bucket_directly(s3_teardown_file_in_bucket):
     controller.terminate()
     controller.await_termination()
 
-    actual = S3FileSystem().open(s3_teardown_file_in_bucket).read()
+    actual = S3FileSystem().open(s3_teardown_file_in_bucket("csv")).read()
     expected = "n,n*10\n0,0\n1,10\n2,20\n3,30\n4,40\n5,50\n6,60\n7,70\n8,80\n9,90\n"
     assert actual.decode("utf-8") == expected
+
+
+@pytest.mark.skipif(not has_s3_credentials, reason='No s3 credentials found')
+def test_write_parquet_to_s3_bucket_directly(s3_teardown_file_in_bucket):
+    columns = ['my_int', 'my_string']
+
+    file_path = f's3:///{s3_teardown_file_in_bucket("parquet")}'
+#    file_path = f'/tmp/{s3_teardown_file_in_bucket("parquet")}'
+    controller = build_flow([
+        SyncEmitSource(),
+        ParquetTarget(file_path, columns=columns)
+    ]).run()
+
+    expected = []
+    for i in range(10):
+        controller.emit([i, f'this is {i}'])
+        expected.append([i, f'this is {i}'])
+
+    expected = pd.DataFrame(expected, columns=columns)
+    controller.terminate()
+    controller.await_termination()
+
+    read_back_df = pd.read_parquet(file_path, columns=columns)
+
+    assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
