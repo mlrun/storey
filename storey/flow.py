@@ -714,6 +714,7 @@ class _Batching(Flow):
     def _init(self):
         self._batch: Dict[Optional[str], List[Any]] = defaultdict(list)
         self._batch_first_event_time: Dict[Optional[str], datetime.datetime] = {}
+        self._batch_last_event_time: Dict[Optional[str], datetime.datetime] = {}
         self._batch_start_time: Dict[Optional[str], float] = {}
         self._timeout_task: Optional[Task] = None
         self._timeout_task_ex: Optional[Exception] = None
@@ -732,7 +733,7 @@ class _Batching(Flow):
         else:
             raise ValueError(f'Unsupported key type {type(key)}')
 
-    async def _emit(self, batch, batch_key, batch_time):
+    async def _emit(self, batch, batch_key, batch_time, last_event_time=None):
         raise NotImplementedError
 
     async def _terminate(self):
@@ -749,6 +750,9 @@ class _Batching(Flow):
         if len(self._batch[key]) == 0:
             self._batch_first_event_time[key] = event.time
             self._batch_start_time[key] = time.monotonic()
+            self._batch_last_event_time[key] = event.time
+        elif self._batch_last_event_time[key] < event.time:
+            self._batch_last_event_time[key] = event.time
 
         if self._timeout_task_ex:
             raise self._timeout_task_ex
@@ -785,8 +789,9 @@ class _Batching(Flow):
         if batch_to_emit is None:
             return
         batch_time = self._batch_first_event_time.pop(batch_key)
+        last_event_time = self._batch_last_event_time.pop(batch_key)
         del self._batch_start_time[batch_key]
-        await self._emit(batch_to_emit, batch_key, batch_time)
+        await self._emit(batch_to_emit, batch_key, batch_time, last_event_time)
 
     async def _emit_all(self):
         for key in list(self._batch.keys()):
@@ -809,7 +814,7 @@ class Batch(_Batching):
     """
     _do_downstream_per_event = False
 
-    async def _emit(self, batch, batch_key, batch_time):
+    async def _emit(self, batch, batch_key, batch_time, last_event_time=None):
         event = Event(batch, time=batch_time)
         return await self._do_downstream(event)
 
