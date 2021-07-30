@@ -172,6 +172,11 @@ def sort_windows_and_convert_to_millis(windows):
     return windows_tuples
 
 
+class FixedWindowQueryType(Enum):
+    CurrentOpenWindow = 1
+    LastClosedWindow = 2
+
+
 class FixedWindows(WindowsBase):
     """
     List of time windows representing fixed time intervals.

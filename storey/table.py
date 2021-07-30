@@ -4,7 +4,7 @@ from asyncio import Lock
 import asyncio
 import math
 from .drivers import Driver
-from .dtypes import FieldAggregator, SlidingWindows, FixedWindows, FlowError, _termination_obj
+from .dtypes import FieldAggregator, SlidingWindows, FixedWindows, FlowError, _termination_obj, FixedWindowQueryType
 
 from .aggregation_utils import is_raw_aggregate, get_virtual_aggregation_func, get_implied_aggregates, get_all_raw_aggregates, \
     get_all_raw_aggregates_with_hidden
@@ -527,6 +527,7 @@ class ReadOnlyAggregationBuckets:
             self.is_fixed_window = isinstance(self.explicit_windows, FixedWindows)
             if self.is_fixed_window:
                 self._round_time_func = self.explicit_windows.round_up_time_to_window
+                self.query_type = FixedWindowQueryType.CurrentOpenWindow
             self.period_millis = explicit_windows.period_millis
             self._window_start_time = explicit_windows.get_window_start_time_by_time(base_time)
             if self._precalculated_aggregations:
@@ -537,6 +538,7 @@ class ReadOnlyAggregationBuckets:
                 self.is_fixed_window = isinstance(self.hidden_windows, FixedWindows)
                 if self.is_fixed_window:
                     self._round_time_func = self.hidden_windows.round_up_time_to_window
+                    self.query_type = FixedWindowQueryType.CurrentOpenWindow
                 self.period_millis = hidden_windows.period_millis
                 self._window_start_time = hidden_windows.get_window_start_time_by_time(base_time)
             if self._precalculated_aggregations:
@@ -720,6 +722,9 @@ class ReadOnlyAggregationBuckets:
                 window_indexes = int(window_millis / self.period_millis)
                 start_index = int(current_time_bucket_index / window_indexes) * window_indexes
                 last_index = start_index + window_indexes - 1
+                if self.query_type == FixedWindowQueryType.LastClosedWindow:
+                    last_index -= window_indexes
+                    start_index -= window_indexes
 
                 for bucket_index in range(start_index, last_index + 1):
                     bucket = self.buckets[bucket_index]
@@ -811,10 +816,14 @@ class ReadOnlyAggregationBuckets:
         window_millis = self.total_number_of_buckets * self.period_millis
         next_time = last_time + len(aggregation_bucket_initial_data[last_time]) * period
 
-        self.first_bucket_start_time = int(base_time/window_millis) * window_millis
-        self.last_bucket_start_time = self.first_bucket_start_time + window_millis - period
+        if self.query_type == FixedWindowQueryType.LastClosedWindow:
+            self.first_bucket_start_time = int(base_time / window_millis) * window_millis - window_millis
+            self.last_bucket_start_time = self.first_bucket_start_time + 2 * window_millis - period
+        elif self.query_type == FixedWindowQueryType.CurrentOpenWindow:
+            self.first_bucket_start_time = int(base_time / window_millis) * window_millis
+            self.last_bucket_start_time = self.first_bucket_start_time + window_millis - period
 
-        buckets = int((self.last_bucket_start_time - self.first_bucket_start_time)/period) + 1
+        buckets = int((self.last_bucket_start_time - self.first_bucket_start_time) / period) + 1
         self.buckets = [None] * buckets
 
         curr_time = self.first_bucket_start_time
