@@ -185,7 +185,8 @@ def test_aggregate_and_query_with_different_fixed_windows(setup_teardown_test, p
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
-    tables = [table, Table(setup_teardown_test, V3ioDriver())]  # test on previous table and on new table
+    table_name = setup_teardown_test
+    tables = [table_name, table, Table(setup_teardown_test, V3ioDriver())]  # test on previous table and on new table
     expected_results = [
         {'col1': 10, 'number_of_stuff_sum_1h': 17.0, 'number_of_stuff_min_1h': 8.0,
          'number_of_stuff_max_1h': 9.0, 'number_of_stuff_avg_1h': 8.5},
@@ -193,10 +194,16 @@ def test_aggregate_and_query_with_different_fixed_windows(setup_teardown_test, p
          'number_of_stuff_max_1h': -math.inf, 'number_of_stuff_avg_1h': math.nan},
     ]
     for table in tables:
+        if isinstance(table, str):
+            tmp_table = Table(table_name, V3ioDriver())
+            context = Context(initial_tables={table_name: tmp_table})
+        else:
+            context = None
+
         controller = build_flow([
             SyncEmitSource(),
             QueryByKey(['number_of_stuff_sum_1h', 'number_of_stuff_avg_1h', 'number_of_stuff_min_1h', 'number_of_stuff_max_1h'],
-                       table),
+                       table, context=context),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]).run()
 
