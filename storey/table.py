@@ -4,7 +4,8 @@ from asyncio import Lock
 import asyncio
 import math
 from .drivers import Driver
-from .dtypes import FieldAggregator, SlidingWindows, FixedWindows, FlowError, _termination_obj, FixedWindowQueryType
+from .dtypes import FieldAggregator, SlidingWindows, FixedWindows, FlowError, _termination_obj, FixedWindowType
+
 
 from .aggregation_utils import is_raw_aggregate, get_virtual_aggregation_func, get_implied_aggregates, get_all_raw_aggregates, \
     get_all_raw_aggregates_with_hidden
@@ -41,6 +42,7 @@ class Table:
         self._terminated = False
         self._flush_exception = None
         self._changed_keys = set()
+        self.fixed_window_type = None
 
     def __str__(self):
         return f'{self._container}/{self._table_path}'
@@ -165,7 +167,9 @@ class Table:
         if self._aggregations_read_only and initial_data is None:
             self._set_aggregations_attrs(key, None)
         else:
-            self._set_aggregations_attrs(key, self._new_aggregated_store_element()(key, self._aggregates, base_timestamp, initial_data))
+            self._set_aggregations_attrs(key, self._new_aggregated_store_element()(key, self._aggregates,
+                                                                                   base_timestamp, initial_data,
+                                                                                   self.fixed_window_type))
 
     async def _load_and_update_schema(self):
         async with self._get_schema_lock():
@@ -433,11 +437,12 @@ class _CacheElement:
 
 
 class ReadOnlyAggregatedStoreElement:
-    def __init__(self, key, aggregates, base_time, initial_data=None):
+    def __init__(self, key, aggregates, base_time, initial_data=None, options=None):
         self.aggregation_buckets = {}
         self.key = key
         self.aggregates = aggregates
         self.storage_specific_cache = {}
+        self.options = options
 
         # Add all raw aggregates, including aggregates not explicitly requested.
         windows = {}
@@ -466,7 +471,8 @@ class ReadOnlyAggregatedStoreElement:
             if True in calculated_windows:
                 hidden_windows = calculated_windows[True]
             self.aggregation_buckets[column_name] = \
-                ReadOnlyAggregationBuckets(name, aggr, explicit_windows, hidden_windows, base_time, max_value, initial_column_data)
+                ReadOnlyAggregationBuckets(name, aggr, explicit_windows, hidden_windows,
+                                           base_time, max_value, initial_column_data, self.options)
 
         # Add all virtual aggregates
         for aggregation_metadata in aggregates:
@@ -500,7 +506,8 @@ class ReadOnlyAggregatedStoreElement:
 
 
 class ReadOnlyAggregationBuckets:
-    def __init__(self, name, aggregation, explicit_windows, hidden_windows, base_time, max_value, initial_data=None):
+    def __init__(self, name, aggregation, explicit_windows, hidden_windows, base_time, max_value, initial_data=None,
+                 fixed_window_type=None):
         self.name = name
         self.aggregation = aggregation
         self.explicit_windows = explicit_windows
@@ -527,7 +534,7 @@ class ReadOnlyAggregationBuckets:
             self.is_fixed_window = isinstance(self.explicit_windows, FixedWindows)
             if self.is_fixed_window:
                 self._round_time_func = self.explicit_windows.round_up_time_to_window
-                self.query_type = FixedWindowQueryType.CurrentOpenWindow
+                self.fixed_window_type = fixed_window_type
             self.period_millis = explicit_windows.period_millis
             self._window_start_time = explicit_windows.get_window_start_time_by_time(base_time)
             if self._precalculated_aggregations:
@@ -538,7 +545,7 @@ class ReadOnlyAggregationBuckets:
                 self.is_fixed_window = isinstance(self.hidden_windows, FixedWindows)
                 if self.is_fixed_window:
                     self._round_time_func = self.hidden_windows.round_up_time_to_window
-                    self.query_type = FixedWindowQueryType.CurrentOpenWindow
+                    self.fixed_window_type = fixed_window_type
                 self.period_millis = hidden_windows.period_millis
                 self._window_start_time = hidden_windows.get_window_start_time_by_time(base_time)
             if self._precalculated_aggregations:
@@ -722,7 +729,7 @@ class ReadOnlyAggregationBuckets:
                 window_indexes = int(window_millis / self.period_millis)
                 start_index = int(current_time_bucket_index / window_indexes) * window_indexes
                 last_index = start_index + window_indexes - 1
-                if self.query_type == FixedWindowQueryType.LastClosedWindow:
+                if self.fixed_window_type == FixedWindowType.LastClosedWindow:
                     last_index -= window_indexes
                     start_index -= window_indexes
 
@@ -816,10 +823,10 @@ class ReadOnlyAggregationBuckets:
         window_millis = self.total_number_of_buckets * self.period_millis
         next_time = last_time + len(aggregation_bucket_initial_data[last_time]) * period
 
-        if self.query_type == FixedWindowQueryType.LastClosedWindow:
+        if self.fixed_window_type == FixedWindowType.LastClosedWindow:
             self.first_bucket_start_time = int(base_time / window_millis) * window_millis - window_millis
             self.last_bucket_start_time = self.first_bucket_start_time + 2 * window_millis - period
-        elif self.query_type == FixedWindowQueryType.CurrentOpenWindow:
+        elif self.fixed_window_type == FixedWindowType.CurrentOpenWindow:
             self.first_bucket_start_time = int(base_time / window_millis) * window_millis
             self.last_bucket_start_time = self.first_bucket_start_time + window_millis - period
 
@@ -1091,7 +1098,7 @@ class FirstValue(AggregationValue):
 
 
 class AggregatedStoreElement:
-    def __init__(self, key, aggregates, base_time, initial_data=None):
+    def __init__(self, key, aggregates, base_time, initial_data=None, options=None):
         self.aggregation_buckets = {}
         self.key = key
         self.aggregates = aggregates

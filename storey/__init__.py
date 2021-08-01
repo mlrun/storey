@@ -14,7 +14,7 @@ from .drivers import (  # noqa: F401
 )
 from .dtypes import (  # noqa: F401
     Event, FieldAggregator, SlidingWindows, FixedWindows, EmissionType, EmitPolicy, EmitAfterPeriod, EmitAfterWindow, EmitAfterMaxEvent,
-    EmitAfterDelay, EmitEveryEvent, LateDataHandling
+    EmitAfterDelay, EmitEveryEvent, LateDataHandling, FixedWindowType
 )
 from .flow import (  # noqa: F401
     Filter, FlatMap, Flow, FlowError, JoinWithV3IOTable, SendToHttp, JoinWithTable, Map, Extend, Reduce, Batch,
