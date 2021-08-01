@@ -254,7 +254,10 @@ class QueryByKey(AggregateByKey):
             feature, aggr = name.rsplit('_', 1)
             # setting as SlidingWindow temporarily until actual window type will be read from schema
             self._aggrs.append(FieldAggregator(name=feature, field=None, aggr=[aggr], windows=SlidingWindows(windows, '10m')))
-        other_table = table._clone() if table._aggregates is not None else table
+        if isinstance(table, Table):
+            other_table = table._clone() if table._aggregates is not None else table
+        else:
+            other_table = table   # str - pass table string along with the context object
         AggregateByKey.__init__(self, self._aggrs, other_table, key, augmentation_fn=augmentation_fn,
                                 enrich_with=self._enrich_cols, aliases=aliases, use_windows_from_schema=True, **kwargs)
         self._table._aggregations_read_only = True
