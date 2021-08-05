@@ -7,10 +7,132 @@ import pandas as pd
 from storey import build_flow, SyncEmitSource, Reduce, Table, V3ioDriver, MapWithState, AggregateByKey, FieldAggregator, \
     QueryByKey, NoSqlTarget, Context, DataframeSource, Map
 
-from storey.dtypes import SlidingWindows, FixedWindows, EmitAfterMaxEvent
+from storey.dtypes import SlidingWindows, FixedWindows, EmitAfterMaxEvent, FixedWindowType
 from storey.utils import _split_path
 
 from .integration_test_utils import setup_teardown_test, append_return, test_base_time
+
+
+@pytest.mark.parametrize('fixed_window_type', [FixedWindowType.CurrentOpenWindow, FixedWindowType.LastClosedWindow])
+@pytest.mark.parametrize('partitioned_by_key', [True, False])
+@pytest.mark.parametrize('flush_interval', [None, 1])
+def test_aggregate_with_fixed_windows_and_query_past_and_future_times(setup_teardown_test, partitioned_by_key, flush_interval, fixed_window_type):
+    table = Table(setup_teardown_test, V3ioDriver(), partitioned_by_key=partitioned_by_key, flush_interval_secs=flush_interval)
+
+    controller = build_flow([
+        SyncEmitSource(),
+        AggregateByKey([FieldAggregator('number_of_stuff', 'col1',
+                                        ['count'],
+                                        FixedWindows(['1h', '2h', '24h']))],
+                       table, key='col1'),
+        NoSqlTarget(table),
+        Reduce([], lambda acc, x: append_return(acc, x)),
+    ]).run()
+
+    items_in_ingest_batch = 10
+    for i in range(items_in_ingest_batch):
+        data = {'col1': items_in_ingest_batch}
+        controller.emit(data, 'tal', test_base_time + timedelta(minutes=25 * i))
+
+    controller.terminate()
+    actual = controller.await_termination()
+    expected_results = [
+        {'number_of_stuff_count_1h': 1.0, 'number_of_stuff_count_2h': 1.0, 'number_of_stuff_count_24h': 1.0, 'col1': 10},
+        {'number_of_stuff_count_1h': 1.0, 'number_of_stuff_count_2h': 1.0, 'number_of_stuff_count_24h': 2.0, 'col1': 10},
+        {'number_of_stuff_count_1h': 2.0, 'number_of_stuff_count_2h': 2.0, 'number_of_stuff_count_24h': 3.0, 'col1': 10},
+        {'number_of_stuff_count_1h': 3.0, 'number_of_stuff_count_2h': 3.0, 'number_of_stuff_count_24h': 4.0, 'col1': 10},
+        {'number_of_stuff_count_1h': 1.0, 'number_of_stuff_count_2h': 4.0, 'number_of_stuff_count_24h': 5.0, 'col1': 10},
+        {'number_of_stuff_count_1h': 2.0, 'number_of_stuff_count_2h': 5.0, 'number_of_stuff_count_24h': 6.0, 'col1': 10},
+        {'number_of_stuff_count_1h': 1.0, 'number_of_stuff_count_2h': 1.0, 'number_of_stuff_count_24h': 1.0, 'col1': 10},
+        {'number_of_stuff_count_1h': 2.0, 'number_of_stuff_count_2h': 2.0, 'number_of_stuff_count_24h': 2.0, 'col1': 10},
+        {'number_of_stuff_count_1h': 1.0, 'number_of_stuff_count_2h': 3.0, 'number_of_stuff_count_24h': 3.0, 'col1': 10},
+        {'number_of_stuff_count_1h': 2.0, 'number_of_stuff_count_2h': 4.0, 'number_of_stuff_count_24h': 4.0, 'col1': 10}
+    ]
+
+    assert actual == expected_results, \
+        f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
+
+    if fixed_window_type == FixedWindowType.CurrentOpenWindow:
+        expected_results = [
+            {'number_of_stuff_count_1h': 0.0, 'number_of_stuff_count_2h': 0.0, 'number_of_stuff_count_24h': 6.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 0.0, 'number_of_stuff_count_2h': 0.0, 'number_of_stuff_count_24h': 6.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 0.0, 'number_of_stuff_count_2h': 0.0, 'number_of_stuff_count_24h': 6.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 0.0, 'number_of_stuff_count_2h': 0.0, 'number_of_stuff_count_24h': 6.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 0.0, 'number_of_stuff_count_2h': 0.0, 'number_of_stuff_count_24h': 6.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 0.0, 'number_of_stuff_count_2h': 0.0, 'number_of_stuff_count_24h': 6.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 0.0, 'number_of_stuff_count_2h': 1.0, 'number_of_stuff_count_24h': 6.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 0.0, 'number_of_stuff_count_2h': 1.0, 'number_of_stuff_count_24h': 6.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 0.0, 'number_of_stuff_count_2h': 1.0, 'number_of_stuff_count_24h': 6.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 1.0, 'number_of_stuff_count_2h': 1.0, 'number_of_stuff_count_24h': 6.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 1.0, 'number_of_stuff_count_2h': 1.0, 'number_of_stuff_count_24h': 6.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 3.0, 'number_of_stuff_count_2h': 5.0, 'number_of_stuff_count_24h': 6.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 3.0, 'number_of_stuff_count_2h': 5.0, 'number_of_stuff_count_24h': 6.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 3.0, 'number_of_stuff_count_2h': 5.0, 'number_of_stuff_count_24h': 6.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 2.0, 'number_of_stuff_count_2h': 5.0, 'number_of_stuff_count_24h': 6.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 2.0, 'number_of_stuff_count_2h': 5.0, 'number_of_stuff_count_24h': 6.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 2.0, 'number_of_stuff_count_2h': 4.0, 'number_of_stuff_count_24h': 4.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 2.0, 'number_of_stuff_count_2h': 4.0, 'number_of_stuff_count_24h': 4.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 2.0, 'number_of_stuff_count_2h': 4.0, 'number_of_stuff_count_24h': 4.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 2.0, 'number_of_stuff_count_2h': 4.0, 'number_of_stuff_count_24h': 4.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 2.0, 'number_of_stuff_count_2h': 4.0, 'number_of_stuff_count_24h': 4.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 0.0, 'number_of_stuff_count_2h': 0.0, 'number_of_stuff_count_24h': 4.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 0.0, 'number_of_stuff_count_2h': 0.0, 'number_of_stuff_count_24h': 4.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 0.0, 'number_of_stuff_count_2h': 0.0, 'number_of_stuff_count_24h': 4.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 0.0, 'number_of_stuff_count_2h': 0.0, 'number_of_stuff_count_24h': 4.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 0.0, 'number_of_stuff_count_2h': 0.0, 'number_of_stuff_count_24h': 4.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 0.0, 'number_of_stuff_count_2h': 0.0, 'number_of_stuff_count_24h': 4.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 0.0, 'number_of_stuff_count_2h': 0.0, 'number_of_stuff_count_24h': 4.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 0.0, 'number_of_stuff_count_2h': 0.0, 'number_of_stuff_count_24h': 4.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 0.0, 'number_of_stuff_count_2h': 0.0, 'number_of_stuff_count_24h': 4.0, 'col1': 10}
+        ]
+    else:
+        expected_results = [
+            {'number_of_stuff_count_1h': 0.0, 'number_of_stuff_count_2h': 0.0, 'number_of_stuff_count_24h': 0.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 0.0, 'number_of_stuff_count_2h': 0.0, 'number_of_stuff_count_24h': 0.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 0.0, 'number_of_stuff_count_2h': 0.0, 'number_of_stuff_count_24h': 0.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 0.0, 'number_of_stuff_count_2h': 0.0, 'number_of_stuff_count_24h': 0.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 0.0, 'number_of_stuff_count_2h': 0.0, 'number_of_stuff_count_24h': 0.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 0.0, 'number_of_stuff_count_2h': 0.0, 'number_of_stuff_count_24h': 0.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 0.0, 'number_of_stuff_count_2h': 0.0, 'number_of_stuff_count_24h': 0.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 0.0, 'number_of_stuff_count_2h': 0.0, 'number_of_stuff_count_24h': 0.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 0.0, 'number_of_stuff_count_2h': 0.0, 'number_of_stuff_count_24h': 0.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 0.0, 'number_of_stuff_count_2h': 0.0, 'number_of_stuff_count_24h': 0.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 0.0, 'number_of_stuff_count_2h': 0.0, 'number_of_stuff_count_24h': 0.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 1.0, 'number_of_stuff_count_2h': 1.0, 'number_of_stuff_count_24h': 0.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 1.0, 'number_of_stuff_count_2h': 1.0, 'number_of_stuff_count_24h': 0.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 1.0, 'number_of_stuff_count_2h': 1.0, 'number_of_stuff_count_24h': 0.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 3.0, 'number_of_stuff_count_2h': 1.0, 'number_of_stuff_count_24h': 0.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 3.0, 'number_of_stuff_count_2h': 1.0, 'number_of_stuff_count_24h': 0.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 2.0, 'number_of_stuff_count_2h': 5.0, 'number_of_stuff_count_24h': 6.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 2.0, 'number_of_stuff_count_2h': 5.0, 'number_of_stuff_count_24h': 6.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 2.0, 'number_of_stuff_count_2h': 5.0, 'number_of_stuff_count_24h': 6.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 2.0, 'number_of_stuff_count_2h': 5.0, 'number_of_stuff_count_24h': 6.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 2.0, 'number_of_stuff_count_2h': 5.0, 'number_of_stuff_count_24h': 6.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 2.0, 'number_of_stuff_count_2h': 4.0, 'number_of_stuff_count_24h': 6.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 2.0, 'number_of_stuff_count_2h': 4.0, 'number_of_stuff_count_24h': 6.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 0.0, 'number_of_stuff_count_2h': 4.0, 'number_of_stuff_count_24h': 6.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 0.0, 'number_of_stuff_count_2h': 4.0, 'number_of_stuff_count_24h': 6.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 0.0, 'number_of_stuff_count_2h': 4.0, 'number_of_stuff_count_24h': 6.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 0.0, 'number_of_stuff_count_2h': 0.0, 'number_of_stuff_count_24h': 6.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 0.0, 'number_of_stuff_count_2h': 0.0, 'number_of_stuff_count_24h': 6.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 0.0, 'number_of_stuff_count_2h': 0.0, 'number_of_stuff_count_24h': 6.0, 'col1': 10},
+            {'number_of_stuff_count_1h': 0.0, 'number_of_stuff_count_2h': 0.0, 'number_of_stuff_count_24h': 6.0, 'col1': 10}
+        ]
+    controller = build_flow([
+        SyncEmitSource(),
+        QueryByKey(['number_of_stuff_count_1h', 'number_of_stuff_count_2h', 'number_of_stuff_count_24h'],
+                   table, key='col1', fixed_window_type=fixed_window_type),
+        Reduce([], lambda acc, x: append_return(acc, x)),
+    ]).run()
+
+    for i in range(-items_in_ingest_batch, 2 * items_in_ingest_batch):
+        data = {'col1': items_in_ingest_batch}
+        controller.emit(data, 'tal', test_base_time + timedelta(minutes=25 * i))
+
+    controller.terminate()
+    actual = controller.await_termination()
+    assert actual == expected_results, \
+        f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
 
 @pytest.mark.parametrize('partitioned_by_key', [True, False])
@@ -214,7 +336,6 @@ def test_aggregate_and_query_with_different_fixed_windows(setup_teardown_test, p
 
         controller.terminate()
         actual = controller.await_termination()
-
         assert actual == expected_results, \
             f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
