@@ -145,7 +145,7 @@ class Flow:
             if recovery_step is None:
                 if self.context and hasattr(self.context, 'push_error'):
                     if self.logger:
-                        self.logger.error(f'Pushing error to error stream: {message}')
+                        self.logger.error(f'Pushing error to error stream: {ex}\n{message}')
                     message = traceback.format_exc()
                     self.context.push_error(event, f"{ex}\n{message}", source=self.name)
                     return
