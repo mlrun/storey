@@ -142,11 +142,15 @@ class Flow:
                 raise ex
             ex._raised_by_storey_step = self
             recovery_step = self._get_recovery_step(ex)
-            if self.context and hasattr(self.context, 'push_error'):
-                message = traceback.format_exc()
-                self.context.push_error(event, f"{ex}\n{message}", source=self.name)
             if recovery_step is None:
-                raise ex
+                if self.context and hasattr(self.context, 'push_error'):
+                    if self.logger:
+                        self.logger.error(f'Pushing error to error stream: {message}')
+                    message = traceback.format_exc()
+                    self.context.push_error(event, f"{ex}\n{message}", source=self.name)
+                    return
+                else:
+                    raise ex
             event.origin_state = self.name
             event.error = ex
             return await recovery_step._do(event)
