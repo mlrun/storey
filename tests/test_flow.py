@@ -2132,15 +2132,12 @@ def test_push_error():
         Reduce(0, lambda acc, x: acc + x),
     ]).run()
 
-    try:
-        controller.emit(0)
-        controller.terminate()
-        controller.await_termination()
-        assert False
-    except ATestException:
-        assert context.event.body == 0
-        assert 'raise ATestException' in context.message
-        assert context.source == 'Map'
+    controller.emit(0)
+    controller.terminate()
+    controller.await_termination()
+    assert context.event.body == 0
+    assert 'raise ATestException' in context.message
+    assert context.source == 'Map'
 
 
 def test_metadata_fields():
@@ -2696,4 +2693,3 @@ def test_reduce_to_df_multiple_indexes():
     termination_result = controller.await_termination()
 
     assert_frame_equal(expected, termination_result)
-
