@@ -1,4 +1,4 @@
-__version__ = 'unknown'
+__version__ = 'unstable'
 
 # Importing supported filesystems explicitly so that they will get registered as an fsspec filesystem
 import v3iofs  # noqa: F401
