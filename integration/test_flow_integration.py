@@ -238,12 +238,10 @@ def test_join_by_key(setup_kv_teardown_test):
 
     controller = build_flow([
         SyncEmitSource(),
-        Filter(lambda x: x['col1'] > 8),
-        JoinWithTable(table, lambda x: x['col1']),
+        JoinWithTable(table, 'col1'),
         Reduce([], lambda acc, x: append_return(acc, x))
     ]).run()
-    for i in range(10):
-        controller.emit({'col1': i})
+    controller.emit({'col1': 9})
 
     expected = [{'col1': 9, 'age': 1, 'color': 'blue9'}]
     controller.terminate()
@@ -256,14 +254,51 @@ def test_join_by_key_specific_attributes(setup_kv_teardown_test):
 
     controller = build_flow([
         SyncEmitSource(),
-        Filter(lambda x: x['col1'] > 8),
-        JoinWithTable(table, lambda x: x['col1'], attributes=['age']),
+        JoinWithTable(table, 'col1', attributes=['age']),
         Reduce([], lambda acc, x: append_return(acc, x))
     ]).run()
-    for i in range(10):
-        controller.emit({'col1': i})
+    controller.emit({'col1': 9})
 
     expected = [{'col1': 9, 'age': 1}]
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == expected
+
+
+def test_outer_join_by_key(setup_kv_teardown_test):
+    table = Table(setup_kv_teardown_test, V3ioDriver())
+
+    controller = build_flow([
+        SyncEmitSource(),
+        JoinWithTable(table, 'col1', attributes=['age']),
+        Reduce([], lambda acc, x: append_return(acc, x))
+    ]).run()
+    for i in range(9, 11):
+        controller.emit({'col1': i})
+
+    expected = [
+        {'col1': 9, 'age': 1},
+        {'col1': 10}
+    ]
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == expected
+
+
+def test_inner_join_by_key(setup_kv_teardown_test):
+    table = Table(setup_kv_teardown_test, V3ioDriver())
+
+    controller = build_flow([
+        SyncEmitSource(),
+        JoinWithTable(table, 'col1', attributes=['age'], inner_join=True),
+        Reduce([], lambda acc, x: append_return(acc, x))
+    ]).run()
+    for i in range(9, 11):
+        controller.emit({'col1': i})
+
+    expected = [
+        {'col1': 9, 'age': 1}
+    ]
     controller.terminate()
     termination_result = controller.await_termination()
     assert termination_result == expected
