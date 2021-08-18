@@ -882,8 +882,10 @@ class JoinWithTable(_ConcurrentJobExecution):
     :param table: A Table object or name to join with. If a table name is provided, it will be looked up in the context.
     :param key_extractor: Key's column name or a function for extracting the key, for table access from an event.
     :param attributes: A comma-separated list of attributes to be queried for. Defaults to all attributes.
-    :param join_function: Joins the original event with relevant data received from the storage. Defaults to assume the event's body is a
-        dict-like object and updating it.
+    :param inner_join: Whether to drop events when the table does not have a matching entry (join_function won't be called in such a case).
+        Defaults to False.
+    :param join_function: Joins the original event with relevant data received from the storage. Event is dropped when this function returns
+        None. Defaults to assume the event's body is a dict-like object and updating it.
     :param name: Name of this step, as it should appear in logs. Defaults to class name (JoinWithTable).
     :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
         Defaults to False.
@@ -891,7 +893,7 @@ class JoinWithTable(_ConcurrentJobExecution):
     """
 
     def __init__(self, table: Union[Table, str], key_extractor: Union[str, Callable[[Event], str]],
-                 attributes: Optional[List[str]] = None,
+                 attributes: Optional[List[str]] = None, inner_join: bool = False,
                  join_function: Optional[Callable[[Event, Dict[str, object]], Event]] = None, **kwargs):
         if isinstance(table, str):
             kwargs['table'] = table
@@ -899,6 +901,8 @@ class JoinWithTable(_ConcurrentJobExecution):
             kwargs['key_extractor'] = key_extractor
         if attributes:
             kwargs['attributes'] = attributes
+        kwargs['inner_join'] = inner_join
+
         super().__init__(**kwargs)
 
         self._table = table
@@ -919,6 +923,7 @@ class JoinWithTable(_ConcurrentJobExecution):
             event.update(join_res)
             return event
 
+        self._inner_join = inner_join
         self._join_function = join_function or default_join_fn
 
         self._attributes = attributes or '*'
@@ -933,6 +938,8 @@ class JoinWithTable(_ConcurrentJobExecution):
         return await self._table._get_or_load_static_attributes_by_key(safe_key, self._attributes)
 
     async def _handle_completed(self, event, response):
+        if self._inner_join and not response:
+            return
         joined = self._join_function(self._get_event_or_body(event), response)
         if joined is not None:
             new_event = self._user_fn_output_to_event(event, joined)
