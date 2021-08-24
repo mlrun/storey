@@ -255,7 +255,7 @@ class QueryByKey(AggregateByKey):
         for name, windows in resolved_aggrs.items():
             feature, aggr = name.rsplit('_', 1)
             # setting as SlidingWindow temporarily until actual window type will be read from schema
-            self._aggrs.append(FieldAggregator(name=feature, field=None, aggr=[aggr], windows=SlidingWindows(windows, '10m')))
+            self._aggrs.append(FieldAggregator(name=feature, field=None, aggr=[aggr], windows=SlidingWindows(windows)))
         if isinstance(table, Table):
             other_table = table._clone() if table._aggregates is not None else table
         else:
