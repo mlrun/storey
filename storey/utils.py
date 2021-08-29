@@ -203,8 +203,8 @@ def _find_filter_helper(list_partitions, dtime, sign, first_sign, first_uncommon
     if first_sign:
         # only for the first iteration we need to have ">="/"<=" instead of ">"/"<"
         _create_filter_tuple(dtime, last_partition, first_sign, single_filter)
-        # start needs to be >= and end needs to be "<"
-        if first_sign == ">=":
+        # start needs to be > and end needs to be "<="
+        if first_sign == "<=":
             tuple_last_range = (filter_column, first_sign, dtime)
         else:
             tuple_last_range = (filter_column, sign, dtime)
@@ -216,8 +216,8 @@ def _find_filter_helper(list_partitions, dtime, sign, first_sign, first_uncommon
 
 
 def _get_filters_for_filter_column(start, end, filter_column, side_range):
-    lower_limit_tuple = (filter_column, ">=", start)
-    upper_limit_tuple = (filter_column, "<", end)
+    lower_limit_tuple = (filter_column, ">", start)
+    upper_limit_tuple = (filter_column, "<=", end)
     side_range.append(lower_limit_tuple)
     side_range.append(upper_limit_tuple)
 
