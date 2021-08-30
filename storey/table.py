@@ -821,6 +821,13 @@ class ReadOnlyAggregationBuckets:
     def _initialize_from_data_for_fixed_window(self, base_time, aggregation_bucket_initial_data, first_time, last_time):
         period = self.period_millis
         window_millis = self.total_number_of_buckets * self.period_millis
+
+        fix_first_time = False
+        # there is big gap between recorded emits so set the first_time to previous window
+        if first_time < last_time - window_millis:
+            first_time = last_time - window_millis
+            fix_first_time = True
+
         next_time = last_time + len(aggregation_bucket_initial_data[last_time]) * period
 
         if self.fixed_window_type == FixedWindowType.LastClosedWindow:
@@ -836,10 +843,14 @@ class ReadOnlyAggregationBuckets:
         curr_time = self.first_bucket_start_time
         for bucket_index in range(buckets):
             if first_time <= curr_time < last_time:
-                i = int((curr_time - first_time) / period)
-                curr_value = aggregation_bucket_initial_data[first_time][i]
-                self.buckets[bucket_index] = AggregationValue.new_from_name(self.aggregation, self.max_value,
-                                                                            curr_value, curr_time)
+                if fix_first_time:
+                    self.buckets[bucket_index] = AggregationValue.new_from_name(self.aggregation, self.max_value,
+                                                                                set_time=curr_time)
+                else:
+                    i = int((curr_time - first_time) / period)
+                    curr_value = aggregation_bucket_initial_data[first_time][i]
+                    self.buckets[bucket_index] = AggregationValue.new_from_name(self.aggregation, self.max_value,
+                                                                                curr_value, curr_time)
             elif last_time <= curr_time < next_time:
                 i = int((curr_time - last_time) / period)
                 curr_value = aggregation_bucket_initial_data[last_time][i]
@@ -1254,6 +1265,8 @@ class AggregationBuckets:
 
                 for bucket_id in range(previous_window_start, current_window_start):
                     current_pre_aggregated_value = aggr.value
+                    if bucket_id >= self.total_number_of_buckets:
+                        break
                     bucket_aggregated_value = self.buckets[bucket_id][aggr_name].value
                     if aggr_name == "min" or aggr_name == "max" or aggr_name == "first" or aggr_name == "last":
                         if current_pre_aggregated_value == bucket_aggregated_value:
