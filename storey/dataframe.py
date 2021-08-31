@@ -43,14 +43,15 @@ class ReduceToDataFrame(Flow):
     async def _do(self, event):
         if event is _termination_obj:
             df = pd.DataFrame(self._data, columns=self._columns)
-            if self._insert_key_column_as:
-                df[self._insert_key_column_as] = self._key_column
-            if self._insert_time_column_as:
-                df[self._insert_time_column_as] = self._time_column
-            if self._insert_id_column_as:
-                df[self._insert_id_column_as] = self._id_column
-            if self._index:
-                df.set_index(self._index, inplace=True)
+            if not df.empty:
+                if self._insert_key_column_as:
+                    df[self._insert_key_column_as] = self._key_column
+                if self._insert_time_column_as:
+                    df[self._insert_time_column_as] = self._time_column
+                if self._insert_id_column_as:
+                    df[self._insert_id_column_as] = self._id_column
+                if self._index:
+                    df.set_index(self._index, inplace=True)
             return df
         else:
             body = event.body
