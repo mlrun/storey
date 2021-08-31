@@ -319,7 +319,7 @@ class CSVTarget(_Batching, _Writer):
             got_first_event = False
             fs, file_path = url_to_file_system(self._path, self._storage_options)
             dirname = os.path.dirname(self._path)
-            if dirname:
+            if dirname and not fs.exists(dirname):
                 fs.makedirs(dirname, exist_ok=True)
             with fs.open(file_path, mode='w') as f:
                 csv_writer = csv.writer(f, _V3ioCSVDialect())
@@ -354,7 +354,7 @@ class CSVTarget(_Batching, _Writer):
         asyncio.get_running_loop().run_in_executor(None, lambda: self._data_buffer.put(_termination_obj))
         await self._blocking_io_loop_future
 
-    async def _emit(self, batch, batch_key, batch_time):
+    async def _emit(self, batch, batch_key, batch_time, last_event_time=None):
         if not self._blocking_io_loop_future:
             self._blocking_io_loop_future = asyncio.get_running_loop().run_in_executor(None, self._blocking_io_loop)
 
@@ -428,6 +428,7 @@ class ParquetTarget(_Batching, _Writer):
 
         storage_options = kwargs.get('storage_options')
         self._file_system, self._path = url_to_file_system(path, storage_options)
+        self._full_path = path
 
         path_from_event = self._path_from_event if partition_cols else None
 
@@ -436,6 +437,8 @@ class ParquetTarget(_Batching, _Writer):
 
         self._field_extractor = lambda event_body, field_name: event_body.get(field_name)
         self._write_missing_fields = True
+        self._mlrun_callback = kwargs.get('update_last_written')
+        self._last_written_event = None
 
     def _init(self):
         _Batching._init(self)
@@ -444,7 +447,7 @@ class ParquetTarget(_Batching, _Writer):
     def _event_to_batch_entry(self, event):
         return self._event_to_writer_entry(event)
 
-    async def _emit(self, batch, batch_key, batch_time):
+    async def _emit(self, batch, batch_key, batch_time, last_event_time=None):
         df_columns = []
         if self._index_cols:
             df_columns.extend(self._index_cols)
@@ -457,7 +460,7 @@ class ParquetTarget(_Batching, _Writer):
             dir_path = f'{dir_path}{batch_key}'
         else:
             dir_path += '/'
-        if dir_path:
+        if dir_path and not self._file_system.exists(dir_path):
             self._file_system.makedirs(dir_path, exist_ok=True)
         file_path = self._path if self._single_file_mode else f'{dir_path}{uuid.uuid4()}.parquet'
         # Remove nanosecs from timestamp columns & index
@@ -474,6 +477,12 @@ class ParquetTarget(_Batching, _Writer):
             if self._schema is not None:
                 kwargs['schema'] = self._schema
             df.to_parquet(path=file, index=bool(self._index_cols), **kwargs)
+            if not self._last_written_event or last_event_time > self._last_written_event:
+                self._last_written_event = last_event_time
+
+    async def _terminate(self):
+        if self._mlrun_callback:
+            self._mlrun_callback(self._full_path, self._last_written_event)
 
 
 class TSDBTarget(_Batching, _Writer):
@@ -551,7 +560,7 @@ class TSDBTarget(_Batching, _Writer):
     def _event_to_batch_entry(self, event):
         return self._event_to_writer_entry(event)
 
-    async def _emit(self, batch, batch_key, batch_time):
+    async def _emit(self, batch, batch_key, batch_time, last_event_time=None):
         df_columns = []
         if self._index_cols:
             df_columns.extend(self._index_cols)
@@ -585,7 +594,7 @@ class StreamTarget(Flow, _Writer):
     :type storage_options: dict
     """
 
-    def __init__(self, storage: Driver, stream_path: str, sharding_func: Optional[Callable[[Event], int]] = None, batch_size: int = 8,
+    def __init__(self, storage: Driver, stream_path: str, sharding_func: Optional[Callable[[Event], int]] = None, batch_size: int = 1,
                  columns: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None, **kwargs):
         kwargs['stream_path'] = stream_path
         kwargs['batch_size'] = batch_size

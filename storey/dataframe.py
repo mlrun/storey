@@ -45,7 +45,7 @@ class ReduceToDataFrame(Flow):
             df = pd.DataFrame(self._data, columns=self._columns)
             if not df.empty:
                 if self._insert_key_column_as:
-                    df[self._insert_key_column_as] = self._key_column
+                    df[self._insert_key_column_as] = pd.DataFrame(self._key_column)
                 if self._insert_time_column_as:
                     df[self._insert_time_column_as] = self._time_column
                 if self._insert_id_column_as:

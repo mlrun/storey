@@ -142,11 +142,15 @@ class Flow:
                 raise ex
             ex._raised_by_storey_step = self
             recovery_step = self._get_recovery_step(ex)
-            if self.context and hasattr(self.context, 'push_error'):
-                message = traceback.format_exc()
-                self.context.push_error(event, f"{ex}\n{message}", source=self.name)
             if recovery_step is None:
-                raise ex
+                if self.context and hasattr(self.context, 'push_error'):
+                    message = traceback.format_exc()
+                    if self.logger:
+                        self.logger.error(f'Pushing error to error stream: {ex}\n{message}')
+                    self.context.push_error(event, f"{ex}\n{message}", source=self.name)
+                    return
+                else:
+                    raise ex
             event.origin_state = self.name
             event.error = ex
             return await recovery_step._do(event)
@@ -714,6 +718,7 @@ class _Batching(Flow):
     def _init(self):
         self._batch: Dict[Optional[str], List[Any]] = defaultdict(list)
         self._batch_first_event_time: Dict[Optional[str], datetime.datetime] = {}
+        self._batch_last_event_time: Dict[Optional[str], datetime.datetime] = {}
         self._batch_start_time: Dict[Optional[str], float] = {}
         self._timeout_task: Optional[Task] = None
         self._timeout_task_ex: Optional[Exception] = None
@@ -732,7 +737,7 @@ class _Batching(Flow):
         else:
             raise ValueError(f'Unsupported key type {type(key)}')
 
-    async def _emit(self, batch, batch_key, batch_time):
+    async def _emit(self, batch, batch_key, batch_time, last_event_time=None):
         raise NotImplementedError
 
     async def _terminate(self):
@@ -749,6 +754,9 @@ class _Batching(Flow):
         if len(self._batch[key]) == 0:
             self._batch_first_event_time[key] = event.time
             self._batch_start_time[key] = time.monotonic()
+            self._batch_last_event_time[key] = event.time
+        elif self._batch_last_event_time[key] < event.time:
+            self._batch_last_event_time[key] = event.time
 
         if self._timeout_task_ex:
             raise self._timeout_task_ex
@@ -785,8 +793,9 @@ class _Batching(Flow):
         if batch_to_emit is None:
             return
         batch_time = self._batch_first_event_time.pop(batch_key)
+        last_event_time = self._batch_last_event_time.pop(batch_key)
         del self._batch_start_time[batch_key]
-        await self._emit(batch_to_emit, batch_key, batch_time)
+        await self._emit(batch_to_emit, batch_key, batch_time, last_event_time)
 
     async def _emit_all(self):
         for key in list(self._batch.keys()):
@@ -809,7 +818,7 @@ class Batch(_Batching):
     """
     _do_downstream_per_event = False
 
-    async def _emit(self, batch, batch_key, batch_time):
+    async def _emit(self, batch, batch_key, batch_time, last_event_time=None):
         event = Event(batch, time=batch_time)
         return await self._do_downstream(event)
 
@@ -873,8 +882,10 @@ class JoinWithTable(_ConcurrentJobExecution):
     :param table: A Table object or name to join with. If a table name is provided, it will be looked up in the context.
     :param key_extractor: Key's column name or a function for extracting the key, for table access from an event.
     :param attributes: A comma-separated list of attributes to be queried for. Defaults to all attributes.
-    :param join_function: Joins the original event with relevant data received from the storage. Defaults to assume the event's body is a
-        dict-like object and updating it.
+    :param inner_join: Whether to drop events when the table does not have a matching entry (join_function won't be called in such a case).
+        Defaults to False.
+    :param join_function: Joins the original event with relevant data received from the storage. Event is dropped when this function returns
+        None. Defaults to assume the event's body is a dict-like object and updating it.
     :param name: Name of this step, as it should appear in logs. Defaults to class name (JoinWithTable).
     :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
         Defaults to False.
@@ -882,7 +893,7 @@ class JoinWithTable(_ConcurrentJobExecution):
     """
 
     def __init__(self, table: Union[Table, str], key_extractor: Union[str, Callable[[Event], str]],
-                 attributes: Optional[List[str]] = None,
+                 attributes: Optional[List[str]] = None, inner_join: bool = False,
                  join_function: Optional[Callable[[Event, Dict[str, object]], Event]] = None, **kwargs):
         if isinstance(table, str):
             kwargs['table'] = table
@@ -890,6 +901,8 @@ class JoinWithTable(_ConcurrentJobExecution):
             kwargs['key_extractor'] = key_extractor
         if attributes:
             kwargs['attributes'] = attributes
+        kwargs['inner_join'] = inner_join
+
         super().__init__(**kwargs)
 
         self._table = table
@@ -910,6 +923,7 @@ class JoinWithTable(_ConcurrentJobExecution):
             event.update(join_res)
             return event
 
+        self._inner_join = inner_join
         self._join_function = join_function or default_join_fn
 
         self._attributes = attributes or '*'
@@ -924,6 +938,8 @@ class JoinWithTable(_ConcurrentJobExecution):
         return await self._table._get_or_load_static_attributes_by_key(safe_key, self._attributes)
 
     async def _handle_completed(self, event, response):
+        if self._inner_join and not response:
+            return
         joined = self._join_function(self._get_event_or_body(event), response)
         if joined is not None:
             new_event = self._user_fn_output_to_event(event, joined)
