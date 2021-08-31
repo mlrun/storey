@@ -344,6 +344,23 @@ def test_sample_emit_last_with_emit_before_termination():
     controller.await_termination()
 
 
+def test_sample_emit_event_per_key():
+    controller = build_flow(
+        [
+            SyncEmitSource(key_field=str),
+            Assert().exactly(25),
+            SampleWindow(5, key='$key'),
+            Assert().exactly(5).match_exactly([0, 1, 2, 3, 4]),
+        ]
+    ).run()
+
+    for i in range(0, 25):
+        key = f"key_{i % 5}"
+        controller.emit(i, key=key)
+    controller.terminate()
+    controller.await_termination()
+
+
 def test_flatten():
     controller = build_flow(
         [
