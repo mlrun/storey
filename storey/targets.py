@@ -594,7 +594,7 @@ class StreamTarget(Flow, _Writer):
     :type storage_options: dict
     """
 
-    def __init__(self, storage: Driver, stream_path: str, sharding_func: Optional[Callable[[Event], int]] = None, batch_size: int = 1,
+    def __init__(self, storage: Driver, stream_path: str, sharding_func: Optional[Callable[[Event], int]] = None, batch_size: int = 8,
                  columns: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None, **kwargs):
         kwargs['stream_path'] = stream_path
         kwargs['batch_size'] = batch_size
