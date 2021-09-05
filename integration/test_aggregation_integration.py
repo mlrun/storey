@@ -1682,3 +1682,169 @@ def test_aggregate_float_key(setup_teardown_test):
 
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
+
+
+def test_sliding_window_first_last(setup_teardown_test):
+    t0 = pd.Timestamp(test_base_time)
+    data_dict = pd.DataFrame(
+        {
+            'esnoh': [
+                39759.80613,
+                57187.1271,
+                32.387,
+                5544.8741,
+                2439.2761,
+                662.974,
+                11749.5565,
+                185.209,
+                8098.5405,
+                9699.518,
+                42284.50914,
+                225.311,
+                58841.72756,
+                465.7,
+                41108.91799,
+                62088.5699,
+                702.392,
+                486.636,
+                92068.85122,
+                99191.75536,
+                63503.57868,
+                4639.3494
+                ],
+            'time': [
+                "2021-09-02 05:50:25.823519+00:00",
+                "2021-09-02 05:53:25.823519+00:00",
+                "2021-09-02 06:02:25.823519+00:00",
+                "2021-09-02 06:05:25.823519+00:00",
+                "2021-09-02 06:14:25.823519+00:00",
+                "2021-09-02 06:17:25.823519+00:00",
+                "2021-09-02 06:20:25.823519+00:00",
+                "2021-09-02 06:29:25.823519+00:00",
+                "2021-09-02 06:44:25.823519+00:00",
+                "2021-09-02 06:56:25.823519+00:00",
+                "2021-09-02 06:59:25.823519+00:00",
+                "2021-09-02 07:02:25.823519+00:00",
+                "2021-09-02 07:14:25.823519+00:00",
+                "2021-09-02 07:20:25.823519+00:00",
+                "2021-09-02 07:23:25.823519+00:00",
+                "2021-09-02 07:26:25.823519+00:00",
+                "2021-09-02 07:29:25.823519+00:00",
+                "2021-09-02 07:35:25.823519+00:00",
+                "2021-09-02 07:41:25.823519+00:00",
+                "2021-09-02 07:44:25.823519+00:00",
+                "2021-09-02 07:50:25.823519+00:00",
+                "2021-09-02 07:56:25.823519+00:00"
+                ],
+            'gjhpnbgvsj': [
+                "ajryjhibc",
+                "ajryjhibc",
+                "ajryjhibc",
+                "ajryjhibc",
+                "ajryjhibc",
+                "ajryjhibc",
+                "ajryjhibc",
+                "ajryjhibc",
+                "ajryjhibc",
+                "ajryjhibc",
+                "ajryjhibc",
+                "ajryjhibc",
+                "ajryjhibc",
+                "ajryjhibc",
+                "ajryjhibc",
+                "ajryjhibc",
+                "ajryjhibc",
+                "ajryjhibc",
+                "ajryjhibc",
+                "ajryjhibc",
+                "ajryjhibc",
+                "ajryjhibc",
+                ]
+        }).to_dict('records')
+
+    table = Table(setup_teardown_test, V3ioDriver(), flush_interval_secs=None)
+    controller = build_flow([
+        SyncEmitSource(),
+        AggregateByKey([FieldAggregator('esnoh_xyz', 'esnoh', ['first', 'last'],
+                                        SlidingWindows(['10m', '1h'], '5m'))], table,  key='gjhpnbgvsj'),
+        NoSqlTarget(table),
+        Reduce([], lambda acc, x: append_return(acc, x)),
+    ]).run()
+
+    for data in data_dict:
+        event_time = pd.Timestamp(data['time']).to_pydatetime()
+        controller.emit(data, key=data['gjhpnbgvsj'], event_time=event_time)
+
+    controller.terminate()
+    actual = controller.await_termination()
+    expected_results = [
+        {'esnoh_xyz_last_10m': 39759.80613, 'esnoh_xyz_last_1h': 39759.80613, 'esnoh_xyz_first_10m': 39759.80613,
+         'esnoh_xyz_first_1h': 39759.80613, 'esnoh': 39759.80613, 'time': '2021-09-02 05:50:25.823519+00:00',
+         'gjhpnbgvsj': 'ajryjhibc'},
+        {'esnoh_xyz_last_10m': 57187.1271, 'esnoh_xyz_last_1h': 57187.1271, 'esnoh_xyz_first_10m': 39759.80613,
+         'esnoh_xyz_first_1h': 39759.80613, 'esnoh': 57187.1271, 'time': '2021-09-02 05:53:25.823519+00:00',
+         'gjhpnbgvsj': 'ajryjhibc'},
+        {'esnoh_xyz_last_10m': 32.387, 'esnoh_xyz_last_1h': 32.387, 'esnoh_xyz_first_10m': 32.387,
+         'esnoh_xyz_first_1h': 39759.80613, 'esnoh': 32.387, 'time': '2021-09-02 06:02:25.823519+00:00',
+         'gjhpnbgvsj': 'ajryjhibc'},
+        {'esnoh_xyz_last_10m': 5544.8741, 'esnoh_xyz_last_1h': 5544.8741, 'esnoh_xyz_first_10m': 32.387,
+         'esnoh_xyz_first_1h': 39759.80613, 'esnoh': 5544.8741, 'time': '2021-09-02 06:05:25.823519+00:00',
+         'gjhpnbgvsj': 'ajryjhibc'},
+        {'esnoh_xyz_last_10m': 2439.2761, 'esnoh_xyz_last_1h': 2439.2761, 'esnoh_xyz_first_10m': 5544.8741,
+         'esnoh_xyz_first_1h': 39759.80613, 'esnoh': 2439.2761, 'time': '2021-09-02 06:14:25.823519+00:00',
+         'gjhpnbgvsj': 'ajryjhibc'},
+        {'esnoh_xyz_last_10m': 662.974, 'esnoh_xyz_last_1h': 662.974,  'esnoh_xyz_first_10m': 2439.2761,
+         'esnoh_xyz_first_1h': 39759.80613, 'esnoh': 662.974, 'time': '2021-09-02 06:17:25.823519+00:00',
+         'gjhpnbgvsj': 'ajryjhibc'},
+        {'esnoh_xyz_last_10m': 11749.5565, 'esnoh_xyz_last_1h': 11749.5565,  'esnoh_xyz_first_10m': 662.974,
+         'esnoh_xyz_first_1h': 39759.80613, 'esnoh': 11749.5565, 'time': '2021-09-02 06:20:25.823519+00:00',
+         'gjhpnbgvsj': 'ajryjhibc'},
+        {'esnoh_xyz_last_10m': 185.209, 'esnoh_xyz_last_1h': 185.209, 'esnoh_xyz_first_10m': 11749.5565,
+         'esnoh_xyz_first_1h': 39759.80613, 'esnoh': 185.209, 'time': '2021-09-02 06:29:25.823519+00:00',
+         'gjhpnbgvsj': 'ajryjhibc'},
+        {'esnoh_xyz_last_10m': 8098.5405, 'esnoh_xyz_last_1h': 8098.5405, 'esnoh_xyz_first_10m': 8098.5405,
+         'esnoh_xyz_first_1h': 39759.80613, 'esnoh': 8098.5405, 'time': '2021-09-02 06:44:25.823519+00:00',
+         'gjhpnbgvsj': 'ajryjhibc'},
+        {'esnoh_xyz_last_10m': 9699.518, 'esnoh_xyz_last_1h': 9699.518, 'esnoh_xyz_first_10m': 9699.518,
+         'esnoh_xyz_first_1h': 32.387, 'esnoh': 9699.518, 'time': '2021-09-02 06:56:25.823519+00:00',
+         'gjhpnbgvsj': 'ajryjhibc'},
+        {'esnoh_xyz_last_10m': 42284.50914, 'esnoh_xyz_last_1h': 42284.50914, 'esnoh_xyz_first_10m': 9699.518,
+         'esnoh_xyz_first_1h': 32.387, 'esnoh': 42284.50914, 'time': '2021-09-02 06:59:25.823519+00:00',
+         'gjhpnbgvsj': 'ajryjhibc'},
+        {'esnoh_xyz_last_10m': 225.311, 'esnoh_xyz_last_1h': 225.311, 'esnoh_xyz_first_10m': 9699.518,
+         'esnoh_xyz_first_1h': 5544.8741, 'esnoh': 225.311, 'time': '2021-09-02 07:02:25.823519+00:00',
+         'gjhpnbgvsj': 'ajryjhibc'},
+        {'esnoh_xyz_last_10m': 58841.72756, 'esnoh_xyz_last_1h': 58841.72756, 'esnoh_xyz_first_10m': 58841.72756,
+         'esnoh_xyz_first_1h': 662.974, 'esnoh': 58841.72756, 'time': '2021-09-02 07:14:25.823519+00:00',
+         'gjhpnbgvsj': 'ajryjhibc'},
+        {'esnoh_xyz_last_10m': 465.7, 'esnoh_xyz_last_1h': 465.7, 'esnoh_xyz_first_10m': 465.7,
+         'esnoh_xyz_first_1h': 185.209, 'esnoh': 465.7, 'time': '2021-09-02 07:20:25.823519+00:00',
+         'gjhpnbgvsj': 'ajryjhibc'},
+        {'esnoh_xyz_last_10m': 41108.91799, 'esnoh_xyz_last_1h': 41108.91799, 'esnoh_xyz_first_10m': 465.7,
+         'esnoh_xyz_first_1h': 185.209, 'esnoh': 41108.91799, 'time': '2021-09-02 07:23:25.823519+00:00',
+         'gjhpnbgvsj': 'ajryjhibc'},
+        {'esnoh_xyz_last_10m': 62088.5699, 'esnoh_xyz_last_1h': 62088.5699, 'esnoh_xyz_first_10m': 465.7,
+         'esnoh_xyz_first_1h': 8098.5405, 'esnoh': 62088.5699, 'time': '2021-09-02 07:26:25.823519+00:00',
+         'gjhpnbgvsj': 'ajryjhibc'},
+        {'esnoh_xyz_last_10m': 702.392, 'esnoh_xyz_last_1h': 702.392, 'esnoh_xyz_first_10m': 465.7,
+         'esnoh_xyz_first_1h': 8098.5405, 'esnoh': 702.392, 'time': '2021-09-02 07:29:25.823519+00:00',
+         'gjhpnbgvsj': 'ajryjhibc'},
+        {'esnoh_xyz_last_10m': 486.636, 'esnoh_xyz_last_1h': 486.636, 'esnoh_xyz_first_10m': 486.636,
+         'esnoh_xyz_first_1h': 8098.5405, 'esnoh': 486.636, 'time': '2021-09-02 07:35:25.823519+00:00',
+         'gjhpnbgvsj': 'ajryjhibc'},
+        {'esnoh_xyz_last_10m': 92068.85122, 'esnoh_xyz_last_1h': 92068.85122, 'esnoh_xyz_first_10m': 486.636,
+         'esnoh_xyz_first_1h': 9699.518, 'esnoh': 92068.85122, 'time': '2021-09-02 07:41:25.823519+00:00',
+         'gjhpnbgvsj': 'ajryjhibc'},
+        {'esnoh_xyz_last_10m': 99191.75536, 'esnoh_xyz_last_1h': 99191.75536, 'esnoh_xyz_first_10m': 486.636,
+         'esnoh_xyz_first_1h': 9699.518, 'esnoh': 99191.75536, 'time': '2021-09-02 07:44:25.823519+00:00',
+         'gjhpnbgvsj': 'ajryjhibc'},
+        {'esnoh_xyz_last_10m': 63503.57868, 'esnoh_xyz_last_1h': 63503.57868, 'esnoh_xyz_first_10m': 63503.57868,
+         'esnoh_xyz_first_1h': 9699.518, 'esnoh': 63503.57868, 'time': '2021-09-02 07:50:25.823519+00:00',
+         'gjhpnbgvsj': 'ajryjhibc'},
+        {'esnoh_xyz_last_10m': 4639.3494, 'esnoh_xyz_last_1h': 4639.3494, 'esnoh_xyz_first_10m': 63503.57868,
+         'esnoh_xyz_first_1h': 225.311, 'esnoh': 4639.3494, 'time': '2021-09-02 07:56:25.823519+00:00',
+         'gjhpnbgvsj': 'ajryjhibc'}]
+
+    assert actual == expected_results, \
+        f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
+

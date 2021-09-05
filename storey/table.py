@@ -1176,6 +1176,7 @@ class AggregationBuckets:
         self.explicit_windows = explicit_windows
         self.max_value = max_value
         self.buckets = []
+        self.first_aggr_sliding_window_cache = None
         self.should_persist = True
         self.pending_aggr = {}
         self.storage_specific_cache = {}
@@ -1196,6 +1197,10 @@ class AggregationBuckets:
         self.is_fixed_window = isinstance(self.explicit_windows, FixedWindows)
         if self.is_fixed_window:
             self._round_time_func = self.explicit_windows.round_up_time_to_window
+        else:
+            if 'first' in self._all_raw_aggregates:
+                self.first_aggr_sliding_window_cache = []
+
         self.period_millis = explicit_windows.period_millis
         self._window_start_time = explicit_windows.get_window_start_time_by_time(base_time)
         if self._precalculated_aggregations:
@@ -1323,8 +1328,15 @@ class AggregationBuckets:
         return int((timestamp - self.first_bucket_start_time) / window_millis) * window_millis + self.first_bucket_start_time
 
     def aggregate(self, timestamp, value):
+        if self.first_aggr_sliding_window_cache is not None:
+            self.first_aggr_sliding_window_cache.append({'timestamp': timestamp, 'value': value})
+
+        first_bucket_start_time = self.first_bucket_start_time
         index = self.get_or_advance_bucket_index_by_timestamp(timestamp)
 
+        if self.first_aggr_sliding_window_cache is not None and first_bucket_start_time != self.first_bucket_start_time:
+            self.first_aggr_sliding_window_cache[:] = \
+                [x for x in self.first_aggr_sliding_window_cache if x['timestamp'] >= self.first_bucket_start_time]
         # Only aggregate points that are in range
         if index >= 0:
             for aggr in self.buckets[index].values():
@@ -1332,18 +1344,30 @@ class AggregationBuckets:
             self.add_to_pending(timestamp, value)
 
             if self._precalculated_aggregations:
-                for (_, current_window_millis), aggr in self._current_aggregate_values.items():
-                    current_window_start_time = self.get_window_start_time_from_timestamp(timestamp, current_window_millis)
-                    current_window_start_index = self.get_bucket_index_by_timestamp(current_window_start_time)
+                for (aggr_name, current_window_millis), aggr in self._current_aggregate_values.items():
+                    if self.is_fixed_window:
+                        current_window_start_time = self.get_window_start_time_from_timestamp(timestamp, current_window_millis)
+                        current_window_end_time = current_window_start_time + current_window_millis
+                    else:
+                        current_window_end_time = int((timestamp + self.period_millis) / self.period_millis) * self.period_millis
+                        current_window_start_time = current_window_end_time - current_window_millis
 
-                    current_window_end_time = current_window_start_time + current_window_millis
-                    current_window_end_index = self.get_bucket_index_by_timestamp(current_window_end_time) - 1
+                    if not self.is_fixed_window and aggr_name == 'first':
+                        aggr.reset()
+                        for element in self.first_aggr_sliding_window_cache:
+                            if current_window_start_time <= element['timestamp'] < current_window_end_time:
+                                aggr.aggregate(element['timestamp'], element['value'])
+                        self._need_to_recalculate_pre_aggregates = False
+                    else:
+                        current_window_start_index = self.get_bucket_index_by_timestamp(current_window_start_time)
+                        current_window_end_index = self.get_bucket_index_by_timestamp(current_window_end_time) - 1
 
-                    if timestamp >= self._last_data_point_timestamp \
-                       and index in range(current_window_start_index, current_window_end_index + 1):
-                        aggr.aggregate(timestamp, value)
-                if timestamp > self._last_data_point_timestamp:
-                    self._last_data_point_timestamp = timestamp
+                        if timestamp >= self._last_data_point_timestamp \
+                                and index in range(current_window_start_index, current_window_end_index + 1):
+                            aggr.aggregate(timestamp, value)
+
+                    if timestamp > self._last_data_point_timestamp:
+                        self._last_data_point_timestamp = timestamp
 
     def add_to_pending(self, timestamp, value):
         bucket_start_time = int(timestamp / self.period_millis) * self.period_millis
