@@ -658,8 +658,7 @@ class StreamTarget(Flow, _Writer):
                         req = in_flight_reqs[shard_id]
                         in_flight_reqs[shard_id] = None
                         await self._handle_response(req)
-                        if len(buffers[shard_id]) >= self._batch_size:
-                            self._send_batch(buffers, in_flight_reqs, shard_id)
+                        self._send_batch(buffers, in_flight_reqs, shard_id)
                 event = await self._q.get()
                 if event is _termination_obj:  # handle outstanding batches and in flight requests on termination
                     for req in in_flight_reqs:
