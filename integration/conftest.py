@@ -18,5 +18,10 @@ def redis():
 
 
 @pytest.fixture()
-def redis_driver(redis):
-    yield RedisDriver(redis, key_prefix="storey-test:")
+def redis_key_prefix():
+    yield "storey-test:"
+
+
+@pytest.fixture()
+def redis_driver(redis, redis_key_prefix):
+    yield RedisDriver(redis, key_prefix=redis_key_prefix)
