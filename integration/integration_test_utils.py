@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import json
+import os
 import random
 import re
 import string
@@ -8,10 +9,12 @@ from datetime import datetime
 
 import aiohttp
 import pytest
+import redis as r
 
-from storey.drivers import NeedsV3ioAccess
+from storey.drivers import NeedsV3ioAccess, RedisDriver
 from storey.flow import V3ioError
 
+REDIS_ENDPOINT = os.environ.get('REDIS_URL')
 _non_int_char_pattern = re.compile(r"[^-0-9]")
 test_base_time = datetime.fromisoformat("2020-07-21T21:40:00+00:00")
 
@@ -89,6 +92,19 @@ def setup_teardown_test():
 
     # Teardown
     asyncio.run(recursive_delete(table_name, V3ioHeaders()))
+
+
+@pytest.fixture()
+def setup_redis_teardown_test(redis, redis_driver):
+    # Setup
+    table_name = _generate_table_name()
+
+    # Test runs
+    yield table_name
+
+    # Teardown
+    for key in redis_driver.redis.scan_iter(f"{redis_driver._key_prefix}*"):
+        redis_driver.redis.delete(key)
 
 
 @pytest.fixture()

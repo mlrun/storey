@@ -2,8 +2,7 @@ import base64
 import json
 import os
 import time
-from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from functools import partial
 from typing import Optional
@@ -21,6 +20,7 @@ from redis import Redis
 from rediscluster import RedisCluster
 from redis import WatchError
 from redis.client import Pipeline
+from redis import WatchError, ResponseError
 
 from .dtypes import V3ioError, RedisError, RedisTimeoutError
 from .utils import schema_file_name, asyncify
@@ -521,18 +521,21 @@ class RedisType(Enum):
 
 
 class RedisDriver(Driver):
-    REDIS_TIMEOUT = 10  # Seconds
-    REDIS_WATCH_INTERVAL = 2  # Seconds
+    REDIS_TIMEOUT = 5  # Seconds
+    REDIS_WATCH_INTERVAL = 1  # Seconds
+    DATETIME_FIELD_PREFIX = "_dt:"
+    TIMEDELTA_FIELD_PREFIX = "_td:"
+    DEFAULT_KEY_PREFIX = "storey:"
 
     def __init__(self, redis_client: Optional[Union[redis.Redis, rediscluster.RedisCluster]] = None,
                  redis_type: RedisType = RedisType.STANDALONE,
-                 key_prefix: str = "",
+                 key_prefix: str = None,
                  aggregation_attribute_prefix: str = 'aggr_',
                  aggregation_time_attribute_prefix: str = 't_'):
 
         self._redis = redis_client
-        self._conn_str = os.getenv('REDIS_CONNECTION', 'redis://localhost:6379')
-        self._key_prefix = key_prefix
+        self._conn_str = os.getenv('REDIS_CONNECTION', 'redis://localhost:6379?')
+        self._key_prefix = key_prefix if key_prefix else self.DEFAULT_KEY_PREFIX
         self._type = redis_type
         self._aggregation_attribute_prefix = aggregation_attribute_prefix
         self._aggregation_time_attribute_prefix = aggregation_time_attribute_prefix
@@ -544,12 +547,41 @@ class RedisDriver(Driver):
         if self._redis:
             return self._redis
         if self._type is RedisType.STANDALONE:
-            return redis.Redis.from_url(self._conn_str)
-        self._redis = rediscluster.RedisCluster.from_url(self._conn_str)
+            return redis.Redis.from_url(self._conn_str, decode_responses=True)
+        self._redis = rediscluster.RedisCluster.from_url(self._conn_str, decode_response=True)
         return self._redis
 
-    def make_key(self, table_path, key):
-        return "{}{}{}".format(self._key_prefix, table_path, key)
+    def make_key(self, *parts):
+        return f"{self._key_prefix}{':'.join(parts)}"
+
+    @staticmethod
+    def _static_data_key(redis_key_prefix):
+        """
+        The Redis key for the Hash containing static data (AKA, "additional data").
+
+        The `redis_key_prefix` string should be the Redis key prefix used to store
+        data for a Storey container, table path, and key combination.
+        """
+        return f"{redis_key_prefix}:static"
+
+    def _aggregation_time_key(self, redis_key_prefix, feature_name):
+        """
+        The Redis key containing the associated timestamp for an aggregation.
+
+        The `redis_key_prefix` string should be the Redis key prefix used to store
+        data for a Storey container, table path, and key combination.
+        """
+        return f"{redis_key_prefix}:{self._aggregation_time_attribute_prefix}{feature_name}"
+
+    @staticmethod
+    def _list_key(redis_key_prefix, list_attribute_name):
+        """
+        The key containing a list of aggregation data.
+
+        The `redis_key_prefix` string should be the Redis key prefix used to store
+        data for a Storey container, table path, and key combination.
+        """
+        return f"{redis_key_prefix}:{list_attribute_name}"
 
     async def _lincr(self, key: str, index_to_update: int, incr_by: float):
         """Atomically increment the numeric value at an index in a list.
@@ -558,33 +590,42 @@ class RedisDriver(Driver):
         that does not exist in Redis.
         """
         timeout = datetime.now() + timedelta(seconds=self.REDIS_TIMEOUT)
-        with self.redis.pipeline() as pipeline:
-            while True:
+        while True:
+            with self.redis.pipeline() as pipeline:
                 try:
                     pipeline.watch(key)
                     old = pipeline.lindex(key, index_to_update)
                     pipeline.multi()
-                    pipeline.lset(key, index_to_update, old + incr_by)
+                    if not old:
+                        pipeline.rpush(key, incr_by)
+                    else:
+                        pipeline.lset(key, index_to_update, float(old) + incr_by)
                     return await asyncify(pipeline.execute)()
-                except WatchError:
+                except WatchError as e:
                     if datetime.now() < timeout:
                         time.sleep(self.REDIS_WATCH_INTERVAL)
                         continue
                     raise RedisTimeoutError(f"Timed out trying to increment key {key}")
 
-    @staticmethod
-    def _convert_python_obj_to_redis_value(value):
+    @classmethod
+    def _convert_python_obj_to_redis_value(cls, value):
         if isinstance(value, datetime):
             if pd.isnull(value):
                 return None
-            timestamp = value.timestamp()
-            secs = int(timestamp)
-            nanosecs = int((timestamp - secs) * 1e+9)
-            return f'{secs}:{nanosecs}'
+            return f"{cls.DATETIME_FIELD_PREFIX}{value.timestamp()}"
         elif isinstance(value, timedelta):
-            return str(value.total_seconds())
+            return f"{cls.TIMEDELTA_FIELD_PREFIX}{value.total_seconds()}"
         else:
-            return str(value)
+            return json.dumps(value)
+
+    @classmethod
+    def _convert_redis_value_to_python_obj(cls, value):
+        if value.startswith(cls.TIMEDELTA_FIELD_PREFIX):
+            return timedelta(seconds=float(value.split(":")[1]))
+        elif value.startswith(cls.DATETIME_FIELD_PREFIX):
+            return datetime.fromtimestamp(float(value.split(":")[1]), tz=timezone.utc)
+        else:
+            return json.loads(value)
 
     def _discard_old_pending_items(self, pending, max_window_millis):
         res = {}
@@ -596,7 +637,7 @@ class RedisDriver(Driver):
                     res[time] = value
         return res
 
-    def _build_simplified_feature_store_request(self, aggregation_element, pipeline):
+    async def _build_feature_store_request(self, redis_key_prefix, aggregation_element, pipeline):
         atomic_updates = []
         times_updates = {}
         new_cached_times = {}
@@ -614,9 +655,11 @@ class RedisDriver(Driver):
                     # the relevant attribute out of the 2 feature attributes
                     feature_attr = 'a' if int(bucket_start_time / bucket.max_window_millis) % 2 == 0 else 'b'
 
-                    array_time_attribute_name = f'{self._aggregation_time_attribute_prefix}{bucket.name}_{feature_attr}'
+                    aggr_time_attribute_name = f'{bucket.name}_{feature_attr}'
+                    array_time_attribute_key = self._aggregation_time_key(redis_key_prefix,
+                                                                          aggr_time_attribute_name)
 
-                    cached_time = bucket.storage_specific_cache.get(array_time_attribute_name, 0)
+                    cached_time = bucket.storage_specific_cache.get(array_time_attribute_key, 0)
 
                     expected_time = int(bucket_start_time / bucket.max_window_millis) * bucket.max_window_millis
                     expected_time_expr = self._convert_python_obj_to_redis_value(
@@ -624,14 +667,24 @@ class RedisDriver(Driver):
                     index_to_update = int((bucket_start_time - expected_time) / bucket.period_millis)
 
                     for aggregation, aggregation_value in aggregation_values.items():
-                        list_attribute_key = f'{self._aggregation_attribute_prefix}{name}_{aggregation}_{feature_attr}'
+                        list_attribute_name = f'{self._aggregation_attribute_prefix}{name}_{aggregation}_{feature_attr}'
+                        list_attribute_key = self._list_key(redis_key_prefix, list_attribute_name)
                         if cached_time < expected_time:
                             if not initialized_attributes.get(list_attribute_key, 0) == expected_time:
                                 initialized_attributes[list_attribute_key] = expected_time
-                                pipeline.lset(list_attribute_key, 0, aggregation_value.default_value)
-                            if array_time_attribute_name not in times_updates:
-                                times_updates[array_time_attribute_name] = expected_time_expr
-                            new_cached_times[name] = (array_time_attribute_name, expected_time)
+                                # XXX: Run an LSET operation in immediate execution mode,
+                                # instead of using the pipeline, to initialize the list
+                                # here, in case we need the list to exist when we run our
+                                # atomic _lincr() operations later in this method.
+                                try:
+                                    await asyncify(self.redis.lset)(list_attribute_key, 0,
+                                                                    aggregation_value.default_value)
+                                except ResponseError:
+                                    # The list doesn't exist yet.
+                                    self.redis.lpush(list_attribute_key, aggregation_value.default_value)
+                            if array_time_attribute_key not in times_updates:
+                                times_updates[array_time_attribute_key] = expected_time_expr
+                            new_cached_times[name] = (array_time_attribute_key, expected_time)
 
                         # Updating the specific cells
                         if cached_time <= expected_time:
@@ -640,13 +693,13 @@ class RedisDriver(Driver):
                                 partial(self._lincr, list_attribute_key, index_to_update, aggregation_value.value))
 
         for atomic_update in atomic_updates:
-            # TODO: Check result, handle RedisError
+            # TODO: Check result, handle RedisError?
             await atomic_update()
 
         # Separating time attribute updates, so that they will be executed in the end
         # and only once per feature name.
-        for array_time_attribute_name, expected_time_expr in times_updates.items():
-            pipeline.set(array_time_attribute_name, expected_time_expr)
+        for array_time_attribute_key, expected_time_expr in times_updates.items():
+            pipeline.set(array_time_attribute_key, expected_time_expr)
 
         for name, new_value in new_cached_times.items():
             attribute_name = new_value[0]
@@ -654,38 +707,45 @@ class RedisDriver(Driver):
             aggregation_element.aggregation_buckets[name].storage_specific_cache[attribute_name] = new_time
         return pending_updates
 
-    def _build_updates(self, aggregation_element, additional_data, partitioned_by_key, pipeline):
+    async def _build_updates(self, redis_key_prefix, aggregation_element, additional_data, partitioned_by_key):
+        # Use a transaction if multiple workers might be writing (AKA, "partitioned_by_key").
+        # Otherwise, use a standard Redis pipeline.
+        pipeline = self.redis.pipeline(transaction=partitioned_by_key)
+
         if aggregation_element:
-            # In case we get an indication the data is (probably) not updated from
-            # multiple workers (for example: pre sharded by key), run a simpler expression.
-            if partitioned_by_key:
-                self._build_simplified_feature_store_request(aggregation_element, pipeline)
-            else:
-                # TODO
-                # self._build_conditioned_feature_store_request(aggregation_element, pipeline)
-                pass
+            # Generating aggregation related expressions
+            await self._build_feature_store_request(redis_key_prefix, aggregation_element, pipeline)
 
         # Static attributes, like "name," "age," -- everything that isn't an agg.
         if additional_data:
-            # TODO: Is `name` the right key to use in Redis, or should we namespace it?
+            fields_to_set = {}
+            fields_to_delete = []
             for name, value in additional_data.items():
                 expression_value = self._convert_python_obj_to_redis_value(value)
                 if expression_value:
-                    pipeline.set(name, self._convert_python_obj_to_redis_value(value))
+                    fields_to_set[name] = expression_value
                 else:
-                    pipeline.delete(name)
+                    fields_to_delete.append(name)
+            if fields_to_set:
+                pipeline.hset(self._static_data_key(redis_key_prefix), mapping=fields_to_set)
+            if fields_to_delete:
+                pipeline.delete(*fields_to_delete)
+
+        result = await asyncify(pipeline.execute)()
+        pipeline.reset()
+
+        return result
 
     async def _save_key(self, container, table_path, key, aggr_item, partitioned_by_key, additional_data):
-        with self.redis.pipeline(transaction=False) as p:
-            self._build_updates(aggr_item, additional_data, partitioned_by_key, p)
-            return await asyncify(p.execute)()
+        redis_key_prefix = self.make_key(container, table_path, key)
+        await self._build_updates(redis_key_prefix, aggr_item, additional_data, partitioned_by_key)
 
     async def _get_all_fields(self, redis_key: str):
         try:
             values = await asyncify(self.redis.hgetall)(redis_key)
         except redis.ResponseError as e:
             raise RedisError(f'Failed to get key {redis_key}. Response error was: {e}')
-        return {key: val for key, val in values.items()
+        return {key: self._convert_redis_value_to_python_obj(val) for key, val in values.items()
                 if not str(key).startswith(self._aggregation_prefixes)}
 
     async def _get_specific_fields(self, redis_key: str, attributes: List[str]):
@@ -696,13 +756,97 @@ class RedisDriver(Driver):
         try:
             values = await asyncify(self.redis.hmget)(redis_key, non_aggregation_attrs)
         except redis.ResponseError as e:
-            raise RedisError(f'Failed to get key {redis_key}. Response error was: {e}')
-        return values
+            raise RedisError(f'Failed to get key {redis_key}. Response error was: {e}') from e
+        return [{k: self._convert_redis_value_to_python_obj(v)} for k, v in values.items()]
 
     async def _load_by_key(self, container, table_path, key, attributes):
-        redis_key = self.make_key(table_path, key)
+        """
+        Return all static attributes, or certain attributes.
+
+        NOTE: Following the V3IO driver's implementation, this method will not
+        return aggregation attributes or associated time values -- just static
+        data, AKA "additional data."
+        """
+        redis_key_prefix = self.make_key(container, table_path, key)
+        static_key = self._static_data_key(redis_key_prefix)
         if attributes == "*":
-            values = await self._get_all_fields(redis_key)
+            values = await self._get_all_fields(static_key)
         else:
-            values = await self._get_specific_fields(redis_key, attributes)
+            values = await self._get_specific_fields(static_key, attributes)
         return values
+
+    async def _get_associated_time_attr(self, redis_key_prefix, aggr_name):
+        aggr_without_relevant_attr = aggr_name[:-2]
+        feature_name_only = aggr_without_relevant_attr[:aggr_without_relevant_attr.rindex('_')]
+        feature_with_relevant_attr = f"{feature_name_only}{aggr_name[-2:]}"
+        associated_time_key = self._aggregation_time_key(redis_key_prefix, feature_with_relevant_attr)
+        time_val = await asyncify(self.redis.get)(associated_time_key)
+        _, val = time_val.split(":")
+
+        # TODO: Time values can hold either a timedelta in seconds or a UNIX timestamp.
+        # What are we supposed to do (and how does Storey know) if the value was a
+        # timedelta?
+        try:
+            # Storey requires the timestamp to be an integer when it processes this value.
+            time_in_millis = int(float(val)) * 1000
+        except TypeError as e:
+            raise RedisError(f"Invalid associated time attribute: {associated_time_key} "
+                             f"-> {time_val}") from e
+
+        # Return a form of the time attribute that Storey expects. This should include
+        # name of the feature but not the aggregation name (min, max) or relevant
+        # attribute (_a, _b).
+        associated_time_attr = f"{self._aggregation_time_attribute_prefix}" \
+                               f"{feature_name_only}"
+        return associated_time_attr, time_in_millis
+
+    def cast(self, value):
+        """Cast `value` to the type Storey expects."""
+        if '.' in value or value == 'inf' or value == "-inf":
+            return float(value)
+        else:
+            return int(value)
+
+    async def _load_aggregates_by_key(self, container, table_path, key):
+        """
+        Loads a specific key from the store, and returns it in the following format
+        {
+            'feature_name_aggr1': {<start time A>: [], {<start time B>: []}},
+            'feature_name_aggr2': {<start time A>: [], {<start time B>: []}}
+        }
+        """
+        redis_key_prefix = self.make_key(container, table_path, key)
+        additional_data = await self._get_all_fields(self._static_data_key(redis_key_prefix))
+        aggregations = {}
+        # Aggregation Redis keys start with the Redis key prefix for this Storey container, table
+        # path, and "key," followed by ":aggr_"
+        aggr_key_prefix = f"{redis_key_prefix}:{self._aggregation_attribute_prefix}"
+        # XXX: We can't use `async for` here...
+        for aggr_key in self.redis.scan_iter(f"{aggr_key_prefix}*"):
+            value = await asyncify(self.redis.lrange)(aggr_key, 0, -1)
+            # Build an attribute for this aggregation in the format that Story
+            # expects to receive from this method. The feature and aggregation
+            # name are embedded in the Redis key. Also, drop the "_a" or "_b"
+            # portion of the key, which is "the relevant attribute out of the 2
+            # feature attributes," according to comments in the V3IO driver.
+            feature_and_aggr_name = aggr_key[len(aggr_key_prefix):-2]
+            # To get the associated time, we need the aggregation name and the relevant
+            # attribute (a or b), so we take a second form of the string for that purpose.
+            aggr_name_with_relevant_attribute = aggr_key[len(aggr_key_prefix):]
+            associated_time_attr, time_in_millis = await self._get_associated_time_attr(
+                redis_key_prefix, aggr_name_with_relevant_attribute)
+            if feature_and_aggr_name not in aggregations:
+                aggregations[feature_and_aggr_name] = {}
+            aggregations[feature_and_aggr_name][time_in_millis] = [self.cast(v) for v in value]
+            aggregations[feature_and_aggr_name][associated_time_attr] = time_in_millis
+        return aggregations, additional_data
+
+    async def _save_schema(self, container, table_path, schema):
+        redis_key = self.make_key(container, table_path, schema_file_name)
+        await asyncify(self.redis.set)(redis_key, json.dumps(schema))
+
+    async def _load_schema(self, container, table_path):
+        redis_key = self.make_key(container, table_path, schema_file_name)
+        schema = await asyncify(self.redis.get)(redis_key)
+        if schema:
+            return json.loads(schema)
