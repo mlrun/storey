@@ -12,7 +12,7 @@ import v3io_frames as frames
 
 from storey import Filter, JoinWithV3IOTable, SendToHttp, Map, Reduce, SyncEmitSource, HttpRequest, build_flow, \
     StreamTarget, V3ioDriver, TSDBTarget, Table, JoinWithTable, MapWithState, NoSqlTarget, DataframeSource, \
-    CSVSource
+    CSVSource, AsyncEmitSource
 from .integration_test_utils import V3ioHeaders, append_return, test_base_time, setup_kv_teardown_test, setup_teardown_test, \
     setup_stream_teardown_test
 
@@ -84,22 +84,30 @@ def test_join_with_http():
     assert termination_result == 200 * 7
 
 
-def test_write_to_v3io_stream(setup_stream_teardown_test):
+async def async_test_write_to_v3io_stream(setup_stream_teardown_test):
     stream_path = setup_stream_teardown_test
     controller = build_flow([
-        SyncEmitSource(),
+        AsyncEmitSource(),
         Map(lambda x: str(x)),
-        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: int(event.body))
+        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: int(event.body), batch_size=8)
     ]).run()
     for i in range(10):
-        controller.emit(i)
+        await controller.emit(i)
 
-    controller.terminate()
-    controller.await_termination()
-    shard0_data = asyncio.run(GetShardData().get_shard_data(f'{stream_path}/0'))
-    assert shard0_data == [b'0', b'2', b'4', b'6', b'8']
-    shard1_data = asyncio.run(GetShardData().get_shard_data(f'{stream_path}/1'))
-    assert shard1_data == [b'1', b'3', b'5', b'7', b'9']
+    await asyncio.sleep(5)
+
+    try:
+        shard0_data = await GetShardData().get_shard_data(f'{stream_path}/0')
+        assert shard0_data == [b'0', b'2', b'4', b'6', b'8']
+        shard1_data = await GetShardData().get_shard_data(f'{stream_path}/1')
+        assert shard1_data == [b'1', b'3', b'5', b'7', b'9']
+    finally:
+        await controller.terminate()
+        await controller.await_termination()
+
+
+def test_write_to_v3io_stream(setup_stream_teardown_test):
+    asyncio.run(async_test_write_to_v3io_stream(setup_stream_teardown_test))
 
 
 def test_write_to_v3io_stream_with_column_inference(setup_stream_teardown_test):
