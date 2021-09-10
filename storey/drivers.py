@@ -2,7 +2,7 @@ import base64
 import json
 import os
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from enum import Enum
 from functools import partial
 from typing import Optional
@@ -556,7 +556,7 @@ class RedisDriver(Driver):
         return self._redis
 
     def make_key(self, *parts):
-        return f"{self._key_prefix}{':'.join(parts)}"
+        return f"{self._key_prefix}{':'.join([str(p) for p in parts])}"
 
     @staticmethod
     def _static_data_key(redis_key_prefix):
@@ -600,16 +600,18 @@ class RedisDriver(Driver):
                     pipeline.watch(key)
                     old = pipeline.lindex(key, index_to_update)
                     pipeline.multi()
-                    if not old:
-                        pipeline.rpush(key, incr_by)
-                    else:
-                        pipeline.lset(key, index_to_update, float(old) + incr_by)
+                    # XXX: Some aggregations use these values as their defaults, so we
+                    # initialize our lists with them. But you can't create a float('inf')
+                    # and then add to it, so we use 0 instead.
+                    if old == 'inf' or old == '-inf':
+                        old = 0
+                    pipeline.lset(key, index_to_update, float(old) + incr_by)
                     return await asyncify(pipeline.execute)()
                 except WatchError as e:
                     if datetime.now() < timeout:
                         time.sleep(self.REDIS_WATCH_INTERVAL)
                         continue
-                    raise RedisTimeoutError(f"Timed out trying to increment key {key}")
+                    raise RedisTimeoutError(f"Timed out trying to increment key {key}") from e
 
     @classmethod
     def _convert_python_obj_to_redis_value(cls, value):
@@ -627,7 +629,7 @@ class RedisDriver(Driver):
         if value.startswith(cls.TIMEDELTA_FIELD_PREFIX):
             return timedelta(seconds=float(value.split(":")[1]))
         elif value.startswith(cls.DATETIME_FIELD_PREFIX):
-            return datetime.fromtimestamp(float(value.split(":")[1]), tz=timezone.utc)
+            return datetime.fromtimestamp(float(value.split(":")[1]))
         else:
             return json.loads(value)
 
@@ -676,16 +678,18 @@ class RedisDriver(Driver):
                         if cached_time < expected_time:
                             if not initialized_attributes.get(list_attribute_key, 0) == expected_time:
                                 initialized_attributes[list_attribute_key] = expected_time
-                                # XXX: Run an LSET operation in immediate execution mode,
-                                # instead of using the pipeline, to initialize the list
-                                # here, in case we need the list to exist when we run our
-                                # atomic _lincr() operations later in this method.
-                                try:
-                                    await asyncify(self.redis.lset)(list_attribute_key, 0,
-                                                                    aggregation_value.default_value)
-                                except ResponseError:
-                                    # The list doesn't exist yet.
-                                    self.redis.lpush(list_attribute_key, aggregation_value.default_value)
+                                # XXX: Run LLEN and LPUSH commands in immediate execution
+                                # mode, instead of using the pipeline, to initialize the
+                                # list here, in case we need the list to exist when we run
+                                # our atomic _lincr() operations later in this method.
+                                list_length = await asyncify(self.redis.llen)(list_attribute_key)
+                                if list_length != bucket.total_number_of_buckets:
+                                    # The list doesn't exist yet, or it's the wrong size,
+                                    # so we initialize it (or right-pad it) to the
+                                    # expected length with default values.
+                                    new_length = bucket.total_number_of_buckets - list_length
+                                    defaults = [aggregation_value.default_value] * new_length
+                                    self.redis.rpush(list_attribute_key, *defaults)
                             if array_time_attribute_key not in times_updates:
                                 times_updates[array_time_attribute_key] = expected_time_expr
                             new_cached_times[name] = (array_time_attribute_key, expected_time)
@@ -783,7 +787,8 @@ class RedisDriver(Driver):
         aggr_without_relevant_attr = aggr_name[:-2]
         feature_name_only = aggr_without_relevant_attr[:aggr_without_relevant_attr.rindex('_')]
         feature_with_relevant_attr = f"{feature_name_only}{aggr_name[-2:]}"
-        associated_time_key = self._aggregation_time_key(redis_key_prefix, feature_with_relevant_attr)
+        associated_time_key = self._aggregation_time_key(redis_key_prefix,
+                                                         feature_with_relevant_attr)
         time_val = await asyncify(self.redis.get)(associated_time_key)
         _, val = time_val.split(":")
 
@@ -792,7 +797,7 @@ class RedisDriver(Driver):
         # timedelta?
         try:
             # Storey requires the timestamp to be an integer when it processes this value.
-            time_in_millis = int(float(val)) * 1000
+            time_in_millis = int(float(val) * 1000)
         except TypeError as e:
             raise RedisError(f"Invalid associated time attribute: {associated_time_key} "
                              f"-> {time_val}") from e
@@ -801,7 +806,7 @@ class RedisDriver(Driver):
         # name of the feature but not the aggregation name (min, max) or relevant
         # attribute (_a, _b).
         associated_time_attr = f"{self._aggregation_time_attribute_prefix}" \
-                               f"{feature_name_only}"
+                               f"{feature_with_relevant_attr}"
         return associated_time_attr, time_in_millis
 
     def cast(self, value):
@@ -828,7 +833,7 @@ class RedisDriver(Driver):
         # XXX: We can't use `async for` here...
         for aggr_key in self.redis.scan_iter(f"{aggr_key_prefix}*"):
             value = await asyncify(self.redis.lrange)(aggr_key, 0, -1)
-            # Build an attribute for this aggregation in the format that Story
+            # Build an attribute for this aggregation in the format that Storey
             # expects to receive from this method. The feature and aggregation
             # name are embedded in the Redis key. Also, drop the "_a" or "_b"
             # portion of the key, which is "the relevant attribute out of the 2
