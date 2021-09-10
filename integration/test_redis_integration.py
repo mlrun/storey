@@ -11,7 +11,7 @@ from storey import build_flow, SyncEmitSource, Reduce, Table, RedisDriver, MapWi
 from storey.dtypes import SlidingWindows, FixedWindows, EmitAfterMaxEvent
 from storey.utils import _split_path
 
-from .integration_test_utils import setup_redis_teardown_test, append_return, test_base_time, V3ioHeaders
+from .integration_test_utils import setup_redis_teardown_test, append_return, test_base_time
 
 
 @pytest.mark.parametrize('partitioned_by_key', [True, False])
@@ -98,8 +98,7 @@ def test_aggregate_and_query_with_different_windows(setup_redis_teardown_test, p
     actual = controller.await_termination()
     expected_results = [
         {'col1': 10, 'number_of_stuff_sum_1h': 17, 'number_of_stuff_min_1h': 8, 'number_of_stuff_max_1h': 9, 'number_of_stuff_avg_1h': 8.5},
-        {'col1': 10, 'number_of_stuff_sum_1h': 9.0, 'number_of_stuff_min_1h': 9.0, 'number_of_stuff_max_1h': 9.0,
-         'number_of_stuff_avg_1h': 9.0},
+        {'col1': 10, 'number_of_stuff_sum_1h': 9.0, 'number_of_stuff_min_1h': 9.0, 'number_of_stuff_max_1h': 9.0, 'number_of_stuff_avg_1h': 9.0},
     ]
 
     assert actual == expected_results, \
@@ -724,7 +723,7 @@ async def load_schema(redis_driver, path):
     return res
 
 
-def test_modify_schema(setup_redis_teardown_test, redis_driver, redis_key_prefix):
+def test_modify_schema(setup_redis_teardown_test, redis_driver):
     table = Table(setup_redis_teardown_test, redis_driver)
 
     controller = build_flow([
@@ -788,9 +787,7 @@ def test_modify_schema(setup_redis_teardown_test, redis_driver, redis_key_prefix
     expected_schema = {'number_of_stuff': {'period_millis': 600000, 'aggregates': ['max', 'min', 'sum', 'count']}}
     _assert_schema_equal(schema, expected_schema)
 
-    # Have to create another instance of the driver for this test or we run into
-    # StopIteration errors.
-    other_table = Table(setup_redis_teardown_test, RedisDriver(key_prefix=redis_key_prefix))
+    other_table = Table(setup_redis_teardown_test, redis_driver)
     controller = build_flow([
         SyncEmitSource(),
         AggregateByKey([FieldAggregator('number_of_stuff', 'col1', ['sum', 'avg', 'min', 'max'],
@@ -809,10 +806,10 @@ def test_modify_schema(setup_redis_teardown_test, redis_driver, redis_key_prefix
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [
-        {'col1': 10, 'number_of_stuff_sum_1h': 27, 'number_of_stuff_sum_2h': 40, 'number_of_stuff_sum_24h': 55, 'number_of_stuff_min_1h': 8,
+        {'col1': 10, 'number_of_stuff_sum_1h': 10, 'number_of_stuff_sum_2h': 40, 'number_of_stuff_sum_24h': 55, 'number_of_stuff_min_1h': 10,
          'number_of_stuff_min_2h': 6, 'number_of_stuff_min_24h': 0, 'number_of_stuff_max_1h': 10, 'number_of_stuff_max_2h': 10,
-         'number_of_stuff_max_24h': 10, 'new_aggr_min_3h': 10, 'new_aggr_max_3h': 10, 'number_of_stuff_avg_1h': 9.0,
-         'number_of_stuff_avg_2h': 8.0, 'number_of_stuff_avg_24h': 5.0, 'col1': 10}
+         'number_of_stuff_max_24h': 10, 'new_aggr_min_3h': 10, 'new_aggr_max_3h': 10, 'number_of_stuff_avg_1h': 10.0,
+         'number_of_stuff_avg_2h': 8.0, 'number_of_stuff_avg_24h': 5.0}
     ]
 
     assert actual == expected_results, \
