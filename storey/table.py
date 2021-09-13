@@ -640,7 +640,6 @@ class ReadOnlyAggregationBuckets:
         return end_bucket - num_of_buckets_in_window + 1, end_bucket
 
     def aggregate(self, timestamp, value):
-        import ipdb; ipdb.set_trace()
         index = self.get_or_advance_bucket_index_by_timestamp(timestamp)
 
         # Only aggregate points that are in range
