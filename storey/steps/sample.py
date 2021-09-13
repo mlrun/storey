@@ -1,7 +1,8 @@
 from enum import Enum
 
 from storey import Flow
-from storey.dtypes import _termination_obj
+from storey.dtypes import Event, _termination_obj
+from typing import Optional, Union, Callable
 
 
 class EmitPeriod(Enum):
@@ -22,6 +23,11 @@ class SampleWindow(Flow):
     Available options:
         2.1) True - The last event seen will be emitted downstream.
         2.2) False - The last event seen will NOT be emitted downstream.
+    :param key: The key by which events are sampled. By default (None), events are not sampled by key.
+        Other options may be:
+        Set to '$key' to sample events by the Event.key property.
+        set to 'str' key to sample events by Event.body[str].
+        set a Callable[[Event], str] to sample events by a custom key extractor.
     """
 
     def __init__(
@@ -29,6 +35,7 @@ class SampleWindow(Flow):
         window_size: int,
         emit_period: EmitPeriod = EmitPeriod.FIRST,
         emit_before_termination: bool = False,
+        key: Optional[Union[str, Callable[[Event], str]]] = None,
         **kwargs,
     ):
         super().__init__(full_event=True, **kwargs)
@@ -42,9 +49,24 @@ class SampleWindow(Flow):
         self._window_size = window_size
         self._emit_period = emit_period
         self._emit_before_termination = emit_before_termination
-
+        self._per_key_count = dict()
         self._count = 0
         self._last_event = None
+        self._extract_key: Callable[[Event], str] = self._create_key_extractor(key)
+
+    @staticmethod
+    def _create_key_extractor(key) -> Callable:
+        if key is None:
+            return lambda event: None
+        elif callable(key):
+            return key
+        elif isinstance(key, str):
+            if key == '$key':
+                return lambda event: event.key
+            else:
+                return lambda event: event.body[key]
+        else:
+            raise ValueError(f'Unsupported key type {type(key)}')
 
     async def _do(self, event):
         if event is _termination_obj:
@@ -52,21 +74,33 @@ class SampleWindow(Flow):
                 await self._do_downstream(self._last_event)
             return await self._do_downstream(_termination_obj)
         else:
-            self._count += 1
+            key = self._extract_key(event)
+
+            if key is not None:
+                if key not in self._per_key_count:
+                    self._per_key_count[key] = 1
+                else:
+                    self._per_key_count[key] += 1
+                count = self._per_key_count[key]
+            else:
+                self._count += 1
+                count = self._count
 
             if self._emit_before_termination:
                 self._last_event = event
 
-            if self._should_emit():
+            if count == self._window_size:
+                if key is not None:
+                    self._per_key_count[key] = 0
+                else:
+                    self._count = 0
+            if self._should_emit(count):
                 self._last_event = None
                 await self._do_downstream(event)
 
-            if self._count == self._window_size:
-                self._count = 0
-
-    def _should_emit(self):
-        if self._emit_period == EmitPeriod.FIRST and self._count == 1:
+    def _should_emit(self, count):
+        if self._emit_period == EmitPeriod.FIRST and count == 1:
             return True
-        elif self._emit_period == EmitPeriod.LAST and self._count == self._window_size:
+        elif self._emit_period == EmitPeriod.LAST and count == self._window_size:
             return True
         return False

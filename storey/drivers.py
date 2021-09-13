@@ -169,6 +169,7 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
 
     async def _fetch_state_by_key(self, aggr_item, container, table_path, key):
         attributes_to_get = self._get_time_attributes_from_aggregations(aggr_item)
+        key = str(key)
         get_item_response = await self._v3io_client.kv.get(container, table_path, key, attribute_names=attributes_to_get,
                                                            raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
         if get_item_response.status_code == 200:
@@ -376,6 +377,8 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
     # }
     async def _load_aggregates_by_key(self, container, table_path, key):
         self._lazy_init()
+
+        key = str(key)
 
         response = await self._v3io_client.kv.get(container, table_path, key, raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
         if response.status_code == 404:
@@ -690,6 +693,7 @@ class RedisDriver(Driver):
         return aggregation attributes or associated time values -- just static
         data, AKA "additional data."
         """
+        import ipdb; ipdb.set_trace()
         redis_key_prefix = self.make_key(container, table_path, key)
         static_key = self._static_data_key(redis_key_prefix)
         if attributes == "*":

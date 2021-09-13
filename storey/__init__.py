@@ -1,4 +1,4 @@
-__version__ = 'unknown'
+__version__ = 'unstable'
 
 # Importing supported filesystems explicitly so that they will get registered as an fsspec filesystem
 import v3iofs  # noqa: F401
@@ -14,7 +14,7 @@ from .drivers import (  # noqa: F401
 )
 from .dtypes import (  # noqa: F401
     Event, FieldAggregator, SlidingWindows, FixedWindows, EmissionType, EmitPolicy, EmitAfterPeriod, EmitAfterWindow, EmitAfterMaxEvent,
-    EmitAfterDelay, EmitEveryEvent, LateDataHandling
+    EmitAfterDelay, EmitEveryEvent, LateDataHandling, FixedWindowType
 )
 from .flow import (  # noqa: F401
     Filter, FlatMap, Flow, FlowError, JoinWithV3IOTable, SendToHttp, JoinWithTable, Map, Extend, Reduce, Batch,

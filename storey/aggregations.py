@@ -6,7 +6,7 @@ from typing import Optional, Union, Callable, List, Dict
 import pandas as pd
 
 from .dtypes import EmitEveryEvent, FixedWindows, SlidingWindows, EmitAfterPeriod, EmitAfterWindow, EmitAfterMaxEvent, \
-    _dict_to_emit_policy, FieldAggregator, EmitPolicy
+    _dict_to_emit_policy, FieldAggregator, EmitPolicy, FixedWindowType
 from .table import Table
 from .flow import Flow, _termination_obj, Event
 from .utils import stringify_key
@@ -233,11 +233,13 @@ class QueryByKey(AggregateByKey):
      Defaults to the key in the event's metadata. (Optional). Can be list of keys
     :param augmentation_fn: Function that augments the features into the event's body. Defaults to updating a dict. (Optional)
     :param aliases: Dictionary specifying aliases to the enriched columns, of the format `{'col_name': 'new_col_name'}`. (Optional)
+    :param options: Enum flags specifying query options. (Optional)
     """
 
     def __init__(self, features: List[str], table: Union[Table, str], key: Union[str, List[str], Callable[[Event], object], None] = None,
                  augmentation_fn: Optional[Callable[[Event, Dict[str, object]], Event]] = None,
-                 aliases: Optional[Dict[str, str]] = None, **kwargs):
+                 aliases: Optional[Dict[str, str]] = None,
+                 fixed_window_type: Optional[FixedWindowType] = FixedWindowType.CurrentOpenWindow, **kwargs):
         self._aggrs = []
         self._enrich_cols = []
         resolved_aggrs = {}
@@ -253,10 +255,15 @@ class QueryByKey(AggregateByKey):
         for name, windows in resolved_aggrs.items():
             feature, aggr = name.rsplit('_', 1)
             # setting as SlidingWindow temporarily until actual window type will be read from schema
-            self._aggrs.append(FieldAggregator(name=feature, field=None, aggr=[aggr], windows=SlidingWindows(windows, '10m')))
-        AggregateByKey.__init__(self, self._aggrs, table, key, augmentation_fn=augmentation_fn,
+            self._aggrs.append(FieldAggregator(name=feature, field=None, aggr=[aggr], windows=SlidingWindows(windows)))
+        if isinstance(table, Table):
+            other_table = table._clone() if table._aggregates is not None else table
+        else:
+            other_table = table   # str - pass table string along with the context object
+        AggregateByKey.__init__(self, self._aggrs, other_table, key, augmentation_fn=augmentation_fn,
                                 enrich_with=self._enrich_cols, aliases=aliases, use_windows_from_schema=True, **kwargs)
         self._table._aggregations_read_only = True
+        self._table.fixed_window_type = fixed_window_type
 
     async def _do(self, event):
         if event == _termination_obj:
@@ -268,7 +275,7 @@ class QueryByKey(AggregateByKey):
         if self.key_extractor:
             if element:
                 key = self.key_extractor(element)
-            if key is None or element is None:
+            if key is None or key == [None] or element is None:
                 event.body = None
                 await self._do_downstream(event)
                 return

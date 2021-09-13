@@ -1,9 +1,11 @@
 import asyncio
 import sys
 import random as rand
+import os
 
 from .integration_test_utils import setup_teardown_test, _generate_table_name, V3ioHeaders, V3ioError
-from storey import build_flow, CSVSource, CSVTarget, SyncEmitSource, Reduce, Map, FlatMap, AsyncEmitSource, ParquetTarget, ParquetSource, DataframeSource
+from storey import build_flow, CSVSource, CSVTarget, SyncEmitSource, Reduce, Map, FlatMap, AsyncEmitSource, ParquetTarget, ParquetSource, \
+    DataframeSource, ReduceToDataFrame
 import pandas as pd
 import aiohttp
 import pytest
@@ -89,7 +91,7 @@ def test_csv_reader_from_v3io_error_on_file_not_found():
 
 
 async def async_test_write_csv_to_v3io(v3io_teardown_csv):
-    controller = await build_flow([
+    controller = build_flow([
         AsyncEmitSource(),
         CSVTarget(f'v3io:///{v3io_teardown_csv}', columns=['n', 'n*10'], header=True)
     ]).run()
@@ -203,12 +205,16 @@ def test_write_to_parquet_to_v3io(setup_teardown_test):
     for i in range(10):
         controller.emit([i, f'this is {i}'])
         expected.append([i, f'this is {i}'])
-    expected = pd.DataFrame(expected, columns=columns, dtype='int32')
+    expected_in_pyarrow1 = pd.DataFrame(expected, columns=columns)
+    expected_in_pyarrow3 = expected_in_pyarrow1.copy()
+    expected_in_pyarrow1['my_int'] = expected_in_pyarrow1['my_int'].astype('int32')
+    expected_in_pyarrow3['my_int'] = expected_in_pyarrow3['my_int'].astype('category')
+
     controller.terminate()
     controller.await_termination()
 
     read_back_df = pd.read_parquet(out_dir, columns=columns)
-    assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+    assert read_back_df.equals(expected_in_pyarrow1) or read_back_df.equals(expected_in_pyarrow3)
 
 
 def test_write_to_parquet_to_v3io_single_file_on_termination(setup_teardown_test):
@@ -229,6 +235,52 @@ def test_write_to_parquet_to_v3io_single_file_on_termination(setup_teardown_test
 
     read_back_df = pd.read_parquet(out_file, columns=columns)
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+
+
+# ML-775
+def test_write_to_parquet_key_hash_partitioning(setup_teardown_test):
+    out_dir = f'v3io:///{setup_teardown_test}/test_write_to_parquet_default_partitioning{uuid.uuid4().hex}/'
+    controller = build_flow([
+        SyncEmitSource(key_field=1),
+        ParquetTarget(out_dir, columns=['my_int', 'my_string'], partition_cols=[('$key', 4)])
+    ]).run()
+
+    expected = []
+    expected_buckets = [3, 0, 1, 3, 0, 3, 1, 1, 1, 2]
+    for i in range(10):
+        controller.emit([i, f'this is {i}'])
+        expected.append([i, f'this is {i}', expected_buckets[i]])
+    expected = pd.DataFrame(expected, columns=['my_int', 'my_string', 'hash4_key'])
+    controller.terminate()
+    controller.await_termination()
+
+    read_back_df = pd.read_parquet(out_dir)
+    read_back_df['hash4_key'] = read_back_df['hash4_key'].astype('int64')
+    read_back_df.sort_values('my_int', inplace=True)
+    read_back_df.reset_index(inplace=True, drop=True)
+    assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+
+
+# ML-701
+def test_write_to_parquet_to_v3io_force_string_to_timestamp(setup_teardown_test):
+    out_file = f'v3io:///{setup_teardown_test}/out.parquet'
+    columns = ['time']
+    controller = build_flow([
+        SyncEmitSource(),
+        ParquetTarget(out_file, columns=[('time', 'datetime')])
+    ]).run()
+
+    expected = []
+    for i in range(10):
+        t = '2021-03-02T19:45:00'
+        controller.emit([t])
+        expected.append([datetime.datetime.fromisoformat(t)])
+    expected = pd.DataFrame(expected, columns=columns)
+    controller.terminate()
+    controller.await_termination()
+
+    read_back_df = pd.read_parquet(out_file, columns=columns)
+    assert read_back_df.equals(expected)
 
 
 def test_write_to_parquet_to_v3io_with_indices(setup_teardown_test):
@@ -252,6 +304,38 @@ def test_write_to_parquet_to_v3io_with_indices(setup_teardown_test):
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
 
 
+# ML-602
+def test_write_to_parquet_to_v3io_with_nulls(setup_teardown_test):
+    out_dir = f'v3io:///{setup_teardown_test}/test_write_to_parquet_to_v3io_with_nulls{uuid.uuid4().hex}/'
+    flow = build_flow([
+        SyncEmitSource(),
+        ParquetTarget(out_dir, columns=[('key=$key', 'str'), ('my_int', 'int'), ('my_string', 'str'), ('my_datetime', 'datetime')],
+                      partition_cols=[], max_events=1)
+    ])
+
+    expected = []
+    my_time = datetime.datetime(2021, 1, 1, tzinfo=datetime.timezone(datetime.timedelta(hours=5)))
+
+    controller = flow.run()
+    controller.emit({'my_int': 0, 'my_string': 'hello', 'my_datetime': my_time}, key=f'key1')
+    # TODO: Expect correct time zone. Can be done in _Writer, but requires fix for ARROW-10511, which is pyarrow>=3.
+    expected.append(['key1', 0, 'hello', my_time.astimezone(datetime.timezone(datetime.timedelta())).replace(tzinfo=None)])
+    controller.terminate()
+    controller.await_termination()
+
+    controller = flow.run()
+    controller.emit({}, key=f'key2')
+    expected.append(['key2', None, None, None])
+    controller.terminate()
+    controller.await_termination()
+
+    read_back_df = pd.read_parquet(out_dir)
+    read_back_df.sort_values('key', inplace=True)
+    read_back_df.reset_index(inplace=True, drop=True)
+    expected = pd.DataFrame(expected, columns=['key', 'my_int', 'my_string', 'my_datetime'])
+    assert read_back_df.compare(expected).empty
+
+
 def append_and_return(lst, x):
     lst.append(x)
     return lst
@@ -266,7 +350,7 @@ def test_filter_before_after_non_partitioned(setup_teardown_test):
                       columns=columns)
     df.set_index('my_string')
 
-    out_file = f'v3io:///{setup_teardown_test}/'
+    out_file = f'v3io:///{setup_teardown_test}/before_after_non_partioned/'
     controller = build_flow([
         DataframeSource(df),
         ParquetTarget(out_file, columns=columns, partition_cols=[]),
@@ -294,7 +378,6 @@ def test_filter_before_after_partitioned_random(setup_teardown_test):
 
     seed_value = rand.randrange(sys.maxsize)
     print('Seed value:', seed_value)
-
     rand.seed(seed_value)
 
     random_second = rand.randrange(int(delta.total_seconds()))
@@ -329,7 +412,7 @@ def test_filter_before_after_partitioned_random(setup_teardown_test):
     partition_columns = all_partition_columns[:num_part_columns]
     print("partitioned by " + str(partition_columns))
 
-    out_file = f'v3io:///{setup_teardown_test}/'
+    out_file = f'v3io:///{setup_teardown_test}/random/'
     controller = build_flow([
         DataframeSource(df, time_field='datetime'),
         ParquetTarget(out_file, columns=['string', 'datetime'], partition_cols=partition_columns),
@@ -365,7 +448,7 @@ def test_filter_before_after_partitioned_inner_other_partition(setup_teardown_te
                       columns=columns)
     df.set_index('my_string')
 
-    out_file = f'v3io:///{setup_teardown_test}/'
+    out_file = f'v3io:///{setup_teardown_test}/inner_other_partition/'
     controller = build_flow([
         DataframeSource(df, time_field='my_time'),
         ParquetTarget(out_file, columns=columns, partition_cols=['$year', '$month', '$day', '$hour', 'my_city']),
@@ -376,7 +459,7 @@ def test_filter_before_after_partitioned_inner_other_partition(setup_teardown_te
     after = pd.Timestamp('2019-07-01 00:00:00')
 
     controller = build_flow([
-        ParquetSource(out_file, end_filter=before, start_filter=after, filter_column='my_time'),
+        ParquetSource(out_file, end_filter=before, start_filter=after, filter_column='my_time', columns=columns),
         Reduce([], append_and_return)
     ]).run()
     read_back_result = controller.await_termination()
@@ -390,31 +473,87 @@ def test_filter_before_after_partitioned_inner_other_partition(setup_teardown_te
 def test_filter_before_after_partitioned_outer_other_partition(setup_teardown_test):
     columns = ['my_string', 'my_time', 'my_city']
 
-    df = pd.DataFrame([['hello', pd.Timestamp('2020-12-31 15:05:00'), 'tel aviv'],
-                       ['world', pd.Timestamp('2020-12-30 09:00:00'), 'haifa'],
+    df = pd.DataFrame([['shining', pd.Timestamp('2020-12-31 14:00:00'), 'ramat gan'],
+                       ['hello', pd.Timestamp('2020-12-30 08:53:00'), 'tel aviv'],
+                       ['beautiful', pd.Timestamp('2020-12-30 09:00:00'), 'haifa'],
                        ['sun', pd.Timestamp('2020-12-29 09:00:00'), 'tel aviv'],
-                       ['is', pd.Timestamp('2020-12-30 15:00:45'), 'hod hasharon'],
-                       ['shining', pd.Timestamp('2020-12-31 13:00:56'), 'hod hasharon']],
+                       ['world', pd.Timestamp('2020-12-30 15:00:45'), 'hod hasharon'],
+                       ['is', pd.Timestamp('2020-12-31 13:00:56'), 'hod hasharon']],
                       columns=columns)
     df.set_index('my_string')
 
-    out_file = f'v3io:///{setup_teardown_test}/'
+    out_file = f'v3io:///{setup_teardown_test}/outer_other_partition/'
     controller = build_flow([
         DataframeSource(df, time_field='my_time'),
         ParquetTarget(out_file, columns=columns, partition_cols=['my_city', '$year', '$month', '$day', '$hour']),
     ]).run()
     controller.await_termination()
 
-    before = pd.Timestamp('2020-12-31 14:00:00')
-    after = pd.Timestamp('2020-12-30 08:53:00')
+    start = pd.Timestamp('2020-12-30 08:53:00')
+    end = pd.Timestamp('2020-12-31 14:00:00')
 
     controller = build_flow([
-        ParquetSource(out_file, end_filter=before, start_filter=after, filter_column='my_time'),
+        ParquetSource(out_file, start_filter=start, end_filter=end, filter_column='my_time', columns=columns),
         Reduce([], append_and_return)
     ]).run()
     read_back_result = controller.await_termination()
-    expected = [{'my_string': 'world', 'my_time': pd.Timestamp('2020-12-30 09:00:00'), 'my_city': 'haifa'},
-                {'my_string': 'is', 'my_time': pd.Timestamp('2020-12-30 15:00:45'), 'my_city': 'hod hasharon'},
-                {'my_string': 'shining', 'my_time': pd.Timestamp('2020-12-31 13:00:56'), 'my_city': 'hod hasharon'}]
+    expected = [{'my_string': 'beautiful', 'my_time': pd.Timestamp('2020-12-30 09:00:00'), 'my_city': 'haifa'},
+                {'my_string': 'world', 'my_time': pd.Timestamp('2020-12-30 15:00:45'), 'my_city': 'hod hasharon'},
+                {'my_string': 'is', 'my_time': pd.Timestamp('2020-12-31 13:00:56'), 'my_city': 'hod hasharon'},
+                {'my_string': 'shining', 'my_time': pd.Timestamp('2020-12-31 14:00:00'), 'my_city': 'ramat gan'}]
 
     assert read_back_result == expected, f"{read_back_result}\n!=\n{expected}"
+
+
+def test_filter_by_time_non_partioned(setup_teardown_test):
+    columns = ['my_string', 'my_time', 'my_city']
+
+    df = pd.DataFrame([['dina', pd.Timestamp('2019-07-01 00:00:00'), 'tel aviv'],
+                       ['uri', pd.Timestamp('2018-12-30 09:00:00'), 'tel aviv'],
+                       ['katya', pd.Timestamp('2020-12-31 14:00:00'), 'hod hasharon']],
+                      columns=columns)
+    df.set_index('my_string')
+    path = '/tmp/test_filter_by_time_non_partioned.parquet'
+    df.to_parquet(path)
+    start = pd.Timestamp('2019-07-01 00:00:00')
+    end = pd.Timestamp('2020-12-31 14:00:00')
+
+    controller = build_flow([
+        ParquetSource(path, end_filter=end, start_filter=start, filter_column='my_time'),
+        Reduce([], append_and_return)
+    ]).run()
+
+    read_back_result = controller.await_termination()
+
+    expected = [{'my_string': 'katya', 'my_time': pd.Timestamp('2020-12-31 14:00:00'), 'my_city': 'hod hasharon'}]
+
+    try:
+        assert read_back_result == expected, f"{read_back_result}\n!=\n{expected}"
+    finally:
+        os.remove(path)
+
+
+def test_empty_filter_result(setup_teardown_test):
+    columns = ['my_string', 'my_time', 'my_city']
+
+    df = pd.DataFrame([['dina', pd.Timestamp('2019-07-01 00:00:00'), 'tel aviv'],
+                       ['uri', pd.Timestamp('2018-12-30 09:00:00'), 'tel aviv'],
+                       ['katya', pd.Timestamp('2020-12-31 14:00:00'), 'hod hasharon']],
+                      columns=columns)
+    df.set_index('my_string')
+    path = '/tmp/test_filter_by_time_non_partioned.parquet'
+    df.to_parquet(path)
+    start = pd.Timestamp('2022-07-01 00:00:00')
+    end = pd.Timestamp('2022-12-31 14:00:00')
+
+    controller = build_flow([
+        ParquetSource(path, end_filter=end, start_filter=start, filter_column='my_time'),
+        ReduceToDataFrame(index=["my_string"], insert_key_column_as=["my_string"])
+    ]).run()
+
+    read_back_result = controller.await_termination()
+
+    try:
+        pd.testing.assert_frame_equal(read_back_result, pd.DataFrame({}))
+    finally:
+        os.remove(path)

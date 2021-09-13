@@ -15,7 +15,7 @@ import pytz
 
 from .dtypes import _termination_obj, Event, legal_time_units
 from .flow import Flow, Complete
-from .utils import url_to_file_system, drop_reserved_columns, find_filters
+from .utils import url_to_file_system, find_filters
 
 
 class AwaitableResult:
@@ -79,9 +79,11 @@ class FlowControllerBase:
         element_is_event = hasattr(element, 'id')
         if element_is_event:
             body = element.body
+            if not hasattr(element, 'time') and hasattr(element, 'timestamp'):
+                element.time = element.timestamp
 
         if not key and self._key_field:
-            if isinstance(self._key_field, str):
+            if isinstance(self._key_field, str) or isinstance(self._key_field, int):
                 key = body[self._key_field]
             else:
                 key = []
@@ -174,8 +176,8 @@ class SyncEmitSource(Flow):
     """
     _legal_first_step = True
 
-    def __init__(self, buffer_size: Optional[int] = None, key_field: Union[list, str, None] = None, time_field: Optional[str] = None,
-                 time_format: Optional[str] = None, **kwargs):
+    def __init__(self, buffer_size: Optional[int] = None, key_field: Union[list, str, int, None] = None,
+                 time_field: Union[str, int, None] = None, time_format: Optional[str] = None, **kwargs):
         if buffer_size is None:
             buffer_size = 1024
         else:
@@ -393,7 +395,7 @@ class AsyncEmitSource(Flow):
         if event is not _termination_obj:
             self._raise_on_error()
 
-    async def run(self):
+    def run(self):
         """Starts the flow"""
         self._closeables = super().run()
         loop_task = asyncio.get_running_loop().create_task(self._run_loop())
@@ -474,13 +476,15 @@ class CSVSource(_IterableSource):
         datetime.fromisoformat().
     :parameter type_inference: Whether to infer data types from the data (when True), or read all fields in as strings (when False).
         Defaults to True.
+    :parameter parse_dates: list of columns (names or integers) that will be attempted to parse as date column
 
     for additional params, see documentation of  :class:`~storey.flow.Flow`
     """
 
     def __init__(self, paths: Union[List[str], str], header: bool = False, build_dict: bool = False,
                  key_field: Union[int, str, List[int], List[str], None] = None, time_field: Union[int, str, None] = None,
-                 timestamp_format: Optional[str] = None, type_inference: bool = True, **kwargs):
+                 timestamp_format: Optional[str] = None, type_inference: bool = True,
+                 parse_dates: Optional[Union[List[int], List[str]]] = None, **kwargs):
         kwargs['paths'] = paths
         kwargs['header'] = header
         kwargs['build_dict'] = build_dict
@@ -502,6 +506,17 @@ class CSVSource(_IterableSource):
         self._timestamp_format = timestamp_format
         self._type_inference = type_inference
         self._storage_options = kwargs.get('storage_options')
+        self._parse_dates = parse_dates
+        self._dates_indices = []
+        if isinstance(parse_dates, List):
+            if self._with_header and any([isinstance(f, int) for f in self._parse_dates]):
+                raise ValueError('parse_dates can be list of int only when there is no header')
+            if not self._with_header and all([isinstance(f, int) for f in self._parse_dates]):
+                self._dates_indices = parse_dates
+        if isinstance(self._time_field, int):
+            if self._with_header:
+                raise ValueError('time field can be int only when there is no header')
+            self._dates_indices.append(self._time_field)
 
         if not header and isinstance(key_field, str):
             raise ValueError('key_field can only be set to an integer when with_header is false')
@@ -517,12 +532,6 @@ class CSVSource(_IterableSource):
         lowercase = value.lower()
         if lowercase == 'true' or lowercase == 'false':
             return 'b'
-
-        try:
-            self._datetime_from_timestamp(value)
-            return 't'
-        except ValueError:
-            pass
 
         try:
             int(value)
@@ -544,6 +553,8 @@ class CSVSource(_IterableSource):
     def _parse_field(self, field, index):
         typ = self._types[index]
         if typ == 's':
+            if field == '':
+                return None
             return field
         if typ == 'f':
             return float(field) if field != '' else math.nan
@@ -586,15 +597,21 @@ class CSVSource(_IterableSource):
                         field_name_to_index = {}
                         for i in range(len(header)):
                             field_name_to_index[header[i]] = i
+                            if header[i] == self._time_field or (self._parse_dates and header[i] in self._parse_dates):
+                                self._dates_indices.append(i)
                     for line in f:
+                        create_event = True
                         parsed_line = next(csv.reader([line]))
                         if self._type_inference:
                             if not self._types:
                                 for index, field in enumerate(parsed_line):
-                                    type_field = self._infer_type(field)
-                                    self._types.append(type_field)
-                                    if type_field == 'n':
-                                        self._none_columns.add(index)
+                                    if index in self._dates_indices:
+                                        self._types.append('t')
+                                    else:
+                                        type_field = self._infer_type(field)
+                                        self._types.append(type_field)
+                                        if type_field == 'n':
+                                            self._none_columns.add(index)
                             else:
                                 for index in copy.copy(self._none_columns):
                                     type_field = self._infer_type(parsed_line[index])
@@ -619,20 +636,35 @@ class CSVSource(_IterableSource):
                                 for single_key_field in self._key_field:
                                     if self._with_header and isinstance(single_key_field, str):
                                         single_key_field = field_name_to_index[single_key_field]
+                                    if parsed_line[single_key_field] is None:
+                                        create_event = False
+                                        break
                                     key.append(parsed_line[single_key_field])
                             else:
                                 key_field = self._key_field
                                 if self._with_header and isinstance(key_field, str):
                                     key_field = field_name_to_index[key_field]
                                 key = parsed_line[key_field]
-                        if self._time_field:
-                            time_field = self._time_field
-                            if self._with_header and isinstance(time_field, str):
-                                time_field = field_name_to_index[time_field]
-                            time_as_datetime = parsed_line[time_field]
+                                if key is None:
+                                    create_event = False
+                        if create_event:
+                            if self._time_field:
+                                time_field = self._time_field
+                                if self._with_header and isinstance(time_field, str):
+                                    time_field = field_name_to_index[time_field]
+                                time_as_datetime = parsed_line[time_field]
+                            else:
+                                time_as_datetime = datetime.now()
+                            event = Event(element, key=key, time=time_as_datetime)
+                            self._event_buffer.put(event)
                         else:
-                            time_as_datetime = datetime.now()
-                        self._event_buffer.put(Event(element, key=key, time=time_as_datetime))
+                            if self.context:
+                                self.context.logger.error(
+                                    f"For {parsed_line} value of key {key_field} is None"
+                                )
+                if self._with_header:
+                    self._dates_indices = []
+
         except BaseException as ex:
             self._event_buffer.put(ex)
         self._event_buffer.put(_termination_obj)
@@ -690,6 +722,7 @@ class DataframeSource(_IterableSource):
     async def _run_loop(self):
         for df in self._dfs:
             for namedtuple in df.itertuples():
+                create_event = True
                 body = namedtuple._asdict()
                 index = body.pop('Index')
                 if len(df.index.names) > 1:
@@ -703,17 +736,28 @@ class DataframeSource(_IterableSource):
                     if isinstance(self._key_field, list):
                         key = []
                         for key_field in self._key_field:
+                            if key_field not in body or body[key_field] is None:
+                                create_event = False
+                                break
                             key.append(body[key_field])
                     else:
                         key = body[self._key_field]
-                time = None
-                if self._time_field:
-                    time = body[self._time_field]
-                id = None
-                if self._id_field:
-                    id = body[self._id_field]
-                event = Event(body, key=key, time=time, id=id)
-                await self._do_downstream(event)
+                        if key is None:
+                            create_event = False
+                if create_event:
+                    time = None
+                    if self._time_field:
+                        time = body[self._time_field]
+                    id = None
+                    if self._id_field:
+                        id = body[self._id_field]
+                    event = Event(body, key=key, time=time, id=id)
+                    await self._do_downstream(event)
+                else:
+                    if self.context:
+                        self.context.logger.error(
+                            f"For {body} value of key {key_field} is None"
+                        )
         return await self._do_downstream(_termination_obj)
 
 
@@ -767,5 +811,4 @@ class ParquetSource(DataframeSource):
                 df = self._read_filtered_parquet(path)
             else:
                 df = pandas.read_parquet(path, columns=self._columns, storage_options=self._storage_options)
-            drop_reserved_columns(df)
             self._dfs.append(df)

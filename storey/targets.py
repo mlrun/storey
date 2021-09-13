@@ -1,6 +1,8 @@
 import asyncio
 import copy
 import csv
+import datetime
+import hashlib
 import json
 import os
 import queue
@@ -10,6 +12,7 @@ from typing import Optional, Union, List, Callable, Tuple
 from urllib.parse import urlparse
 
 import pandas as pd
+import pyarrow
 import v3io_frames as frames
 
 from . import Driver
@@ -20,8 +23,8 @@ from .utils import url_to_file_system, stringify_key
 
 
 class _Writer:
-    def __init__(self, columns: Union[str, List[str], None], infer_columns_from_data: Optional[bool],
-                 index_cols: Union[str, List[str], None] = None, partition_cols: Union[str, List[str], None] = None,
+    def __init__(self, columns: Union[str, List[Union[str, Tuple[str, str]]], None], infer_columns_from_data: Optional[bool],
+                 index_cols: Union[str, List[Union[str, Tuple[str, str]]], None] = None, partition_cols: Union[str, List[str], None] = None,
                  retain_dict: bool = False, storage_options: Optional[dict] = None):
         if infer_columns_from_data is None:
             infer_columns_from_data = not bool(columns)
@@ -55,8 +58,45 @@ class _Writer:
                     result.append(col)
             return result
 
-        self._initial_columns = parse_notation(columns, self._metadata_columns, self._rename_columns)
-        self._initial_index_cols = parse_notation(index_cols, self._metadata_index_columns, self._rename_index_columns)
+        def unzip_cols(columns):
+            column_types = []
+            if columns and isinstance(columns[0], Tuple):
+                columns_no_types = []
+                for column in columns:
+                    name, column_type = column
+                    columns_no_types.append(name)
+                    column_types.append(column_type)
+            else:
+                columns_no_types = columns
+            return columns_no_types, column_types
+
+        columns_no_types, column_types = unzip_cols(columns)
+        index_cols_no_types, index_cols_types = unzip_cols(index_cols)
+
+        self._initial_columns = parse_notation(columns_no_types, self._metadata_columns, self._rename_columns)
+        self._initial_index_cols = parse_notation(index_cols_no_types, self._metadata_index_columns, self._rename_index_columns)
+        self._column_types = column_types
+        self._index_column_types = index_cols_types
+
+        if column_types:
+            fields = []
+            for i in range(len(index_cols_types)):
+                index_column = index_cols_no_types[i]
+                type_name = index_cols_types[i]
+                typ = self._type_string_to_pyarrow_type[type_name]
+                field = pyarrow.field(index_column, typ, True)
+                fields.append(field)
+            for i in range(len(column_types)):
+                type_name = column_types[i]
+                typ = self._type_string_to_pyarrow_type[type_name]
+                name = self._initial_columns[i]
+                if partition_cols and name in partition_cols:
+                    continue
+                field = pyarrow.field(name, typ, True)
+                fields.append(field)
+            self._schema = pyarrow.schema(fields)
+        else:
+            self._schema = None
 
         if isinstance(partition_cols, str):
             partition_cols = [partition_cols]
@@ -68,6 +108,16 @@ class _Writer:
                 raise ValueError(f'The following columns are used both for partitioning and indexing, which is not allowed: '
                                  f'{list(cols_both_partition_and_index)}')
 
+    _type_string_to_pyarrow_type = {
+        'str': pyarrow.string(),
+        'int32': pyarrow.int32(),
+        'int': pyarrow.int64(),
+        'float32': pyarrow.float32(),
+        'float': pyarrow.float64(),
+        'bool': pyarrow.bool_(),
+        'datetime': pyarrow.timestamp('ns'),
+    }
+
     def _init(self):
         self._columns = copy.copy(self._initial_columns)
         self._index_cols = copy.copy(self._initial_index_cols)
@@ -78,14 +128,18 @@ class _Writer:
         self._partition_col_indices = []
         self._non_partition_columns = self._columns
 
+        self._non_partition_column_types = self._column_types
         if self._partition_cols is not None and self._columns is not None:
             self._non_partition_columns = []
+            self._non_partition_column_types = []
             for index, col in enumerate(self._columns):
                 if col in self._partition_cols:
                     self._partition_col_to_index[col] = index
                     self._partition_col_indices.append(index)
                 else:
                     self._non_partition_columns.append(col)
+                    if self._column_types:
+                        self._non_partition_column_types.append(self._column_types[index])
 
     def _path_from_event(self, event):
         res = '/'
@@ -117,25 +171,25 @@ class _Writer:
                 else:
                     val = event.body[col]
 
-            is_meta = False
             if col.startswith('$'):
                 col = col[1:]
-                is_meta = True
 
             if hash_into:
-                col = f'igzpart_hash{hash_into}_{col}'
+                col = f'hash{hash_into}_{col}'
                 if isinstance(val, list):
                     val = '.'.join(map(str, val))
-                val = hash(val) / hash_into
-            elif is_meta:
-                col = f'igzpart_{col}'
+                else:
+                    val = str(val)
+                sha1 = hashlib.sha1()
+                sha1.update(val.encode('utf8'))
+                val = int(sha1.hexdigest(), 16) % hash_into
 
             res += f'{col}={val}/'
         return res
 
-    def _get_column_data_from_dict(self, new_data, event, columns, metadata_columns, rename_columns):
+    def _get_column_data_from_dict(self, new_data, event, columns, columns_types, metadata_columns, rename_columns):
         if columns:
-            for column in columns:
+            for index, column in enumerate(columns):
                 if column in metadata_columns:
                     metadata_attr = metadata_columns[column]
                     new_value = getattr(event, metadata_attr)
@@ -146,6 +200,14 @@ class _Writer:
 
                 if new_value is None and not self._write_missing_fields:
                     continue
+
+                if columns_types:
+                    column_type = columns_types[index]
+                    if column_type == 'datetime':
+                        if isinstance(new_value, str):
+                            new_value = datetime.datetime.fromisoformat(new_value)
+                        elif isinstance(new_value, int):
+                            new_value = datetime.datetime.utcfromtimestamp(new_value)
 
                 if isinstance(new_data, list):
                     new_data.append(new_value)
@@ -174,8 +236,10 @@ class _Writer:
                 self._infer_columns_from_data = False
                 self._init_partition_col_indices()
             data = {} if self._retain_dict else []
-            self._get_column_data_from_dict(data, event, self._index_cols, self._metadata_index_columns, self._rename_index_columns)
-            self._get_column_data_from_dict(data, event, self._non_partition_columns, self._metadata_columns, self._rename_columns)
+            self._get_column_data_from_dict(data, event, self._index_cols, self._index_column_types, self._metadata_index_columns,
+                                            self._rename_index_columns)
+            self._get_column_data_from_dict(data, event, self._non_partition_columns, self._non_partition_column_types,
+                                            self._metadata_columns, self._rename_columns)
         elif isinstance(data, list):
             for index in self._partition_col_indices:
                 del data[index]
@@ -255,7 +319,7 @@ class CSVTarget(_Batching, _Writer):
             got_first_event = False
             fs, file_path = url_to_file_system(self._path, self._storage_options)
             dirname = os.path.dirname(self._path)
-            if dirname:
+            if dirname and not fs.exists(dirname):
                 fs.makedirs(dirname, exist_ok=True)
             with fs.open(file_path, mode='w') as f:
                 csv_writer = csv.writer(f, _V3ioCSVDialect())
@@ -290,7 +354,7 @@ class CSVTarget(_Batching, _Writer):
         asyncio.get_running_loop().run_in_executor(None, lambda: self._data_buffer.put(_termination_obj))
         await self._blocking_io_loop_future
 
-    async def _emit(self, batch, batch_key, batch_time):
+    async def _emit(self, batch, batch_key, batch_time, last_event_time=None):
         if not self._blocking_io_loop_future:
             self._blocking_io_loop_future = asyncio.get_running_loop().run_in_executor(None, self._blocking_io_loop)
 
@@ -308,7 +372,8 @@ class ParquetTarget(_Batching, _Writer):
         to refer to metadata ($key, event_time=$time).If None (default), no index is set.
     :param columns: Fields to be written to parquet. Will be extracted from events when an event is a dictionary
         (lists will be written as is). Use = notation for renaming fields (e.g. write_this=event_field).
-        Use $ notation to refer to metadata ($key, event_time=$time).
+        Use $ notation to refer to metadata ($key, event_time=$time). Can be a list of (name, type) tuples in order to set the
+        schema explicitly, e.g. ('my_field', 'str'). Supported types: str, int32, int, float32, float, bool, datetime.
         Optional. Defaults to None (will be inferred if event is dictionary).
     :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries.
         If True, columns will be inferred from data and used in place of explicit columns list if none was provided, or appended to the
@@ -330,8 +395,9 @@ class ParquetTarget(_Batching, _Writer):
     :type storage_options: dict
     """
 
-    def __init__(self, path: str, index_cols: Union[str, List[str], None] = None, columns: Union[str, List[str], None] = None,
-                 partition_cols: Union[str, List[Union[str, Tuple[(str, int)]]], None] = None,
+    def __init__(self, path: str, index_cols: Union[str, List[str], None] = None,
+                 columns: Union[str, Union[List[str], List[Tuple[str, str]]], None] = None,
+                 partition_cols: Union[str, Union[List[str], List[Tuple[str, int]]], None] = None,
                  infer_columns_from_data: Optional[bool] = None, max_events: Optional[int] = None,
                  flush_after_seconds: Optional[int] = None, **kwargs):
         self._single_file_mode = False
@@ -362,6 +428,7 @@ class ParquetTarget(_Batching, _Writer):
 
         storage_options = kwargs.get('storage_options')
         self._file_system, self._path = url_to_file_system(path, storage_options)
+        self._full_path = path
 
         path_from_event = self._path_from_event if partition_cols else None
 
@@ -370,6 +437,8 @@ class ParquetTarget(_Batching, _Writer):
 
         self._field_extractor = lambda event_body, field_name: event_body.get(field_name)
         self._write_missing_fields = True
+        self._mlrun_callback = kwargs.get('update_last_written')
+        self._last_written_event = None
 
     def _init(self):
         _Batching._init(self)
@@ -378,7 +447,7 @@ class ParquetTarget(_Batching, _Writer):
     def _event_to_batch_entry(self, event):
         return self._event_to_writer_entry(event)
 
-    async def _emit(self, batch, batch_key, batch_time):
+    async def _emit(self, batch, batch_key, batch_time, last_event_time=None):
         df_columns = []
         if self._index_cols:
             df_columns.extend(self._index_cols)
@@ -391,17 +460,29 @@ class ParquetTarget(_Batching, _Writer):
             dir_path = f'{dir_path}{batch_key}'
         else:
             dir_path += '/'
-        if dir_path:
+        if dir_path and not self._file_system.exists(dir_path):
             self._file_system.makedirs(dir_path, exist_ok=True)
         file_path = self._path if self._single_file_mode else f'{dir_path}{uuid.uuid4()}.parquet'
         # Remove nanosecs from timestamp columns & index
         for name, _ in df.items():
-            if pd.core.dtypes.common.is_datetime64_dtype(df[name]):
+            if pd.core.dtypes.common.is_string_dtype(df[name]) and self._schema and \
+                    isinstance(self._schema.field(name).type, pyarrow.TimestampType):
+                df[name] = pd.to_datetime(df[name])
+            elif pd.core.dtypes.common.is_datetime64_dtype(df[name]):
                 df[name] = df[name].astype('datetime64[us]')
-        if pd.core.dtypes.common.is_datetime64_dtype(df.index):
+        if pd.core.dtypes.common.is_datetime64_dtype(df.index) or pd.core.dtypes.common.is_datetime64tz_dtype(df.index):
             df.index = df.index.floor('u')
         with self._file_system.open(file_path, 'wb') as file:
-            df.to_parquet(path=file, index=bool(self._index_cols))
+            kwargs = {}
+            if self._schema is not None:
+                kwargs['schema'] = self._schema
+            df.to_parquet(path=file, index=bool(self._index_cols), **kwargs)
+            if not self._last_written_event or last_event_time > self._last_written_event:
+                self._last_written_event = last_event_time
+
+    async def _terminate(self):
+        if self._mlrun_callback:
+            self._mlrun_callback(self._full_path, self._last_written_event)
 
 
 class TSDBTarget(_Batching, _Writer):
@@ -479,7 +560,7 @@ class TSDBTarget(_Batching, _Writer):
     def _event_to_batch_entry(self, event):
         return self._event_to_writer_entry(event)
 
-    async def _emit(self, batch, batch_key, batch_time):
+    async def _emit(self, batch, batch_key, batch_time, last_event_time=None):
         df_columns = []
         if self._index_cols:
             df_columns.extend(self._index_cols)
@@ -577,8 +658,7 @@ class StreamTarget(Flow, _Writer):
                         req = in_flight_reqs[shard_id]
                         in_flight_reqs[shard_id] = None
                         await self._handle_response(req)
-                        if len(buffers[shard_id]) >= self._batch_size:
-                            self._send_batch(buffers, in_flight_reqs, shard_id)
+                        self._send_batch(buffers, in_flight_reqs, shard_id)
                 event = await self._q.get()
                 if event is _termination_obj:  # handle outstanding batches and in flight requests on termination
                     for req in in_flight_reqs:
@@ -653,8 +733,8 @@ class NoSqlTarget(_Writer, Flow):
     :type storage_options: dict
     """
 
-    def __init__(self, table: Union[Table, str], columns: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None,
-                 **kwargs):
+    def __init__(self, table: Union[Table, str], columns: Optional[List[Union[str, Tuple[str, str]]]] = None,
+                 infer_columns_from_data: Optional[bool] = None, **kwargs):
         kwargs['table'] = table
         if columns:
             kwargs['columns'] = columns

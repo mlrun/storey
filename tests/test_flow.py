@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import math
 import os
 import queue
@@ -10,6 +11,7 @@ import pandas as pd
 import pytest
 import pytz
 from aiohttp import InvalidURL
+from pandas.testing import assert_frame_equal
 
 from storey import build_flow, SyncEmitSource, Map, Filter, FlatMap, Reduce, MapWithState, CSVSource, Complete, \
     AsyncEmitSource, Choice, \
@@ -91,6 +93,29 @@ def test_recover():
     controller.terminate()
     termination_result = controller.await_termination()
     assert termination_result == 54
+
+
+# ML-777
+def test_emit_timeless_event():
+    class TimelessEvent:
+        pass
+
+    controller = build_flow([
+        SyncEmitSource(),
+        ReduceToDataFrame(insert_time_column_as='mytime')
+    ]).run()
+
+    event = TimelessEvent()
+    event.id = 'myevent'
+    event.body = {'salutation': 'hello'}
+    t = datetime(2020, 2, 15, 2, 0)
+    event.timestamp = t
+
+    controller.emit(event)
+    controller.terminate()
+    termination_result = controller.await_termination()
+    expected = pd.DataFrame([['hello', t]], columns=['salutation', 'mytime'])
+    assert termination_result.equals(expected)
 
 
 def test_csv_reader():
@@ -372,7 +397,7 @@ async def async_test_write_parquet_flush(tmpdir):
     mock = MagicMock(return_value=asyncio.get_running_loop().create_task(f()))
     target._emit = mock
 
-    controller = await build_flow([
+    controller = build_flow([
         AsyncEmitSource(),
         target,
     ]).run()
@@ -738,7 +763,7 @@ def test_double_completion():
 
 
 async def async_test_async_double_completion():
-    controller = await build_flow([
+    controller = build_flow([
         AsyncEmitSource(),
         Complete(),
         Complete(),
@@ -779,7 +804,7 @@ async def async_test_async_awaitable_result_error():
     def boom(_):
         raise ValueError('boom')
 
-    controller = await build_flow([
+    controller = build_flow([
         AsyncEmitSource(),
         Map(boom),
         Complete()
@@ -798,7 +823,7 @@ def test_async_awaitable_result_error():
 
 
 async def async_test_async_source():
-    controller = await build_flow([
+    controller = build_flow([
         AsyncEmitSource(),
         Map(lambda x: x + 1, termination_result_fn=lambda _, x: x),
         [
@@ -823,7 +848,7 @@ def test_async_source():
 
 
 async def async_test_error_async_flow():
-    controller = await build_flow([
+    controller = build_flow([
         AsyncEmitSource(),
         Map(lambda x: x + 1),
         Map(RaiseEx(5).raise_ex),
@@ -851,7 +876,7 @@ def test_awaitable_result_error_in_async_downstream():
 
 
 async def async_test_async_awaitable_result_error_in_async_downstream():
-    controller = await build_flow([
+    controller = build_flow([
         AsyncEmitSource(),
         SendToHttp(lambda _: HttpRequest('GET', 'bad_url', ''), lambda _, response: response.status),
         Complete()
@@ -1202,7 +1227,7 @@ def test_batch_with_timeout():
 
 async def async_test_write_csv(tmpdir):
     file_path = f'{tmpdir}/test_write_csv/out.csv'
-    controller = await build_flow([
+    controller = build_flow([
         AsyncEmitSource(),
         CSVTarget(file_path, columns=['n', 'n*10'], header=True)
     ]).run()
@@ -1228,7 +1253,7 @@ async def async_test_write_csv_error(tmpdir):
     file_path = f'{tmpdir}/test_write_csv_error.csv'
 
     write_csv = CSVTarget(file_path)
-    controller = await build_flow([
+    controller = build_flow([
         AsyncEmitSource(),
         write_csv
     ]).run()
@@ -1604,12 +1629,15 @@ def test_write_to_parquet(tmpdir):
     for i in range(10):
         controller.emit([i, f'this is {i}'])
         expected.append([i, f'this is {i}'])
-    expected = pd.DataFrame(expected, columns=columns, dtype='int32')
+    expected_in_pyarrow1 = pd.DataFrame(expected, columns=columns)
+    expected_in_pyarrow3 = expected_in_pyarrow1.copy()
+    expected_in_pyarrow1['my_int'] = expected_in_pyarrow1['my_int'].astype('int32')
+    expected_in_pyarrow3['my_int'] = expected_in_pyarrow3['my_int'].astype('category')
     controller.terminate()
     controller.await_termination()
 
     read_back_df = pd.read_parquet(out_dir, columns=columns)
-    assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+    assert read_back_df.equals(expected_in_pyarrow1) or read_back_df.equals(expected_in_pyarrow3)
 
 
 def test_write_sparse_data_to_parquet(tmpdir):
@@ -1711,9 +1739,9 @@ def test_write_to_parquet_partition_by_date(tmpdir):
     for i in range(10):
         controller.emit([i, f'this is {i}'], event_time=my_time)
         expected.append(['2020-02-15', i, f'this is {i}'])
-    columns = ['igzpart_date', 'my_int', 'my_string']
+    columns = ['date', 'my_int', 'my_string']
     expected = pd.DataFrame(expected, columns=columns, dtype='int64')
-    expected['igzpart_date'] = expected['igzpart_date'].astype("category")
+    expected['date'] = expected['date'].astype("category")
     controller.terminate()
     controller.await_termination()
 
@@ -2108,15 +2136,12 @@ def test_push_error():
         Reduce(0, lambda acc, x: acc + x),
     ]).run()
 
-    try:
-        controller.emit(0)
-        controller.terminate()
-        controller.await_termination()
-        assert False
-    except ATestException:
-        assert context.event.body == 0
-        assert 'raise ATestException' in context.message
-        assert context.source == 'Map'
+    controller.emit(0)
+    controller.terminate()
+    controller.await_termination()
+    assert context.event.body == 0
+    assert 'raise ATestException' in context.message
+    assert context.source == 'Map'
 
 
 def test_metadata_fields():
@@ -2181,7 +2206,7 @@ def test_time_parsed_on_emit():
 
 
 async def async_test_async_metadata_fields():
-    controller = await build_flow([
+    controller = build_flow([
         AsyncEmitSource(key_field='mykey', time_field='mytime'),
         Reduce([], append_and_return, full_event=True)
     ]).run()
@@ -2202,9 +2227,14 @@ def test_async_metadata_fields():
 
 
 def test_uuid():
+    def copy_and_set_body(event):
+        copy_event = copy.copy(event)
+        copy_event.body = copy_event.id
+        return copy_event
+
     controller = build_flow([
         SyncEmitSource(),
-        Map(lambda event: event.copy(body=event.id), full_event=True),
+        Map(copy_and_set_body, full_event=True),
         Reduce([], append_and_return)
     ]).run()
 
@@ -2495,7 +2525,7 @@ def test_csv_reader_with_none_values():
 
     assert len(termination_result) == 2
     assert termination_result[0].key == 'a'
-    assert termination_result[0].body == ['a', True, False, 1, 2.3, datetime(2021, 4, 21, 15, 56, 53, 385444)]
+    assert termination_result[0].body == ['a', True, False, 1, 2.3, '2021-04-21 15:56:53.385444']
     assert termination_result[1].key == 'b'
     assert termination_result[1].body == ['b', True, None, math.nan, math.nan, None]
 
@@ -2560,6 +2590,20 @@ def test_custom_string_time_input():
     assert result.time == datetime(2021, 5, 9, 14, 5, 27, tzinfo=pytz.utc)
 
 
+def test_none_key_is_not_written():
+    data = pd.DataFrame({'first_name': ['moshe', None, 'katya'], 'some_data': [1, 2, 3]})
+    data.set_index(keys=['first_name'], inplace=True)
+
+    controller = build_flow([
+        DataframeSource(data, key_field=['first_name']),
+        Reduce([], append_and_return),
+    ]).run()
+    result = controller.await_termination()
+    expected = [{'first_name': 'moshe', 'some_data': 1}, {'first_name': 'katya', 'some_data': 3}]
+
+    assert result == expected
+
+
 def test_csv_none_value_first_row(tmpdir):
     out_file_par = f'{tmpdir}/test_csv_none_value_first_row_{uuid.uuid4().hex}.parquet'
     out_file_csv = f'{tmpdir}/test_csv_none_value_first_row_{uuid.uuid4().hex}.csv'
@@ -2577,8 +2621,81 @@ def test_csv_none_value_first_row(tmpdir):
     controller.await_termination()
     read_back_df = pd.read_parquet(out_file_par)
 
+    u = pd.read_csv(out_file_csv)
+    u.to_parquet(out_file_par)
+    r2 = pd.read_parquet(out_file_par)
+
     for c in columns:
-        assert read_back_df.dtypes.to_dict()[c] == data.dtypes.to_dict()[c]
+        assert read_back_df.dtypes.to_dict()[c] == r2.dtypes.to_dict()[c]
+
+
+def test_csv_none_value_string(tmpdir):
+    out_file_par = f'{tmpdir}/test_csv_none_value_first_row_{uuid.uuid4().hex}.parquet'
+    out_file_csv = f'{tmpdir}/test_csv_none_value_first_row_{uuid.uuid4().hex}.csv'
+
+    columns = ['first_name', 'str']
+    data = pd.DataFrame([['katya', 'strrrr'], ['dina', None]],
+                        columns=columns)
+    data.to_csv(out_file_csv)
+
+    controller = build_flow([
+        CSVSource(out_file_csv, header=True, key_field='first_name', build_dict=True),
+        ParquetTarget(out_file_par)
+    ]).run()
+
+    controller.await_termination()
+    read_back_df = pd.read_parquet(out_file_par)
+
+    u = pd.read_csv(out_file_csv)
+    u.to_parquet(out_file_par)
+    r2 = pd.read_parquet(out_file_par)
+
+    assert r2['str'].compare(read_back_df['str']).empty
+
+
+def test_csv_multiple_time_columns(tmpdir):
+    try:
+        controller = build_flow([
+            CSVSource('tests/test-multiple-time-columns.csv', header=True, time_field='t1', parse_dates=[2]),
+            Reduce([], append_and_return),
+        ]).run()
+        assert False
+    except ValueError:
+        pass
+
+    # now do it correctly
+    controller = build_flow([
+        CSVSource('tests/test-multiple-time-columns.csv', header=True, time_field='t1', parse_dates=["t2"]),
+        Reduce([], append_and_return),
+    ]).run()
+
+    termination_result = controller.await_termination()
+
+    expected = [['m1', datetime(2020, 6, 27, 10, 23, 8, 420581), 'katya', datetime(2020, 6, 27, 12, 23, 8, 420581)],
+                ['m2', datetime(2021, 6, 27, 10, 23, 8, 420581), 'dina', datetime(2021, 6, 27, 10, 21, 8, 420581)]]
+
+    assert termination_result == expected
+
+
+# ML-846 (inserting multiple columns in pandas 1.3)
+def test_reduce_to_df_multiple_indexes():
+    index_columns = ['szc', 'gca', 'pzi']
+    controller = build_flow([
+        SyncEmitSource(key_field=index_columns),
+        ReduceToDataFrame(index=index_columns, insert_key_column_as=index_columns)
+    ]).run()
+
+    a1 = {'time_stamp': pd.Timestamp('2002-04-01 04:32:34'), 'szc': 0.4, 'itz': False, 'pzi': 2922242126195791, 'gca': 0.05}
+    a2 = {'time_stamp': pd.Timestamp('2002-04-01 15:05:37'), 'szc': 0.5, 'itz': True, 'pzi': -9144607787498184, 'gca': 0.79}
+
+    controller.emit(a1)
+    controller.emit(a2)
+
+    expected = pd.DataFrame([a1, a2], columns=None)
+    expected.set_index(index_columns, inplace=True)
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert_frame_equal(expected, termination_result)
 
 
 def test_redis_driver_write(redis):
@@ -2600,41 +2717,54 @@ def test_redis_driver_join(redis):
     driver = RedisDriver(redis)
     table = Table('test', driver)
 
-    # Create the data we'll join with in Redis.
-    driver.redis.hset("/1", mapping={"name": "1234"})
-
-    controller = build_flow([
-        SyncEmitSource(),
-        JoinWithTable(table, lambda x: x['col2']),
-        Reduce([], lambda acc, x: append_return(acc, x))
-    ]).run()
-
-    controller.emit({'col1': 1, 'col2': '1'}, 'key')
-    controller.emit({'col1': 1, 'col2': '1'}, 'key')
-    controller.terminate()
-    termination_result = controller.await_termination()
-
-    assert termination_result == [
-        {'col1': 1, 'col2': '1', b'name': b'1234'},
-        {'col1': 1, 'col2': '1', b'name': b'1234'}]
-
-
-def test_redis_driver_read(redis):
-    driver = RedisDriver(redis)
-    table = Table('test', driver)
+    table._update_static_attrs(9, {'age': 1, 'color': 'blue9'})
+    table._update_static_attrs(7, {'age': 3, 'color': 'blue7'})
+    table._internal_persist_key('tal', None)
 
     write_controller = build_flow([
         SyncEmitSource(),
-        NoSqlTarget(Table('test', driver)),
+        NoSqlTarget(table),
         Complete()
     ]).run()
-    write_controller.emit({'col1': 0}, 'key').await_result()
+    assert write_controller.emit({'color': 'blue9'}, 9).await_result()
+    assert write_controller.emit({'color': 'blue7'}, 7).await_result()
     write_controller.terminate()
     write_controller.await_termination()
 
     read_controller = build_flow([
         SyncEmitSource(),
-        QueryByKey(['col1'], table, 'key')
+        Filter(lambda x: x['col1'] > 8),
+        JoinWithTable(table, lambda x: x['col1']),
+        Reduce([], lambda acc, x: append_and_return(acc, x))
     ]).run()
+    for i in range(10):
+        read_controller.emit({'col1': i})
+
+    expected = [{'col1': 9, 'age': 1, 'color': 'blue9'}]
     read_controller.terminate()
-    print(read_controller.await_termination())
+    termination_result = read_controller.await_termination()
+    assert termination_result == expected
+
+
+def test_redis_driver_read_write(redis):
+    driver = RedisDriver(redis)
+    table = Table('test', driver)
+
+    write_controller = build_flow([
+        SyncEmitSource(),
+        NoSqlTarget(table),
+        Complete()
+    ]).run()
+    assert write_controller.emit({'col1': 0}, 'key').await_result() == {"col1": 0}
+    write_controller.terminate()
+    write_controller.await_termination()
+
+    read_controller = build_flow([
+        SyncEmitSource(),
+        QueryByKey(['col1'], table),
+        Reduce([], lambda acc, x: append_return(acc, x)),
+    ]).run()
+
+    read_controller.emit({'col2': '1'}, 'key')
+    read_controller.terminate()
+    assert read_controller.await_termination() ==  [{'col1': 0, 'col2': '1'}]

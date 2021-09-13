@@ -1,10 +1,10 @@
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Union, Optional, Callable, List
-from copy import deepcopy
 
-from .utils import parse_duration, bucketPerWindow, get_one_unit_of_duration
 from .aggregation_utils import get_all_raw_aggregates
+from .utils import parse_duration, bucketPerWindow, get_one_unit_of_duration
+import numpy
 
 _termination_obj = object()
 
@@ -30,7 +30,12 @@ class Event:
         self.body = body
         self.key = key
         if time is not None and not isinstance(time, datetime):
-            raise TypeError(f'Event time parameter must be a datetime. Got {type(time)} instead.')
+            if isinstance(time, str):
+                time = datetime.fromisoformat(time)
+            elif isinstance(time, int):
+                time = datetime.utcfromtimestamp(time)
+            else:
+                raise TypeError(f'Event time parameter must be a datetime, string, or int. Got {type(time)} instead.')
         self.time = time or datetime.now(timezone.utc)
         self.id = id
         self.headers = headers
@@ -49,24 +54,6 @@ class Event:
 
     def __str__(self):
         return f'Event(id={self.id}, key={str(self.key)}, time={self.time}, body={self.body})'
-
-    def copy(self, body=None, key=None, time=None, id=None, headers=None, method=None, path=None, content_type=None,
-             awaitable_result=None,
-             deep_copy=False) -> 'Event':
-        if deep_copy and body is None and self.body is not None:
-            body = deepcopy(self.body)
-
-        return Event(
-            body=body or self.body,
-            key=key or self.key,
-            time=time or self.time,
-            id=id or self.id,
-            headers=headers or self.headers,
-            method=method or self.method,
-            path=path or self.path,
-            content_type=content_type or self.content_type,
-            awaitable_result=awaitable_result or self._awaitable_result
-        )
 
 
 class V3ioError(Exception):
@@ -138,13 +125,28 @@ class SlidingWindow(WindowBase):
         return datetime.now().timestamp() * 1000
 
 
+def get_window_optimal_size_millis(windows_tuples):
+    windows_list = []
+    for window_tuple in windows_tuples:
+        windows_list.append(window_tuple[0])
+    return numpy.lcm.reduce(windows_list)
+
+
+def get_window_optimal_period_millis(windows_tuples):
+    windows_list = []
+    for window_tuple in windows_tuples:
+        windows_list.append(window_tuple[0])
+    return numpy.gcd.reduce(windows_list)
+
+
 class WindowsBase:
     def __init__(self, period, windows):
         self.max_window_millis = windows[-1][0]
         self.smallest_window_millis = windows[0][0]
         self.period_millis = period
         self.windows = windows  # list of tuples of the form (3600000, '1h')
-        self.total_number_of_buckets = int(self.max_window_millis / self.period_millis)
+        self.window_millis = get_window_optimal_size_millis(windows)
+        self.total_number_of_buckets = int(self.window_millis / self.period_millis)
 
     def merge(self, new):
         if self.period_millis != new.period_millis:
@@ -191,7 +193,8 @@ class FixedWindows(WindowsBase):
         # The period should be a divisor of the unit of the smallest window,
         # for example if the smallest request window is 2h, the period will be 1h / `bucketPerWindow`
         self.smallest_window_unit_millis = get_one_unit_of_duration(windows_tuples[0][1])
-        WindowsBase.__init__(self, self.smallest_window_unit_millis / bucketPerWindow, windows_tuples)
+        period = get_window_optimal_period_millis(windows_tuples) / bucketPerWindow
+        WindowsBase.__init__(self, period, windows_tuples)
 
     def round_up_time_to_window(self, timestamp):
         return int(
@@ -200,8 +203,14 @@ class FixedWindows(WindowsBase):
     def get_period_by_time(self, timestamp):
         return int(timestamp / self.period_millis) * self.period_millis
 
-    def get_window_start_time_by_time(self, reference_timestamp):
-        return self.get_period_by_time(reference_timestamp)
+    def get_window_start_time_by_time(self, timestamp):
+        return int(timestamp / self.window_millis) * self.window_millis
+
+    def merge(self, new):
+        if isinstance(new, FixedWindows):
+            super(FixedWindows, self).merge(new)
+        else:
+            self.__init__(new.windows)
 
 
 class SlidingWindows(WindowsBase):
@@ -233,7 +242,7 @@ class SlidingWindows(WindowsBase):
         WindowsBase.__init__(self, period_millis, windows_tuples)
 
     def get_window_start_time_by_time(self, timestamp):
-        return timestamp
+        return int(timestamp / self.period_millis) * self.period_millis
 
 
 class EmissionType(Enum):
@@ -389,3 +398,8 @@ class FieldAggregator:
 
 
 legal_time_units = ['year', 'month', 'day', 'hour', 'minute', 'second']
+
+
+class FixedWindowType(Enum):
+    CurrentOpenWindow = 1
+    LastClosedWindow = 2

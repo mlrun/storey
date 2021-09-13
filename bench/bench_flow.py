@@ -4,7 +4,8 @@ from datetime import datetime, timedelta
 import pandas as pd
 import pytest
 
-from storey import SyncEmitSource, Map, Reduce, build_flow, Complete, Driver, FieldAggregator, AggregateByKey, Table, Batch, AsyncEmitSource, \
+from storey import SyncEmitSource, Map, Reduce, build_flow, Complete, Driver, FieldAggregator, AggregateByKey, Table, Batch, \
+    AsyncEmitSource, \
     DataframeSource
 from storey.dtypes import SlidingWindows
 
@@ -23,7 +24,7 @@ def test_simple_flow_n_events(benchmark, n):
         for i in range(n):
             controller.emit(i)
         controller.terminate()
-        termination_result = controller.await_termination()
+        controller.await_termination()
 
     benchmark(inner)
 
@@ -31,7 +32,7 @@ def test_simple_flow_n_events(benchmark, n):
 @pytest.mark.parametrize('n', [0, 1, 1000, 5000])
 def test_simple_async_flow_n_events(benchmark, n):
     async def async_inner():
-        controller = await build_flow([
+        controller = build_flow([
             AsyncEmitSource(),
             Map(lambda x: x + 1),
             Reduce(0, lambda acc, x: acc + x),
@@ -40,7 +41,7 @@ def test_simple_async_flow_n_events(benchmark, n):
         for i in range(n):
             await controller.emit(i)
         await controller.terminate()
-        termination_result = await controller.await_termination()
+        await controller.await_termination()
 
     def inner():
         asyncio.run(async_inner())
@@ -104,8 +105,7 @@ def test_batch_n_events(benchmark, n):
 
 
 def test_aggregate_df_86420_events(benchmark):
-    df = pd.read_csv('bench/early_sense.csv')
-    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    df = pd.read_csv('bench/early_sense.csv', parse_dates=['timestamp'])
 
     def inner():
         driver = Driver()
@@ -128,8 +128,7 @@ def test_aggregate_df_86420_events(benchmark):
 
 
 def test_aggregate_df_86420_events_basic(benchmark):
-    df = pd.read_csv('bench/early_sense.csv')
-    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    df = pd.read_csv('bench/early_sense.csv', parse_dates=['timestamp'])
 
     def inner():
         driver = Driver()

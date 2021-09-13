@@ -3,9 +3,9 @@ import copy
 from asyncio import Lock
 import asyncio
 import math
-from datetime import datetime
 from .drivers import Driver
-from .dtypes import FieldAggregator, SlidingWindows, FixedWindows, FlowError, _termination_obj
+from .dtypes import FieldAggregator, SlidingWindows, FixedWindows, FlowError, _termination_obj, FixedWindowType
+
 
 from .aggregation_utils import is_raw_aggregate, get_virtual_aggregation_func, get_implied_aggregates, get_all_raw_aggregates, \
     get_all_raw_aggregates_with_hidden
@@ -42,9 +42,17 @@ class Table:
         self._terminated = False
         self._flush_exception = None
         self._changed_keys = set()
+        self.fixed_window_type = None
 
     def __str__(self):
         return f'{self._container}/{self._table_path}'
+
+    def _clone(self):
+        new_table = Table(self._table_path, self._storage, self._partitioned_by_key,
+                          self._flush_interval_secs, self._max_updates_in_flight)
+        new_table._container = self._container
+        new_table._table_path = self._table_path
+        return new_table
 
     def _get_lock(self, key):
         cache_element = self._attrs_cache.get(key)
@@ -159,7 +167,9 @@ class Table:
         if self._aggregations_read_only and initial_data is None:
             self._set_aggregations_attrs(key, None)
         else:
-            self._set_aggregations_attrs(key, self._new_aggregated_store_element()(key, self._aggregates, base_timestamp, initial_data))
+            self._set_aggregations_attrs(key, self._new_aggregated_store_element()(key, self._aggregates,
+                                                                                   base_timestamp, initial_data,
+                                                                                   self.fixed_window_type))
 
     async def _load_and_update_schema(self):
         async with self._get_schema_lock():
@@ -427,11 +437,12 @@ class _CacheElement:
 
 
 class ReadOnlyAggregatedStoreElement:
-    def __init__(self, key, aggregates, base_time, initial_data=None):
+    def __init__(self, key, aggregates, base_time, initial_data=None, options=None):
         self.aggregation_buckets = {}
         self.key = key
         self.aggregates = aggregates
         self.storage_specific_cache = {}
+        self.options = options
 
         # Add all raw aggregates, including aggregates not explicitly requested.
         windows = {}
@@ -460,7 +471,8 @@ class ReadOnlyAggregatedStoreElement:
             if True in calculated_windows:
                 hidden_windows = calculated_windows[True]
             self.aggregation_buckets[column_name] = \
-                ReadOnlyAggregationBuckets(name, aggr, explicit_windows, hidden_windows, base_time, max_value, initial_column_data)
+                ReadOnlyAggregationBuckets(name, aggr, explicit_windows, hidden_windows,
+                                           base_time, max_value, initial_column_data, self.options)
 
         # Add all virtual aggregates
         for aggregation_metadata in aggregates:
@@ -494,7 +506,8 @@ class ReadOnlyAggregatedStoreElement:
 
 
 class ReadOnlyAggregationBuckets:
-    def __init__(self, name, aggregation, explicit_windows, hidden_windows, base_time, max_value, initial_data=None):
+    def __init__(self, name, aggregation, explicit_windows, hidden_windows, base_time, max_value, initial_data=None,
+                 fixed_window_type=None):
         self.name = name
         self.aggregation = aggregation
         self.explicit_windows = explicit_windows
@@ -521,22 +534,24 @@ class ReadOnlyAggregationBuckets:
             self.is_fixed_window = isinstance(self.explicit_windows, FixedWindows)
             if self.is_fixed_window:
                 self._round_time_func = self.explicit_windows.round_up_time_to_window
+                self.fixed_window_type = fixed_window_type
             self.period_millis = explicit_windows.period_millis
             self._window_start_time = explicit_windows.get_window_start_time_by_time(base_time)
             if self._precalculated_aggregations:
                 for win in explicit_windows.windows:
-                    self._current_aggregate_values[win] = AggregationValue.new_from_name(aggregation)
+                    self._current_aggregate_values[win] = AggregationValue.new_from_name(aggregation, self.max_value)
         if hidden_windows:
             if not explicit_windows:
-                self.is_fixed_window = isinstance(self.explicit_windows, FixedWindows)
+                self.is_fixed_window = isinstance(self.hidden_windows, FixedWindows)
                 if self.is_fixed_window:
-                    self._round_time_func = self.explicit_windows.round_up_time_to_window
+                    self._round_time_func = self.hidden_windows.round_up_time_to_window
+                    self.fixed_window_type = fixed_window_type
                 self.period_millis = hidden_windows.period_millis
                 self._window_start_time = hidden_windows.get_window_start_time_by_time(base_time)
             if self._precalculated_aggregations:
                 for win in hidden_windows.windows:
                     if win not in self._current_aggregate_values:
-                        self._current_aggregate_values[win] = AggregationValue.new_from_name(aggregation)
+                        self._current_aggregate_values[win] = AggregationValue.new_from_name(aggregation, self.max_value)
 
         if initial_data:
             self.last_bucket_start_time = None
@@ -601,7 +616,8 @@ class ReadOnlyAggregationBuckets:
                 for bucket_id in range(previous_window_start, current_window_start):
                     current_pre_aggregated_value = aggr.value
                     bucket_aggregated_value = self.buckets[bucket_id].value
-                    if self.aggregation == "min" or self.aggregation == "max":
+                    if self.aggregation == "min" or self.aggregation == "max" \
+                            or self.aggregation == "first" or self.aggregation == "last":
                         if current_pre_aggregated_value == bucket_aggregated_value:
                             self._need_to_recalculate_pre_aggregates = True
                             return
@@ -700,33 +716,46 @@ class ReadOnlyAggregationBuckets:
             self._need_to_recalculate_pre_aggregates = False
             return result
 
-        if self.is_fixed_window:
-            current_time_bucket_index = self.get_bucket_index_by_timestamp(self._round_time_func(timestamp) - 1)
-
-        aggregated_value = AggregationValue.new_from_name(self.get_aggregation_for_aggregation())
+        aggregated_value = AggregationValue.new_from_name(self.get_aggregation_for_aggregation(), self.max_value)
         prev_windows_millis = 0
         for win in windows:
             window_string = win[1]
             window_millis = win[0]
 
-            # In case the current bucket is outside our time range just create a feature with the current aggregated
-            # value
-            if current_time_bucket_index < 0:
-                result[f'{self.name}_{self.aggregation}_{window_string}'] = aggregated_value.value
+            if self.is_fixed_window:
+                aggregated_value.reset()
+                first_bucket_start_time = self.buckets[0].time
+                current_time_bucket_index = int((timestamp - first_bucket_start_time) / self.period_millis)
+                window_indexes = int(window_millis / self.period_millis)
+                start_index = int(current_time_bucket_index / window_indexes) * window_indexes
+                last_index = start_index + window_indexes - 1
+                if self.fixed_window_type == FixedWindowType.LastClosedWindow:
+                    last_index -= window_indexes
+                    start_index -= window_indexes
 
-            number_of_buckets_backwards = int((window_millis - prev_windows_millis) / self.period_millis)
-            last_bucket_to_aggregate = current_time_bucket_index - number_of_buckets_backwards + 1
-
-            if last_bucket_to_aggregate < 0:
-                last_bucket_to_aggregate = 0
-
-            for bucket_index in range(current_time_bucket_index, last_bucket_to_aggregate - 1, -1):
-                if bucket_index < len(self.buckets):
+                for bucket_index in range(start_index, last_index + 1):
                     bucket = self.buckets[bucket_index]
                     aggregated_value.aggregate(bucket.time, bucket.value)
+            else:
+                # In case the current bucket is outside our time range just create a feature with the current aggregated
+                # value
+                if current_time_bucket_index < 0:
+                    result[f'{self.name}_{self.aggregation}_{window_string}'] = aggregated_value.value
 
-            # advance the time bucket, so that next iteration won't calculate the same buckets again
-            current_time_bucket_index = last_bucket_to_aggregate - 1
+                number_of_buckets_backwards = int((window_millis - prev_windows_millis) / self.period_millis)
+                last_bucket_to_aggregate = current_time_bucket_index - number_of_buckets_backwards + 1
+
+                if last_bucket_to_aggregate < 0:
+                    last_bucket_to_aggregate = 0
+
+                for bucket_index in range(current_time_bucket_index, last_bucket_to_aggregate - 1, -1):
+                    if bucket_index < len(self.buckets):
+                        bucket = self.buckets[bucket_index]
+                        aggregated_value.aggregate(bucket.time, bucket.value)
+
+                # advance the time bucket, so that next iteration won't calculate the same buckets again
+                current_time_bucket_index = last_bucket_to_aggregate - 1
+
             current_aggregations_value = aggregated_value.value
 
             # create a feature for the current time window
@@ -735,31 +764,21 @@ class ReadOnlyAggregationBuckets:
 
             # Update the corresponding pre aggregate
             if self._precalculated_aggregations and self._need_to_recalculate_pre_aggregates:
-                self._current_aggregate_values[win] = AggregationValue.new_from_name(self.aggregation, set_data=current_aggregations_value)
+                new_aggr = AggregationValue.new_from_name(self.aggregation, self.max_value, set_data=current_aggregations_value)
+                new_aggr.time = aggregated_value.time
+                self._current_aggregate_values[win] = new_aggr
         self._need_to_recalculate_pre_aggregates = False
         return result
 
-    def initialize_from_data(self, data, base_time):
+    def _initialize_from_data_for_sliding_window(self, base_time, aggregation_bucket_initial_data, first_time, last_time):
         period = self.period_millis
         self.buckets = [None] * self.total_number_of_buckets
-        aggregation_bucket_initial_data = {}
 
-        for key, value in data.items():
-            if isinstance(key, int):
-                aggregation_bucket_initial_data[key] = value
-            else:
-                self.storage_specific_cache[key] = value
-
-        first_time, last_time = None, next(iter(aggregation_bucket_initial_data))
-        if len(aggregation_bucket_initial_data.keys()) == 2:
-            timestamp1, timestamp2 = aggregation_bucket_initial_data.keys()
-            first_time, last_time = min(timestamp1, timestamp2), max(timestamp1, timestamp2)
-
-        bucket_index = self.total_number_of_buckets - 1
         self.last_bucket_start_time = self._window_start_time
-        self.first_bucket_start_time = \
+        self.first_bucket_start_time =\
             self.last_bucket_start_time - (self.total_number_of_buckets - 1) * period
 
+        bucket_index = self.total_number_of_buckets - 1
         start_index = int((base_time - last_time) / period)
 
         # In case base_time is newer than what is stored in the storage initialize the buckets until reaching the stored data
@@ -780,14 +799,16 @@ class ReadOnlyAggregationBuckets:
             if bucket_index < 0:
                 return
             curr_value = aggregation_bucket_initial_data[last_time][i]
-            self.buckets[bucket_index] = AggregationValue.new_from_name(self.aggregation, self.max_value, curr_value)
+            curr_time = last_time + period * i
+            self.buckets[bucket_index] = AggregationValue.new_from_name(self.aggregation, self.max_value, curr_value, curr_time)
             bucket_index = bucket_index - 1
 
         # In case we still haven't finished initializing all buckets and there is another stored bucket, initialize from there
         if first_time and bucket_index >= 0 and base_time > first_time:
             for i in range(len(aggregation_bucket_initial_data[first_time]) - 1, -1, -1):
                 curr_value = aggregation_bucket_initial_data[first_time][i]
-                self.buckets[bucket_index] = AggregationValue.new_from_name(self.aggregation, self.max_value, curr_value)
+                curr_time = first_time + period * i
+                self.buckets[bucket_index] = AggregationValue.new_from_name(self.aggregation, self.max_value, curr_value, curr_time)
                 bucket_index = bucket_index - 1
 
                 if bucket_index < 0:
@@ -796,6 +817,71 @@ class ReadOnlyAggregationBuckets:
         # Initialize every remaining buckets
         for i in range(bucket_index + 1):
             self.buckets[i] = self.new_aggregation_value()
+
+    def _initialize_from_data_for_fixed_window(self, base_time, aggregation_bucket_initial_data, first_time, last_time):
+        period = self.period_millis
+        window_millis = self.total_number_of_buckets * self.period_millis
+
+        fix_first_time = False
+        # there is big gap between recorded emits so set the first_time to previous window
+        if first_time < last_time - window_millis:
+            first_time = last_time - window_millis
+            fix_first_time = True
+
+        next_time = last_time + len(aggregation_bucket_initial_data[last_time]) * period
+
+        if self.fixed_window_type == FixedWindowType.LastClosedWindow:
+            self.first_bucket_start_time = int(base_time / window_millis) * window_millis - window_millis
+            self.last_bucket_start_time = self.first_bucket_start_time + 2 * window_millis - period
+        elif self.fixed_window_type == FixedWindowType.CurrentOpenWindow:
+            self.first_bucket_start_time = int(base_time / window_millis) * window_millis
+            self.last_bucket_start_time = self.first_bucket_start_time + window_millis - period
+
+        buckets = int((self.last_bucket_start_time - self.first_bucket_start_time) / period) + 1
+        self.buckets = [None] * buckets
+
+        curr_time = self.first_bucket_start_time
+        for bucket_index in range(buckets):
+            if first_time <= curr_time < last_time:
+                if fix_first_time:
+                    self.buckets[bucket_index] = AggregationValue.new_from_name(self.aggregation, self.max_value,
+                                                                                set_time=curr_time)
+                else:
+                    i = int((curr_time - first_time) / period)
+                    curr_value = aggregation_bucket_initial_data[first_time][i]
+                    self.buckets[bucket_index] = AggregationValue.new_from_name(self.aggregation, self.max_value,
+                                                                                curr_value, curr_time)
+            elif last_time <= curr_time < next_time:
+                i = int((curr_time - last_time) / period)
+                curr_value = aggregation_bucket_initial_data[last_time][i]
+                self.buckets[bucket_index] = AggregationValue.new_from_name(self.aggregation, self.max_value,
+                                                                            curr_value, curr_time)
+            else:
+                self.buckets[bucket_index] = AggregationValue.new_from_name(self.aggregation, self.max_value,
+                                                                            set_time=curr_time)
+            curr_time = curr_time + period
+
+    def initialize_from_data(self, data, base_time):
+        aggregation_bucket_initial_data = {}
+
+        for key, value in data.items():
+            if isinstance(key, int):
+                aggregation_bucket_initial_data[key] = value
+            else:
+                self.storage_specific_cache[key] = value
+
+        t0 = next(iter(aggregation_bucket_initial_data))
+        first_time, last_time = t0, t0
+        if len(aggregation_bucket_initial_data.keys()) == 2:
+            timestamp1, timestamp2 = aggregation_bucket_initial_data.keys()
+            first_time, last_time = min(timestamp1, timestamp2), max(timestamp1, timestamp2)
+
+        if self.is_fixed_window:
+            return self._initialize_from_data_for_fixed_window(base_time, aggregation_bucket_initial_data,
+                                                               first_time, last_time)
+        else:
+            return self._initialize_from_data_for_sliding_window(base_time, aggregation_bucket_initial_data,
+                                                                 first_time, last_time)
 
     def get_and_flush_pending(self):
         pending = self.pending_aggr
@@ -854,9 +940,9 @@ class VirtualAggregationBuckets:
 class AggregationValue:
     default_value = math.nan
 
-    def __init__(self, max_value=None, set_data=None):
+    def __init__(self, max_value=None, set_data=None, set_time=None):
         self.value = self.default_value
-        self.time = datetime.min
+        self.time = set_time
         self._max_value = max_value
         self._set_value = self._set_value_with_max if max_value else self._set_value_without_max
 
@@ -868,70 +954,69 @@ class AggregationValue:
         raise NotImplementedError()
 
     @staticmethod
-    def new_from_name(aggregation, max_value=None, set_data=None):
+    def new_from_name(aggregation, max_value=None, set_data=None, set_time=None):
         if aggregation == 'min':
-            return MinValue(max_value, set_data)
+            return MinValue(max_value, set_data, set_time)
         elif aggregation == 'max':
-            return MaxValue(max_value, set_data)
+            return MaxValue(max_value, set_data, set_time)
         elif aggregation == 'sum':
-            return SumValue(max_value, set_data)
+            return SumValue(max_value, set_data, set_time)
         elif aggregation == 'count':
-            return CountValue(max_value, set_data)
+            return CountValue(max_value, set_data, set_time)
         elif aggregation == 'sqr':
-            return SqrValue(max_value, set_data)
+            return SqrValue(max_value, set_data, set_time)
         elif aggregation == 'last':
-            return LastValue(max_value, set_data)
+            return LastValue(max_value, set_data, set_time)
         elif aggregation == 'first':
-            return FirstValue(max_value, set_data)
+            return FirstValue(max_value, set_data, set_time)
 
     def _set_value_with_max(self, value):
         if value > self._max_value:
             self.value = self._max_value
         else:
-            self.value = value
+            self.value = float(value)
 
     def _set_value_without_max(self, value):
-        self.value = value
+        self.value = float(value)
 
     def get_update_expression(self, old):
         return f'{old}+{self.value}'
 
     def reset(self, value=None):
-        self.time = datetime.min
+        self.time = None
         if value is None:
             self.value = self.default_value
         else:
-            self.value = value
+            self.value = float(value)
 
 
 class MinValue(AggregationValue):
     name = 'min'
     default_value = float('inf')
 
-    def __init__(self, max_value=None, set_data=None):
-        super().__init__(max_value, set_data)
+    def __init__(self, max_value=None, set_data=None, set_time=None):
+        super().__init__(max_value, set_data, set_time)
 
     def aggregate(self, time, value):
         if value < self.value:
-            self.value = value  # bypass _set_value because there's no need to check max_value each time
+            self.value = float(value)  # bypass _set_value because there's no need to check max_value each time
 
     def get_update_expression(self, old):
         return f'min({old}, {self.value})'
 
     def reset(self, value=None):
-        self.time = datetime.min
         if value is None:
             self.value = self._max_value or self.default_value
         else:
-            self.value = value
+            self.value = float(value)
 
 
 class MaxValue(AggregationValue):
     name = 'max'
     default_value = float('-inf')
 
-    def __init__(self, max_value=None, set_data=None):
-        super().__init__(max_value, set_data)
+    def __init__(self, max_value=None, set_data=None, set_time=None):
+        super().__init__(max_value, set_data, set_time)
 
     def aggregate(self, time, value):
         if value > self.value:
@@ -943,10 +1028,10 @@ class MaxValue(AggregationValue):
 
 class SumValue(AggregationValue):
     name = 'sum'
-    default_value = 0
+    default_value = 0.0
 
-    def __init__(self, max_value=None, set_data=None):
-        super().__init__(max_value, set_data)
+    def __init__(self, max_value=None, set_data=None, set_time=None):
+        super().__init__(max_value, set_data, set_time)
 
     def aggregate(self, time, value):
         self._set_value(self.value + value)
@@ -954,10 +1039,10 @@ class SumValue(AggregationValue):
 
 class CountValue(AggregationValue):
     aggregation = 'count'
-    default_value = 0
+    default_value = 0.0
 
-    def __init__(self, max_value=None, set_data=None):
-        super().__init__(max_value, set_data)
+    def __init__(self, max_value=None, set_data=None, set_time=None):
+        super().__init__(max_value, set_data, set_time)
 
     def aggregate(self, time, value):
         self._set_value(self.value + 1)
@@ -965,10 +1050,10 @@ class CountValue(AggregationValue):
 
 class SqrValue(AggregationValue):
     name = 'sqr'
-    default_value = 0
+    default_value = 0.0
 
-    def __init__(self, max_value=None, set_data=None):
-        super().__init__(max_value, set_data)
+    def __init__(self, max_value=None, set_data=None, set_time=None):
+        super().__init__(max_value, set_data, set_time)
 
     def aggregate(self, time, value):
         self._set_value(self.value + value * value)
@@ -977,35 +1062,46 @@ class SqrValue(AggregationValue):
 class LastValue(AggregationValue):
     name = 'last'
 
-    def __init__(self, max_value=None, set_data=None):
-        super().__init__(max_value, set_data)
+    def __init__(self, max_value=None, set_data=None, set_time=None):
+        if set_time is None:
+            set_time = -math.inf
+        super().__init__(max_value, set_data, set_time)
 
     def aggregate(self, time, value):
-        if time > self.time:
+        if time is not None and not math.isnan(value) and (self.time is None or time > self.time):
             self._set_value(value)
             self.time = time
 
     def get_update_expression(self, old):
         return f'{self.value}'
 
+    def reset(self, value=None):
+        self.time = -math.inf
+        if value is None:
+            self.value = self.default_value
+        else:
+            self.value = value
+
 
 class FirstValue(AggregationValue):
     name = 'first'
 
-    def __init__(self, max_value=None, set_data=None):
-        super().__init__(max_value, set_data)
-        self._first_time = datetime.max
+    def __init__(self, max_value=None, set_data=None, set_time=None):
+        if set_time is None:
+            set_time = math.inf
+        super().__init__(max_value, set_data, set_time)
 
     def aggregate(self, time, value):
-        if time < self.time:
-            self._set_value(value)
+        if time is not None and not math.isnan(value) and (self.time is None or time < self.time):
+            if math.isnan(self.value) and math.isnan(self.default_value):
+                self._set_value(value)
             self.time = time
 
     def get_update_expression(self, old):
-        return f'if_else(({old} == {self.default_value}), {self.value}, {old})'
+        return f'if_else(isnan({old}), {self.value}, {old})'
 
     def reset(self, value=None):
-        self.time = datetime.max
+        self.time = math.inf
         if value is None:
             self.value = self.default_value
         else:
@@ -1013,7 +1109,7 @@ class FirstValue(AggregationValue):
 
 
 class AggregatedStoreElement:
-    def __init__(self, key, aggregates, base_time, initial_data=None):
+    def __init__(self, key, aggregates, base_time, initial_data=None, options=None):
         self.aggregation_buckets = {}
         self.key = key
         self.aggregates = aggregates
@@ -1091,7 +1187,7 @@ class AggregationBuckets:
         self._current_aggregate_values = {}
         self._intermediate_aggregation_values = {}
         for aggregation_name in self._all_raw_aggregates:
-            aggregation_value = AggregationValue.new_from_name(self.get_aggregation_for_aggregation(aggregation_name))
+            aggregation_value = AggregationValue.new_from_name(self.get_aggregation_for_aggregation(aggregation_name), self.max_value)
             self._intermediate_aggregation_values[aggregation_name] = aggregation_value
 
         # If a user specified a max_value we need to recalculated features on every event
@@ -1105,7 +1201,7 @@ class AggregationBuckets:
         if self._precalculated_aggregations:
             for (window_millis, _) in explicit_windows.windows:
                 for aggr in self._all_raw_aggregates:
-                    self._current_aggregate_values[(aggr, window_millis)] = AggregationValue.new_from_name(aggr)
+                    self._current_aggregate_values[(aggr, window_millis)] = AggregationValue.new_from_name(aggr, max_value)
 
         if initial_data:
             self.last_bucket_start_time = None
@@ -1136,7 +1232,7 @@ class AggregationBuckets:
             return bucket_index
         else:
             self.advance_window_period(timestamp)
-            return self.total_number_of_buckets - 1  # return last index
+            return self.get_bucket_index_by_timestamp(timestamp)
 
     #  Get the index of the bucket corresponding to the requested timestamp
     #  Note: This method can return indexes outside the 'buckets' array
@@ -1149,18 +1245,30 @@ class AggregationBuckets:
     def remove_old_values_from_pre_aggregations(self, timestamp):
         if self._precalculated_aggregations:
             for (aggr_name, current_window_millis), aggr in self._current_aggregate_values.items():
-                previous_window_start = self.get_window_range(self.get_end_bucket(self._last_data_point_timestamp), current_window_millis)
-                current_window_start = self.get_window_range(self.get_end_bucket(timestamp), current_window_millis)
+                if self.is_fixed_window:
+                    previous_window_start_time = \
+                        self.get_window_start_time_from_timestamp(self._last_data_point_timestamp, current_window_millis)
+                    previous_window_start = self.get_bucket_index_by_timestamp(previous_window_start_time)
+                    current_window_start_time = \
+                        self.get_window_start_time_from_timestamp(timestamp, current_window_millis)
+                    current_window_start = self.get_bucket_index_by_timestamp(current_window_start_time)
+                else:
+                    previous_window_start = \
+                        self.get_window_range(self.get_end_bucket(self._last_data_point_timestamp), current_window_millis)
+                    current_window_start = \
+                        self.get_window_range(self.get_end_bucket(timestamp), current_window_millis)
 
-                previous_window_start = max(0, previous_window_start)
-                current_window_start = max(0, current_window_start)
-                previous_window_start = min(len(self.buckets) - 1, previous_window_start)
-                current_window_start = min(len(self.buckets), current_window_start)
+                    previous_window_start = max(0, previous_window_start)
+                    current_window_start = max(0, current_window_start)
+                    previous_window_start = min(len(self.buckets) - 1, previous_window_start)
+                    current_window_start = min(len(self.buckets), current_window_start)
 
                 for bucket_id in range(previous_window_start, current_window_start):
                     current_pre_aggregated_value = aggr.value
+                    if bucket_id >= self.total_number_of_buckets:
+                        break
                     bucket_aggregated_value = self.buckets[bucket_id][aggr_name].value
-                    if aggr_name == "min" or aggr_name == "max":
+                    if aggr_name == "min" or aggr_name == "max" or aggr_name == "first" or aggr_name == "last":
                         if current_pre_aggregated_value == bucket_aggregated_value:
                             self._need_to_recalculate_pre_aggregates = True
                             return
@@ -1170,6 +1278,8 @@ class AggregationBuckets:
     def advance_window_period(self, advance_to):
         desired_bucket_index = int((advance_to - self.first_bucket_start_time) / self.period_millis)
         buckets_to_advance = desired_bucket_index - (self.total_number_of_buckets - 1)
+        if self.is_fixed_window:
+            buckets_to_advance = max(self.total_number_of_buckets, buckets_to_advance)
 
         if buckets_to_advance > 0:
             if buckets_to_advance > self.total_number_of_buckets:
@@ -1185,10 +1295,19 @@ class AggregationBuckets:
                         aggr_value.reset()
                     self.buckets.append(bucket_to_reuse)
 
-            self.first_bucket_start_time = \
-                self.first_bucket_start_time + buckets_to_advance * self.period_millis
-            self.last_bucket_start_time = \
-                self.last_bucket_start_time + buckets_to_advance * self.period_millis
+            # fixed windows are advancing in integral window size
+            if self.is_fixed_window:
+                window_millis = self.last_bucket_start_time + self.period_millis - self.first_bucket_start_time
+                windows_to_advance = int((advance_to - self.first_bucket_start_time) / window_millis)
+                self.first_bucket_start_time = \
+                    self.first_bucket_start_time + windows_to_advance * window_millis
+                self.last_bucket_start_time = \
+                    self.last_bucket_start_time + windows_to_advance * window_millis
+            else:
+                self.first_bucket_start_time = \
+                    self.first_bucket_start_time + buckets_to_advance * self.period_millis
+                self.last_bucket_start_time = \
+                    self.last_bucket_start_time + buckets_to_advance * self.period_millis
 
     def get_end_bucket(self, timestamp):
         if self.is_fixed_window:
@@ -1200,6 +1319,9 @@ class AggregationBuckets:
         num_of_buckets_in_window = int(windows_millis / self.period_millis)
         return end_bucket - num_of_buckets_in_window + 1
 
+    def get_window_start_time_from_timestamp(self, timestamp, window_millis):
+        return int((timestamp - self.first_bucket_start_time) / window_millis) * window_millis + self.first_bucket_start_time
+
     def aggregate(self, timestamp, value):
         index = self.get_or_advance_bucket_index_by_timestamp(timestamp)
 
@@ -1210,11 +1332,15 @@ class AggregationBuckets:
             self.add_to_pending(timestamp, value)
 
             if self._precalculated_aggregations:
-                end_bucket = self.get_end_bucket(self._last_data_point_timestamp)
                 for (_, current_window_millis), aggr in self._current_aggregate_values.items():
-                    start = self.get_window_range(end_bucket, current_window_millis)
+                    current_window_start_time = self.get_window_start_time_from_timestamp(timestamp, current_window_millis)
+                    current_window_start_index = self.get_bucket_index_by_timestamp(current_window_start_time)
 
-                    if timestamp > self._last_data_point_timestamp or index >= start:
+                    current_window_end_time = current_window_start_time + current_window_millis
+                    current_window_end_index = self.get_bucket_index_by_timestamp(current_window_end_time) - 1
+
+                    if timestamp >= self._last_data_point_timestamp \
+                       and index in range(current_window_start_index, current_window_end_index + 1):
                         aggr.aggregate(timestamp, value)
                 if timestamp > self._last_data_point_timestamp:
                     self._last_data_point_timestamp = timestamp

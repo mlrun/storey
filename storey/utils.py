@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import struct
 from array import array
 from urllib.parse import urlparse
@@ -167,15 +168,17 @@ def update_in(obj, key, value):
 
 
 def hash_list(list_to_hash):
+    list_to_hash = [str(element) for element in list_to_hash]
     str_concatted = ''.join(list_to_hash)
-    hash_value = hash(str_concatted)
-    return hash_value
+    sha1 = hashlib.sha1()
+    sha1.update(str_concatted.encode('utf8'))
+    return sha1.hexdigest()
 
 
 def stringify_key(key_list):
     if isinstance(key_list, list):
         if len(key_list) >= 3:
-            return str(key_list[0]) + "." + str(hash_list(key_list[1:]))
+            return str(key_list[0]) + "." + hash_list(key_list[1:])
         if len(key_list) == 2:
             return str(key_list[0]) + "." + str(key_list[1])
         return key_list[0]
@@ -203,7 +206,11 @@ def _find_filter_helper(list_partitions, dtime, sign, first_sign, first_uncommon
     if first_sign:
         # only for the first iteration we need to have ">="/"<=" instead of ">"/"<"
         _create_filter_tuple(dtime, last_partition, first_sign, single_filter)
-        tuple_last_range = (filter_column, sign, dtime)
+        # start needs to be > and end needs to be "<="
+        if first_sign == "<=":
+            tuple_last_range = (filter_column, first_sign, dtime)
+        else:
+            tuple_last_range = (filter_column, sign, dtime)
         single_filter.append(tuple_last_range)
     else:
         _create_filter_tuple(dtime, last_partition, sign, single_filter)
@@ -212,7 +219,7 @@ def _find_filter_helper(list_partitions, dtime, sign, first_sign, first_uncommon
 
 
 def _get_filters_for_filter_column(start, end, filter_column, side_range):
-    lower_limit_tuple = (filter_column, ">=", start)
+    lower_limit_tuple = (filter_column, ">", start)
     upper_limit_tuple = (filter_column, "<=", end)
     side_range.append(lower_limit_tuple)
     side_range.append(upper_limit_tuple)
@@ -257,14 +264,6 @@ def find_filters(partitions_time_attributes, start, end, filters, filter_column)
     # for start=1.2.2018 08:53:15, end=5.2.2018 16:24:31, this method will append to filters
     # [(year=2018, month=2,day<=5, filter_column<5.2.2018 16:24:31)]
     _find_filter_helper(partitions_time_attributes, end, "<", "<=", first_uncommon, filters, filter_column)
-
-
-def drop_reserved_columns(df):
-    cols_to_drop = []
-    for col in df.columns:
-        if col.startswith('igzpart_'):
-            cols_to_drop.append(col)
-    df.drop(labels=cols_to_drop, axis=1, inplace=True, errors='ignore')
 
 
 def asyncify(fn):
