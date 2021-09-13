@@ -399,8 +399,8 @@ class _FunctionWithStateFlow(Flow):
 
     async def _call(self, event):
         element = self._get_event_or_body(event)
-        safe_key = stringify_key(event.key)
         if self._group_by_key:
+            safe_key = stringify_key(event.key)
             if isinstance(self._state, Table):
                 key_data = await self._state._get_or_load_static_attributes_by_key(safe_key)
             else:

@@ -94,7 +94,7 @@ class FlowControllerBase:
             body[self._time_field] = event_time
 
         if element_is_event:
-            if key:
+            if key or not hasattr(element, 'key'):
                 element.key = key
             if event_time:
                 element.time = event_time
