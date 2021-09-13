@@ -2,7 +2,7 @@ import base64
 import json
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from functools import partial
 from typing import Optional
@@ -625,7 +625,7 @@ class RedisDriver(Driver):
         if value.startswith(cls.TIMEDELTA_FIELD_PREFIX):
             return timedelta(seconds=float(value.split(":")[1]))
         elif value.startswith(cls.DATETIME_FIELD_PREFIX):
-            return datetime.fromtimestamp(float(value.split(":")[1]))
+            return datetime.fromtimestamp(float(value.split(":")[1]), tz=timezone.utc)
         else:
             return json.loads(value)
 
@@ -807,8 +807,14 @@ class RedisDriver(Driver):
 
     def cast(self, value):
         """Cast `value` to the type Storey expects."""
-        if '.' in value or value == 'inf' or value == "-inf":
+        if value == 'inf' or value == "-inf":
             return float(value)
+        if '.' in value:
+            float_val = float(value)
+            # Storey integration tests expect an integer if there is no fractional.
+            if not float_val % 1:
+                return int(float_val)
+            return float_val
         else:
             return int(value)
 
