@@ -566,9 +566,14 @@ def test_write_cache_with_aggregations(setup_redis_teardown_test, flush_interval
 
     controller.terminate()
     actual = controller.await_termination()
-    expected_results = [
-        {'number_of_stuff_sum_2h': 30.0, 'number_of_stuff_avg_2h': 7.5, 'col1': 10, 'color': 'blue', 'age': 41, 'iss': True,
-         'sometime': test_base_time}]
+    if flush_interval == 1:
+        expected_results = [
+            {'number_of_stuff_sum_2h': 30, 'number_of_stuff_avg_2h': 7.5, 'col1': 10, 'color': 'blue', 'age': 41, 'iss': True,
+             'sometime': test_base_time}]
+    else:
+        expected_results = [
+            {'number_of_stuff_sum_2h': 30, 'number_of_stuff_avg_2h': 6, 'col1': 10, 'color': 'blue', 'age': 41, 'iss': True,
+             'sometime': test_base_time}]
 
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
@@ -806,10 +811,10 @@ def test_modify_schema(setup_redis_teardown_test, redis_driver):
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [
-        {'col1': 10, 'number_of_stuff_sum_1h': 10, 'number_of_stuff_sum_2h': 40, 'number_of_stuff_sum_24h': 55, 'number_of_stuff_min_1h': 10,
+        {'col1': 10, 'number_of_stuff_sum_1h': 27, 'number_of_stuff_sum_2h': 40, 'number_of_stuff_sum_24h': 55, 'number_of_stuff_min_1h': 8,
          'number_of_stuff_min_2h': 6, 'number_of_stuff_min_24h': 0, 'number_of_stuff_max_1h': 10, 'number_of_stuff_max_2h': 10,
-         'number_of_stuff_max_24h': 10, 'new_aggr_min_3h': 10, 'new_aggr_max_3h': 10, 'number_of_stuff_avg_1h': 10.0,
-         'number_of_stuff_avg_2h': 8.0, 'number_of_stuff_avg_24h': 5.0}
+         'number_of_stuff_max_24h': 10, 'new_aggr_min_3h': 10, 'new_aggr_max_3h': 10, 'number_of_stuff_avg_1h': 9.0,
+         'number_of_stuff_avg_2h': 8.0, 'number_of_stuff_avg_24h': 5}
     ]
 
     assert actual == expected_results, \
@@ -1177,9 +1182,9 @@ def test_aggregate_multiple_keys(setup_redis_teardown_test, redis_driver):
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [
-        {'number_of_stuff_sum_1h': 1.0, 'first_name': 'moshe', 'last_name': 'cohen', 'some_data': 4},
+        {'number_of_stuff_sum_1h': 1, 'first_name': 'moshe', 'last_name': 'cohen', 'some_data': 4},
         {'first_name': 'moshe', 'last_name': 'levi', 'some_data': 5},
-        {'number_of_stuff_sum_1h': 5.0, 'first_name': 'yosi', 'last_name': 'levi', 'some_data': 6}
+        {'number_of_stuff_sum_1h': 5, 'first_name': 'yosi', 'last_name': 'levi', 'some_data': 6}
     ]
 
     assert actual == expected_results, \
