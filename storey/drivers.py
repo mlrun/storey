@@ -622,6 +622,12 @@ class RedisDriver(Driver):
         elif isinstance(value, timedelta):
             return f"{cls.TIMEDELTA_FIELD_PREFIX}{value.total_seconds()}"
         else:
+            # Store whole numbers as integers.
+            try:
+                if not value % 1:
+                    value = int(value)
+            except TypeError:
+                pass
             return json.dumps(value)
 
     @classmethod
