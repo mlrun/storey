@@ -540,6 +540,12 @@ class RedisDriver(Driver):
         elif isinstance(value, timedelta):
             return f"{cls.TIMEDELTA_FIELD_PREFIX}{value.total_seconds()}"
         else:
+            # Store whole numbers as integers.
+            try:
+                if not value % 1:
+                    value = int(value)
+            except TypeError:
+                pass
             return json.dumps(value)
 
     @classmethod
@@ -693,7 +699,6 @@ class RedisDriver(Driver):
         return aggregation attributes or associated time values -- just static
         data, AKA "additional data."
         """
-        import ipdb; ipdb.set_trace()
         redis_key_prefix = self.make_key(container, table_path, key)
         static_key = self._static_data_key(redis_key_prefix)
         if attributes == "*":

@@ -981,9 +981,9 @@ def test_query_aggregate_by_key_fixed_window_new_time_exceeds_stored_window(setu
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [
-        {'col1': 0, 'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 1},
-        {'col1': 1, 'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 2},
-        {'col1': 2, 'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 3},
+        {'col1': 0, 'number_of_stuff_count_30m': 1.0, 'number_of_stuff_count_2h': 1.0},
+        {'col1': 1, 'number_of_stuff_count_30m': 1.0, 'number_of_stuff_count_2h': 1.0},
+        {'col1': 2, 'number_of_stuff_count_30m': 1.0, 'number_of_stuff_count_2h': 2.0},
     ]
 
     assert actual == expected_results, \
@@ -1004,7 +1004,7 @@ def test_query_aggregate_by_key_fixed_window_new_time_exceeds_stored_window(setu
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [
-        {'col1': 3, 'number_of_stuff_count_30m': 0, 'number_of_stuff_count_2h': 1}
+        {'col1': 3, 'number_of_stuff_count_30m': 0, 'number_of_stuff_count_2h': 0}
     ]
 
     assert actual == expected_results, \
@@ -1082,8 +1082,8 @@ def test_fixed_query_time_exceeds_stored_window_by_more_than_window(setup_redis_
     actual = controller.await_termination()
     expected_results = [
         {'col1': 0, 'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 1},
-        {'col1': 1, 'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 2},
-        {'col1': 2, 'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 3},
+        {'col1': 1, 'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 1},
+        {'col1': 2, 'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 2},
     ]
 
     assert actual == expected_results, \
@@ -1122,14 +1122,14 @@ def test_write_to_table_reuse(setup_redis_teardown_test, redis_driver):
 
     expected_results = [
         [{'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 1, 'col1': 0},
-         {'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 2, 'col1': 1},
-         {'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 3, 'col1': 2}],
+         {'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 1, 'col1': 1},
+         {'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 2, 'col1': 2}],
         [{'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 1, 'col1': 0},
-         {'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 2, 'col1': 1},
-         {'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 3, 'col1': 2},
-         {'number_of_stuff_count_30m': 2, 'number_of_stuff_count_2h': 2, 'col1': 0},
-         {'number_of_stuff_count_30m': 2, 'number_of_stuff_count_2h': 4, 'col1': 1},
-         {'number_of_stuff_count_30m': 2, 'number_of_stuff_count_2h': 6, 'col1': 2}],
+         {'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 1, 'col1': 1},
+         {'number_of_stuff_count_30m': 1, 'number_of_stuff_count_2h': 2, 'col1': 2},
+         {'col1': 0},
+         {'number_of_stuff_count_30m': 2, 'number_of_stuff_count_2h': 2, 'col1': 1},
+         {'number_of_stuff_count_30m': 2, 'number_of_stuff_count_2h': 3, 'col1': 2}],
     ]
 
     for iteration in range(2):
@@ -1182,9 +1182,9 @@ def test_aggregate_multiple_keys(setup_redis_teardown_test, redis_driver):
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [
-        {'number_of_stuff_sum_1h': 1, 'first_name': 'moshe', 'last_name': 'cohen', 'some_data': 4},
+        {'number_of_stuff_sum_1h': 1.0, 'first_name': 'moshe', 'last_name': 'cohen', 'some_data': 4},
         {'first_name': 'moshe', 'last_name': 'levi', 'some_data': 5},
-        {'number_of_stuff_sum_1h': 5, 'first_name': 'yosi', 'last_name': 'levi', 'some_data': 6}
+        {'number_of_stuff_sum_1h': 5.0, 'first_name': 'yosi', 'last_name': 'levi', 'some_data': 6}
     ]
 
     assert actual == expected_results, \
