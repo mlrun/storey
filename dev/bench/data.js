@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1631451606345,
+  "lastUpdate": 1632381225412,
   "repoUrl": "https://github.com/mlrun/storey",
   "entries": {
     "Benchmark": [
@@ -54503,6 +54503,184 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.08298769549491537",
             "extra": "mean: 15.290289744599999 sec\nrounds: 5"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "galt@iguazio.com",
+            "name": "Gal Topper",
+            "username": "gtopper"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "4bd757933538c50a97c7481297d3e9f23d345ae1",
+          "message": "Fix S3 URL parsing and S3 integration tests. (#294)",
+          "timestamp": "2021-09-23T10:04:45+03:00",
+          "tree_id": "06324fac712a2f9501c53c499c1e97d8fa32c388",
+          "url": "https://github.com/mlrun/storey/commit/4bd757933538c50a97c7481297d3e9f23d345ae1"
+        },
+        "date": 1632381223891,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "bench/bench_flow.py::test_simple_flow_n_events[0]",
+            "value": 1625.3481824265932,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000032098918974487677",
+            "extra": "mean: 615.2527875639739 usec\nrounds: 579"
+          },
+          {
+            "name": "bench/bench_flow.py::test_simple_flow_n_events[1]",
+            "value": 1260.7310440851022,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00009645856164233975",
+            "extra": "mean: 793.1905894533503 usec\nrounds: 967"
+          },
+          {
+            "name": "bench/bench_flow.py::test_simple_flow_n_events[1000]",
+            "value": 8.77065883299829,
+            "unit": "iter/sec",
+            "range": "stddev: 0.005887691927455679",
+            "extra": "mean: 114.0165202000162 msec\nrounds: 10"
+          },
+          {
+            "name": "bench/bench_flow.py::test_simple_flow_n_events[5000]",
+            "value": 1.2140419716167357,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0048134211188893775",
+            "extra": "mean: 823.6947513999894 msec\nrounds: 5"
+          },
+          {
+            "name": "bench/bench_flow.py::test_simple_async_flow_n_events[0]",
+            "value": 5950.775278686413,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000011588510341545914",
+            "extra": "mean: 168.04533076247205 usec\nrounds: 2464"
+          },
+          {
+            "name": "bench/bench_flow.py::test_simple_async_flow_n_events[1]",
+            "value": 4605.239592913499,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000011637791511862131",
+            "extra": "mean: 217.14396826145395 usec\nrounds: 2300"
+          },
+          {
+            "name": "bench/bench_flow.py::test_simple_async_flow_n_events[1000]",
+            "value": 83.72629906326003,
+            "unit": "iter/sec",
+            "range": "stddev: 0.003286238681689248",
+            "extra": "mean: 11.943678523810572 msec\nrounds: 84"
+          },
+          {
+            "name": "bench/bench_flow.py::test_simple_async_flow_n_events[5000]",
+            "value": 17.690568568806746,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00018542714342521308",
+            "extra": "mean: 56.52729566664524 msec\nrounds: 18"
+          },
+          {
+            "name": "bench/bench_flow.py::test_complete_flow_n_events[0]",
+            "value": 1708.910958182146,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000037747144246834424",
+            "extra": "mean: 585.1679955658719 usec\nrounds: 902"
+          },
+          {
+            "name": "bench/bench_flow.py::test_complete_flow_n_events[1]",
+            "value": 1157.2836000981351,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000022280776181751173",
+            "extra": "mean: 864.0924315485004 usec\nrounds: 1008"
+          },
+          {
+            "name": "bench/bench_flow.py::test_complete_flow_n_events[1000]",
+            "value": 4.946458925125179,
+            "unit": "iter/sec",
+            "range": "stddev: 0.002462038999555147",
+            "extra": "mean: 202.16482440005166 msec\nrounds: 5"
+          },
+          {
+            "name": "bench/bench_flow.py::test_complete_flow_n_events[5000]",
+            "value": 0.9893812533769386,
+            "unit": "iter/sec",
+            "range": "stddev: 0.04021858730724276",
+            "extra": "mean: 1.010732714599976 sec\nrounds: 5"
+          },
+          {
+            "name": "bench/bench_flow.py::test_aggregate_by_key_n_events[0]",
+            "value": 1505.9698861551396,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000048174157788800136",
+            "extra": "mean: 664.0239019341078 usec\nrounds: 775"
+          },
+          {
+            "name": "bench/bench_flow.py::test_aggregate_by_key_n_events[1]",
+            "value": 429.2972858609154,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00671384031392021",
+            "extra": "mean: 2.329388125514453 msec\nrounds: 486"
+          },
+          {
+            "name": "bench/bench_flow.py::test_aggregate_by_key_n_events[1000]",
+            "value": 2.092366076815105,
+            "unit": "iter/sec",
+            "range": "stddev: 0.05320470343458937",
+            "extra": "mean: 477.92784020000454 msec\nrounds: 5"
+          },
+          {
+            "name": "bench/bench_flow.py::test_aggregate_by_key_n_events[5000]",
+            "value": 0.3568299554527313,
+            "unit": "iter/sec",
+            "range": "stddev: 0.07948447032647857",
+            "extra": "mean: 2.8024553003999926 sec\nrounds: 5"
+          },
+          {
+            "name": "bench/bench_flow.py::test_batch_n_events[0]",
+            "value": 1632.4455631611897,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00006364687435506628",
+            "extra": "mean: 612.5778540899857 usec\nrounds: 1076"
+          },
+          {
+            "name": "bench/bench_flow.py::test_batch_n_events[1]",
+            "value": 1169.6196361819455,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00004684385396959019",
+            "extra": "mean: 854.9788059854703 usec\nrounds: 902"
+          },
+          {
+            "name": "bench/bench_flow.py::test_batch_n_events[1000]",
+            "value": 8.936594096337428,
+            "unit": "iter/sec",
+            "range": "stddev: 0.005784043963012564",
+            "extra": "mean: 111.89945400002443 msec\nrounds: 10"
+          },
+          {
+            "name": "bench/bench_flow.py::test_batch_n_events[5000]",
+            "value": 1.2096261390105523,
+            "unit": "iter/sec",
+            "range": "stddev: 0.015940940369108203",
+            "extra": "mean: 826.7017120000219 msec\nrounds: 5"
+          },
+          {
+            "name": "bench/bench_flow.py::test_aggregate_df_86420_events",
+            "value": 0.07358740537988578,
+            "unit": "iter/sec",
+            "range": "stddev: 0.06573621725552227",
+            "extra": "mean: 13.589281954400008 sec\nrounds: 5"
+          },
+          {
+            "name": "bench/bench_flow.py::test_aggregate_df_86420_events_basic",
+            "value": 0.10513967183270494,
+            "unit": "iter/sec",
+            "range": "stddev: 0.055601325799949045",
+            "extra": "mean: 9.511157706400013 sec\nrounds: 5"
           }
         ]
       }
