@@ -107,10 +107,8 @@ class Table:
                     self._set_static_attrs(key, {})
             return self._get_static_attrs(key)
 
-    async def _internal_persist_key(self, key, event_data_to_persist):
+    async def _internal_persist_key(self, key, event_data_to_persist, aggr_by_key=None, additional_data_persist=None):
         async with self._get_lock(key):
-            aggr_by_key = self._get_aggregations_attrs(key)
-            additional_data_persist = self._get_static_attrs(key)
             if event_data_to_persist:
                 if not additional_data_persist:
                     additional_data_persist = event_data_to_persist
@@ -140,7 +138,7 @@ class Table:
             await self._load_and_update_schema()
         async with self._get_lock(key):
             cache_item = self._get_aggregations_attrs(key)
-            cache_item.aggregate(data, timestamp)
+            await cache_item.aggregate(data, timestamp)
             self._changed_keys.add(key)
 
     async def _get_features(self, key, timestamp):
@@ -169,7 +167,8 @@ class Table:
         else:
             self._set_aggregations_attrs(key, self._new_aggregated_store_element()(key, self._aggregates,
                                                                                    base_timestamp, initial_data,
-                                                                                   self.fixed_window_type))
+                                                                                   self.fixed_window_type,
+                                                                                   self._persist))
 
     async def _load_and_update_schema(self):
         async with self._get_schema_lock():
@@ -254,6 +253,15 @@ class Table:
 
         return schema
 
+    def _flush_pending(self, key):
+        aggregations_attrs = self._get_aggregations_attrs(key)
+        if not aggregations_attrs:
+            return
+        for bucket in aggregations_attrs.aggregation_buckets.values():
+            if bucket.should_persist:
+                # In case we have pending data that spreads over more then 2 windows discard the old ones.
+                bucket.get_and_flush_pending()
+
     def _get_aggregations_attrs(self, key):
         if key in self._attrs_cache:
             return self._attrs_cache[key].aggregations
@@ -330,10 +338,12 @@ class Table:
                         if received_job_count in self_sent_jobs:
                             await self._q.put(_termination_obj)
                             continue
-                        for key, pending_event in self._pending_by_key.items():
+                        for _, pending_event in self._pending_by_key.items():
                             if pending_event.pending and not pending_event.in_flight:
                                 for job in pending_event.pending:
-                                    resp = await self._internal_persist_key(key, job.data)
+                                    resp = await self._internal_persist_key(job.key, job.data,
+                                                                            job.aggr_by_key,
+                                                                            job.additional_data_persist)
                                     if job.callback:
                                         await job.callback(job.extra_data, resp)
                         break
@@ -387,6 +397,13 @@ class Table:
             self._flush_exception = None
 
     async def _persist(self, job, from_terminate=False):
+        if not self._flush_interval_secs:
+            job.additional_data_persist = self._get_static_attrs(job.key)
+            job.aggr_by_key = self._get_aggregations_attrs(job.key)
+        else:
+            job.save_additional_data_from_table(self)
+            self._flush_pending(job.key)
+
         if self._flush_exception is not None:
             raise self._flush_exception
         if not self._q:
@@ -419,7 +436,7 @@ class Table:
             # TODO using only last event might not work correctly if
             #  there are different non aggregation attrs in each event
             job = jobs[-1]
-            return await self._internal_persist_key(job.key, job.data)
+            return await self._internal_persist_key(job.key, job.data, job.aggr_by_key, job.additional_data_persist)
         except BaseException as ex:
             for job in jobs:
                 if job.extra_data and job.extra_data._awaitable_result:
@@ -437,7 +454,7 @@ class _CacheElement:
 
 
 class ReadOnlyAggregatedStoreElement:
-    def __init__(self, key, aggregates, base_time, initial_data=None, options=None):
+    def __init__(self, key, aggregates, base_time, initial_data=None, options=None, persist_func=None):
         self.aggregation_buckets = {}
         self.key = key
         self.aggregates = aggregates
@@ -1109,11 +1126,12 @@ class FirstValue(AggregationValue):
 
 
 class AggregatedStoreElement:
-    def __init__(self, key, aggregates, base_time, initial_data=None, options=None):
+    def __init__(self, key, aggregates, base_time, initial_data=None, options=None, persist_func=None):
         self.aggregation_buckets = {}
         self.key = key
         self.aggregates = aggregates
         self.storage_specific_cache = {}
+        self.persist_func = persist_func
 
         # Group init data by feature name
         initial_data_by_feature = {}
@@ -1143,9 +1161,20 @@ class AggregatedStoreElement:
             self.aggregation_buckets[aggregation_metadata.name] = \
                 AggregationBuckets(aggregation_metadata.name, explicit_raw_aggregates, hidden_raw_aggregates, virtual_aggregates,
                                    aggregation_metadata.windows, base_time,
-                                   aggregation_metadata.max_value, initial_column_data)
+                                   aggregation_metadata.max_value, key, initial_column_data, persist_func)
 
-    def aggregate(self, data, timestamp):
+    def __deepcopy__(self, memo):  # memo is a dict of id's to copies
+        cls = self.__class__
+        result = cls.__new__(cls)
+        memo[id(self)] = result
+        for k, v in self.__dict__.items():
+            if k == "persist_func":
+                setattr(result, k, v)
+            else:
+                setattr(result, k, copy.deepcopy(v, memo))
+        return result
+
+    async def aggregate(self, data, timestamp):
         # add a new point and aggregate
         for aggregation_metadata in self.aggregates:
             if aggregation_metadata.should_aggregate(data):
@@ -1153,7 +1182,7 @@ class AggregatedStoreElement:
                 if curr_value is None:
                     continue
                 # for aggr in aggregation_metadata.get_all_raw_aggregates():
-                self.aggregation_buckets[f'{aggregation_metadata.name}'].aggregate(timestamp, curr_value)
+                await self.aggregation_buckets[f'{aggregation_metadata.name}'].aggregate(timestamp, curr_value)
 
     def get_features(self, timestamp):
         result = {}
@@ -1164,8 +1193,10 @@ class AggregatedStoreElement:
 
 
 class AggregationBuckets:
-    def __init__(self, name, explicit_raw_aggregations, hidden_raw_aggregations, virtual_aggregations,
-                 explicit_windows, base_time, max_value, initial_data=None):
+    def __init__(self, name, explicit_raw_aggregations, hidden_raw_aggregations,
+                 virtual_aggregations, explicit_windows, base_time, max_value,
+                 key, initial_data=None, persist_func=None):
+        self.key = key
         self.name = name
         self._explicit_raw_aggregations = explicit_raw_aggregations
         self._hidden_raw_aggregations = hidden_raw_aggregations
@@ -1186,6 +1217,7 @@ class AggregationBuckets:
         self._last_data_point_timestamp = base_time
         self._current_aggregate_values = {}
         self._intermediate_aggregation_values = {}
+        self.persist_func = persist_func
         for aggregation_name in self._all_raw_aggregates:
             aggregation_value = AggregationValue.new_from_name(self.get_aggregation_for_aggregation(aggregation_name), self.max_value)
             self._intermediate_aggregation_values[aggregation_name] = aggregation_value
@@ -1217,13 +1249,24 @@ class AggregationBuckets:
 
             self.initialize_column()
 
+    def __deepcopy__(self, memo):  # memo is a dict of id's to copies
+        cls = self.__class__
+        result = cls.__new__(cls)
+        memo[id(self)] = result
+        for k, v in self.__dict__.items():
+            if k == "persist_func" or k == "_round_time_func":
+                setattr(result, k, v)
+            else:
+                setattr(result, k, copy.deepcopy(v, memo))
+        return result
+
     def initialize_column(self):
         self.buckets = []
 
         for _ in range(self.total_number_of_buckets):
             self.buckets.append(self.new_aggregation_value())
 
-    def get_or_advance_bucket_index_by_timestamp(self, timestamp):
+    async def get_or_advance_bucket_index_by_timestamp(self, timestamp):
         if timestamp < self.last_bucket_start_time + self.period_millis:
             bucket_index = int((timestamp - self.first_bucket_start_time) / self.period_millis)
 
@@ -1231,7 +1274,7 @@ class AggregationBuckets:
                 self.remove_old_values_from_pre_aggregations(timestamp)
             return bucket_index
         else:
-            self.advance_window_period(timestamp)
+            await self.advance_window_period(timestamp)
             return self.get_bucket_index_by_timestamp(timestamp)
 
     #  Get the index of the bucket corresponding to the requested timestamp
@@ -1275,13 +1318,15 @@ class AggregationBuckets:
                     else:
                         aggr._set_value(current_pre_aggregated_value - bucket_aggregated_value)
 
-    def advance_window_period(self, advance_to):
+    async def advance_window_period(self, advance_to):
         desired_bucket_index = int((advance_to - self.first_bucket_start_time) / self.period_millis)
         buckets_to_advance = desired_bucket_index - (self.total_number_of_buckets - 1)
         if self.is_fixed_window:
             buckets_to_advance = max(self.total_number_of_buckets, buckets_to_advance)
 
         if buckets_to_advance > 0:
+            if self.is_fixed_window:
+                await self.persist_func(_PersistJob(self.key, None, None))
             if buckets_to_advance > self.total_number_of_buckets:
                 self.initialize_column()
                 self._need_to_recalculate_pre_aggregates = True
@@ -1322,8 +1367,8 @@ class AggregationBuckets:
     def get_window_start_time_from_timestamp(self, timestamp, window_millis):
         return int((timestamp - self.first_bucket_start_time) / window_millis) * window_millis + self.first_bucket_start_time
 
-    def aggregate(self, timestamp, value):
-        index = self.get_or_advance_bucket_index_by_timestamp(timestamp)
+    async def aggregate(self, timestamp, value):
+        index = await self.get_or_advance_bucket_index_by_timestamp(timestamp)
 
         # Only aggregate points that are in range
         if index >= 0:
@@ -1540,6 +1585,12 @@ class _PendingEvent:
 class _PersistJob:
     def __init__(self, key, data, callback, extra_data=None):
         self.key = key
-        self.data = data
+        self.data = copy.deepcopy(data)
         self.callback = callback
         self.extra_data = extra_data
+        self.aggr_by_key = None
+        self.additional_data_persist = None
+
+    def save_additional_data_from_table(self, table):
+        self.additional_data_persist = copy.deepcopy(table._get_static_attrs(self.key))
+        self.aggr_by_key = copy.deepcopy(table._get_aggregations_attrs(self.key))

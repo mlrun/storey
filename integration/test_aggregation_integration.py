@@ -1682,3 +1682,69 @@ def test_aggregate_float_key(setup_teardown_test):
 
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
+
+
+@pytest.mark.parametrize('flush_interval', [None, 1, 300])
+def test_aggregate_and_query_persist_before_advancing_window(setup_teardown_test, flush_interval):
+    table = Table(setup_teardown_test, V3ioDriver(), flush_interval_secs=flush_interval)
+    controller = build_flow([
+        SyncEmitSource(),
+        AggregateByKey([FieldAggregator('particles', 'sample',
+                                        ['count'],
+                                        FixedWindows(['30m']))],
+                       table, key='sample'),
+        NoSqlTarget(table),
+        Reduce([], lambda acc, x: append_return(acc, x)),
+    ]).run()
+
+    for i in range(22, -1, -1):
+        data = {'number': i, 'sample': 'U235'}
+        controller.emit(data, 'tal', test_base_time - timedelta(minutes=3 * i))
+
+    controller.terminate()
+    actual = controller.await_termination()
+    expected_results = [
+        {'particles_count_30m': 1.0, 'number': 22, 'sample': 'U235'},
+        {'particles_count_30m': 2.0, 'number': 21, 'sample': 'U235'},
+        {'particles_count_30m': 3.0, 'number': 20, 'sample': 'U235'},
+        {'particles_count_30m': 4.0, 'number': 19, 'sample': 'U235'},
+        {'particles_count_30m': 5.0, 'number': 18, 'sample': 'U235'},
+        {'particles_count_30m': 6.0, 'number': 17, 'sample': 'U235'},
+        {'particles_count_30m': 7.0, 'number': 16, 'sample': 'U235'},
+        {'particles_count_30m': 8.0, 'number': 15, 'sample': 'U235'},
+        {'particles_count_30m': 9.0, 'number': 14, 'sample': 'U235'},
+        {'particles_count_30m': 1.0, 'number': 13, 'sample': 'U235'},
+        {'particles_count_30m': 2.0, 'number': 12, 'sample': 'U235'},
+        {'particles_count_30m': 3.0, 'number': 11, 'sample': 'U235'},
+        {'particles_count_30m': 4.0, 'number': 10, 'sample': 'U235'},
+        {'particles_count_30m': 5.0, 'number': 9, 'sample': 'U235'},
+        {'particles_count_30m': 6.0, 'number': 8, 'sample': 'U235'},
+        {'particles_count_30m': 7.0, 'number': 7, 'sample': 'U235'},
+        {'particles_count_30m': 8.0, 'number': 6, 'sample': 'U235'},
+        {'particles_count_30m': 9.0, 'number': 5, 'sample': 'U235'},
+        {'particles_count_30m': 10.0, 'number': 4, 'sample': 'U235'},
+        {'particles_count_30m': 1.0, 'number': 3, 'sample': 'U235'},
+        {'particles_count_30m': 2.0, 'number': 2, 'sample': 'U235'},
+        {'particles_count_30m': 3.0, 'number': 1, 'sample': 'U235'},
+        {'particles_count_30m': 4.0, 'number': 0, 'sample': 'U235'}
+    ]
+
+    assert actual == expected_results, \
+        f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
+
+    table = Table(setup_teardown_test, V3ioDriver())
+    controller = build_flow([
+        SyncEmitSource(),
+        QueryByKey(['particles_count_30m'],
+                   table, key='sample', fixed_window_type=FixedWindowType.LastClosedWindow),
+        Reduce([], lambda acc, x: append_return(acc, x)),
+    ]).run()
+    data = {'sample': 'U235'}
+    controller.emit(data, 'tal', test_base_time)
+
+    controller.terminate()
+    actual = controller.await_termination()
+    expected_results = [{'particles_count_30m': 10.0, 'sample': 'U235'}]
+    assert actual == expected_results, \
+        f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
+
