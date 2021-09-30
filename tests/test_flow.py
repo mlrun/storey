@@ -640,6 +640,22 @@ def test_map_with_state_flow():
     assert termination_result == 1036
 
 
+def test_map_with_state_flow_keyless_event():
+    controller = build_flow([
+        SyncEmitSource(),
+        MapWithState(1000, lambda x, state: (state, x)),
+        Reduce(0, lambda acc, x: acc + x),
+    ]).run()
+
+    for i in range(10):
+        event = Event(i)
+        del event.key
+        controller.emit(event)
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == 1036
+
+
 def test_map_with_cache_state_flow():
     table_object = Table("table", NoopDriver())
     table_object['tal'] = {'color': 'blue'}
