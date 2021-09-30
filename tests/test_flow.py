@@ -3,6 +3,7 @@ import copy
 import math
 import os
 import queue
+import traceback
 import uuid
 from datetime import datetime
 from random import choice
@@ -926,6 +927,36 @@ def test_awaitable_result_error_in_by_key_async_downstream():
 def test_error_async_flow():
     loop = asyncio.new_event_loop()
     loop.run_until_complete(async_test_error_async_flow())
+
+
+# ML-1147
+def test_error_trace():
+    def boom(_):
+        raise ValueError('boom')
+
+    controller = build_flow([
+        SyncEmitSource(),
+        Map(boom),
+        Complete()
+    ]).run()
+
+    awaitable_results = []
+    for i in range(2):
+        try:
+            awaitable_results.append(controller.emit(0))
+        except ValueError as ex:
+            pass
+
+    last_trace_size = None
+    for awaitable_result in awaitable_results:
+        try:
+            awaitable_result.await_result()
+            assert False
+        except ValueError:
+            trace_size = len(traceback.format_exc())
+            if last_trace_size is not None:
+                assert trace_size == last_trace_size
+            last_trace_size = trace_size
 
 
 def test_choice():
