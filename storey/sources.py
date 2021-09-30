@@ -32,7 +32,9 @@ class AwaitableResult:
         if isinstance(result, BaseException):
             if self._on_error:
                 self._on_error()
-            raise result
+            # Python appends trace frames to a raised exception, so we must copy
+            # it before raising to prevent it from growing each time
+            raise copy.copy(result)
         return result
 
     def _set_result(self, element):
@@ -227,9 +229,12 @@ class SyncEmitSource(Flow):
 
     def _raise_on_error(self, ex):
         if ex:
+            # Python appends trace frames to a raised exception, so we must copy
+            # it before raising to prevent it from growing each time
+            ex_copy = copy.copy(self._ex)
             if self.verbose:
-                raise type(self._ex)('Flow execution terminated') from self._ex
-            raise self._ex
+                raise type(ex_copy)('Flow execution terminated') from ex_copy
+            raise ex_copy
 
     def _emit(self, event):
         if event is not _termination_obj:
@@ -270,7 +275,9 @@ class AsyncAwaitableResult:
         if isinstance(result, BaseException):
             if self._on_error:
                 await self._on_error()
-            raise result
+            # Python appends trace frames to a raised exception, so we must copy
+            # it before raising to prevent it from growing each time
+            raise copy.copy(result)
         return result
 
     async def _set_result(self, element):
@@ -384,9 +391,12 @@ class AsyncEmitSource(Flow):
 
     def _raise_on_error(self):
         if self._ex:
+            # Python appends trace frames to a raised exception, so we must copy
+            # it before raising to prevent it from growing each time
+            ex_copy = copy.copy(self._ex)
             if self.verbose:
-                raise type(self._ex)('Flow execution terminated') from self._ex
-            raise self._ex
+                raise type(ex_copy)('Flow execution terminated') from ex_copy
+            raise ex_copy
 
     async def _emit(self, event):
         if event is not _termination_obj:
