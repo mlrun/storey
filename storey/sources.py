@@ -197,6 +197,9 @@ class SyncEmitSource(Flow):
         self._ex = None
         self._closeables = []
 
+    def _init(self):
+        self._is_terminated = False
+
     async def _run_loop(self):
         loop = asyncio.get_running_loop()
         self._termination_future = asyncio.get_running_loop().create_future()
@@ -239,6 +242,10 @@ class SyncEmitSource(Flow):
     def _emit(self, event):
         if event is not _termination_obj:
             self._raise_on_error(self._ex)
+            if self._is_terminated:
+                raise ValueError('Cannot emit to a terminated flow')
+        else:
+            self._is_terminated = True
         self._q.put(event)
         if event is not _termination_obj:
             self._raise_on_error(self._ex)
@@ -368,6 +375,9 @@ class AsyncEmitSource(Flow):
         self._ex = None
         self._closeables = []
 
+    def _init(self):
+        self._is_terminated = False
+
     async def _run_loop(self):
         while True:
             event = await self._q.get()
@@ -401,6 +411,10 @@ class AsyncEmitSource(Flow):
     async def _emit(self, event):
         if event is not _termination_obj:
             self._raise_on_error()
+            if self._is_terminated:
+                raise ValueError('Cannot emit to a terminated flow')
+        else:
+            self._is_terminated = True
         await self._q.put(event)
         if event is not _termination_obj:
             self._raise_on_error()

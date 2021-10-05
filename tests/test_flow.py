@@ -944,7 +944,7 @@ def test_error_trace():
     for i in range(2):
         try:
             awaitable_results.append(controller.emit(0))
-        except ValueError as ex:
+        except ValueError:
             pass
 
     last_trace_size = None
