@@ -1171,7 +1171,7 @@ def test_aggregate_multiple_keys(setup_redis_teardown_test, redis_driver):
     controller = build_flow([
         SyncEmitSource(),
         QueryByKey(['number_of_stuff_sum_1h'],
-                   other_table, keys=['first_name', 'last_name']),
+                   other_table, key=['first_name', 'last_name']),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
