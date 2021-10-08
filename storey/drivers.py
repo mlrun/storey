@@ -1,5 +1,6 @@
 import base64
 import json
+import math
 import os
 import time
 from datetime import datetime, timedelta, timezone
@@ -21,6 +22,7 @@ from rediscluster import RedisCluster
 from redis import WatchError
 from redis.client import Pipeline
 from redis import WatchError, ResponseError
+from redis import WatchError
 
 from .dtypes import V3ioError, RedisError, RedisTimeoutError
 from .utils import schema_file_name, asyncify
@@ -594,14 +596,15 @@ class RedisDriver(Driver):
             with self.redis.pipeline() as pipeline:
                 try:
                     pipeline.watch(key)
-                    old = pipeline.lindex(key, index_to_update)
+                    old = json.loads(pipeline.lindex(key, index_to_update))
                     pipeline.multi()
                     # XXX: Some aggregations use these values as their defaults, so we
                     # initialize our lists with them. But you can't create a float('inf')
                     # and then add to it, so we use 0 instead.
                     if old == 'inf' or old == '-inf':
                         old = 0
-                    pipeline.lset(key, index_to_update, float(old) + incr_by)
+                    new_value = self._convert_python_obj_to_redis_value(float(old) + incr_by)
+                    pipeline.lset(key, index_to_update, new_value)
                     return await asyncify(pipeline.execute)()
                 except WatchError as e:
                     if datetime.now() < timeout:
@@ -618,12 +621,13 @@ class RedisDriver(Driver):
         elif isinstance(value, timedelta):
             return f"{cls.TIMEDELTA_FIELD_PREFIX}{value.total_seconds()}"
         else:
-            # Store whole numbers as integers.
-            try:
-                if not value % 1:
+            if isinstance(value, float):
+                if value == math.inf or value == -math.inf:
+                    # Use the shorter infinity form (inf, -inf) to save space.
+                    value = str(value)
+                elif not value % 1:
+                    # Store whole numbers as integers to save space.
                     value = int(value)
-            except TypeError:
-                pass
             return json.dumps(value)
 
     @classmethod
@@ -690,7 +694,8 @@ class RedisDriver(Driver):
                                     # so we initialize it (or right-pad it) to the
                                     # expected length with default values.
                                     new_length = bucket.total_number_of_buckets - list_length
-                                    defaults = [aggregation_value.default_value] * new_length
+                                    defaults = [self._convert_python_obj_to_redis_value(
+                                        aggregation_value.default_value)] * new_length
                                     self.redis.rpush(list_attribute_key, *defaults)
                             if array_time_attribute_key not in times_updates:
                                 times_updates[array_time_attribute_key] = expected_time_expr
@@ -809,20 +814,8 @@ class RedisDriver(Driver):
         # attribute (_a, _b).
         associated_time_attr = f"{self._aggregation_time_attribute_prefix}" \
                                f"{feature_with_relevant_attr}"
-        return associated_time_attr, time_in_millis
 
-    def cast(self, value):
-        """Cast `value` to the type Storey expects."""
-        if value == 'inf' or value == "-inf":
-            return float(value)
-        if '.' in value:
-            float_val = float(value)
-            # Storey integration tests expect an integer if there is no fractional.
-            if not float_val % 1:
-                return int(float_val)
-            return float_val
-        else:
-            return int(value)
+        return associated_time_attr, time_in_millis
 
     async def _load_aggregates_by_key(self, container, table_path, key):
         """
@@ -854,7 +847,7 @@ class RedisDriver(Driver):
                 redis_key_prefix, aggr_name_with_relevant_attribute)
             if feature_and_aggr_name not in aggregations:
                 aggregations[feature_and_aggr_name] = {}
-            aggregations[feature_and_aggr_name][time_in_millis] = [self.cast(v) for v in value]
+            aggregations[feature_and_aggr_name][time_in_millis] = [float(json.loads(v)) for v in value]
             aggregations[feature_and_aggr_name][associated_time_attr] = time_in_millis
         return aggregations, additional_data
 
