@@ -107,16 +107,21 @@ def _split_path(path):
 
 
 def url_to_file_system(url, storage_options):
-    schema = ""
+    remaining_path = url
+    scheme = ""
     if "://" in url:
         parsed_url = urlparse(url)
-        schema = parsed_url.scheme.lower()
-        load_fs_dependencies(schema)
-        url = parsed_url.path
+        scheme = parsed_url.scheme.lower()
+        load_fs_dependencies(scheme)
+        if scheme == 'v3io':
+            remaining_path = parsed_url.path
+        else:
+            remaining_path = f'{parsed_url.netloc}{parsed_url.path}'
+
     if storage_options:
-        return fsspec.filesystem(schema, **storage_options), url
+        return fsspec.filesystem(scheme, **storage_options), remaining_path
     else:
-        return fsspec.filesystem(schema), url
+        return fsspec.filesystem(scheme), remaining_path
 
 
 def load_fs_dependencies(schema):
