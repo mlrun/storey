@@ -849,7 +849,12 @@ class RedisDriver(Driver):
                 aggregations[feature_and_aggr_name] = {}
             aggregations[feature_and_aggr_name][time_in_millis] = [float(json.loads(v)) for v in value]
             aggregations[feature_and_aggr_name][associated_time_attr] = time_in_millis
-        return aggregations, additional_data
+
+        # Story expects to get None back if there were no aggregations, and the
+        # same for additional data.
+        aggregations_to_return = aggregations if aggregations else None
+        additional_data_to_return = additional_data if additional_data else None
+        return aggregations_to_return, additional_data_to_return
 
     async def _save_schema(self, container, table_path, schema):
         redis_key = self.make_key(container, table_path, schema_file_name)
