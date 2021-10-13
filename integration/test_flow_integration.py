@@ -110,6 +110,18 @@ def test_write_to_v3io_stream(setup_stream_teardown_test):
     asyncio.run(async_test_write_to_v3io_stream(setup_stream_teardown_test))
 
 
+def test_write_to_v3io_stream_timestamps(setup_stream_teardown_test):
+    df = pd.DataFrame([['hello', pd.Timestamp('2018-05-07 13:52:37'), datetime(2012, 8, 8, 21, 46, 24, 862000)]],
+                      columns=['string', 'ts', 'datetime'])
+    stream_path = setup_stream_teardown_test
+    controller = build_flow([
+        DataframeSource(df),
+        StreamTarget(V3ioDriver(), stream_path, infer_columns_from_data=True)
+    ]).run()
+    controller.await_termination()
+    shard0_data = asyncio.run(GetShardData().get_shard_data(f'{stream_path}/0'))
+
+
 def test_write_to_v3io_stream_with_column_inference(setup_stream_teardown_test):
     stream_path = setup_stream_teardown_test
     controller = build_flow([
