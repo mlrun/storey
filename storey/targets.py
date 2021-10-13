@@ -589,8 +589,8 @@ class StreamTarget(Flow, _Writer):
         inferred from data and used in place of explicit columns list if none was provided, or appended to the provided list. If header is
         True and columns is not provided, infer_columns_from_data=True is implied. Optional. Default to False if columns is provided,
         True otherwise.
-    :param shard_count: if stream doesn't exist and it will be created set number of shards in the stream. Default 1
-    :param retention_period_hours: if stream doesn't exist and it will be created set retention time. Default 24h
+    :param shard_count: If stream doesn't exist, it will be created with this number of shards. Defaults to 1.
+    :param retention_period_hours: If stream doesn't exist, it will be created with this retention time in hours. Defaults to 24.
     :param storage_options: Extra options that make sense for a particular storage connection, e.g. host, port, username, password, etc.,
         if using a URL that will be parsed by fsspec, e.g., starting “s3://”, “gcs://”. Optional
     :type storage_options: dict
@@ -691,10 +691,9 @@ class StreamTarget(Flow, _Writer):
             await self._storage.close()
 
     async def _lazy_init(self):
-
-        await self._storage._create_stream(self._container, self._stream_path, self._shard_count, self._retention_period_hours)
-
         if not self._initialized:
+            await self._storage._create_stream(self._container, self._stream_path, self._shard_count,
+                                               self._retention_period_hours)
             if self._sharding_func is None:
                 def f(_):
                     return random.randint(0, self._shard_count - 1)
