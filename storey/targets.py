@@ -694,6 +694,9 @@ class StreamTarget(Flow, _Writer):
         if not self._initialized:
             await self._storage._create_stream(self._container, self._stream_path, self._shard_count,
                                                self._retention_period_hours)
+            # get actual number of shards (for pre existing stream)
+            response = await self._storage._describe(self._container, self._stream_path)
+            self._shard_count = response.shard_count
             if self._sharding_func is None:
                 def f(_):
                     return random.randint(0, self._shard_count - 1)

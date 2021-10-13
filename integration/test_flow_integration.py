@@ -13,8 +13,9 @@ import v3io_frames as frames
 from storey import Filter, JoinWithV3IOTable, SendToHttp, Map, Reduce, SyncEmitSource, HttpRequest, build_flow, \
     StreamTarget, V3ioDriver, TSDBTarget, Table, JoinWithTable, MapWithState, NoSqlTarget, DataframeSource, \
     CSVSource, AsyncEmitSource
-from .integration_test_utils import V3ioHeaders, append_return, test_base_time, setup_kv_teardown_test, setup_teardown_test, \
-    setup_stream_teardown_test
+from .integration_test_utils import V3ioHeaders, append_return, test_base_time, setup_kv_teardown_test, \
+    setup_teardown_test, \
+    setup_stream_teardown_test, setup_stream
 
 
 class GetShardData(V3ioHeaders):
@@ -137,6 +138,20 @@ def test_write_to_v3io_stream_with_column_inference(setup_stream_teardown_test):
         b'{"x": 7, "y": "7+7=14"}',
         b'{"x": 9, "y": "9+9=18"}'
     ]
+
+
+def test_write_to_pre_existing_stream(setup_stream_teardown_test):
+    stream_path = setup_stream_teardown_test
+    setup_stream(stream_path)
+    df = pd.DataFrame([['hello', "goodbye"]], columns=['first', 'second'])
+    stream_path = setup_stream_teardown_test
+    controller = build_flow([
+        DataframeSource(df),
+        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: 0, infer_columns_from_data=True)
+    ]).run()
+    controller.await_termination()
+    shard0_data = asyncio.run(GetShardData().get_shard_data(f'{stream_path}/0'))
+    assert shard0_data == [b'{"first": "hello", "second": "goodbye"}']
 
 
 def test_write_dict_to_v3io_stream(setup_stream_teardown_test):

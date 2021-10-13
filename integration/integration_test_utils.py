@@ -115,6 +115,15 @@ def setup_stream_teardown_test():
     # Teardown
     asyncio.run(recursive_delete(stream_path, V3ioHeaders()))
 
+async def setup_stream(stream_path):
+    v3io_access = V3ioHeaders()
+    connector = aiohttp.TCPConnector()
+    client_session = aiohttp.ClientSession(connector=connector)
+    request_body = json.dumps({"ShardCount": 2, "RetentionPeriodHours": 1})
+    response = await client_session.request(
+        'POST', f'{v3io_access._webapi_url}/{stream_path}/', headers=v3io_access._create_stream_headers, data=request_body, ssl=False)
+    assert response.status == 204, f'Bad response {await response.text()} to request {request_body}'
+
 
 async def create_temp_kv(table_path):
     connector = aiohttp.TCPConnector()
