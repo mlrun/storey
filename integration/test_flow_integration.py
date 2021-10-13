@@ -120,7 +120,7 @@ def test_write_to_v3io_stream_timestamps(setup_stream_teardown_test):
     ]).run()
     controller.await_termination()
     shard0_data = asyncio.run(GetShardData().get_shard_data(f'{stream_path}/0'))
-
+    assert shard0_data == [b'{"datetime": "2012-08-08 21:46:24.862000", "string": "hello", "ts": "2018-05-07 13:52:37"}']
 
 def test_write_to_v3io_stream_with_column_inference(setup_stream_teardown_test):
     stream_path = setup_stream_teardown_test
