@@ -89,7 +89,7 @@ async def async_test_write_to_v3io_stream(setup_stream_teardown_test):
     controller = build_flow([
         AsyncEmitSource(),
         Map(lambda x: str(x)),
-        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: int(event.body), batch_size=8)
+        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: int(event.body), batch_size=8, shard_count=2)
     ]).run()
     for i in range(10):
         await controller.emit(i)
@@ -114,7 +114,7 @@ def test_write_to_v3io_stream_with_column_inference(setup_stream_teardown_test):
     stream_path = setup_stream_teardown_test
     controller = build_flow([
         SyncEmitSource(),
-        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: event.body['x'], infer_columns_from_data=True)
+        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: event.body['x'], infer_columns_from_data=True, shard_count=2)
     ]).run()
     for i in range(10):
         controller.emit({'x': i, 'y': f'{i}+{i}={i * 2}'})
@@ -144,7 +144,7 @@ def test_write_dict_to_v3io_stream(setup_stream_teardown_test):
     controller = build_flow([
         SyncEmitSource(),
         StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: int(event.key), columns=['$key'],
-                     infer_columns_from_data=True)
+                     infer_columns_from_data=True, shard_count=2)
     ]).run()
     expected_shard0 = []
     expected_shard1 = []
@@ -175,7 +175,7 @@ def test_write_to_v3io_stream_unbalanced(setup_stream_teardown_test):
     controller = build_flow([
         SyncEmitSource(),
         Map(lambda x: str(x)),
-        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: 0)
+        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: 0, shard_count=2)
     ]).run()
     for i in range(10):
         controller.emit(i)
