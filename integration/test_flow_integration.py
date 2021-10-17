@@ -158,7 +158,6 @@ def test_write_to_pre_existing_stream(assign_stream_teardown_test):
     stream_path = assign_stream_teardown_test
     asyncio.run(create_stream(stream_path))
     df = pd.DataFrame([['hello', "goodbye"]], columns=['first', 'second'])
-    stream_path = assign_stream_teardown_test
     controller = build_flow([
         DataframeSource(df),
         StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: 0, infer_columns_from_data=True)
