@@ -638,7 +638,7 @@ class StreamTarget(Flow, _Writer):
         record_list_for_json = []
         for record in records:
             if isinstance(record, dict):
-                record = json.dumps(record).encode("utf-8")
+                record = json.dumps(record, default=str).encode("utf-8")
             record_list_for_json.append({'shard_id': shard_id, 'data': record})
 
         return record_list_for_json

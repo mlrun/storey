@@ -32,7 +32,9 @@ class AwaitableResult:
         if isinstance(result, BaseException):
             if self._on_error:
                 self._on_error()
-            raise result
+            # Python appends trace frames to a raised exception, so we must copy
+            # it before raising to prevent it from growing each time
+            raise copy.copy(result)
         return result
 
     def _set_result(self, element):
@@ -94,7 +96,7 @@ class FlowControllerBase:
             body[self._time_field] = event_time
 
         if element_is_event:
-            if key:
+            if key or not hasattr(element, 'key'):
                 element.key = key
             if event_time:
                 element.time = event_time
@@ -195,6 +197,9 @@ class SyncEmitSource(Flow):
         self._ex = None
         self._closeables = []
 
+    def _init(self):
+        self._is_terminated = False
+
     async def _run_loop(self):
         loop = asyncio.get_running_loop()
         self._termination_future = asyncio.get_running_loop().create_future()
@@ -227,13 +232,20 @@ class SyncEmitSource(Flow):
 
     def _raise_on_error(self, ex):
         if ex:
+            # Python appends trace frames to a raised exception, so we must copy
+            # it before raising to prevent it from growing each time
+            ex_copy = copy.copy(self._ex)
             if self.verbose:
-                raise type(self._ex)('Flow execution terminated') from self._ex
-            raise self._ex
+                raise type(ex_copy)('Flow execution terminated') from ex_copy
+            raise ex_copy
 
     def _emit(self, event):
         if event is not _termination_obj:
             self._raise_on_error(self._ex)
+            if self._is_terminated:
+                raise ValueError('Cannot emit to a terminated flow')
+        else:
+            self._is_terminated = True
         self._q.put(event)
         if event is not _termination_obj:
             self._raise_on_error(self._ex)
@@ -270,7 +282,9 @@ class AsyncAwaitableResult:
         if isinstance(result, BaseException):
             if self._on_error:
                 await self._on_error()
-            raise result
+            # Python appends trace frames to a raised exception, so we must copy
+            # it before raising to prevent it from growing each time
+            raise copy.copy(result)
         return result
 
     async def _set_result(self, element):
@@ -361,6 +375,9 @@ class AsyncEmitSource(Flow):
         self._ex = None
         self._closeables = []
 
+    def _init(self):
+        self._is_terminated = False
+
     async def _run_loop(self):
         while True:
             event = await self._q.get()
@@ -384,13 +401,20 @@ class AsyncEmitSource(Flow):
 
     def _raise_on_error(self):
         if self._ex:
+            # Python appends trace frames to a raised exception, so we must copy
+            # it before raising to prevent it from growing each time
+            ex_copy = copy.copy(self._ex)
             if self.verbose:
-                raise type(self._ex)('Flow execution terminated') from self._ex
-            raise self._ex
+                raise type(ex_copy)('Flow execution terminated') from ex_copy
+            raise ex_copy
 
     async def _emit(self, event):
         if event is not _termination_obj:
             self._raise_on_error()
+            if self._is_terminated:
+                raise ValueError('Cannot emit to a terminated flow')
+        else:
+            self._is_terminated = True
         await self._q.put(event)
         if event is not _termination_obj:
             self._raise_on_error()

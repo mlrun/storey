@@ -3,10 +3,12 @@ import json
 import os
 from datetime import datetime, timedelta
 from typing import Optional
+from collections import OrderedDict
 import pandas as pd
 
 import v3io
 import v3io.aio.dataplane
+from v3io.dataplane import kv_array
 
 from .dtypes import V3ioError
 from .utils import schema_file_name
@@ -70,7 +72,7 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
     :param access_key: V3IO access key. If not set, the V3IO_ACCESS_KEY environment variable will be used.
     """
 
-    def __init__(self, webapi: Optional[str] = None, access_key: Optional[str] = None):
+    def __init__(self, webapi: Optional[str] = None, access_key: Optional[str] = None, use_parallel_operations=True):
         NeedsV3ioAccess.__init__(self, webapi, access_key)
         self._v3io_client = None
         self._closed = True
@@ -80,6 +82,7 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
         self._error_code_string = "ErrorCode"
         self._false_condition_error_code = "16777244"
         self._mtime_header_name = 'X-v3io-transaction-verifier'
+        self._parallel_ops = use_parallel_operations
 
     def _lazy_init(self):
         self._closed = False
@@ -97,6 +100,7 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
                           'find_all_indices', 'extract_by_indices', 'sort_array', 'blob', 'if_else', 'in', 'true', 'false', 'and', 'or',
                           'not', 'contains', 'ends', 'starts', 'exists', 'select', 'str', 'to_int', 'if_not_exists', 'regexp_instr',
                           'delete', 'as', 'maxdbl', 'inf', 'nan', 'isnan', 'nanaszero'}
+    parallel_aggregates = {'min': 'pmin', 'max': 'pmax', 'sum': 'psum', 'count': 'psum', 'sqr': 'psum'}
 
     async def _save_schema(self, container, table_path, schema):
         self._lazy_init()
@@ -126,6 +130,19 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
 
     async def _save_key(self, container, table_path, key, aggr_item, partitioned_by_key, additional_data=None):
         self._lazy_init()
+
+        # test whether server support parallel operations
+        if self._parallel_ops:
+            try:
+                test_expression = "a=init_array(2,'double',0.0);a[0..1]=pmax(a[0..1], a[0..1]);delete(a);"
+                response = await self._v3io_client.kv.update(container, table_path, str(key),
+                                                             expression=test_expression, condition="",
+                                                             raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
+                if response.status_code != 200:
+                    self._parallel_ops = False
+            except Exception:
+                pass
+
         should_raise_error = False
         update_expression, condition_expression, pending_updates = self._build_feature_store_update_expression(aggr_item, additional_data,
                                                                                                                partitioned_by_key)
@@ -229,13 +246,15 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
         return update_expression, condition_expression, pending_updates
 
     def _discard_old_pending_items(self, pending, max_window_millis):
-        res = {}
+        res = OrderedDict()
         if pending:
-            last_time = int(list(pending.keys())[-1] / max_window_millis) * max_window_millis
+            pending_keys = list(pending)
+            pending_keys.sort()
+            last_time = int(pending_keys[-1] / max_window_millis) * max_window_millis
             min_time = last_time - max_window_millis
-            for time, value in pending.items():
+            for time in pending_keys:
                 if time > min_time:
-                    res[time] = value
+                    res[time] = pending[time]
         return res
 
     def _build_conditioned_feature_store_request(self, aggregation_element, pending=None):
@@ -298,12 +317,19 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
         new_cached_times = {}
         pending_updates = {}
         initialized_attributes = {}
+        pexpressions = {}
+        use_parallel = self._parallel_ops
+
         for name, bucket in aggregation_element.aggregation_buckets.items():
+
             # Only save raw aggregates, not virtual
             if bucket.should_persist:
 
                 # In case we have pending data that spreads over more then 2 windows discard the old ones.
-                pending_updates[name] = self._discard_old_pending_items(bucket.get_and_flush_pending(), bucket.max_window_millis)
+                pending_updates[name] = self._discard_old_pending_items(bucket.get_and_flush_pending(),
+                                                                        bucket.max_window_millis)
+                use_parallel = use_parallel and len(pending_updates[name].items()) > 1
+
                 for bucket_start_time, aggregation_values in pending_updates[name].items():
                     # the relevant attribute out of the 2 feature attributes
                     feature_attr = 'a' if int(bucket_start_time / bucket.max_window_millis) % 2 == 0 else 'b'
@@ -313,17 +339,30 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
                     cached_time = bucket.storage_specific_cache.get(array_time_attribute_name, 0)
 
                     expected_time = int(bucket_start_time / bucket.max_window_millis) * bucket.max_window_millis
-                    expected_time_expr = self._convert_python_obj_to_expression_value(datetime.fromtimestamp(expected_time / 1000))
+                    expected_time_expr = self._convert_python_obj_to_expression_value(
+                        datetime.fromtimestamp(expected_time / 1000))
                     index_to_update = int((bucket_start_time - expected_time) / bucket.period_millis)
 
                     for aggregation, aggregation_value in aggregation_values.items():
                         array_attribute_name = f'{self._aggregation_attribute_prefix}{name}_{aggregation}_{feature_attr}'
+
+                        if use_parallel and aggregation in self.parallel_aggregates:
+                            if array_attribute_name not in pexpressions:
+                                pexpressions[array_attribute_name] = {
+                                    "values": [aggregation_value.default_value] * bucket.total_number_of_buckets,
+                                    "first_index": index_to_update,
+                                    "last_index": index_to_update,
+                                    "default_value": aggregation_value.default_value,
+                                    "aggregation": aggregation
+                                }
                         # Possibly initiating the array
                         if cached_time < expected_time:
                             if not initialized_attributes.get(array_attribute_name, 0) == expected_time:
                                 initialized_attributes[array_attribute_name] = expected_time
-                                expressions.append(f"{array_attribute_name}=init_array({bucket.total_number_of_buckets},'double',"
-                                                   f'{aggregation_value.default_value})')
+                                expressions.append(
+                                    f"{array_attribute_name}=init_array({bucket.total_number_of_buckets},'double',"
+                                    f'{aggregation_value.default_value})'
+                                )
                             if array_time_attribute_name not in times_update_expressions:
                                 times_update_expressions[array_time_attribute_name] = \
                                     f'{array_time_attribute_name}={expected_time_expr}'
@@ -331,8 +370,25 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
 
                         # Updating the specific cells
                         if cached_time <= expected_time:
-                            arr_at_index = f'{array_attribute_name}[{index_to_update}]'
-                            expressions.append(f'{arr_at_index}={aggregation_value.get_update_expression(arr_at_index)}')
+                            if use_parallel and aggregation in self.parallel_aggregates:
+                                if pexpressions[array_attribute_name]["first_index"] > index_to_update:
+                                    pexpressions[array_attribute_name]["first_index"] = index_to_update
+                                if pexpressions[array_attribute_name]["last_index"] < index_to_update:
+                                    pexpressions[array_attribute_name]["last_index"] = index_to_update
+                                pexpressions[array_attribute_name]["values"][index_to_update] = aggregation_value.value
+                            else:
+                                arr_at_index = f'{array_attribute_name}[{index_to_update}]'
+                                expressions.append(
+                                    f'{arr_at_index}={aggregation_value.get_update_expression(arr_at_index)}'
+                                )
+
+        if use_parallel:
+            for attr_name, d in pexpressions.items():
+                encoded_array = kv_array.encode_list(d["values"][d["first_index"]:d["last_index"] + 1]).decode()
+                paggregate = self.parallel_aggregates[d["aggregation"]]
+                sliced_array = f'{attr_name}[{d["first_index"]}..{d["last_index"]}]'
+                expressions.append(
+                    f"{sliced_array}={paggregate}({sliced_array}, blob('{encoded_array}'))")
 
         # Separating time attribute updates, so that they will be executed in the end and only once per feature name.
         expressions.extend(times_update_expressions.values())
