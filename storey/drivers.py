@@ -486,6 +486,7 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
             raise_for_status=v3io.aio.dataplane.RaiseForStatus.never,
         )
         res.raise_for_status([409, 204])
+        return res.status_code
 
     async def _put_records(self, container, stream_path, payload):
         self._lazy_init()

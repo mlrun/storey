@@ -598,7 +598,7 @@ class StreamTarget(Flow, _Writer):
 
     def __init__(self, storage: Driver, stream_path: str, sharding_func: Optional[Callable[[Event], int]] = None, batch_size: int = 8,
                  columns: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None,
-                 shard_count=1, retention_period_hours=24, **kwargs):
+                 shard_count: int = 1, retention_period_hours: int = 24, **kwargs):
         kwargs['stream_path'] = stream_path
         kwargs['batch_size'] = batch_size
         if columns:
@@ -692,11 +692,12 @@ class StreamTarget(Flow, _Writer):
 
     async def _lazy_init(self):
         if not self._initialized:
-            await self._storage._create_stream(self._container, self._stream_path, self._shard_count,
-                                               self._retention_period_hours)
-            # get actual number of shards (for pre existing stream)
-            response = await self._storage._describe(self._container, self._stream_path)
-            self._shard_count = response.shard_count
+            status_code = await self._storage._create_stream(self._container, self._stream_path, self._shard_count,
+                                                             self._retention_period_hours)
+            if status_code == 409:
+                # get actual number of shards (for pre existing stream)
+                response = await self._storage._describe(self._container, self._stream_path)
+                self._shard_count = response.shard_count
             if self._sharding_func is None:
                 def f(_):
                     return random.randint(0, self._shard_count - 1)
