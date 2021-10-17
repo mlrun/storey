@@ -811,6 +811,8 @@ def test_awaitable_result_error():
         assert False
     except ValueError:
         pass
+    finally:
+        controller.terminate()
 
 
 async def async_test_async_awaitable_result_error():
@@ -829,6 +831,8 @@ async def async_test_async_awaitable_result_error():
         assert False
     except ValueError:
         pass
+    finally:
+        controller.terminate()
 
 
 def test_async_awaitable_result_error():
@@ -886,6 +890,8 @@ def test_awaitable_result_error_in_async_downstream():
         assert False
     except InvalidURL:
         pass
+    finally:
+        controller.terminate()
 
 
 async def async_test_async_awaitable_result_error_in_async_downstream():
@@ -922,6 +928,8 @@ def test_awaitable_result_error_in_by_key_async_downstream():
         assert False
     except ValueError:
         pass
+    finally:
+        controller.terminate()
 
 
 def test_error_async_flow():
@@ -957,6 +965,8 @@ def test_error_trace():
             if last_trace_size is not None:
                 assert trace_size == last_trace_size
             last_trace_size = trace_size
+        finally:
+            controller.terminate()
 
 
 def test_choice():
@@ -2129,8 +2139,9 @@ def test_async_task_error_and_complete():
         assert False
     except ATestException:
         pass
+    finally:
+        controller.terminate()
 
-    controller.terminate()
     try:
         controller.await_termination()
         assert False

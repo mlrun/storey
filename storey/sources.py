@@ -137,7 +137,7 @@ class FlowController(FlowControllerBase):
         event = self._build_event(element, key, event_time)
         awaitable_result = None
         if self._return_awaitable_result:
-            awaitable_result = AwaitableResult(self.terminate)
+            awaitable_result = AwaitableResult()
         event._awaitable_result = awaitable_result
         self._emit_fn(event)
         return awaitable_result
@@ -330,7 +330,7 @@ class AsyncFlowController(FlowControllerBase):
         event = self._build_event(element, key, event_time)
         awaitable = None
         if self._await_result:
-            awaitable = AsyncAwaitableResult(self.terminate)
+            awaitable = AsyncAwaitableResult()
         event._awaitable_result = awaitable
         await self._emit_fn(event)
         if self._await_result:
