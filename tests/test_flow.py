@@ -2337,10 +2337,9 @@ def test_result_path():
 
 def test_to_dict():
     source = SyncEmitSource(name='my_source', buffer_size=5)
-    identity = Map(lambda x: x, full_event=False)
-    assert source.to_dict() == {'class_name': 'storey.sources.SyncEmitSource', 'class_args': {'buffer_size': 5}, 'name': 'my_source',
-                                'full_event': False}
-    assert identity.to_dict() == {'class_name': 'storey.flow.Map', 'class_args': {}, 'full_event': False}
+    identity = Map(lambda x: x, full_event=True, not_in_use=None)
+    assert source.to_dict() == {'class_name': 'storey.sources.SyncEmitSource', 'class_args': {'buffer_size': 5}, 'name': 'my_source'}
+    assert identity.to_dict() == {'class_name': 'storey.flow.Map', 'class_args': {'not_in_use': None}, 'full_event': True, 'name': 'Map'}
 
 
 def test_flow_reuse():
@@ -2369,7 +2368,7 @@ def test_flow_to_dict_read_csv():
             'timestamp_format': '%d/%m/%Y %H:%M:%S.%f',
             'type_inference': True
         },
-        'full_event': False
+        'name': 'CSVSource'
     }
 
 
@@ -2383,7 +2382,7 @@ def test_flow_to_dict_write_to_parquet():
             'max_events': 2,
             'flush_after_seconds': 60,
         },
-        'full_event': False
+        'name': 'ParquetTarget'
     }
 
 
@@ -2401,7 +2400,7 @@ def test_flow_to_dict_write_to_tsdb():
             'rate': '1/h',
             'time_col': 'time'
         },
-        'full_event': False
+        'name': 'TSDBTarget'
     }
 
 
@@ -2416,7 +2415,7 @@ def test_flow_to_dict_dataframe_source():
             'key_field': 'my_key',
             'time_field': 'my_time'
         },
-        'full_event': False
+        'name': 'DataframeSource'
     }
 
 
@@ -2432,7 +2431,7 @@ def test_to_code():
     expected = """sync_emit_source0 = SyncEmitSource()
 batch0 = Batch(max_events=5)
 to_data_frame0 = ToDataFrame()
-reduce0 = Reduce(initial_value=[], full_event=True)
+reduce0 = Reduce(full_event=True, initial_value=[])
 
 sync_emit_source0.to(batch0)
 batch0.to(to_data_frame0)
@@ -2459,7 +2458,7 @@ batch0 = Batch(max_events=5)
 reduce0 = Reduce(initial_value=[])
 batch1 = Batch(max_events=5)
 to_data_frame0 = ToDataFrame()
-reduce1 = Reduce(initial_value=[], full_event=True)
+reduce1 = Reduce(full_event=True, initial_value=[])
 
 sync_emit_source0.to(batch0)
 batch0.to(reduce0)
