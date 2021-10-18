@@ -518,7 +518,7 @@ class TSDBTarget(_Batching, _Writer):
     def __init__(self, path: str, time_col: str = '$time', columns: Union[str, List[str], None] = None,
                  infer_columns_from_data: Optional[bool] = None, index_cols: Union[str, List[str], None] = None,
                  v3io_frames: Optional[str] = None, access_key: Optional[str] = None, rate: str = "", aggr: str = "",
-                 aggr_granularity: str = "", frames_client=None, **kwargs):
+                 aggr_granularity: Optional[str] = None, frames_client=None, **kwargs):
         kwargs['path'] = path
         kwargs['time_col'] = time_col
         if columns is not None:
@@ -571,7 +571,7 @@ class TSDBTarget(_Batching, _Writer):
             self._created = True
             self._frames_client.create(
                 'tsdb', table=self._path, if_exists=frames.frames_pb2.IGNORE, rate=self._rate,
-                aggregates=self._aggr, aggregation_granularity=self.aggr_granularity)
+                aggregates=self._aggr, aggregation_granularity=self.aggr_granularity or '')
         self._frames_client.write("tsdb", self._path, df)
 
 

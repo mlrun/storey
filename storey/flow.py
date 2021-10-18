@@ -1,6 +1,7 @@
 import asyncio
 import copy
 import datetime
+import inspect
 import time
 import traceback
 from asyncio import Task
@@ -26,39 +27,56 @@ class Flow:
         self.logger = getattr(self.context, 'logger', None) if self.context else None
 
         self._kwargs = kwargs
-        self._full_event = kwargs.pop('full_event', False)
+        self._full_event = kwargs.get('full_event', False)
         self._input_path = kwargs.get('input_path')
         self._result_path = kwargs.get('result_path')
         self._runnable = False
-        name = kwargs.pop('name', None)
+        name = kwargs.get('name', None)
         if name:
             self.name = name
-            self._custom_name = True
         else:
             self.name = type(self).__name__
-            self._custom_name = False
 
         self._closeables = []
 
     def _init(self):
         pass
 
-    def to_dict(self):
-        module = type(self).__module__
-        if module is None or module == str.__class__.__module__:
-            module = ''
-        else:
-            module += '.'
-        result = {
-            'class_name': f'{module}{type(self).__name__}',
-            'class_args': self._kwargs,
-            'full_event': self._full_event,
+    def to_dict(self, fields=None, exclude=None):
+        """convert the step object to a python dictionary"""
+        fields = fields or getattr(self, "_dict_fields", None)
+        if not fields:
+            fields = list(inspect.signature(self.__init__).parameters.keys())
+        if exclude:
+            fields = [field for field in fields if field not in exclude]
+
+        meta_keys = ["context", "name", "input_path", "result_path", "kwargs"]
+        args = {
+            key: getattr(self, key)
+            for key in fields
+            if getattr(self, key, None) is not None and key not in meta_keys
         }
-        if self._custom_name:
-            result['name'] = self.name
-        if self._recovery_step:
-            result['recovery_step'] = self._recovery_step.to_dict()
-        return result
+        # add storey kwargs or extra kwargs
+        if "kwargs" in fields and (hasattr(self, "kwargs") or hasattr(self, "_kwargs")):
+            kwargs = getattr(self, "kwargs", {}) or getattr(self, "_kwargs", {})
+            for key, value in kwargs.items():
+                if key not in meta_keys:
+                    args[key] = value
+
+        mod_name = self.__class__.__module__
+        struct = {
+            "class_name": f"{mod_name}.{self.__class__.__qualname__}",
+            "name": self.name or self.__class__.__name__,
+            "class_args": args,
+        }
+
+        for attr_name in ["STEP_KIND", "input_path", "result_path"]:
+            prefixed_attr_name = f'_{attr_name}'
+            if hasattr(self, prefixed_attr_name):
+                attr_value = getattr(self, prefixed_attr_name)
+                if attr_value is not None:
+                    struct[attr_name] = attr_value
+        return struct
 
     def _to_code(self, taken: Set[str]):
         class_name = type(self).__name__
@@ -80,10 +98,6 @@ class Flow:
             if isinstance(value, str):
                 value = f"'{value}'"
             param_list.append(f'{key}={value}')
-        if self._custom_name:
-            param_list.append(f'name={self.name}')
-        if self._full_event:
-            param_list.append(f'full_event={self._full_event}')
         param_str = ', '.join(param_list)
         step = f'{var_name} = {class_name}({param_str})'
         steps = [step]
