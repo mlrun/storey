@@ -2339,7 +2339,7 @@ def test_to_dict():
     source = SyncEmitSource(name='my_source', buffer_size=5)
     identity = Map(lambda x: x, full_event=True, not_in_use=None)
     assert source.to_dict() == {'class_name': 'storey.sources.SyncEmitSource', 'class_args': {'buffer_size': 5}, 'name': 'my_source'}
-    assert identity.to_dict() == {'class_name': 'storey.flow.Map', 'class_args': {'full_event': True, 'not_in_use': None}, 'name': 'Map'}
+    assert identity.to_dict() == {'class_name': 'storey.flow.Map', 'class_args': {'not_in_use': None}, 'full_event': True, 'name': 'Map'}
 
 
 def test_flow_reuse():

@@ -27,7 +27,7 @@ class Flow:
         self.logger = getattr(self.context, 'logger', None) if self.context else None
 
         self._kwargs = kwargs
-        self._full_event = kwargs.get('full_event', False)
+        self._full_event = kwargs.get('full_event')
         self._input_path = kwargs.get('input_path')
         self._result_path = kwargs.get('result_path')
         self._runnable = False
@@ -50,7 +50,7 @@ class Flow:
         if exclude:
             fields = [field for field in fields if field not in exclude]
 
-        meta_keys = ["context", "name", "input_path", "result_path", "kwargs"]
+        meta_keys = ["context", "name", "input_path", "result_path", "full_event", "kwargs"]
         args = {
             key: getattr(self, key)
             for key in fields
@@ -70,7 +70,7 @@ class Flow:
             "class_args": args,
         }
 
-        for attr_name in ["STEP_KIND", "input_path", "result_path"]:
+        for attr_name in ["STEP_KIND", "input_path", "result_path", "full_event"]:
             prefixed_attr_name = f'_{attr_name}'
             if hasattr(self, prefixed_attr_name):
                 attr_value = getattr(self, prefixed_attr_name)
