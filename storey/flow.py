@@ -70,12 +70,15 @@ class Flow:
             "class_args": args,
         }
 
-        for attr_name in ["STEP_KIND", "input_path", "result_path", "full_event"]:
-            prefixed_attr_name = f'_{attr_name}'
-            if hasattr(self, prefixed_attr_name):
-                attr_value = getattr(self, prefixed_attr_name)
-                if attr_value is not None:
-                    struct[attr_name] = attr_value
+        for parameter_name in [("kind", "_STEP_KIND"), "input_path", "result_path", "full_event"]:
+            if isinstance(parameter_name, tuple):
+                parameter_name, field_name = parameter_name
+            else:
+                field_name = f"_{parameter_name}"
+            if hasattr(self, field_name):
+                field_value = getattr(self, field_name)
+                if field_value is not None:
+                    struct[parameter_name] = field_value
         return struct
 
     def _to_code(self, taken: Set[str]):
