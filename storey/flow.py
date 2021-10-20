@@ -64,8 +64,11 @@ class Flow:
                     args[key] = value
 
         mod_name = self.__class__.__module__
+        class_path = self.__class__.__qualname__
+        if mod_name != "__main__":
+            class_path = f"{mod_name}.{class_path}"
         struct = {
-            "class_name": f"{mod_name}.{self.__class__.__qualname__}",
+            "class_name": class_path,
             "name": self.name or self.__class__.__name__,
             "class_args": args,
         }
