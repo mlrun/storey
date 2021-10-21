@@ -481,7 +481,7 @@ class ParquetTarget(_Batching, _Writer):
                 self._last_written_event = last_event_time
 
     async def _terminate(self):
-        if self._mlrun_callback:
+        if self._mlrun_callback and self._last_written_event:
             self._mlrun_callback(self._full_path, self._last_written_event)
 
 
