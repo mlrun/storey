@@ -2743,7 +2743,7 @@ def test_reduce_to_df_multiple_indexes():
 
 
 @pytest.mark.parametrize("empty", [True, False])
-def test_bla(tmpdir, empty):
+def test_func_parquet_target_terminate(tmpdir, empty):
     out_file = f'{tmpdir}/test_pass_param_{uuid.uuid4().hex}/'
 
     dictionary = {}
