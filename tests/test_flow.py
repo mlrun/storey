@@ -73,6 +73,28 @@ def test_multiple_upstreams():
     assert termination_result == 55 + 450
 
 
+def test_multiple_upstreams_completion():
+    source = SyncEmitSource()
+    map1 = Map(lambda x: x + 1)
+    map2 = Map(lambda x: x * 10)
+    complete = Complete()
+    source.to(map1)
+    source.to(map2)
+    map1.to(complete)
+    map2.to(complete)
+    controller = source.run()
+
+    results = []
+    try:
+        for i in range(3):
+            result = controller.emit(i, return_awaitable_result=True, expected_number_of_results=2).await_result()
+            results.append(result)
+    finally:
+        controller.terminate()
+    controller.await_termination()
+    assert results == [[1, 0], [2, 10], [3, 20]]
+
+
 def test_recover():
     def increment_maybe_boom(x):
         inc = x + 1
