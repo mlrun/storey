@@ -259,9 +259,9 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
             pending_keys.sort()
             last_time = int(pending_keys[-1] / max_window_millis) * max_window_millis
             min_time = last_time - max_window_millis
-            for time in pending_keys:
-                if time > min_time:
-                    res[time] = pending[time]
+            for _time in pending_keys:
+                if _time > min_time:
+                    res[_time] = pending[_time]
         return res
 
     def _build_conditioned_feature_store_request(self, aggregation_element, pending=None):
@@ -621,9 +621,9 @@ class RedisDriver(Driver):
         if pending:
             last_time = int(list(pending.keys())[-1] / max_window_millis) * max_window_millis
             min_time = last_time - max_window_millis
-            for time, value in pending.items():
-                if time > min_time:
-                    res[time] = value
+            for _time, value in pending.items():
+                if _time > min_time:
+                    res[_time] = value
         return res
 
     async def _build_feature_store_request(self, redis_key_prefix, aggregation_element, pipeline):
