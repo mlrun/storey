@@ -741,6 +741,9 @@ class RedisDriver(Driver):
             fields_to_delete = []
             for name, value in additional_data.items():
                 expression_value = self._convert_python_obj_to_redis_value(value)
+                # NOTE: This logic assumes that static attributes we're supposed
+                # to delete will appear in the `additional_data` dict with a
+                # "falsey" value. This is the same logic the V3ioDriver uses.
                 if expression_value:
                     fields_to_set[name] = expression_value
                 else:
@@ -761,6 +764,8 @@ class RedisDriver(Driver):
 
     async def _get_all_fields(self, redis_key: str):
         try:
+            # TODO: This should be HSCAN, not HGETALL, to avoid blocking Redis
+            # with very large hashes.
             values = await asyncify(self.redis.hgetall)(redis_key)
         except redis.ResponseError as e:
             raise RedisError(f'Failed to get key {redis_key}. Response error was: {e}')
