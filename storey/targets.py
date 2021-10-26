@@ -481,7 +481,7 @@ class ParquetTarget(_Batching, _Writer):
                 self._last_written_event = last_event_time
 
     async def _terminate(self):
-        if self._mlrun_callback:
+        if self._mlrun_callback and self._last_written_event:
             self._mlrun_callback(self._full_path, self._last_written_event)
 
 
@@ -518,7 +518,7 @@ class TSDBTarget(_Batching, _Writer):
     def __init__(self, path: str, time_col: str = '$time', columns: Union[str, List[str], None] = None,
                  infer_columns_from_data: Optional[bool] = None, index_cols: Union[str, List[str], None] = None,
                  v3io_frames: Optional[str] = None, access_key: Optional[str] = None, rate: str = "", aggr: str = "",
-                 aggr_granularity: str = "", frames_client=None, **kwargs):
+                 aggr_granularity: Optional[str] = None, frames_client=None, **kwargs):
         kwargs['path'] = path
         kwargs['time_col'] = time_col
         if columns is not None:
@@ -571,7 +571,7 @@ class TSDBTarget(_Batching, _Writer):
             self._created = True
             self._frames_client.create(
                 'tsdb', table=self._path, if_exists=frames.frames_pb2.IGNORE, rate=self._rate,
-                aggregates=self._aggr, aggregation_granularity=self.aggr_granularity)
+                aggregates=self._aggr, aggregation_granularity=self.aggr_granularity or '')
         self._frames_client.write("tsdb", self._path, df)
 
 
@@ -589,13 +589,16 @@ class StreamTarget(Flow, _Writer):
         inferred from data and used in place of explicit columns list if none was provided, or appended to the provided list. If header is
         True and columns is not provided, infer_columns_from_data=True is implied. Optional. Default to False if columns is provided,
         True otherwise.
+    :param shard_count: If stream doesn't exist, it will be created with this number of shards. Defaults to 1.
+    :param retention_period_hours: If stream doesn't exist, it will be created with this retention time in hours. Defaults to 24.
     :param storage_options: Extra options that make sense for a particular storage connection, e.g. host, port, username, password, etc.,
         if using a URL that will be parsed by fsspec, e.g., starting “s3://”, “gcs://”. Optional
     :type storage_options: dict
     """
 
     def __init__(self, storage: Driver, stream_path: str, sharding_func: Optional[Callable[[Event], int]] = None, batch_size: int = 8,
-                 columns: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None, **kwargs):
+                 columns: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None,
+                 shard_count: int = 1, retention_period_hours: int = 24, **kwargs):
         kwargs['stream_path'] = stream_path
         kwargs['batch_size'] = batch_size
         if columns:
@@ -615,7 +618,9 @@ class StreamTarget(Flow, _Writer):
         self._sharding_func = sharding_func
         self._batch_size = batch_size
 
-        self._shard_count = None
+        self._shard_count = shard_count
+        self._retention_period_hours = retention_period_hours
+        self._initialized = False
 
     def _init(self):
         Flow._init(self)
@@ -633,7 +638,7 @@ class StreamTarget(Flow, _Writer):
         record_list_for_json = []
         for record in records:
             if isinstance(record, dict):
-                record = json.dumps(record).encode("utf-8")
+                record = json.dumps(record, default=str).encode("utf-8")
             record_list_for_json.append({'shard_id': shard_id, 'data': record})
 
         return record_list_for_json
@@ -686,10 +691,13 @@ class StreamTarget(Flow, _Writer):
             await self._storage.close()
 
     async def _lazy_init(self):
-        if not self._shard_count:
-            response = await self._storage._describe(self._container, self._stream_path)
-
-            self._shard_count = response.shard_count
+        if not self._initialized:
+            status_code = await self._storage._create_stream(self._container, self._stream_path, self._shard_count,
+                                                             self._retention_period_hours)
+            if status_code == 409:
+                # get actual number of shards (for pre existing stream)
+                response = await self._storage._describe(self._container, self._stream_path)
+                self._shard_count = response.shard_count
             if self._sharding_func is None:
                 def f(_):
                     return random.randint(0, self._shard_count - 1)
@@ -698,6 +706,7 @@ class StreamTarget(Flow, _Writer):
 
             self._q = asyncio.queues.Queue(self._batch_size * self._shard_count)
             self._worker_awaitable = asyncio.get_running_loop().create_task(self._worker())
+            self._initialized = True
 
     async def _do(self, event):
         await self._lazy_init()

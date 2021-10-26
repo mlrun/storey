@@ -121,10 +121,9 @@ def setup_kv_teardown_test():
 
 
 @pytest.fixture()
-def setup_stream_teardown_test():
+def assign_stream_teardown_test():
     # Setup
     stream_path = _generate_table_name('bigdata/stream_test')
-    asyncio.run(setup_stream(stream_path))
 
     # Test runs
     yield stream_path
@@ -133,7 +132,7 @@ def setup_stream_teardown_test():
     asyncio.run(recursive_delete(stream_path, V3ioHeaders()))
 
 
-async def setup_stream(stream_path):
+async def create_stream(stream_path):
     v3io_access = V3ioHeaders()
     connector = aiohttp.TCPConnector()
     client_session = aiohttp.ClientSession(connector=connector)

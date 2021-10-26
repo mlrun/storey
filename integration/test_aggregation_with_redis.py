@@ -1227,8 +1227,6 @@ def test_read_non_existing_key(setup_redis_teardown_test, redis_driver):
     controller.terminate()
     actual = controller.await_termination()
 
-    print(actual[0])
-
     assert 'number_of_stuff_sum_1h' not in actual[0]
 
 

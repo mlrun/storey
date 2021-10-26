@@ -482,6 +482,19 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
             raise V3ioError(f'Failed to get number of shards. Got {response.status_code} response: {response.body}')
         return response.output
 
+    async def _create_stream(self, container, stream_path, shards, retention):
+        self._lazy_init()
+
+        res = await self._v3io_client.stream.create(
+            container=container,
+            stream_path=stream_path,
+            shard_count=shards,
+            retention_period_hours=retention,
+            raise_for_status=v3io.aio.dataplane.RaiseForStatus.never,
+        )
+        res.raise_for_status([409, 204])
+        return res.status_code
+
     async def _put_records(self, container, stream_path, payload):
         self._lazy_init()
 
