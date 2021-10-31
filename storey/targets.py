@@ -485,6 +485,7 @@ class ParquetTarget(_Batching, _Writer):
             if self._last_written_event:
                 self._mlrun_callback(self._full_path, self._last_written_event)
             else:
+                # min is a special case that indicates to mlrun that nothing was written
                 self._mlrun_callback(self._full_path, datetime.datetime.min)
 
 
