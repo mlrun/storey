@@ -2752,8 +2752,7 @@ def test_reduce_to_df_multiple_indexes():
     assert_frame_equal(expected, termination_result)
 
 
-@pytest.mark.parametrize("empty", [True, False])
-def test_func_parquet_target_terminate(tmpdir, empty):
+def test_func_parquet_target_terminate(tmpdir):
     out_file = f'{tmpdir}/test_func_parquet_target_terminate_{uuid.uuid4().hex}/'
 
     dictionary = {}
@@ -2761,12 +2760,9 @@ def test_func_parquet_target_terminate(tmpdir, empty):
     def my_func(param1, param2):
         dictionary[param1] = param2
 
-    if empty:
-        data = None
-    else:
-        data = [['dina', pd.Timestamp('2019-07-01 00:00:00'), 'tel aviv'],
-                ['uri', pd.Timestamp('2018-12-30 09:00:00'), 'tel aviv'],
-                ['katya', pd.Timestamp('2020-12-31 14:00:00'), 'hod hasharon']]
+    data = [['dina', pd.Timestamp('2019-07-01 00:00:00'), 'tel aviv'],
+            ['uri', pd.Timestamp('2018-12-30 09:00:00'), 'tel aviv'],
+            ['katya', pd.Timestamp('2020-12-31 14:00:00'), 'hod hasharon']]
 
     df = pd.DataFrame(data, columns=['my_string', 'my_time', 'my_city'])
     df.set_index('my_string')
@@ -2778,7 +2774,4 @@ def test_func_parquet_target_terminate(tmpdir, empty):
 
     controller.await_termination()
 
-    if empty:
-        assert len(dictionary) == 0
-    else:
-        assert len(dictionary) == 1
+    assert len(dictionary) == 1
