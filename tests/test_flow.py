@@ -2778,15 +2778,14 @@ def test_func_parquet_target_terminate(tmpdir):
     assert len(dictionary) == 1
 
 
-class _ErrorInConcurrentExecution(_ConcurrentJobExecution):
-    async def _process_event(self, event):
-        pass
-
-    async def _handle_completed(self, event, response):
-        raise ATestException()
-
-
 def test_completion_on_error_in_concurrent_execution_step():
+    class _ErrorInConcurrentExecution(_ConcurrentJobExecution):
+        async def _process_event(self, event):
+            pass
+
+        async def _handle_completed(self, event, response):
+            raise ATestException()
+
     controller = build_flow([
         SyncEmitSource(),
         _ErrorInConcurrentExecution(),
@@ -2799,3 +2798,31 @@ def test_completion_on_error_in_concurrent_execution_step():
             awaitable_result.await_result()
     finally:
         controller.terminate()
+
+
+def test_completion_after_retry_in_concurrent_execution_step():
+    class _ErrorInConcurrentExecution(_ConcurrentJobExecution):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self._nums_called = 0
+
+        async def _process_event(self, event):
+            self._nums_called += 1
+            if self._nums_called == 1:  # fail once
+                raise ATestException()
+
+        async def _handle_completed(self, event, response):
+            return await self._do_downstream(event)
+
+    controller = build_flow([
+        SyncEmitSource(),
+        _ErrorInConcurrentExecution(retries=1),
+        Complete()
+    ]).run()
+
+    awaitable_result = controller.emit(1)
+    try:
+        awaitable_result.await_result()
+    finally:
+        controller.terminate()
+    controller.await_termination()

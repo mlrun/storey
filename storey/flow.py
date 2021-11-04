@@ -603,9 +603,10 @@ class HttpResponse:
 
 
 class _ConcurrentJobExecution(Flow):
-    def __init__(self, max_in_flight=8, **kwargs):
+    def __init__(self, max_in_flight=8, retries=0, **kwargs):
         Flow.__init__(self, **kwargs)
         self._max_in_flight = max_in_flight
+        self._retries = retries
 
     def _init(self):
         self._q = None
@@ -643,17 +644,18 @@ class _ConcurrentJobExecution(Flow):
     async def _lazy_init(self):
         pass
 
-    async def _safe_process_event(self, event):
-        if event._awaitable_result:
+    async def _process_event_with_retries(self, event):
+        retries_left = self._retries
+        while True:
             try:
                 return await self._process_event(event)
-            except BaseException as ex:
-                none_or_coroutine = event._awaitable_result._set_error(ex)
-                if none_or_coroutine:
-                    await none_or_coroutine
-                raise ex
-        else:
-            return await self._process_event(event)
+            except Exception as ex:
+                if retries_left > 0:
+                    if self.logger:
+                        logger.warn(f'{self.name} failed to process event ({retries_left} retries left): {ex}')
+                    retries_left -= 1
+                else:
+                    raise ex
 
     async def _do(self, event):
         if not self._q:
@@ -670,7 +672,7 @@ class _ConcurrentJobExecution(Flow):
             await self._worker_awaitable
             return await self._do_downstream(_termination_obj)
         else:
-            task = self._safe_process_event(event)
+            task = self._process_event_with_retries(event)
             await self._q.put((event, asyncio.get_running_loop().create_task(task)))
             if self._worker_awaitable.done():
                 await self._worker_awaitable
