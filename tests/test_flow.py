@@ -19,6 +19,7 @@ from storey import build_flow, SyncEmitSource, Map, Filter, FlatMap, Reduce, Map
     Event, Batch, Table, CSVTarget, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, \
     ParquetTarget, QueryByKey, \
     TSDBTarget, Extend, SendToHttp, HttpRequest, NoSqlTarget, NoopDriver, Driver, Recover, V3ioDriver, ParquetSource
+from storey.flow import _ConcurrentJobExecution
 
 
 class ATestException(Exception):
@@ -2775,3 +2776,26 @@ def test_func_parquet_target_terminate(tmpdir):
     controller.await_termination()
 
     assert len(dictionary) == 1
+
+
+class _ErrorInConcurrentExecution(_ConcurrentJobExecution):
+    async def _process_event(self, event):
+        pass
+
+    async def _handle_completed(self, event, response):
+        raise ATestException()
+
+
+def test_completion_on_error_in_concurrent_execution_step():
+    controller = build_flow([
+        SyncEmitSource(),
+        _ErrorInConcurrentExecution(),
+        Complete()
+    ]).run()
+
+    awaitable_result = controller.emit(1)
+    try:
+        with pytest.raises(ATestException):
+            awaitable_result.await_result()
+    finally:
+        controller.terminate()

@@ -611,6 +611,7 @@ class _ConcurrentJobExecution(Flow):
         self._q = None
 
     async def _worker(self):
+        event = None
         try:
             while True:
                 job = await self._q.get()
@@ -620,6 +621,10 @@ class _ConcurrentJobExecution(Flow):
                 completed = await job[1]
                 await self._handle_completed(event, completed)
         except BaseException as ex:
+            if event:
+                none_or_coroutine = event._awaitable_result._set_error(ex)
+                if none_or_coroutine:
+                    await none_or_coroutine
             if not self._q.empty():
                 await self._q.get()
             raise ex
