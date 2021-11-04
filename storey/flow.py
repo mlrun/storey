@@ -652,7 +652,7 @@ class _ConcurrentJobExecution(Flow):
             except Exception as ex:
                 if retries_left > 0:
                     if self.logger:
-                        logger.warn(f'{self.name} failed to process event ({retries_left} retries left): {ex}')
+                        self.logger.warn(f'{self.name} failed to process event ({retries_left} retries left): {ex}')
                     retries_left -= 1
                 else:
                     raise ex
