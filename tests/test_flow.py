@@ -3,6 +3,7 @@ import copy
 import math
 import os
 import queue
+import time
 import traceback
 import uuid
 from datetime import datetime
@@ -2800,7 +2801,10 @@ def test_completion_on_error_in_concurrent_execution_step():
         controller.terminate()
 
 
-def test_completion_after_retry_in_concurrent_execution_step():
+@pytest.mark.parametrize('backoff_factor', [(0, 0), (1, 3)])
+def test_completion_after_retry_in_concurrent_execution_step(backoff_factor):
+    backoff_factor, expected_sleep = backoff_factor
+
     class _ErrorInConcurrentExecution(_ConcurrentJobExecution):
         def __init__(self, **kwargs):
             super().__init__(**kwargs)
@@ -2808,7 +2812,7 @@ def test_completion_after_retry_in_concurrent_execution_step():
 
         async def _process_event(self, event):
             self._nums_called += 1
-            if self._nums_called == 1:  # fail once
+            if self._nums_called <= 2:  # fail twice
                 raise ATestException()
 
         async def _handle_completed(self, event, response):
@@ -2816,13 +2820,16 @@ def test_completion_after_retry_in_concurrent_execution_step():
 
     controller = build_flow([
         SyncEmitSource(),
-        _ErrorInConcurrentExecution(retries=1),
+        _ErrorInConcurrentExecution(retries=2, backoff_factor=backoff_factor),
         Complete()
     ]).run()
 
     awaitable_result = controller.emit(1)
     try:
+        start = time.time()
         awaitable_result.await_result()
+        end = time.time()
     finally:
         controller.terminate()
     controller.await_termination()
+    assert end - start > expected_sleep
