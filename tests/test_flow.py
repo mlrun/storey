@@ -3,6 +3,7 @@ import copy
 import math
 import os
 import queue
+import time
 import traceback
 import uuid
 from datetime import datetime
@@ -2778,15 +2779,14 @@ def test_func_parquet_target_terminate(tmpdir):
     assert len(dictionary) == 1
 
 
-class _ErrorInConcurrentExecution(_ConcurrentJobExecution):
-    async def _process_event(self, event):
-        pass
-
-    async def _handle_completed(self, event, response):
-        raise ATestException()
-
-
 def test_completion_on_error_in_concurrent_execution_step():
+    class _ErrorInConcurrentExecution(_ConcurrentJobExecution):
+        async def _process_event(self, event):
+            pass
+
+        async def _handle_completed(self, event, response):
+            raise ATestException()
+
     controller = build_flow([
         SyncEmitSource(),
         _ErrorInConcurrentExecution(),
@@ -2799,3 +2799,45 @@ def test_completion_on_error_in_concurrent_execution_step():
             awaitable_result.await_result()
     finally:
         controller.terminate()
+
+
+@pytest.mark.parametrize('backoff_factor', [(0, 2, 0), (1, 2, 3), (0, 1, None)])
+def test_completion_after_retry_in_concurrent_execution_step(backoff_factor):
+    backoff_factor, retries, expected_sleep = backoff_factor
+
+    class _ErrorInConcurrentExecution(_ConcurrentJobExecution):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self._nums_called = 0
+
+        async def _process_event(self, event):
+            self._nums_called += 1
+            if self._nums_called <= 2:  # fail twice
+                raise ATestException()
+
+        async def _handle_completed(self, event, response):
+            return await self._do_downstream(event)
+
+    controller = build_flow([
+        SyncEmitSource(),
+        _ErrorInConcurrentExecution(retries=retries, backoff_factor=backoff_factor),
+        Complete()
+    ]).run()
+
+    awaitable_result = controller.emit(1)
+    try:
+        start = time.time()
+        if expected_sleep is None:
+            with pytest.raises(ATestException):
+                awaitable_result.await_result()
+        else:
+            awaitable_result.await_result()
+        end = time.time()
+    finally:
+        controller.terminate()
+    if expected_sleep is None:
+        with pytest.raises(ATestException):
+            controller.await_termination()
+    else:
+        controller.await_termination()
+        assert end - start > expected_sleep

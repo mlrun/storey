@@ -603,9 +603,13 @@ class HttpResponse:
 
 
 class _ConcurrentJobExecution(Flow):
-    def __init__(self, max_in_flight=8, **kwargs):
+    _BACKOFF_MAX = 120
+
+    def __init__(self, max_in_flight=8, retries=0, backoff_factor=1, **kwargs):
         Flow.__init__(self, **kwargs)
         self._max_in_flight = max_in_flight
+        self._retries = retries
+        self._backoff_factor = backoff_factor
 
     def _init(self):
         self._q = None
@@ -643,17 +647,23 @@ class _ConcurrentJobExecution(Flow):
     async def _lazy_init(self):
         pass
 
-    async def _safe_process_event(self, event):
-        if event._awaitable_result:
+    async def _process_event_with_retries(self, event):
+        times_attempted = 0
+        max_attempts = self._retries + 1
+        while True:
             try:
                 return await self._process_event(event)
-            except BaseException as ex:
-                none_or_coroutine = event._awaitable_result._set_error(ex)
-                if none_or_coroutine:
-                    await none_or_coroutine
-                raise ex
-        else:
-            return await self._process_event(event)
+            except Exception as ex:
+                times_attempted += 1
+                attempts_left = max_attempts - times_attempted
+                if self.logger:
+                    self.logger.warn(f'{self.name} failed to process event ({attempts_left} retries left): {ex}')
+                if attempts_left <= 0:
+                    raise ex
+                backoff_value = self._backoff_factor * (2 ** (times_attempted - 1))
+                backoff_value = min(self._BACKOFF_MAX, backoff_value)
+                if backoff_value >= 0:
+                    await asyncio.sleep(backoff_value)
 
     async def _do(self, event):
         if not self._q:
@@ -670,7 +680,7 @@ class _ConcurrentJobExecution(Flow):
             await self._worker_awaitable
             return await self._do_downstream(_termination_obj)
         else:
-            task = self._safe_process_event(event)
+            task = self._process_event_with_retries(event)
             await self._q.put((event, asyncio.get_running_loop().create_task(task)))
             if self._worker_awaitable.done():
                 await self._worker_awaitable
