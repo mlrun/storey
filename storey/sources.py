@@ -181,7 +181,7 @@ class SyncEmitSource(Flow):
     def __init__(self, buffer_size: Optional[int] = None, key_field: Union[list, str, int, None] = None,
                  time_field: Union[str, int, None] = None, time_format: Optional[str] = None, **kwargs):
         if buffer_size is None:
-            buffer_size = 1024
+            buffer_size = 8
         else:
             kwargs['buffer_size'] = buffer_size
         if key_field is not None:
@@ -363,11 +363,15 @@ class AsyncEmitSource(Flow):
     """
     _legal_first_step = True
 
-    def __init__(self, buffer_size: int = 1024, key_field: Union[list, str, None] = None, time_field: Optional[str] = None,
+    def __init__(self, buffer_size: int = None, key_field: Union[list, str, None] = None, time_field: Optional[str] = None,
                  time_format: Optional[str] = None, **kwargs):
         super().__init__(**kwargs)
-        if buffer_size <= 0:
+        if buffer_size is None:
+            buffer_size = 8
+        elif buffer_size <= 0:
             raise ValueError('Buffer size must be positive')
+        else:
+            kwargs['buffer_size'] = buffer_size
         self._q = asyncio.Queue(buffer_size)
         self._key_field = key_field
         self._time_field = time_field
