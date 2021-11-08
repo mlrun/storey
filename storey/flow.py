@@ -607,9 +607,9 @@ class _ConcurrentJobExecution(Flow):
 
     def __init__(self, max_in_flight=None, retries=None, backoff_factor=None, **kwargs):
         Flow.__init__(self, **kwargs)
-        self._max_in_flight = max_in_flight
-        self._retries = retries
-        self._backoff_factor = backoff_factor
+        self.max_in_flight = max_in_flight
+        self.retries = retries
+        self.backoff_factor = backoff_factor
 
     def _init(self):
         self._q = None
@@ -649,7 +649,7 @@ class _ConcurrentJobExecution(Flow):
 
     async def _process_event_with_retries(self, event):
         times_attempted = 0
-        max_attempts = (self._retries or 0) + 1
+        max_attempts = (self.retries or 0) + 1
         while True:
             try:
                 return await self._process_event(event)
@@ -660,7 +660,7 @@ class _ConcurrentJobExecution(Flow):
                     self.logger.warn(f'{self.name} failed to process event ({attempts_left} retries left): {ex}')
                 if attempts_left <= 0:
                     raise ex
-                backoff_value = (self._backoff_factor or 1) * (2 ** (times_attempted - 1))
+                backoff_value = (self.backoff_factor or 1) * (2 ** (times_attempted - 1))
                 backoff_value = min(self._BACKOFF_MAX, backoff_value)
                 if backoff_value >= 0:
                     await asyncio.sleep(backoff_value)
@@ -668,7 +668,7 @@ class _ConcurrentJobExecution(Flow):
     async def _do(self, event):
         if not self._q:
             await self._lazy_init()
-            self._q = asyncio.queues.Queue(self._max_in_flight or 8)
+            self._q = asyncio.queues.Queue(self.max_in_flight or 8)
             self._worker_awaitable = asyncio.get_running_loop().create_task(self._worker())
 
         if self._worker_awaitable.done():
