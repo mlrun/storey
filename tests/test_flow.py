@@ -2421,6 +2421,17 @@ def test_flow_to_dict_dataframe_source():
     }
 
 
+def test_flow_to_dict_concurrent_job_execution():
+    step = _ConcurrentJobExecution(retries=2)
+    assert step.to_dict() == {
+        'class_args': {
+            'retries': 2
+        },
+        'class_name': 'storey.flow._ConcurrentJobExecution',
+        'name': '_ConcurrentJobExecution'
+    }
+
+
 def test_to_code():
     flow = build_flow([
         SyncEmitSource(),
