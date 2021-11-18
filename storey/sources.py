@@ -137,7 +137,7 @@ class FlowController(FlowControllerBase):
         event = self._build_event(element, key, event_time)
         awaitable_result = None
         if self._return_awaitable_result:
-            awaitable_result = AwaitableResult(self.terminate)
+            awaitable_result = AwaitableResult()
         event._awaitable_result = awaitable_result
         self._emit_fn(event)
         return awaitable_result
@@ -167,7 +167,7 @@ class SyncEmitSource(Flow):
     """Synchronous entry point into a flow. Produces a FlowController when run, for use from inside a synchronous context. See AsyncEmitSource
     for use from inside an async context.
 
-    :param buffer_size: size of the incoming event buffer. Defaults to 1024.
+    :param buffer_size: size of the incoming event buffer. Defaults to 8.
     :param key_field: Field to extract and use as the key. Optional.
     :param time_field: Field to extract and use as the time. Optional.
     :param time_format: Format of the event time. Needed when a nonstandard string timestamp is used (i.e. not ISO or epoch). Optional.
@@ -181,7 +181,7 @@ class SyncEmitSource(Flow):
     def __init__(self, buffer_size: Optional[int] = None, key_field: Union[list, str, int, None] = None,
                  time_field: Union[str, int, None] = None, time_format: Optional[str] = None, **kwargs):
         if buffer_size is None:
-            buffer_size = 1024
+            buffer_size = 8
         else:
             kwargs['buffer_size'] = buffer_size
         if key_field is not None:
@@ -330,7 +330,7 @@ class AsyncFlowController(FlowControllerBase):
         event = self._build_event(element, key, event_time)
         awaitable = None
         if self._await_result:
-            awaitable = AsyncAwaitableResult(self.terminate)
+            awaitable = AsyncAwaitableResult()
         event._awaitable_result = awaitable
         await self._emit_fn(event)
         if self._await_result:
@@ -353,7 +353,7 @@ class AsyncEmitSource(Flow):
     Asynchronous entry point into a flow. Produces an AsyncFlowController when run, for use from inside an async def.
     See SyncEmitSource for use from inside a synchronous context.
 
-    :param buffer_size: size of the incoming event buffer. Defaults to 1024.
+    :param buffer_size: size of the incoming event buffer. Defaults to 8.
     :param name: Name of this step, as it should appear in logs. Defaults to class name (AsyncEmitSource).
     :type name: string
     :param time_field: Field to extract and use as the time. Optional.
@@ -363,11 +363,15 @@ class AsyncEmitSource(Flow):
     """
     _legal_first_step = True
 
-    def __init__(self, buffer_size: int = 1024, key_field: Union[list, str, None] = None, time_field: Optional[str] = None,
+    def __init__(self, buffer_size: int = None, key_field: Union[list, str, None] = None, time_field: Optional[str] = None,
                  time_format: Optional[str] = None, **kwargs):
         super().__init__(**kwargs)
-        if buffer_size <= 0:
+        if buffer_size is None:
+            buffer_size = 8
+        elif buffer_size <= 0:
             raise ValueError('Buffer size must be positive')
+        else:
+            kwargs['buffer_size'] = buffer_size
         self._q = asyncio.Queue(buffer_size)
         self._key_field = key_field
         self._time_field = time_field

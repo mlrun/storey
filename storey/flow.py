@@ -1,6 +1,7 @@
 import asyncio
 import copy
 import datetime
+import inspect
 import time
 import traceback
 from asyncio import Task
@@ -26,39 +27,62 @@ class Flow:
         self.logger = getattr(self.context, 'logger', None) if self.context else None
 
         self._kwargs = kwargs
-        self._full_event = kwargs.pop('full_event', False)
+        self._full_event = kwargs.get('full_event')
         self._input_path = kwargs.get('input_path')
         self._result_path = kwargs.get('result_path')
         self._runnable = False
-        name = kwargs.pop('name', None)
+        name = kwargs.get('name', None)
         if name:
             self.name = name
-            self._custom_name = True
         else:
             self.name = type(self).__name__
-            self._custom_name = False
 
         self._closeables = []
 
     def _init(self):
         pass
 
-    def to_dict(self):
-        module = type(self).__module__
-        if module is None or module == str.__class__.__module__:
-            module = ''
-        else:
-            module += '.'
-        result = {
-            'class_name': f'{module}{type(self).__name__}',
-            'class_args': self._kwargs,
-            'full_event': self._full_event,
+    def to_dict(self, fields=None, exclude=None):
+        """convert the step object to a python dictionary"""
+        fields = fields or getattr(self, "_dict_fields", None)
+        if not fields:
+            fields = list(inspect.signature(self.__init__).parameters.keys())
+        if exclude:
+            fields = [field for field in fields if field not in exclude]
+
+        meta_keys = ["context", "name", "input_path", "result_path", "full_event", "kwargs"]
+        args = {
+            key: getattr(self, key)
+            for key in fields
+            if getattr(self, key, None) is not None and key not in meta_keys
         }
-        if self._custom_name:
-            result['name'] = self.name
-        if self._recovery_step:
-            result['recovery_step'] = self._recovery_step.to_dict()
-        return result
+        # add storey kwargs or extra kwargs
+        if "kwargs" in fields and (hasattr(self, "kwargs") or hasattr(self, "_kwargs")):
+            kwargs = getattr(self, "kwargs", {}) or getattr(self, "_kwargs", {})
+            for key, value in kwargs.items():
+                if key not in meta_keys:
+                    args[key] = value
+
+        mod_name = self.__class__.__module__
+        class_path = self.__class__.__qualname__
+        if mod_name != "__main__":
+            class_path = f"{mod_name}.{class_path}"
+        struct = {
+            "class_name": class_path,
+            "name": self.name or self.__class__.__name__,
+            "class_args": args,
+        }
+
+        for parameter_name in [("kind", "_STEP_KIND"), "input_path", "result_path", "full_event"]:
+            if isinstance(parameter_name, tuple):
+                parameter_name, field_name = parameter_name
+            else:
+                field_name = f"_{parameter_name}"
+            if hasattr(self, field_name):
+                field_value = getattr(self, field_name)
+                if field_value is not None:
+                    struct[parameter_name] = field_value
+        return struct
 
     def _to_code(self, taken: Set[str]):
         class_name = type(self).__name__
@@ -80,10 +104,6 @@ class Flow:
             if isinstance(value, str):
                 value = f"'{value}'"
             param_list.append(f'{key}={value}')
-        if self._custom_name:
-            param_list.append(f'name={self.name}')
-        if self._full_event:
-            param_list.append(f'full_event={self._full_event}')
         param_str = ', '.join(param_list)
         step = f'{var_name} = {class_name}({param_str})'
         steps = [step]
@@ -583,14 +603,19 @@ class HttpResponse:
 
 
 class _ConcurrentJobExecution(Flow):
-    def __init__(self, max_in_flight=8, **kwargs):
+    _BACKOFF_MAX = 120
+
+    def __init__(self, max_in_flight=None, retries=None, backoff_factor=None, **kwargs):
         Flow.__init__(self, **kwargs)
-        self._max_in_flight = max_in_flight
+        self.max_in_flight = max_in_flight
+        self.retries = retries
+        self.backoff_factor = backoff_factor
 
     def _init(self):
         self._q = None
 
     async def _worker(self):
+        event = None
         try:
             while True:
                 job = await self._q.get()
@@ -600,6 +625,10 @@ class _ConcurrentJobExecution(Flow):
                 completed = await job[1]
                 await self._handle_completed(event, completed)
         except BaseException as ex:
+            if event:
+                none_or_coroutine = event._awaitable_result._set_error(ex)
+                if none_or_coroutine:
+                    await none_or_coroutine
             if not self._q.empty():
                 await self._q.get()
             raise ex
@@ -618,22 +647,28 @@ class _ConcurrentJobExecution(Flow):
     async def _lazy_init(self):
         pass
 
-    async def _safe_process_event(self, event):
-        if event._awaitable_result:
+    async def _process_event_with_retries(self, event):
+        times_attempted = 0
+        max_attempts = (self.retries or 0) + 1
+        while True:
             try:
                 return await self._process_event(event)
-            except BaseException as ex:
-                none_or_coroutine = event._awaitable_result._set_error(ex)
-                if none_or_coroutine:
-                    await none_or_coroutine
-                raise ex
-        else:
-            return await self._process_event(event)
+            except Exception as ex:
+                times_attempted += 1
+                attempts_left = max_attempts - times_attempted
+                if self.logger:
+                    self.logger.warn(f'{self.name} failed to process event ({attempts_left} retries left): {ex}')
+                if attempts_left <= 0:
+                    raise ex
+                backoff_value = (self.backoff_factor or 1) * (2 ** (times_attempted - 1))
+                backoff_value = min(self._BACKOFF_MAX, backoff_value)
+                if backoff_value >= 0:
+                    await asyncio.sleep(backoff_value)
 
     async def _do(self, event):
         if not self._q:
             await self._lazy_init()
-            self._q = asyncio.queues.Queue(self._max_in_flight)
+            self._q = asyncio.queues.Queue(self.max_in_flight or 8)
             self._worker_awaitable = asyncio.get_running_loop().create_task(self._worker())
 
         if self._worker_awaitable.done():
@@ -645,7 +680,7 @@ class _ConcurrentJobExecution(Flow):
             await self._worker_awaitable
             return await self._do_downstream(_termination_obj)
         else:
-            task = self._safe_process_event(event)
+            task = self._process_event_with_retries(event)
             await self._q.put((event, asyncio.get_running_loop().create_task(task)))
             if self._worker_awaitable.done():
                 await self._worker_awaitable

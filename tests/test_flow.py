@@ -3,6 +3,7 @@ import copy
 import math
 import os
 import queue
+import time
 import traceback
 import uuid
 from datetime import datetime
@@ -19,6 +20,7 @@ from storey import build_flow, SyncEmitSource, Map, Filter, FlatMap, Reduce, Map
     Event, Batch, Table, CSVTarget, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, \
     ParquetTarget, QueryByKey, \
     TSDBTarget, Extend, SendToHttp, HttpRequest, NoSqlTarget, NoopDriver, Driver, Recover, V3ioDriver, ParquetSource
+from storey.flow import _ConcurrentJobExecution
 
 
 class ATestException(Exception):
@@ -811,6 +813,8 @@ def test_awaitable_result_error():
         assert False
     except ValueError:
         pass
+    finally:
+        controller.terminate()
 
 
 async def async_test_async_awaitable_result_error():
@@ -829,6 +833,8 @@ async def async_test_async_awaitable_result_error():
         assert False
     except ValueError:
         pass
+    finally:
+        controller.terminate()
 
 
 def test_async_awaitable_result_error():
@@ -886,6 +892,8 @@ def test_awaitable_result_error_in_async_downstream():
         assert False
     except InvalidURL:
         pass
+    finally:
+        controller.terminate()
 
 
 async def async_test_async_awaitable_result_error_in_async_downstream():
@@ -922,6 +930,8 @@ def test_awaitable_result_error_in_by_key_async_downstream():
         assert False
     except ValueError:
         pass
+    finally:
+        controller.terminate()
 
 
 def test_error_async_flow():
@@ -957,6 +967,8 @@ def test_error_trace():
             if last_trace_size is not None:
                 assert trace_size == last_trace_size
             last_trace_size = trace_size
+        finally:
+            controller.terminate()
 
 
 def test_choice():
@@ -2129,8 +2141,9 @@ def test_async_task_error_and_complete():
         assert False
     except ATestException:
         pass
+    finally:
+        controller.terminate()
 
-    controller.terminate()
     try:
         controller.await_termination()
         assert False
@@ -2326,10 +2339,9 @@ def test_result_path():
 
 def test_to_dict():
     source = SyncEmitSource(name='my_source', buffer_size=5)
-    identity = Map(lambda x: x, full_event=False)
-    assert source.to_dict() == {'class_name': 'storey.sources.SyncEmitSource', 'class_args': {'buffer_size': 5}, 'name': 'my_source',
-                                'full_event': False}
-    assert identity.to_dict() == {'class_name': 'storey.flow.Map', 'class_args': {}, 'full_event': False}
+    identity = Map(lambda x: x, full_event=True, not_in_use=None)
+    assert source.to_dict() == {'class_name': 'storey.sources.SyncEmitSource', 'class_args': {'buffer_size': 5}, 'name': 'my_source'}
+    assert identity.to_dict() == {'class_name': 'storey.flow.Map', 'class_args': {'not_in_use': None}, 'full_event': True, 'name': 'Map'}
 
 
 def test_flow_reuse():
@@ -2358,7 +2370,7 @@ def test_flow_to_dict_read_csv():
             'timestamp_format': '%d/%m/%Y %H:%M:%S.%f',
             'type_inference': True
         },
-        'full_event': False
+        'name': 'CSVSource'
     }
 
 
@@ -2372,7 +2384,7 @@ def test_flow_to_dict_write_to_parquet():
             'max_events': 2,
             'flush_after_seconds': 60,
         },
-        'full_event': False
+        'name': 'ParquetTarget'
     }
 
 
@@ -2390,7 +2402,7 @@ def test_flow_to_dict_write_to_tsdb():
             'rate': '1/h',
             'time_col': 'time'
         },
-        'full_event': False
+        'name': 'TSDBTarget'
     }
 
 
@@ -2405,7 +2417,18 @@ def test_flow_to_dict_dataframe_source():
             'key_field': 'my_key',
             'time_field': 'my_time'
         },
-        'full_event': False
+        'name': 'DataframeSource'
+    }
+
+
+def test_flow_to_dict_concurrent_job_execution():
+    step = _ConcurrentJobExecution(retries=2)
+    assert step.to_dict() == {
+        'class_args': {
+            'retries': 2
+        },
+        'class_name': 'storey.flow._ConcurrentJobExecution',
+        'name': '_ConcurrentJobExecution'
     }
 
 
@@ -2421,7 +2444,7 @@ def test_to_code():
     expected = """sync_emit_source0 = SyncEmitSource()
 batch0 = Batch(max_events=5)
 to_data_frame0 = ToDataFrame()
-reduce0 = Reduce(initial_value=[], full_event=True)
+reduce0 = Reduce(full_event=True, initial_value=[])
 
 sync_emit_source0.to(batch0)
 batch0.to(to_data_frame0)
@@ -2448,7 +2471,7 @@ batch0 = Batch(max_events=5)
 reduce0 = Reduce(initial_value=[])
 batch1 = Batch(max_events=5)
 to_data_frame0 = ToDataFrame()
-reduce1 = Reduce(initial_value=[], full_event=True)
+reduce1 = Reduce(full_event=True, initial_value=[])
 
 sync_emit_source0.to(batch0)
 batch0.to(reduce0)
@@ -2740,3 +2763,92 @@ def test_reduce_to_df_multiple_indexes():
     termination_result = controller.await_termination()
 
     assert_frame_equal(expected, termination_result)
+
+
+def test_func_parquet_target_terminate(tmpdir):
+    out_file = f'{tmpdir}/test_func_parquet_target_terminate_{uuid.uuid4().hex}/'
+
+    dictionary = {}
+
+    def my_func(param1, param2):
+        dictionary[param1] = param2
+
+    data = [['dina', pd.Timestamp('2019-07-01 00:00:00'), 'tel aviv'],
+            ['uri', pd.Timestamp('2018-12-30 09:00:00'), 'tel aviv'],
+            ['katya', pd.Timestamp('2020-12-31 14:00:00'), 'hod hasharon']]
+
+    df = pd.DataFrame(data, columns=['my_string', 'my_time', 'my_city'])
+    df.set_index('my_string')
+
+    controller = build_flow([
+        DataframeSource(df),
+        ParquetTarget(path=out_file, update_last_written=my_func)
+    ]).run()
+
+    controller.await_termination()
+
+    assert len(dictionary) == 1
+
+
+def test_completion_on_error_in_concurrent_execution_step():
+    class _ErrorInConcurrentExecution(_ConcurrentJobExecution):
+        async def _process_event(self, event):
+            pass
+
+        async def _handle_completed(self, event, response):
+            raise ATestException()
+
+    controller = build_flow([
+        SyncEmitSource(),
+        _ErrorInConcurrentExecution(),
+        Complete()
+    ]).run()
+
+    awaitable_result = controller.emit(1)
+    try:
+        with pytest.raises(ATestException):
+            awaitable_result.await_result()
+    finally:
+        controller.terminate()
+
+
+@pytest.mark.parametrize('backoff_factor', [(0, 2, 0), (1, 2, 3), (0, 1, None)])
+def test_completion_after_retry_in_concurrent_execution_step(backoff_factor):
+    backoff_factor, retries, expected_sleep = backoff_factor
+
+    class _ErrorInConcurrentExecution(_ConcurrentJobExecution):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self._nums_called = 0
+
+        async def _process_event(self, event):
+            self._nums_called += 1
+            if self._nums_called <= 2:  # fail twice
+                raise ATestException()
+
+        async def _handle_completed(self, event, response):
+            return await self._do_downstream(event)
+
+    controller = build_flow([
+        SyncEmitSource(),
+        _ErrorInConcurrentExecution(retries=retries, backoff_factor=backoff_factor),
+        Complete()
+    ]).run()
+
+    awaitable_result = controller.emit(1)
+    try:
+        start = time.time()
+        if expected_sleep is None:
+            with pytest.raises(ATestException):
+                awaitable_result.await_result()
+        else:
+            awaitable_result.await_result()
+        end = time.time()
+    finally:
+        controller.terminate()
+    if expected_sleep is None:
+        with pytest.raises(ATestException):
+            controller.await_termination()
+    else:
+        controller.await_termination()
+        assert end - start > expected_sleep
