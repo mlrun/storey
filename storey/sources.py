@@ -8,14 +8,13 @@ import uuid
 import warnings
 from datetime import datetime
 from typing import List, Optional, Union, Callable, Coroutine, Iterable
-import pyarrow.parquet as pq
 
 import pandas
 import pytz
 
-from .dtypes import _termination_obj, Event, legal_time_units
+from .dtypes import _termination_obj, Event
 from .flow import Flow, Complete
-from .utils import url_to_file_system, find_filters
+from .utils import url_to_file_system, find_filters, find_partitions
 
 
 class AwaitableResult:
@@ -821,12 +820,8 @@ class ParquetSource(DataframeSource):
 
     def _read_filtered_parquet(self, path):
         fs, file_path = url_to_file_system(path, self._storage_options)
-        dataset = pq.ParquetDataset(path, filesystem=fs)
-        if dataset.partitions:
-            partitions = dataset.partitions.partition_names
-            partitions_time_attributes = [j for j in legal_time_units if j in partitions]
-        else:
-            partitions_time_attributes = []
+
+        partitions_time_attributes = find_partitions(path, fs)
         filters = []
         find_filters(partitions_time_attributes, self._start_filter, self._end_filter, filters, self._filter_column)
         return pandas.read_parquet(path, columns=self._columns, filters=filters,
