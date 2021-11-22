@@ -5,8 +5,6 @@ from array import array
 from urllib.parse import urlparse
 import fsspec
 
-#from storey.dtypes import legal_time_units
-
 bucketPerWindow = 2
 schema_file_name = '.schema'
 
