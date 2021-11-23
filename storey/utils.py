@@ -229,6 +229,9 @@ def _get_filters_for_filter_column(start, end, filter_column, side_range):
 
 
 def find_partitions(url, fs):
+    # ML-1365. assuming the partitioning is symmetrical (for example both year=2020 and year=2021 directories will have
+    # inner month partitions).
+
     partitions = []
 
     def _is_private(path):
@@ -239,9 +242,11 @@ def find_partitions(url, fs):
         content = fs.ls(url)
         if len(content) == 0:
             return partitions
+        # https://issues.apache.org/jira/browse/ARROW-1079 there could be some private dirs
         filtered_dirs = [x for x in content if not _is_private(x["name"])]
         if len(filtered_dirs) == 0:
             return partitions
+
         inner_dir = filtered_dirs[0]["name"]
         if filtered_dirs[0]["type"] != "directory":
             return partitions
