@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import os
 import struct
 from array import array
 from urllib.parse import urlparse
@@ -230,12 +231,19 @@ def _get_filters_for_filter_column(start, end, filter_column, side_range):
 def find_partitions(url, fs):
     partitions = []
 
+    def _is_private(path):
+        _, tail = os.path.split(path)
+        return (tail.startswith('_') or tail.startswith('.')) and '=' not in tail
+
     def find_partition_helper(url, fs, partitions):
         content = fs.ls(url)
         if len(content) == 0:
             return partitions
-        inner_dir = content[0]["name"]
-        if content[0]["type"] != "directory":
+        filtered_dirs = [x for x in content if not _is_private(x["name"])]
+        if len(filtered_dirs) == 0:
+            return partitions
+        inner_dir = filtered_dirs[0]["name"]
+        if filtered_dirs[0]["type"] != "directory":
             return partitions
         part = inner_dir.split("/")[-1].split("=")
         partitions.append(part[0])
