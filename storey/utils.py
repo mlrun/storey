@@ -248,7 +248,7 @@ def find_partitions(url, fs):
             return partitions
 
         inner_dir = filtered_dirs[0]["name"]
-        if filtered_dirs[0]["type"] != "directory":
+        if fs.isfile(inner_dir):
             return partitions
         part = inner_dir.split("/")[-1].split("=")
         partitions.append(part[0])
