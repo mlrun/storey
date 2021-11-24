@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import os
 import struct
 from array import array
 from urllib.parse import urlparse
@@ -225,6 +226,43 @@ def _get_filters_for_filter_column(start, end, filter_column, side_range):
     upper_limit_tuple = (filter_column, "<=", end)
     side_range.append(lower_limit_tuple)
     side_range.append(upper_limit_tuple)
+
+
+def find_partitions(url, fs):
+    # ML-1365. assuming the partitioning is symmetrical (for example both year=2020 and year=2021 directories will have
+    # inner month partitions).
+
+    partitions = []
+
+    def _is_private(path):
+        _, tail = os.path.split(path)
+        return (tail.startswith('_') or tail.startswith('.')) and '=' not in tail
+
+    def find_partition_helper(url, fs, partitions):
+        content = fs.ls(url)
+        if len(content) == 0:
+            return partitions
+        # https://issues.apache.org/jira/browse/ARROW-1079 there could be some private dirs
+        filtered_dirs = [x for x in content if not _is_private(x["name"])]
+        if len(filtered_dirs) == 0:
+            return partitions
+
+        inner_dir = filtered_dirs[0]["name"]
+        if fs.isfile(inner_dir):
+            return partitions
+        part = inner_dir.split("/")[-1].split("=")
+        partitions.append(part[0])
+        find_partition_helper(inner_dir, fs, partitions)
+
+    if fs.isfile(url):
+        return partitions
+    find_partition_helper(url, fs, partitions)
+
+    legal_time_units = ['year', 'month', 'day', 'hour', 'minute', 'second']
+
+    partitions_time_attributes = [j for j in legal_time_units if j in partitions]
+
+    return partitions_time_attributes
 
 
 def find_filters(partitions_time_attributes, start, end, filters, filter_column):
