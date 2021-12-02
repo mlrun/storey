@@ -763,7 +763,7 @@ class DataframeSource(_IterableSource):
                     if isinstance(self._key_field, list):
                         key = []
                         for key_field in self._key_field:
-                            if key_field not in body or body[key_field] is None:
+                            if key_field not in body or pandas.isna(body[key_field]):
                                 create_event = False
                                 break
                             key.append(body[key_field])
