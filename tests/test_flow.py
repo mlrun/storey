@@ -3,6 +3,7 @@ import copy
 import math
 import os
 import queue
+import time
 import traceback
 import uuid
 from datetime import datetime
@@ -19,6 +20,7 @@ from storey import build_flow, SyncEmitSource, Map, Filter, FlatMap, Reduce, Map
     Event, Batch, Table, CSVTarget, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, \
     ParquetTarget, QueryByKey, \
     TSDBTarget, Extend, SendToHttp, HttpRequest, NoSqlTarget, NoopDriver, Driver, Recover, V3ioDriver, ParquetSource
+from storey.flow import _ConcurrentJobExecution
 
 
 class ATestException(Exception):
@@ -2441,6 +2443,17 @@ def test_flow_to_dict_dataframe_source():
     }
 
 
+def test_flow_to_dict_concurrent_job_execution():
+    step = _ConcurrentJobExecution(retries=2)
+    assert step.to_dict() == {
+        'class_args': {
+            'retries': 2
+        },
+        'class_name': 'storey.flow._ConcurrentJobExecution',
+        'name': '_ConcurrentJobExecution'
+    }
+
+
 def test_to_code():
     flow = build_flow([
         SyncEmitSource(),
@@ -2679,6 +2692,39 @@ def test_none_key_is_not_written():
     assert result == expected
 
 
+def test_none_key_num_is_not_written():
+    data = pd.DataFrame({'index': [10, None, 20], 'some_data': [1, 2, 3]})
+    data.set_index(keys=['index'], inplace=True)
+
+    controller = build_flow([
+        DataframeSource(data, key_field=['index']),
+        Reduce([], append_and_return),
+    ]).run()
+    result = controller.await_termination()
+    expected = [{'index': 10, 'some_data': 1}, {'index': 20, 'some_data': 3}]
+
+    assert result == expected
+
+
+def test_none_key_date_is_not_written():
+
+    data = pd.DataFrame({'index': [datetime(2020, 6, 27, 10, 23, 8, 420581),
+                                   None,
+                                   datetime(2020, 6, 28, 10, 23, 8, 420581)],
+                         'some_data': [1, 2, 3]})
+    data.set_index(keys=['index'], inplace=True)
+
+    controller = build_flow([
+        DataframeSource(data, key_field=['index']),
+        Reduce([], append_and_return),
+    ]).run()
+    result = controller.await_termination()
+    expected = [{'index': datetime(2020, 6, 27, 10, 23, 8, 420581), 'some_data': 1},
+                {'index': datetime(2020, 6, 28, 10, 23, 8, 420581), 'some_data': 3}]
+
+    assert result == expected
+
+
 def test_csv_none_value_first_row(tmpdir):
     out_file_par = f'{tmpdir}/test_csv_none_value_first_row_{uuid.uuid4().hex}.parquet'
     out_file_csv = f'{tmpdir}/test_csv_none_value_first_row_{uuid.uuid4().hex}.csv'
@@ -2774,8 +2820,7 @@ def test_reduce_to_df_multiple_indexes():
     assert_frame_equal(expected, termination_result)
 
 
-@pytest.mark.parametrize("empty", [True, False])
-def test_func_parquet_target_terminate(tmpdir, empty):
+def test_func_parquet_target_terminate(tmpdir):
     out_file = f'{tmpdir}/test_func_parquet_target_terminate_{uuid.uuid4().hex}/'
 
     dictionary = {}
@@ -2783,12 +2828,9 @@ def test_func_parquet_target_terminate(tmpdir, empty):
     def my_func(param1, param2):
         dictionary[param1] = param2
 
-    if empty:
-        data = None
-    else:
-        data = [['dina', pd.Timestamp('2019-07-01 00:00:00'), 'tel aviv'],
-                ['uri', pd.Timestamp('2018-12-30 09:00:00'), 'tel aviv'],
-                ['katya', pd.Timestamp('2020-12-31 14:00:00'), 'hod hasharon']]
+    data = [['dina', pd.Timestamp('2019-07-01 00:00:00'), 'tel aviv'],
+            ['uri', pd.Timestamp('2018-12-30 09:00:00'), 'tel aviv'],
+            ['katya', pd.Timestamp('2020-12-31 14:00:00'), 'hod hasharon']]
 
     df = pd.DataFrame(data, columns=['my_string', 'my_time', 'my_city'])
     df.set_index('my_string')
@@ -2800,7 +2842,68 @@ def test_func_parquet_target_terminate(tmpdir, empty):
 
     controller.await_termination()
 
-    if empty:
-        assert len(dictionary) == 0
+    assert len(dictionary) == 1
+
+
+def test_completion_on_error_in_concurrent_execution_step():
+    class _ErrorInConcurrentExecution(_ConcurrentJobExecution):
+        async def _process_event(self, event):
+            pass
+
+        async def _handle_completed(self, event, response):
+            raise ATestException()
+
+    controller = build_flow([
+        SyncEmitSource(),
+        _ErrorInConcurrentExecution(),
+        Complete()
+    ]).run()
+
+    awaitable_result = controller.emit(1)
+    try:
+        with pytest.raises(ATestException):
+            awaitable_result.await_result()
+    finally:
+        controller.terminate()
+
+
+@pytest.mark.parametrize('backoff_factor', [(0, 2, 0), (1, 2, 3), (0, 1, None)])
+def test_completion_after_retry_in_concurrent_execution_step(backoff_factor):
+    backoff_factor, retries, expected_sleep = backoff_factor
+
+    class _ErrorInConcurrentExecution(_ConcurrentJobExecution):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self._nums_called = 0
+
+        async def _process_event(self, event):
+            self._nums_called += 1
+            if self._nums_called <= 2:  # fail twice
+                raise ATestException()
+
+        async def _handle_completed(self, event, response):
+            return await self._do_downstream(event)
+
+    controller = build_flow([
+        SyncEmitSource(),
+        _ErrorInConcurrentExecution(retries=retries, backoff_factor=backoff_factor),
+        Complete()
+    ]).run()
+
+    awaitable_result = controller.emit(1)
+    try:
+        start = time.time()
+        if expected_sleep is None:
+            with pytest.raises(ATestException):
+                awaitable_result.await_result()
+        else:
+            awaitable_result.await_result()
+        end = time.time()
+    finally:
+        controller.terminate()
+    if expected_sleep is None:
+        with pytest.raises(ATestException):
+            controller.await_termination()
     else:
-        assert len(dictionary) == 1
+        controller.await_termination()
+        assert end - start > expected_sleep

@@ -38,7 +38,8 @@ class SampleWindow(Flow):
         key: Optional[Union[str, Callable[[Event], str]]] = None,
         **kwargs,
     ):
-        super().__init__(full_event=True, **kwargs)
+        kwargs["full_event"] = True
+        super().__init__(**kwargs)
 
         if window_size <= 1:
             raise ValueError(f"Expected window_size > 1, found {window_size}")
