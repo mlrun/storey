@@ -8,14 +8,13 @@ import uuid
 import warnings
 from datetime import datetime
 from typing import List, Optional, Union, Callable, Coroutine, Iterable
-import pyarrow.parquet as pq
 
 import pandas
 import pytz
 
-from .dtypes import _termination_obj, Event, legal_time_units
+from .dtypes import _termination_obj, Event
 from .flow import Flow, Complete
-from .utils import url_to_file_system, find_filters
+from .utils import url_to_file_system, find_filters, find_partitions
 
 
 class AwaitableResult:
@@ -32,7 +31,9 @@ class AwaitableResult:
         if isinstance(result, BaseException):
             if self._on_error:
                 self._on_error()
-            raise result
+            # Python appends trace frames to a raised exception, so we must copy
+            # it before raising to prevent it from growing each time
+            raise copy.copy(result)
         return result
 
     def _set_result(self, element):
@@ -94,7 +95,7 @@ class FlowControllerBase:
             body[self._time_field] = event_time
 
         if element_is_event:
-            if key:
+            if key or not hasattr(element, 'key'):
                 element.key = key
             if event_time:
                 element.time = event_time
@@ -135,7 +136,7 @@ class FlowController(FlowControllerBase):
         event = self._build_event(element, key, event_time)
         awaitable_result = None
         if self._return_awaitable_result:
-            awaitable_result = AwaitableResult(self.terminate)
+            awaitable_result = AwaitableResult()
         event._awaitable_result = awaitable_result
         self._emit_fn(event)
         return awaitable_result
@@ -165,7 +166,7 @@ class SyncEmitSource(Flow):
     """Synchronous entry point into a flow. Produces a FlowController when run, for use from inside a synchronous context. See AsyncEmitSource
     for use from inside an async context.
 
-    :param buffer_size: size of the incoming event buffer. Defaults to 1024.
+    :param buffer_size: size of the incoming event buffer. Defaults to 8.
     :param key_field: Field to extract and use as the key. Optional.
     :param time_field: Field to extract and use as the time. Optional.
     :param time_format: Format of the event time. Needed when a nonstandard string timestamp is used (i.e. not ISO or epoch). Optional.
@@ -179,7 +180,7 @@ class SyncEmitSource(Flow):
     def __init__(self, buffer_size: Optional[int] = None, key_field: Union[list, str, int, None] = None,
                  time_field: Union[str, int, None] = None, time_format: Optional[str] = None, **kwargs):
         if buffer_size is None:
-            buffer_size = 1024
+            buffer_size = 8
         else:
             kwargs['buffer_size'] = buffer_size
         if key_field is not None:
@@ -194,6 +195,9 @@ class SyncEmitSource(Flow):
         self._termination_q = queue.Queue(1)
         self._ex = None
         self._closeables = []
+
+    def _init(self):
+        self._is_terminated = False
 
     async def _run_loop(self):
         loop = asyncio.get_running_loop()
@@ -227,13 +231,20 @@ class SyncEmitSource(Flow):
 
     def _raise_on_error(self, ex):
         if ex:
+            # Python appends trace frames to a raised exception, so we must copy
+            # it before raising to prevent it from growing each time
+            ex_copy = copy.copy(self._ex)
             if self.verbose:
-                raise type(self._ex)('Flow execution terminated') from self._ex
-            raise self._ex
+                raise type(ex_copy)('Flow execution terminated') from ex_copy
+            raise ex_copy
 
     def _emit(self, event):
         if event is not _termination_obj:
             self._raise_on_error(self._ex)
+            if self._is_terminated:
+                raise ValueError('Cannot emit to a terminated flow')
+        else:
+            self._is_terminated = True
         self._q.put(event)
         if event is not _termination_obj:
             self._raise_on_error(self._ex)
@@ -270,7 +281,9 @@ class AsyncAwaitableResult:
         if isinstance(result, BaseException):
             if self._on_error:
                 await self._on_error()
-            raise result
+            # Python appends trace frames to a raised exception, so we must copy
+            # it before raising to prevent it from growing each time
+            raise copy.copy(result)
         return result
 
     async def _set_result(self, element):
@@ -316,7 +329,7 @@ class AsyncFlowController(FlowControllerBase):
         event = self._build_event(element, key, event_time)
         awaitable = None
         if self._await_result:
-            awaitable = AsyncAwaitableResult(self.terminate)
+            awaitable = AsyncAwaitableResult()
         event._awaitable_result = awaitable
         await self._emit_fn(event)
         if self._await_result:
@@ -339,7 +352,7 @@ class AsyncEmitSource(Flow):
     Asynchronous entry point into a flow. Produces an AsyncFlowController when run, for use from inside an async def.
     See SyncEmitSource for use from inside a synchronous context.
 
-    :param buffer_size: size of the incoming event buffer. Defaults to 1024.
+    :param buffer_size: size of the incoming event buffer. Defaults to 8.
     :param name: Name of this step, as it should appear in logs. Defaults to class name (AsyncEmitSource).
     :type name: string
     :param time_field: Field to extract and use as the time. Optional.
@@ -349,17 +362,24 @@ class AsyncEmitSource(Flow):
     """
     _legal_first_step = True
 
-    def __init__(self, buffer_size: int = 1024, key_field: Union[list, str, None] = None, time_field: Optional[str] = None,
+    def __init__(self, buffer_size: int = None, key_field: Union[list, str, None] = None, time_field: Optional[str] = None,
                  time_format: Optional[str] = None, **kwargs):
         super().__init__(**kwargs)
-        if buffer_size <= 0:
+        if buffer_size is None:
+            buffer_size = 8
+        elif buffer_size <= 0:
             raise ValueError('Buffer size must be positive')
+        else:
+            kwargs['buffer_size'] = buffer_size
         self._q = asyncio.Queue(buffer_size)
         self._key_field = key_field
         self._time_field = time_field
         self._time_format = time_format
         self._ex = None
         self._closeables = []
+
+    def _init(self):
+        self._is_terminated = False
 
     async def _run_loop(self):
         while True:
@@ -384,13 +404,20 @@ class AsyncEmitSource(Flow):
 
     def _raise_on_error(self):
         if self._ex:
+            # Python appends trace frames to a raised exception, so we must copy
+            # it before raising to prevent it from growing each time
+            ex_copy = copy.copy(self._ex)
             if self.verbose:
-                raise type(self._ex)('Flow execution terminated') from self._ex
-            raise self._ex
+                raise type(ex_copy)('Flow execution terminated') from ex_copy
+            raise ex_copy
 
     async def _emit(self, event):
         if event is not _termination_obj:
             self._raise_on_error()
+            if self._is_terminated:
+                raise ValueError('Cannot emit to a terminated flow')
+        else:
+            self._is_terminated = True
         await self._q.put(event)
         if event is not _termination_obj:
             self._raise_on_error()
@@ -736,7 +763,7 @@ class DataframeSource(_IterableSource):
                     if isinstance(self._key_field, list):
                         key = []
                         for key_field in self._key_field:
-                            if key_field not in body or body[key_field] is None:
+                            if key_field not in body or pandas.isna(body[key_field]):
                                 create_event = False
                                 break
                             key.append(body[key_field])
@@ -793,12 +820,8 @@ class ParquetSource(DataframeSource):
 
     def _read_filtered_parquet(self, path):
         fs, file_path = url_to_file_system(path, self._storage_options)
-        dataset = pq.ParquetDataset(path, filesystem=fs)
-        if dataset.partitions:
-            partitions = dataset.partitions.partition_names
-            partitions_time_attributes = [j for j in legal_time_units if j in partitions]
-        else:
-            partitions_time_attributes = []
+
+        partitions_time_attributes = find_partitions(path, fs)
         filters = []
         find_filters(partitions_time_attributes, self._start_filter, self._end_filter, filters, self._filter_column)
         return pandas.read_parquet(path, columns=self._columns, filters=filters,

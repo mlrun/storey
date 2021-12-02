@@ -12,9 +12,10 @@ import v3io_frames as frames
 
 from storey import Filter, JoinWithV3IOTable, SendToHttp, Map, Reduce, SyncEmitSource, HttpRequest, build_flow, \
     StreamTarget, V3ioDriver, TSDBTarget, Table, JoinWithTable, MapWithState, NoSqlTarget, DataframeSource, \
-    CSVSource
-from .integration_test_utils import V3ioHeaders, append_return, test_base_time, setup_kv_teardown_test, setup_teardown_test, \
-    setup_stream_teardown_test
+    CSVSource, AsyncEmitSource
+from .integration_test_utils import V3ioHeaders, append_return, test_base_time, setup_kv_teardown_test, \
+    setup_teardown_test, \
+    assign_stream_teardown_test, create_stream
 
 
 class GetShardData(V3ioHeaders):
@@ -84,29 +85,51 @@ def test_join_with_http():
     assert termination_result == 200 * 7
 
 
-def test_write_to_v3io_stream(setup_stream_teardown_test):
+async def async_test_write_to_v3io_stream(setup_stream_teardown_test):
     stream_path = setup_stream_teardown_test
     controller = build_flow([
-        SyncEmitSource(),
+        AsyncEmitSource(),
         Map(lambda x: str(x)),
-        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: int(event.body))
+        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: int(event.body), batch_size=8, shard_count=2)
     ]).run()
     for i in range(10):
-        controller.emit(i)
+        await controller.emit(i)
 
-    controller.terminate()
+    await asyncio.sleep(5)
+
+    try:
+        shard0_data = await GetShardData().get_shard_data(f'{stream_path}/0')
+        assert shard0_data == [b'0', b'2', b'4', b'6', b'8']
+        shard1_data = await GetShardData().get_shard_data(f'{stream_path}/1')
+        assert shard1_data == [b'1', b'3', b'5', b'7', b'9']
+    finally:
+        await controller.terminate()
+        await controller.await_termination()
+
+
+def test_write_to_v3io_stream(assign_stream_teardown_test):
+    asyncio.run(async_test_write_to_v3io_stream(assign_stream_teardown_test))
+
+
+# ML-1219
+def test_write_to_v3io_stream_timestamps(assign_stream_teardown_test):
+    df = pd.DataFrame([['hello', pd.Timestamp('2018-05-07 13:52:37'), datetime(2012, 8, 8, 21, 46, 24, 862000)]],
+                      columns=['string', 'ts', 'datetime'])
+    stream_path = assign_stream_teardown_test
+    controller = build_flow([
+        DataframeSource(df),
+        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: 0, infer_columns_from_data=True)
+    ]).run()
     controller.await_termination()
     shard0_data = asyncio.run(GetShardData().get_shard_data(f'{stream_path}/0'))
-    assert shard0_data == [b'0', b'2', b'4', b'6', b'8']
-    shard1_data = asyncio.run(GetShardData().get_shard_data(f'{stream_path}/1'))
-    assert shard1_data == [b'1', b'3', b'5', b'7', b'9']
+    assert shard0_data == [b'{"datetime": "2012-08-08 21:46:24.862000", "string": "hello", "ts": "2018-05-07 13:52:37"}']
 
 
-def test_write_to_v3io_stream_with_column_inference(setup_stream_teardown_test):
-    stream_path = setup_stream_teardown_test
+def test_write_to_v3io_stream_with_column_inference(assign_stream_teardown_test):
+    stream_path = assign_stream_teardown_test
     controller = build_flow([
         SyncEmitSource(),
-        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: event.body['x'], infer_columns_from_data=True)
+        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: event.body['x'], infer_columns_from_data=True, shard_count=2)
     ]).run()
     for i in range(10):
         controller.emit({'x': i, 'y': f'{i}+{i}={i * 2}'})
@@ -131,12 +154,25 @@ def test_write_to_v3io_stream_with_column_inference(setup_stream_teardown_test):
     ]
 
 
-def test_write_dict_to_v3io_stream(setup_stream_teardown_test):
-    stream_path = setup_stream_teardown_test
+def test_write_to_pre_existing_stream(assign_stream_teardown_test):
+    stream_path = assign_stream_teardown_test
+    asyncio.run(create_stream(stream_path))
+    df = pd.DataFrame([['hello', "goodbye"]], columns=['first', 'second'])
+    controller = build_flow([
+        DataframeSource(df),
+        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: 0, infer_columns_from_data=True)
+    ]).run()
+    controller.await_termination()
+    shard0_data = asyncio.run(GetShardData().get_shard_data(f'{stream_path}/0'))
+    assert shard0_data == [b'{"first": "hello", "second": "goodbye"}']
+
+
+def test_write_dict_to_v3io_stream(assign_stream_teardown_test):
+    stream_path = assign_stream_teardown_test
     controller = build_flow([
         SyncEmitSource(),
         StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: int(event.key), columns=['$key'],
-                     infer_columns_from_data=True)
+                     infer_columns_from_data=True, shard_count=2)
     ]).run()
     expected_shard0 = []
     expected_shard1 = []
@@ -162,12 +198,12 @@ def test_write_dict_to_v3io_stream(setup_stream_teardown_test):
     assert shard1_data == expected_shard1
 
 
-def test_write_to_v3io_stream_unbalanced(setup_stream_teardown_test):
-    stream_path = setup_stream_teardown_test
+def test_write_to_v3io_stream_unbalanced(assign_stream_teardown_test):
+    stream_path = assign_stream_teardown_test
     controller = build_flow([
         SyncEmitSource(),
         Map(lambda x: str(x)),
-        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: 0)
+        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: 0, shard_count=2)
     ]).run()
     for i in range(10):
         controller.emit(i)
@@ -238,12 +274,10 @@ def test_join_by_key(setup_kv_teardown_test):
 
     controller = build_flow([
         SyncEmitSource(),
-        Filter(lambda x: x['col1'] > 8),
-        JoinWithTable(table, lambda x: x['col1']),
+        JoinWithTable(table, 'col1'),
         Reduce([], lambda acc, x: append_return(acc, x))
     ]).run()
-    for i in range(10):
-        controller.emit({'col1': i})
+    controller.emit({'col1': 9})
 
     expected = [{'col1': 9, 'age': 1, 'color': 'blue9'}]
     controller.terminate()
@@ -256,14 +290,51 @@ def test_join_by_key_specific_attributes(setup_kv_teardown_test):
 
     controller = build_flow([
         SyncEmitSource(),
-        Filter(lambda x: x['col1'] > 8),
-        JoinWithTable(table, lambda x: x['col1'], attributes=['age']),
+        JoinWithTable(table, 'col1', attributes=['age']),
         Reduce([], lambda acc, x: append_return(acc, x))
     ]).run()
-    for i in range(10):
-        controller.emit({'col1': i})
+    controller.emit({'col1': 9})
 
     expected = [{'col1': 9, 'age': 1}]
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == expected
+
+
+def test_outer_join_by_key(setup_kv_teardown_test):
+    table = Table(setup_kv_teardown_test, V3ioDriver())
+
+    controller = build_flow([
+        SyncEmitSource(),
+        JoinWithTable(table, 'col1', attributes=['age']),
+        Reduce([], lambda acc, x: append_return(acc, x))
+    ]).run()
+    for i in range(9, 11):
+        controller.emit({'col1': i})
+
+    expected = [
+        {'col1': 9, 'age': 1},
+        {'col1': 10}
+    ]
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == expected
+
+
+def test_inner_join_by_key(setup_kv_teardown_test):
+    table = Table(setup_kv_teardown_test, V3ioDriver())
+
+    controller = build_flow([
+        SyncEmitSource(),
+        JoinWithTable(table, 'col1', attributes=['age'], inner_join=True),
+        Reduce([], lambda acc, x: append_return(acc, x))
+    ]).run()
+    for i in range(9, 11):
+        controller.emit({'col1': i})
+
+    expected = [
+        {'col1': 9, 'age': 1}
+    ]
     controller.terminate()
     termination_result = controller.await_termination()
     assert termination_result == expected

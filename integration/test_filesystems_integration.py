@@ -5,7 +5,7 @@ import os
 
 from .integration_test_utils import setup_teardown_test, _generate_table_name, V3ioHeaders, V3ioError
 from storey import build_flow, CSVSource, CSVTarget, SyncEmitSource, Reduce, Map, FlatMap, AsyncEmitSource, ParquetTarget, ParquetSource, \
-    DataframeSource
+    DataframeSource, ReduceToDataFrame
 import pandas as pd
 import aiohttp
 import pytest
@@ -473,8 +473,8 @@ def test_filter_before_after_partitioned_inner_other_partition(setup_teardown_te
 def test_filter_before_after_partitioned_outer_other_partition(setup_teardown_test):
     columns = ['my_string', 'my_time', 'my_city']
 
-    df = pd.DataFrame([['shining', pd.Timestamp('2020-12-30 08:53:00'), 'ramat gan'],
-                       ['hello', pd.Timestamp('2020-12-31 15:05:00'), 'tel aviv'],
+    df = pd.DataFrame([['shining', pd.Timestamp('2020-12-31 14:00:00'), 'ramat gan'],
+                       ['hello', pd.Timestamp('2020-12-30 08:53:00'), 'tel aviv'],
                        ['beautiful', pd.Timestamp('2020-12-30 09:00:00'), 'haifa'],
                        ['sun', pd.Timestamp('2020-12-29 09:00:00'), 'tel aviv'],
                        ['world', pd.Timestamp('2020-12-30 15:00:45'), 'hod hasharon'],
@@ -500,7 +500,7 @@ def test_filter_before_after_partitioned_outer_other_partition(setup_teardown_te
     expected = [{'my_string': 'beautiful', 'my_time': pd.Timestamp('2020-12-30 09:00:00'), 'my_city': 'haifa'},
                 {'my_string': 'world', 'my_time': pd.Timestamp('2020-12-30 15:00:45'), 'my_city': 'hod hasharon'},
                 {'my_string': 'is', 'my_time': pd.Timestamp('2020-12-31 13:00:56'), 'my_city': 'hod hasharon'},
-                {'my_string': 'shining', 'my_time': pd.Timestamp('2020-12-30 08:53:00'), 'my_city': 'ramat gan'}]
+                {'my_string': 'shining', 'my_time': pd.Timestamp('2020-12-31 14:00:00'), 'my_city': 'ramat gan'}]
 
     assert read_back_result == expected, f"{read_back_result}\n!=\n{expected}"
 
@@ -525,9 +525,35 @@ def test_filter_by_time_non_partioned(setup_teardown_test):
 
     read_back_result = controller.await_termination()
 
-    expected = [{'my_string': 'dina', 'my_time': pd.Timestamp('2019-07-01 00:00:00'), 'my_city': 'tel aviv'}]
+    expected = [{'my_string': 'katya', 'my_time': pd.Timestamp('2020-12-31 14:00:00'), 'my_city': 'hod hasharon'}]
 
     try:
         assert read_back_result == expected, f"{read_back_result}\n!=\n{expected}"
+    finally:
+        os.remove(path)
+
+
+def test_empty_filter_result(setup_teardown_test):
+    columns = ['my_string', 'my_time', 'my_city']
+
+    df = pd.DataFrame([['dina', pd.Timestamp('2019-07-01 00:00:00'), 'tel aviv'],
+                       ['uri', pd.Timestamp('2018-12-30 09:00:00'), 'tel aviv'],
+                       ['katya', pd.Timestamp('2020-12-31 14:00:00'), 'hod hasharon']],
+                      columns=columns)
+    df.set_index('my_string')
+    path = '/tmp/test_filter_by_time_non_partioned.parquet'
+    df.to_parquet(path)
+    start = pd.Timestamp('2022-07-01 00:00:00')
+    end = pd.Timestamp('2022-12-31 14:00:00')
+
+    controller = build_flow([
+        ParquetSource(path, end_filter=end, start_filter=start, filter_column='my_time'),
+        ReduceToDataFrame(index=["my_string"], insert_key_column_as=["my_string"])
+    ]).run()
+
+    read_back_result = controller.await_termination()
+
+    try:
+        pd.testing.assert_frame_equal(read_back_result, pd.DataFrame({}))
     finally:
         os.remove(path)
