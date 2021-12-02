@@ -389,9 +389,6 @@ class FieldAggregator:
         return self.aggr_filter(element)
 
 
-legal_time_units = ['year', 'month', 'day', 'hour', 'minute', 'second']
-
-
 class FixedWindowType(Enum):
     CurrentOpenWindow = 1
     LastClosedWindow = 2
