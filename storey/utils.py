@@ -244,16 +244,7 @@ def find_partitions(url, fs):
         if len(content) == 0:
             return partitions
         # https://issues.apache.org/jira/browse/ARROW-1079 there could be some private dirs
-#        m = 9 / 0
-        print("rrrrrrr3 url is " + str(url))
-
-        filtered_dirs = []
-        for y in content:
-            print("rrrrrr y is " + str(y) + " type is " + str(type(y)))
-            if not _is_private(y["name"]):
-                filtered_dirs.append(y)
-
-#        filtered_dirs = [x for x in content if not _is_private(x["name"])]
+        filtered_dirs = [x for x in content if not _is_private(x["name"])]
         if len(filtered_dirs) == 0:
             return partitions
 
