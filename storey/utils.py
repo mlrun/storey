@@ -240,15 +240,13 @@ def find_partitions(url, fs):
         return (tail.startswith('_') or tail.startswith('.')) and '=' not in tail
 
     def find_partition_helper(url, fs, partitions):
-        content = fs.ls(url)
+        content = fs.ls(url, detail=True)
         if len(content) == 0:
             return partitions
         # https://issues.apache.org/jira/browse/ARROW-1079 there could be some private dirs
 #        m = 9 / 0
-        print("rrrrrrr2 url is " + str(url))
+        print("rrrrrrr3 url is " + str(url))
 
-        content2 = fs.ls(url, detail=True)
-        print("rrrrrrrrr like this " + str(content2[0]) + " type is " + str(type(content2[0])))
         filtered_dirs = []
         for y in content:
             print("rrrrrr y is " + str(y) + " type is " + str(type(y)))
