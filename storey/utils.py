@@ -235,7 +235,6 @@ def find_partitions(url, fs):
     partitions = []
 
     def _is_private(path):
-        print("rrrrrr is private" + str(path))
         _, tail = os.path.split(path)
         return (tail.startswith('_') or tail.startswith('.')) and '=' not in tail
 
