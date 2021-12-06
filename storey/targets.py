@@ -39,8 +39,7 @@ class _Writer:
         self._retain_dict = retain_dict
         self._storage_options = storage_options
 
-        self._field_extractor = lambda event_body, field_name: \
-            event_body.get(field_name)
+        self._field_extractor = lambda event_body, field_name: event_body.get(field_name)
         self._write_missing_fields = False
 
         def parse_notation(columns, metadata_columns, rename_columns):
