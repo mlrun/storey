@@ -80,12 +80,6 @@ class _Writer:
 
         if column_types:
             fields = []
-            for i in range(len(index_cols_types)):
-                index_column = index_cols_no_types[i]
-                type_name = index_cols_types[i]
-                typ = self._type_string_to_pyarrow_type[type_name]
-                field = pyarrow.field(index_column, typ, True)
-                fields.append(field)
             for i in range(len(column_types)):
                 type_name = column_types[i]
                 typ = self._type_string_to_pyarrow_type[type_name]
@@ -93,6 +87,12 @@ class _Writer:
                 if partition_cols and name in partition_cols:
                     continue
                 field = pyarrow.field(name, typ, True)
+                fields.append(field)
+            for i in range(len(index_cols_types)):
+                index_column = index_cols_no_types[i]
+                type_name = index_cols_types[i]
+                typ = self._type_string_to_pyarrow_type[type_name]
+                field = pyarrow.field(index_column, typ, True)
                 fields.append(field)
             self._schema = pyarrow.schema(fields)
         else:
@@ -395,7 +395,7 @@ class ParquetTarget(_Batching, _Writer):
     :type storage_options: dict
     """
 
-    def __init__(self, path: str, index_cols: Union[str, List[str], None] = None,
+    def __init__(self, path: str, index_cols: Union[str, Union[List[str], List[Tuple[str, str]]], None] = None,
                  columns: Union[str, Union[List[str], List[Tuple[str, str]]], None] = None,
                  partition_cols: Union[str, Union[List[str], List[Tuple[str, int]]], None] = None,
                  infer_columns_from_data: Optional[bool] = None, max_events: Optional[int] = None,
