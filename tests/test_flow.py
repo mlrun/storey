@@ -2919,3 +2919,57 @@ def test_completion_after_retry_in_concurrent_execution_step(backoff_factor):
     else:
         controller.await_termination()
         assert end - start > expected_sleep
+
+
+class MockLogger:
+    def __init__(self):
+        self.logs = []
+
+    def error(self, *args, **kwargs):
+        self.logs.append(('error', args, kwargs))
+
+    def warn(self, *args, **kwargs):
+        self.logs.append(('warn', args, kwargs))
+
+    def info(self, *args, **kwargs):
+        self.logs.append(('info', args, kwargs))
+
+    def debug(self, *args, **kwargs):
+        self.logs.append(('debug', args, kwargs))
+
+
+class MockContext:
+    def __init__(self, logger, verbose):
+        self.logger = logger
+        self.verbose = verbose
+
+
+def test_verbose_logs():
+    logger = MockLogger()
+    context = MockContext(logger, True)
+
+    controller = build_flow([
+        SyncEmitSource(context=context),
+        Map(lambda x: x, name='Map1', context=context),
+        Map(lambda x: x, name='Map2', context=context),
+    ]).run()
+
+    controller.emit(Event(id='myid', time=datetime.fromisoformat("2020-07-21T21:40:00+00:00"), body={}))
+    controller.terminate()
+    controller.await_termination()
+
+    assert len(logger.logs) == 2
+
+    level, args, kwargs = logger.logs[0]
+    assert level == 'debug'
+    assert args == (
+        'SyncEmitSource -> Map1 | Event(id=myid, time=2020-07-21 21:40:00+00:00, path=/, body={})',
+    )
+    assert kwargs == {}
+
+    level, args, kwargs = logger.logs[1]
+    assert level == 'debug'
+    assert args == (
+        'Map1 -> Map2 | Event(id=myid, time=2020-07-21 21:40:00+00:00, path=/, body={})',
+    )
+    assert kwargs == {}
