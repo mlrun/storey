@@ -1,7 +1,9 @@
 import asyncio
 import copy
+import json
 import math
 import os
+import pyarrow.parquet as pq
 import queue
 import time
 import traceback
@@ -1738,6 +1740,39 @@ def test_write_to_parquet_single_file_on_termination(tmpdir):
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
 
 
+# ML-1500
+def test_write_to_parquet_single_file_pandas_metadata(tmpdir):
+    out_file = f'{tmpdir}/test_write_to_parquet_single_file_pandas_metadata{uuid.uuid4().hex}/out.parquet'
+    controller = build_flow([
+        SyncEmitSource(),
+        ParquetTarget(out_file, index_cols=[('my_int', 'int')], columns=[('my_string', 'str')])
+    ]).run()
+
+    expected = []
+    for i in range(10):
+        controller.emit([i, f'this is {i}'])
+        expected.append([i, f'this is {i}'])
+    controller.terminate()
+    controller.await_termination()
+
+    assert os.path.isfile(out_file)
+    pf = pq.ParquetFile(out_file)
+    assert pf.schema_arrow.pandas_metadata['columns'] == [
+        {'field_name': 'my_string',
+         'metadata': None,
+         'name': 'my_string',
+         'numpy_type': 'object',
+         'pandas_type': 'unicode'
+         },
+        {'field_name': 'my_int',
+         'metadata': None,
+         'name': 'my_int',
+         'numpy_type': 'int64',
+         'pandas_type': 'int64'
+         }
+    ]
+
+
 def test_write_to_parquet_with_metadata(tmpdir):
     out_file = f'{tmpdir}/test_write_to_parquet_with_metadata{uuid.uuid4().hex}/'
     columns = ['event_key', 'my_int', 'my_string']
@@ -2685,7 +2720,6 @@ def test_none_key_num_is_not_written():
 
 
 def test_none_key_date_is_not_written():
-
     data = pd.DataFrame({'index': [datetime(2020, 6, 27, 10, 23, 8, 420581),
                                    None,
                                    datetime(2020, 6, 28, 10, 23, 8, 420581)],
