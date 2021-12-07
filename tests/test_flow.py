@@ -2927,6 +2927,10 @@ def test_concurrent_execution_max_in_flight(max_in_flight):
         def __init__(self, **kwargs):
             super().__init__(**kwargs)
             self._ongoing_processing = 0
+            self.lazy_init_called = 0
+
+        async def _lazy_init(self):
+            self.lazy_init_called += 1
 
         async def _process_event(self, event):
             self._ongoing_processing += 1
@@ -2937,15 +2941,18 @@ def test_concurrent_execution_max_in_flight(max_in_flight):
         async def _handle_completed(self, event, response):
             pass
 
+    concurrent_step = _TestConcurrentExecution(max_in_flight=max_in_flight)
     controller = build_flow([
         SyncEmitSource(),
-        _TestConcurrentExecution(max_in_flight=max_in_flight),
+        concurrent_step,
     ]).run()
 
     for i in range(max_in_flight + 1):
         controller.emit(i)
     controller.terminate()
     controller.await_termination()
+
+    assert concurrent_step.lazy_init_called == 1
 
 
 class MockLogger:

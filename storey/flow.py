@@ -617,6 +617,7 @@ class _ConcurrentJobExecution(Flow):
 
     def _init(self):
         self._q = None
+        self._lazy_init_complete = False
 
     async def _worker(self):
         event = None
@@ -670,8 +671,11 @@ class _ConcurrentJobExecution(Flow):
                     await asyncio.sleep(backoff_value)
 
     async def _do(self, event):
-        if not self._q and self._queue_size > 0:
+        if not self._lazy_init_complete:
             await self._lazy_init()
+            self._lazy_init_complete = True
+
+        if not self._q and self._queue_size > 0:
             self._q = asyncio.queues.Queue(self._queue_size)
             self._worker_awaitable = asyncio.get_running_loop().create_task(self._worker())
 
