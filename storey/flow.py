@@ -607,6 +607,8 @@ class _ConcurrentJobExecution(Flow):
 
     def __init__(self, max_in_flight=None, retries=None, backoff_factor=None, **kwargs):
         Flow.__init__(self, **kwargs)
+        if max_in_flight < 1:
+            raise ValueError(f'max_in_flight may not be less than 1 (got {max_in_flight})')
         self.max_in_flight = max_in_flight
         self.retries = retries
         self.backoff_factor = backoff_factor
@@ -625,7 +627,7 @@ class _ConcurrentJobExecution(Flow):
                 completed = await job[1]
                 await self._handle_completed(event, completed)
         except BaseException as ex:
-            if event:
+            if event and event._awaitable_result:
                 none_or_coroutine = event._awaitable_result._set_error(ex)
                 if none_or_coroutine:
                     await none_or_coroutine
@@ -666,24 +668,28 @@ class _ConcurrentJobExecution(Flow):
                     await asyncio.sleep(backoff_value)
 
     async def _do(self, event):
-        if not self._q:
+        if not self._q and self.max_in_flight > 1:
             await self._lazy_init()
-            self._q = asyncio.queues.Queue(self.max_in_flight or 8)
+            self._q = asyncio.queues.Queue(self.max_in_flight - 1 if self.max_in_flight else 8)
             self._worker_awaitable = asyncio.get_running_loop().create_task(self._worker())
 
-        if self._worker_awaitable.done():
+        if self.max_in_flight > 1 and self._worker_awaitable.done():
             await self._worker_awaitable
             raise FlowError("ConcurrentJobExecution worker has already terminated")
 
         if event is _termination_obj:
-            await self._q.put(_termination_obj)
-            await self._worker_awaitable
+            if self.max_in_flight > 1:
+                await self._q.put(_termination_obj)
+                await self._worker_awaitable
             return await self._do_downstream(_termination_obj)
         else:
-            task = self._process_event_with_retries(event)
-            await self._q.put((event, asyncio.get_running_loop().create_task(task)))
-            if self._worker_awaitable.done():
-                await self._worker_awaitable
+            coroutine = self._process_event_with_retries(event)
+            if self.max_in_flight == 1:
+                await coroutine
+            else:
+                await self._q.put((event, coroutine))
+                if self._worker_awaitable.done():
+                    await self._worker_awaitable
 
 
 class SendToHttp(_ConcurrentJobExecution):
