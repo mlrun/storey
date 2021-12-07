@@ -4,7 +4,6 @@ import csv
 import math
 import queue
 import threading
-import traceback
 import uuid
 import warnings
 from datetime import datetime
@@ -213,7 +212,6 @@ class SyncEmitSource(Flow):
             except BaseException as ex:
                 if event is not _termination_obj and event._awaitable_result:
                     event._awaitable_result._set_error(ex)
-                self._ex_traceback = traceback.format_exc()
                 self._ex = ex
                 if not self._q.empty():
                     event = self._q.get()
@@ -233,8 +231,12 @@ class SyncEmitSource(Flow):
 
     def _raise_on_error(self, ex):
         if ex:
-            msg = f'Flow execution terminated due to {self._ex_traceback}'
-            raise type(ex)(msg)
+            # Python appends trace frames to a raised exception, so we must copy
+            # it before raising to prevent it from growing each time
+            ex_copy = copy.copy(self._ex)
+            if self.verbose:
+                raise type(ex_copy)('Flow execution terminated') from ex_copy
+            raise ex_copy
 
     def _emit(self, event):
         if event is not _termination_obj:
@@ -387,7 +389,6 @@ class AsyncEmitSource(Flow):
                 if event is _termination_obj:
                     return termination_result
             except BaseException as ex:
-                self._ex_traceback = traceback.format_exc()
                 self._ex = ex
                 if event is not _termination_obj and event._awaitable_result:
                     awaitable = event._awaitable_result._set_error(ex)
@@ -403,8 +404,12 @@ class AsyncEmitSource(Flow):
 
     def _raise_on_error(self):
         if self._ex:
-            msg = f'Flow execution terminated due to {self._ex_traceback}'
-            raise type(self._ex)(msg)
+            # Python appends trace frames to a raised exception, so we must copy
+            # it before raising to prevent it from growing each time
+            ex_copy = copy.copy(self._ex)
+            if self.verbose:
+                raise type(ex_copy)('Flow execution terminated') from ex_copy
+            raise ex_copy
 
     async def _emit(self, event):
         if event is not _termination_obj:
@@ -459,8 +464,9 @@ class _IterableSource(Flow):
 
     def _raise_on_error(self, ex):
         if ex:
-            msg = f'Flow execution terminated due to {ex}'
-            raise type(ex)(msg)
+            if self.verbose:
+                raise type(self._ex)('Flow execution terminated') from self._ex
+            raise self._ex
 
     def run(self):
         self._closeables = super().run()
