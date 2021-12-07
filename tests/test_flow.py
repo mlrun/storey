@@ -1,6 +1,5 @@
 import asyncio
 import copy
-import json
 import math
 import os
 import pyarrow.parquet as pq
@@ -2919,6 +2918,34 @@ def test_completion_after_retry_in_concurrent_execution_step(backoff_factor):
     else:
         controller.await_termination()
         assert end - start > expected_sleep
+
+
+# ML-1506
+@pytest.mark.parametrize('max_in_flight', [1, 2])
+def test_concurrent_execution_max_in_flight(max_in_flight):
+    class _TestConcurrentExecution(_ConcurrentJobExecution):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self._ongoing_processing = 0
+
+        async def _process_event(self, event):
+            self._ongoing_processing += 1
+            assert self._ongoing_processing <= max_in_flight
+            await asyncio.sleep(1)
+            self._ongoing_processing -= 1
+
+        async def _handle_completed(self, event, response):
+            pass
+
+    controller = build_flow([
+        SyncEmitSource(),
+        _TestConcurrentExecution(max_in_flight=max_in_flight),
+    ]).run()
+
+    for i in range(max_in_flight + 1):
+        controller.emit(i)
+    controller.terminate()
+    controller.await_termination()
 
 
 class MockLogger:
