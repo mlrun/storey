@@ -213,8 +213,8 @@ class SyncEmitSource(Flow):
             except BaseException as ex:
                 if event is not _termination_obj and event._awaitable_result:
                     event._awaitable_result._set_error(ex)
-                self._ex = ex
                 self._ex_traceback = traceback.format_exc()
+                self._ex = ex
                 if not self._q.empty():
                     event = self._q.get()
                     if event is not _termination_obj and event._awaitable_result:
@@ -387,8 +387,8 @@ class AsyncEmitSource(Flow):
                 if event is _termination_obj:
                     return termination_result
             except BaseException as ex:
-                self._ex = ex
                 self._ex_traceback = traceback.format_exc()
+                self._ex = ex
                 if event is not _termination_obj and event._awaitable_result:
                     awaitable = event._awaitable_result._set_error(ex)
                     if awaitable:
