@@ -2921,13 +2921,14 @@ def test_completion_after_retry_in_concurrent_execution_step(backoff_factor):
 
 
 # ML-1506
-@pytest.mark.parametrize('max_in_flight', [1, 2])
+@pytest.mark.parametrize('max_in_flight', [1, 2, 4])
 def test_concurrent_execution_max_in_flight(max_in_flight):
     class _TestConcurrentExecution(_ConcurrentJobExecution):
         def __init__(self, **kwargs):
             super().__init__(**kwargs)
             self._ongoing_processing = 0
             self.lazy_init_called = 0
+            self.handle_completed_called = 0
 
         async def _lazy_init(self):
             self.lazy_init_called += 1
@@ -2939,7 +2940,7 @@ def test_concurrent_execution_max_in_flight(max_in_flight):
             self._ongoing_processing -= 1
 
         async def _handle_completed(self, event, response):
-            pass
+            self.handle_completed_called += 1
 
     concurrent_step = _TestConcurrentExecution(max_in_flight=max_in_flight)
     controller = build_flow([
@@ -2947,12 +2948,14 @@ def test_concurrent_execution_max_in_flight(max_in_flight):
         concurrent_step,
     ]).run()
 
-    for i in range(max_in_flight + 1):
+    num_events = max_in_flight + 1
+    for i in range(num_events):
         controller.emit(i)
     controller.terminate()
     controller.await_termination()
 
     assert concurrent_step.lazy_init_called == 1
+    assert concurrent_step.handle_completed_called == num_events
 
 
 class MockLogger:
