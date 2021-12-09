@@ -11,6 +11,7 @@ from typing import Optional, Union, Callable, List, Dict, Any, Set
 import aiohttp
 
 from .dtypes import _termination_obj, Event, FlowError, V3ioError
+from .queue import AsyncQueue
 from .table import Table
 from .utils import _split_path, get_in, update_in, stringify_key
 
@@ -620,15 +621,27 @@ class _ConcurrentJobExecution(Flow):
         self._lazy_init_complete = False
 
     async def _worker(self):
+        async def handle_job(job):
+            if job is _termination_obj:
+                return
+            event = job[0]
+            completed = await job[1]
+            await self._handle_completed(event, completed)
+
         event = None
         try:
             while True:
-                job = await self._q.get()
+                # If we don't handle the event before we remove it from the queue, the effective max_in_flight will
+                # be 1 higher than requested. Hence, we peek.
+                job = await self._q.peek()
                 if job is _termination_obj:
+                    await self._q.get()
                     break
                 event = job[0]
                 completed = await job[1]
                 await self._handle_completed(event, completed)
+                await self._q.get()
+
         except BaseException as ex:
             if event and event._awaitable_result:
                 none_or_coroutine = event._awaitable_result._set_error(ex)
@@ -676,7 +689,7 @@ class _ConcurrentJobExecution(Flow):
             self._lazy_init_complete = True
 
         if not self._q and self._queue_size > 0:
-            self._q = asyncio.queues.Queue(self._queue_size)
+            self._q = AsyncQueue(self._queue_size)
             self._worker_awaitable = asyncio.get_running_loop().create_task(self._worker())
 
         if self._queue_size > 0 and self._worker_awaitable.done():
@@ -691,9 +704,11 @@ class _ConcurrentJobExecution(Flow):
         else:
             coroutine = self._process_event_with_retries(event)
             if self._queue_size == 0:
-                await coroutine
+                completed = await coroutine
+                await self._handle_completed(event, completed)
             else:
-                await self._q.put((event, coroutine))
+                task = asyncio.get_running_loop().create_task(coroutine)
+                await self._q.put((event, task))
                 if self._worker_awaitable.done():
                     await self._worker_awaitable
 
