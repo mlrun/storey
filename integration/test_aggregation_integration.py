@@ -1805,3 +1805,47 @@ def test_aggregate_and_query_by_key_with_holes(setup_teardown_test):
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
+
+def test_aliases(setup_teardown_test):
+    t0 = pd.Timestamp(test_base_time)
+    data = pd.DataFrame(
+        {
+            "time": [
+                t0 - pd.Timedelta(minutes=5),
+                t0 - pd.Timedelta(minutes=10),
+                t0 - pd.Timedelta(minutes=15),
+                t0 - pd.Timedelta(minutes=20),
+                t0 - pd.Timedelta(minutes=25),
+            ],
+            "ticker": ["MSFT", "MSFT", "GOOG", "GOOG", "AAPL"],
+            "price": [51.95, 51.95, 720, 721, 98.0],
+            "quantity": [75, 155, 100, 100, 100]
+        }
+    )
+    table = Table(setup_teardown_test, V3ioDriver())
+    controller = build_flow([
+        DataframeSource(data, key_field="ticker", time_field='time'),
+        AggregateByKey([FieldAggregator('price', 'price', ['sum', 'max'],
+                                        SlidingWindows(['1h'], '10m'))],
+                       table, emit_policy=EmitAfterMaxEvent(1)),
+        NoSqlTarget(table),
+    ]).run()
+
+    controller.await_termination()
+
+    other_table = Table(setup_teardown_test, V3ioDriver())
+    controller = build_flow([
+        SyncEmitSource(),
+        QueryByKey(['price_sum_1h', 'price_max_1h'],
+                   other_table, key=['ticker'], aliases={'price_sum_1h': 'summ', 'price_max_1h': 'maxx'}),
+        Reduce([], lambda acc, x: append_return(acc, x)),
+    ]).run()
+
+    controller.emit({'ticker': 'GOOG'}, event_time=t0)
+
+    controller.terminate()
+    actual = controller.await_termination()
+    expected_results = [{'summ': 1441.0, 'maxx': 721.0, 'ticker': 'GOOG'}]
+
+    assert actual == expected_results, \
+        f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'

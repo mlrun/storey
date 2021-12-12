@@ -192,6 +192,9 @@ class AggregateByKey(Flow):
             emitted_attr_name = self._aliases.get(col, None) or col
             if col in self._table._get_static_attrs(safe_key):
                 features[emitted_attr_name] = self._table._get_static_attrs(safe_key)[col]
+        for old_name, new_name in self._aliases.items():
+            if old_name in features:
+                features[new_name] = features.pop(old_name)
         event.key = key
         event.body = features
         await self._do_downstream(event)
