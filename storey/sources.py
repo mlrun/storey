@@ -793,9 +793,9 @@ class ParquetSource(DataframeSource):
 
     :parameter paths: paths to Parquet files
     :parameter columns : list, default=None. If not None, only these columns will be read from the file.
-    :parameter start_filter: datetime. If not None, the results will be filtered by partitions and 'filter_column' >= start_filter.
+    :parameter start_filter: datetime. If not None, the results will be filtered by partitions and 'filter_column' > start_filter.
         Default is None
-    :parameter end_filter: datetime. If not None, the results will be filtered by partitions 'filter_column' < end_filter.
+    :parameter end_filter: datetime. If not None, the results will be filtered by partitions 'filter_column' <= end_filter.
         Default is None
     :parameter filter_column: Optional. if not None, the results will be filtered by this column and before and/or after
     """
