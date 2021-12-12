@@ -78,7 +78,7 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
         self._closed = True
 
         self._aggregation_attribute_prefix = 'aggr_'
-        self._aggregation_time_attribute_prefix = 't_'
+        self._aggregation_time_attribute_prefix = '_'
         self._error_code_string = "ErrorCode"
         self._false_condition_error_code = "16777244"
         self._mtime_header_name = 'X-v3io-transaction-verifier'
@@ -183,6 +183,7 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
         key = str(key)
         get_item_response = await self._v3io_client.kv.get(container, table_path, key, attribute_names=attributes_to_get,
                                                            raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
+
         if get_item_response.status_code == 200:
             aggr_item.storage_specific_cache[self._mtime_header_name] = get_item_response.headers[self._mtime_header_name]
 
@@ -431,6 +432,7 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
         key = str(key)
 
         response = await self._v3io_client.kv.get(container, table_path, key, raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
+
         if response.status_code == 404:
             return None, None
         elif response.status_code == 200:
