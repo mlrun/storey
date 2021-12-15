@@ -426,6 +426,12 @@ class _FunctionWithStateFlow(Flow):
         element = self._get_event_or_body(event)
         if self._group_by_key:
             safe_key = stringify_key(event.key)
+
+            if isinstance(self._state, str) and self._state.startswith('v3io://'):
+                if not self.context:
+                    raise TypeError("Table can not be string if no context was provided to the step")
+                self._state = self.context.get_table(self._state)
+
             if isinstance(self._state, Table):
                 key_data = await self._state._get_or_load_static_attributes_by_key(safe_key)
             else:

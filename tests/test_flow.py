@@ -21,7 +21,7 @@ from storey import build_flow, SyncEmitSource, Map, Filter, FlatMap, Reduce, Map
     Event, Batch, Table, CSVTarget, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, \
     ParquetTarget, QueryByKey, \
     TSDBTarget, Extend, SendToHttp, HttpRequest, NoSqlTarget, NoopDriver, Driver, Recover, V3ioDriver, ParquetSource
-from storey.flow import _ConcurrentJobExecution
+from storey.flow import _ConcurrentJobExecution, Context
 
 
 class ATestException(Exception):
@@ -660,7 +660,7 @@ def test_map_with_state_flow_keyless_event():
     assert termination_result == 1036
 
 
-def test_map_with_cache_state_flow():
+def test_map_with_table_state_flow():
     table_object = Table("table", NoopDriver())
     table_object['tal'] = {'color': 'blue'}
     table_object['dina'] = {'color': 'red'}
@@ -670,9 +670,12 @@ def test_map_with_cache_state_flow():
         state['counter'] = state.get('counter', 0) + 1
         return event, state
 
+    table_path = 'v3io:///mycontainer/mytable/'
     controller = build_flow([
         SyncEmitSource(),
-        MapWithState(table_object, lambda x, state: enrich(x, state), group_by_key=True),
+        MapWithState(table_path, lambda x, state: enrich(x, state),
+                     group_by_key=True,
+                     context=Context(initial_tables={table_path: table_object})),
         Reduce([], append_and_return),
     ]).run()
 
@@ -702,7 +705,7 @@ def test_map_with_cache_state_flow():
     assert table_object['dina'] == expected_cache['dina']
 
 
-def test_map_with_empty_cache_state_flow():
+def test_map_with_empty_table_state_flow():
     table_object = Table("table", NoopDriver())
 
     def enrich(event, state):
