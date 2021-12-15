@@ -621,35 +621,45 @@ class _ConcurrentJobExecution(Flow):
         self._lazy_init_complete = False
 
     async def _worker(self):
-        async def handle_job(job):
-            if job is _termination_obj:
-                return
-            event = job[0]
-            completed = await job[1]
-            await self._handle_completed(event, completed)
-
         event = None
         try:
             while True:
-                # If we don't handle the event before we remove it from the queue, the effective max_in_flight will
-                # be 1 higher than requested. Hence, we peek.
-                job = await self._q.peek()
-                if job is _termination_obj:
+                try:
+                    # If we don't handle the event before we remove it from the queue, the effective max_in_flight will
+                    # be 1 higher than requested. Hence, we peek.
+                    job = await self._q.peek()
+                    if job is _termination_obj:
+                        await self._q.get()
+                        break
+                    event = job[0]
+                    completed = await job[1]
+                    await self._handle_completed(event, completed)
                     await self._q.get()
-                    break
-                event = job[0]
-                completed = await job[1]
-                await self._handle_completed(event, completed)
-                await self._q.get()
-
-        except BaseException as ex:
-            if event and event._awaitable_result:
-                none_or_coroutine = event._awaitable_result._set_error(ex)
-                if none_or_coroutine:
-                    await none_or_coroutine
-            if not self._q.empty():
-                await self._q.get()
-            raise ex
+                except BaseException as ex:
+                    await self._q.get()
+                    ex._raised_by_storey_step = self
+                    recovery_step = self._get_recovery_step(ex)
+                    try:
+                        if recovery_step is not None:
+                            event.origin_state = self.name
+                            event.error = ex
+                            return await recovery_step._do(event)
+                        else:
+                            if event._awaitable_result:
+                                none_or_coroutine = event._awaitable_result._set_error(ex)
+                                if none_or_coroutine:
+                                    await none_or_coroutine
+                            if self.context and hasattr(self.context, 'push_error'):
+                                message = traceback.format_exc()
+                                if self.logger:
+                                    self.logger.error(f'Pushing error to error stream: {ex}\n{message}')
+                                self.context.push_error(event, f"{ex}\n{message}", source=self.name)
+                            else:
+                                raise ex
+                    except BaseException:
+                        if not self._q.empty():
+                            await self._q.get()
+                        raise
         finally:
             await self._cleanup()
 
