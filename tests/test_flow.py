@@ -21,7 +21,7 @@ from storey import build_flow, SyncEmitSource, Map, Filter, FlatMap, Reduce, Map
     Event, Batch, Table, CSVTarget, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, \
     ParquetTarget, QueryByKey, \
     TSDBTarget, Extend, SendToHttp, HttpRequest, NoSqlTarget, NoopDriver, Driver, Recover, V3ioDriver, ParquetSource
-from storey.flow import _ConcurrentJobExecution
+from storey.flow import _ConcurrentJobExecution, Context
 
 
 class ATestException(Exception):
@@ -2956,6 +2956,66 @@ def test_concurrent_execution_max_in_flight(max_in_flight):
 
     assert concurrent_step.lazy_init_called == 1
     assert concurrent_step.handle_completed_called == num_events
+
+
+def test_concurrent_execution_max_in_flight_error():
+    class _TestConcurrentExecution(_ConcurrentJobExecution):
+        async def _process_event(self, event):
+            raise ATestException()
+
+        async def _handle_completed(self, event, response):
+            pass
+
+    concurrent_step = _TestConcurrentExecution(max_in_flight=2)
+    controller = build_flow([
+        SyncEmitSource(),
+        concurrent_step,
+        Complete()
+    ]).run()
+
+    awaitable_result = controller.emit(0)
+    with pytest.raises(ATestException):
+        awaitable_result.await_result()
+    controller.terminate()
+    with pytest.raises(ATestException):
+        controller.await_termination()
+
+
+def test_concurrent_execution_max_in_flight_push_error():
+    class _TestConcurrentExecution(_ConcurrentJobExecution):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self._should_raise = True
+
+        async def _process_event(self, event):
+            if self._should_raise:
+                self._should_raise = False
+                raise ATestException()
+
+        async def _handle_completed(self, event, response):
+            await self._do_downstream(event)
+
+    class ContextWithPushError(Context):
+        def push_error(self, event, message, source):
+            pass
+
+    context = ContextWithPushError()
+
+    concurrent_step = _TestConcurrentExecution(max_in_flight=2, context=context)
+    controller = build_flow([
+        SyncEmitSource(),
+        concurrent_step,
+        Complete()
+    ]).run()
+
+    awaitable_result = controller.emit(0)
+    with pytest.raises(ATestException):
+        awaitable_result.await_result()
+    for i in range(1, 5):
+        awaitable_result = controller.emit(i)
+        awaitable_result.await_result()
+    controller.terminate()
+    controller.await_termination()
 
 
 class MockLogger:
