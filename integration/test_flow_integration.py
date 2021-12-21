@@ -216,6 +216,19 @@ def test_write_to_v3io_stream_unbalanced(assign_stream_teardown_test):
     assert shard1_data == []
 
 
+def test_error_on_write_to_v3io_stream(assign_stream_teardown_test):
+    stream_path = assign_stream_teardown_test
+    controller = build_flow([
+        SyncEmitSource(),
+        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: 0, shard_count=2)
+    ]).run()
+    for i in range(10):
+        controller.emit('1234' * 1024 * 1024)
+
+    controller.terminate()
+    controller.await_termination()
+
+
 def test_write_to_tsdb():
     table_name = f'tsdb_path-{int(time.time_ns() / 1000)}'
     tsdb_path = f'v3io://bigdata/{table_name}'
