@@ -2142,7 +2142,8 @@ def test_csv_reader_parquet_write_nanosecs(tmpdir):
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
 
 
-@pytest.mark.skip(reason="This takes too long because of retries added in v3io>0.5.9")
+@pytest.mark.skip(reason="This takes too long because of retries added in v3io 0.5.10. Unskip this test once IG-19945 is "
+                         "resolved and v3io dependency is bumped accordingly.")
 def test_error_in_table_persist():
     table = Table('table', V3ioDriver(webapi='https://localhost:12345', access_key='abc'))
 
