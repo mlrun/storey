@@ -1,5 +1,5 @@
 aiohttp>=3.6,<3.8
-v3io~=0.5.13
+v3io~=0.5.14
 pandas~=1.0
 numpy>=1.16.5, <1.22
 pyarrow>=1,<6
