@@ -13,7 +13,7 @@ from random import choice
 import pandas as pd
 import pytest
 import pytz
-from aiohttp import InvalidURL
+from aiohttp import InvalidURL, ClientConnectorError
 from pandas.testing import assert_frame_equal
 
 from storey import build_flow, SyncEmitSource, Map, Filter, FlatMap, Reduce, MapWithState, CSVSource, Complete, \
@@ -2147,16 +2147,14 @@ def test_error_in_table_persist():
 
     controller = build_flow([
         SyncEmitSource(),
-        NoSqlTarget(table, columns=['twice_total_activities']),
+        NoSqlTarget(table, columns=['col1']),
     ]).run()
 
     controller.emit({'col1': 0}, 'tal')
 
     controller.terminate()
-    try:
+    with pytest.raises(ClientConnectorError):
         controller.await_termination()
-    except TypeError:
-        pass
 
 
 def test_async_task_error_and_complete():
