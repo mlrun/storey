@@ -72,9 +72,11 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
     :param access_key: V3IO access key. If not set, the V3IO_ACCESS_KEY environment variable will be used.
     """
 
-    def __init__(self, webapi: Optional[str] = None, access_key: Optional[str] = None, use_parallel_operations=True):
+    def __init__(self, webapi: Optional[str] = None, access_key: Optional[str] = None, use_parallel_operations=True,
+                 v3io_client_kwargs=None):
         NeedsV3ioAccess.__init__(self, webapi, access_key)
         self._v3io_client = None
+        self._v3io_client_kwargs = v3io_client_kwargs or {}
         self._closed = True
 
         self._aggregation_attribute_prefix = 'aggr_'
@@ -87,7 +89,8 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
     def _lazy_init(self):
         self._closed = False
         if not self._v3io_client:
-            self._v3io_client = v3io.aio.dataplane.Client(endpoint=self._webapi_url, access_key=self._access_key)
+            self._v3io_client = v3io.aio.dataplane.Client(endpoint=self._webapi_url, access_key=self._access_key,
+                                                          **self._v3io_client_kwargs)
 
     async def close(self):
         """Closes database connection to V3IO"""
