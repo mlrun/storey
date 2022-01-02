@@ -417,6 +417,10 @@ class _FunctionWithStateFlow(Flow):
             raise TypeError(f'Expected a callable, got {type(fn)}')
         self._is_async = asyncio.iscoroutinefunction(fn)
         self._state = initial_state
+        if isinstance(self._state, str) and self._state.startswith('v3io://'):
+            if not self.context:
+                raise TypeError("Table can not be string if no context was provided to the step")
+            self._state = self.context.get_table(self._state)
         self._fn = fn
         self._group_by_key = group_by_key
         if hasattr(initial_state, 'close'):
