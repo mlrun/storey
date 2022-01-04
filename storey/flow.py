@@ -11,6 +11,7 @@ from typing import Optional, Union, Callable, List, Dict, Any, Set
 import aiohttp
 
 from .dtypes import _termination_obj, Event, FlowError, V3ioError
+from .queue import AsyncQueue
 from .table import Table
 from .utils import _split_path, get_in, update_in, stringify_key
 
@@ -213,13 +214,13 @@ class Flow:
                 tasks.append(asyncio.get_running_loop().create_task(self._outlets[i]._do_and_recover(event_copy)))
             event._awaitable_result = awaitable_result
         if self.verbose and self.logger:
-            step_name = type(self).__name__
+            step_name = self.name
             event_string = self._event_string(event)
-            self.logger.debug(f'{step_name} -> {type(self._outlets[0]).__name__} | {event_string}')
+            self.logger.debug(f'{step_name} -> {self._outlets[0].name} | {event_string}')
         await self._outlets[0]._do_and_recover(event)  # Optimization - avoids creating a task for the first outlet.
         for i, task in enumerate(tasks, start=1):
             if self.verbose and self.logger:
-                self.logger.debug(f'{step_name} -> {type(self._outlets[i]).__name__} | {event_string}')
+                self.logger.debug(f'{step_name} -> {self._outlets[i].name} | {event_string}')
             await task
 
     def _get_event_or_body(self, event):
@@ -416,6 +417,10 @@ class _FunctionWithStateFlow(Flow):
             raise TypeError(f'Expected a callable, got {type(fn)}')
         self._is_async = asyncio.iscoroutinefunction(fn)
         self._state = initial_state
+        if isinstance(self._state, str) and self._state.startswith('v3io://'):
+            if not self.context:
+                raise TypeError("Table can not be string if no context was provided to the step")
+            self._state = self.context.get_table(self._state)
         self._fn = fn
         self._group_by_key = group_by_key
         if hasattr(initial_state, 'close'):
@@ -607,31 +612,58 @@ class _ConcurrentJobExecution(Flow):
 
     def __init__(self, max_in_flight=None, retries=None, backoff_factor=None, **kwargs):
         Flow.__init__(self, **kwargs)
+        if max_in_flight is not None and max_in_flight < 1:
+            raise ValueError(f'max_in_flight may not be less than 1 (got {max_in_flight})')
         self.max_in_flight = max_in_flight
         self.retries = retries
         self.backoff_factor = backoff_factor
 
+        self._queue_size = max_in_flight - 1 if max_in_flight else 8
+
     def _init(self):
         self._q = None
+        self._lazy_init_complete = False
 
     async def _worker(self):
         event = None
         try:
             while True:
-                job = await self._q.get()
-                if job is _termination_obj:
-                    break
-                event = job[0]
-                completed = await job[1]
-                await self._handle_completed(event, completed)
-        except BaseException as ex:
-            if event:
-                none_or_coroutine = event._awaitable_result._set_error(ex)
-                if none_or_coroutine:
-                    await none_or_coroutine
-            if not self._q.empty():
-                await self._q.get()
-            raise ex
+                try:
+                    # If we don't handle the event before we remove it from the queue, the effective max_in_flight will
+                    # be 1 higher than requested. Hence, we peek.
+                    job = await self._q.peek()
+                    if job is _termination_obj:
+                        await self._q.get()
+                        break
+                    event = job[0]
+                    completed = await job[1]
+                    await self._handle_completed(event, completed)
+                    await self._q.get()
+                except BaseException as ex:
+                    await self._q.get()
+                    ex._raised_by_storey_step = self
+                    recovery_step = self._get_recovery_step(ex)
+                    try:
+                        if recovery_step is not None:
+                            event.origin_state = self.name
+                            event.error = ex
+                            return await recovery_step._do(event)
+                        else:
+                            if event._awaitable_result:
+                                none_or_coroutine = event._awaitable_result._set_error(ex)
+                                if none_or_coroutine:
+                                    await none_or_coroutine
+                            if self.context and hasattr(self.context, 'push_error'):
+                                message = traceback.format_exc()
+                                if self.logger:
+                                    self.logger.error(f'Pushing error to error stream: {ex}\n{message}')
+                                self.context.push_error(event, f"{ex}\n{message}", source=self.name)
+                            else:
+                                raise ex
+                    except BaseException:
+                        if not self._q.empty():
+                            await self._q.get()
+                        raise
         finally:
             await self._cleanup()
 
@@ -666,24 +698,33 @@ class _ConcurrentJobExecution(Flow):
                     await asyncio.sleep(backoff_value)
 
     async def _do(self, event):
-        if not self._q:
+        if not self._lazy_init_complete:
             await self._lazy_init()
-            self._q = asyncio.queues.Queue(self.max_in_flight or 8)
+            self._lazy_init_complete = True
+
+        if not self._q and self._queue_size > 0:
+            self._q = AsyncQueue(self._queue_size)
             self._worker_awaitable = asyncio.get_running_loop().create_task(self._worker())
 
-        if self._worker_awaitable.done():
+        if self._queue_size > 0 and self._worker_awaitable.done():
             await self._worker_awaitable
             raise FlowError("ConcurrentJobExecution worker has already terminated")
 
         if event is _termination_obj:
-            await self._q.put(_termination_obj)
-            await self._worker_awaitable
+            if self._queue_size > 0:
+                await self._q.put(_termination_obj)
+                await self._worker_awaitable
             return await self._do_downstream(_termination_obj)
         else:
-            task = self._process_event_with_retries(event)
-            await self._q.put((event, asyncio.get_running_loop().create_task(task)))
-            if self._worker_awaitable.done():
-                await self._worker_awaitable
+            coroutine = self._process_event_with_retries(event)
+            if self._queue_size == 0:
+                completed = await coroutine
+                await self._handle_completed(event, completed)
+            else:
+                task = asyncio.get_running_loop().create_task(coroutine)
+                await self._q.put((event, task))
+                if self._worker_awaitable.done():
+                    await self._worker_awaitable
 
 
 class SendToHttp(_ConcurrentJobExecution):

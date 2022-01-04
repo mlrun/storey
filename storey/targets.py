@@ -7,6 +7,7 @@ import json
 import os
 import queue
 import random
+import traceback
 import uuid
 from typing import Optional, Union, List, Callable, Tuple
 from urllib.parse import urlparse
@@ -39,7 +40,7 @@ class _Writer:
         self._retain_dict = retain_dict
         self._storage_options = storage_options
 
-        self._field_extractor = lambda event_body, field_name: event_body[field_name]
+        self._field_extractor = lambda event_body, field_name: event_body.get(field_name)
         self._write_missing_fields = False
 
         def parse_notation(columns, metadata_columns, rename_columns):
@@ -80,12 +81,6 @@ class _Writer:
 
         if column_types:
             fields = []
-            for i in range(len(index_cols_types)):
-                index_column = index_cols_no_types[i]
-                type_name = index_cols_types[i]
-                typ = self._type_string_to_pyarrow_type[type_name]
-                field = pyarrow.field(index_column, typ, True)
-                fields.append(field)
             for i in range(len(column_types)):
                 type_name = column_types[i]
                 typ = self._type_string_to_pyarrow_type[type_name]
@@ -93,6 +88,12 @@ class _Writer:
                 if partition_cols and name in partition_cols:
                     continue
                 field = pyarrow.field(name, typ, True)
+                fields.append(field)
+            for i in range(len(index_cols_types)):
+                index_column = index_cols_no_types[i]
+                type_name = index_cols_types[i]
+                typ = self._type_string_to_pyarrow_type[type_name]
+                field = pyarrow.field(index_column, typ, True)
                 fields.append(field)
             self._schema = pyarrow.schema(fields)
         else:
@@ -395,7 +396,7 @@ class ParquetTarget(_Batching, _Writer):
     :type storage_options: dict
     """
 
-    def __init__(self, path: str, index_cols: Union[str, List[str], None] = None,
+    def __init__(self, path: str, index_cols: Union[str, Union[List[str], List[Tuple[str, str]]], None] = None,
                  columns: Union[str, Union[List[str], List[Tuple[str, str]]], None] = None,
                  partition_cols: Union[str, Union[List[str], List[Tuple[str, int]]], None] = None,
                  infer_columns_from_data: Optional[bool] = None, max_events: Optional[int] = None,
@@ -629,6 +630,7 @@ class StreamTarget(Flow, _Writer):
     def _init(self):
         Flow._init(self)
         _Writer._init(self)
+        self._worker_exited = False
 
     @staticmethod
     async def _handle_response(request):
@@ -662,36 +664,43 @@ class StreamTarget(Flow, _Writer):
                 buffers.append([])
                 in_flight_reqs.append(None)
             while True:
-                for shard_id in range(self._shard_count):
-                    if self._q.empty():
-                        req = in_flight_reqs[shard_id]
-                        in_flight_reqs[shard_id] = None
-                        await self._handle_response(req)
-                        self._send_batch(buffers, in_flight_reqs, shard_id)
-                event = await self._q.get()
-                if event is _termination_obj:  # handle outstanding batches and in flight requests on termination
-                    for req in in_flight_reqs:
-                        await self._handle_response(req)
+                try:
                     for shard_id in range(self._shard_count):
-                        if buffers[shard_id]:
+                        if self._q.empty():
+                            req = in_flight_reqs[shard_id]
+                            in_flight_reqs[shard_id] = None
+                            await self._handle_response(req)
                             self._send_batch(buffers, in_flight_reqs, shard_id)
-                    for req in in_flight_reqs:
-                        await self._handle_response(req)
-                    break
-                shard_id = self._sharding_func(event) % self._shard_count
-                record = self._event_to_writer_entry(event)
-                buffers[shard_id].append(record)
-                if len(buffers[shard_id]) >= self._batch_size:
-                    if in_flight_reqs[shard_id]:
-                        req = in_flight_reqs[shard_id]
-                        in_flight_reqs[shard_id] = None
-                        await self._handle_response(req)
-                    self._send_batch(buffers, in_flight_reqs, shard_id)
-        except BaseException as ex:
-            if not self._q.empty():
-                await self._q.get()
-            raise ex
+                    event = await self._q.get()
+                    if event is _termination_obj:  # handle outstanding batches and in flight requests on termination
+                        for req in in_flight_reqs:
+                            await self._handle_response(req)
+                        for shard_id in range(self._shard_count):
+                            if buffers[shard_id]:
+                                self._send_batch(buffers, in_flight_reqs, shard_id)
+                        for req in in_flight_reqs:
+                            await self._handle_response(req)
+                        break
+                    shard_id = self._sharding_func(event) % self._shard_count
+                    record = self._event_to_writer_entry(event)
+                    buffers[shard_id].append(record)
+                    if len(buffers[shard_id]) >= self._batch_size:
+                        if in_flight_reqs[shard_id]:
+                            req = in_flight_reqs[shard_id]
+                            in_flight_reqs[shard_id] = None
+                            await self._handle_response(req)
+                        self._send_batch(buffers, in_flight_reqs, shard_id)
+                except BaseException as ex:
+                    ex._raised_by_storey_step = self
+                    if self.context and hasattr(self.context, 'push_error'):
+                        message = traceback.format_exc()
+                        if self.logger:
+                            self.logger.error(f'Pushing error to error stream: {ex}\n{message}')
+                        self.context.push_error(event, f"{ex}\n{message}", source=self.name)
+                    else:
+                        raise ex
         finally:
+            self._worker_exited = True
             await self._storage.close()
 
     async def _lazy_init(self):
@@ -715,7 +724,7 @@ class StreamTarget(Flow, _Writer):
     async def _do(self, event):
         await self._lazy_init()
 
-        if self._worker_awaitable.done():
+        if self._worker_exited:
             await self._worker_awaitable
             raise AssertionError("StreamTarget worker has already terminated")
 
@@ -725,7 +734,7 @@ class StreamTarget(Flow, _Writer):
             return await self._do_downstream(_termination_obj)
         else:
             await self._q.put(event)
-            if self._worker_awaitable.done():
+            if self._worker_exited:
                 await self._worker_awaitable
 
 

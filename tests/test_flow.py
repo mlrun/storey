@@ -2,6 +2,7 @@ import asyncio
 import copy
 import math
 import os
+import pyarrow.parquet as pq
 import queue
 import time
 import traceback
@@ -12,7 +13,7 @@ from random import choice
 import pandas as pd
 import pytest
 import pytz
-from aiohttp import InvalidURL
+from aiohttp import InvalidURL, ClientConnectorError
 from pandas.testing import assert_frame_equal
 
 from storey import build_flow, SyncEmitSource, Map, Filter, FlatMap, Reduce, MapWithState, CSVSource, Complete, \
@@ -20,7 +21,7 @@ from storey import build_flow, SyncEmitSource, Map, Filter, FlatMap, Reduce, Map
     Event, Batch, Table, CSVTarget, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, \
     ParquetTarget, QueryByKey, \
     TSDBTarget, Extend, SendToHttp, HttpRequest, NoSqlTarget, NoopDriver, Driver, Recover, V3ioDriver, ParquetSource
-from storey.flow import _ConcurrentJobExecution
+from storey.flow import _ConcurrentJobExecution, Context
 
 
 class ATestException(Exception):
@@ -659,7 +660,7 @@ def test_map_with_state_flow_keyless_event():
     assert termination_result == 1036
 
 
-def test_map_with_cache_state_flow():
+def test_map_with_table_state_flow():
     table_object = Table("table", NoopDriver())
     table_object['tal'] = {'color': 'blue'}
     table_object['dina'] = {'color': 'red'}
@@ -669,9 +670,12 @@ def test_map_with_cache_state_flow():
         state['counter'] = state.get('counter', 0) + 1
         return event, state
 
+    table_path = 'v3io:///mycontainer/mytable/'
     controller = build_flow([
         SyncEmitSource(),
-        MapWithState(table_object, lambda x, state: enrich(x, state), group_by_key=True),
+        MapWithState(table_path, lambda x, state: enrich(x, state),
+                     group_by_key=True,
+                     context=Context(initial_tables={table_path: table_object})),
         Reduce([], append_and_return),
     ]).run()
 
@@ -701,7 +705,7 @@ def test_map_with_cache_state_flow():
     assert table_object['dina'] == expected_cache['dina']
 
 
-def test_map_with_empty_cache_state_flow():
+def test_map_with_empty_table_state_flow():
     table_object = Table("table", NoopDriver())
 
     def enrich(event, state):
@@ -1738,6 +1742,39 @@ def test_write_to_parquet_single_file_on_termination(tmpdir):
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
 
 
+# ML-1500
+def test_write_to_parquet_single_file_pandas_metadata(tmpdir):
+    out_file = f'{tmpdir}/test_write_to_parquet_single_file_pandas_metadata{uuid.uuid4().hex}/out.parquet'
+    controller = build_flow([
+        SyncEmitSource(),
+        ParquetTarget(out_file, index_cols=[('my_int', 'int')], columns=[('my_string', 'str')])
+    ]).run()
+
+    expected = []
+    for i in range(10):
+        controller.emit([i, f'this is {i}'])
+        expected.append([i, f'this is {i}'])
+    controller.terminate()
+    controller.await_termination()
+
+    assert os.path.isfile(out_file)
+    pf = pq.ParquetFile(out_file)
+    assert pf.schema_arrow.pandas_metadata['columns'] == [
+        {'field_name': 'my_string',
+         'metadata': None,
+         'name': 'my_string',
+         'numpy_type': 'object',
+         'pandas_type': 'unicode'
+         },
+        {'field_name': 'my_int',
+         'metadata': None,
+         'name': 'my_int',
+         'numpy_type': 'int64',
+         'pandas_type': 'int64'
+         }
+    ]
+
+
 def test_write_to_parquet_with_metadata(tmpdir):
     out_file = f'{tmpdir}/test_write_to_parquet_with_metadata{uuid.uuid4().hex}/'
     columns = ['event_key', 'my_int', 'my_string']
@@ -2108,21 +2145,19 @@ def test_csv_reader_parquet_write_nanosecs(tmpdir):
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
 
 
-def test_error_in_concurrent_by_key_task():
-    table = Table('table', V3ioDriver(webapi='https://localhost:12345', access_key='abc'))
+def test_error_in_table_persist():
+    table = Table('table', V3ioDriver(webapi='https://localhost:12345', access_key='abc', v3io_client_kwargs={'retry_intervals': [0]}))
 
     controller = build_flow([
         SyncEmitSource(),
-        NoSqlTarget(table, columns=['twice_total_activities']),
+        NoSqlTarget(table, columns=['col1']),
     ]).run()
 
     controller.emit({'col1': 0}, 'tal')
 
     controller.terminate()
-    try:
+    with pytest.raises(ClientConnectorError):
         controller.await_termination()
-    except TypeError:
-        pass
 
 
 def test_async_task_error_and_complete():
@@ -2685,7 +2720,6 @@ def test_none_key_num_is_not_written():
 
 
 def test_none_key_date_is_not_written():
-
     data = pd.DataFrame({'index': [datetime(2020, 6, 27, 10, 23, 8, 420581),
                                    None,
                                    datetime(2020, 6, 28, 10, 23, 8, 420581)],
@@ -2885,3 +2919,155 @@ def test_completion_after_retry_in_concurrent_execution_step(backoff_factor):
     else:
         controller.await_termination()
         assert end - start > expected_sleep
+
+
+# ML-1506
+@pytest.mark.parametrize('max_in_flight', [1, 2, 4])
+def test_concurrent_execution_max_in_flight(max_in_flight):
+    class _TestConcurrentExecution(_ConcurrentJobExecution):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self._ongoing_processing = 0
+            self.lazy_init_called = 0
+            self.handle_completed_called = 0
+
+        async def _lazy_init(self):
+            self.lazy_init_called += 1
+
+        async def _process_event(self, event):
+            self._ongoing_processing += 1
+            assert self._ongoing_processing <= max_in_flight
+            await asyncio.sleep(1)
+            self._ongoing_processing -= 1
+
+        async def _handle_completed(self, event, response):
+            self.handle_completed_called += 1
+
+    concurrent_step = _TestConcurrentExecution(max_in_flight=max_in_flight)
+    controller = build_flow([
+        SyncEmitSource(),
+        concurrent_step,
+    ]).run()
+
+    num_events = max_in_flight + 1
+    for i in range(num_events):
+        controller.emit(i)
+    controller.terminate()
+    controller.await_termination()
+
+    assert concurrent_step.lazy_init_called == 1
+    assert concurrent_step.handle_completed_called == num_events
+
+
+def test_concurrent_execution_max_in_flight_error():
+    class _TestConcurrentExecution(_ConcurrentJobExecution):
+        async def _process_event(self, event):
+            raise ATestException()
+
+        async def _handle_completed(self, event, response):
+            pass
+
+    concurrent_step = _TestConcurrentExecution(max_in_flight=2)
+    controller = build_flow([
+        SyncEmitSource(),
+        concurrent_step,
+        Complete()
+    ]).run()
+
+    awaitable_result = controller.emit(0)
+    with pytest.raises(ATestException):
+        awaitable_result.await_result()
+    controller.terminate()
+    with pytest.raises(ATestException):
+        controller.await_termination()
+
+
+def test_concurrent_execution_max_in_flight_push_error():
+    class _TestConcurrentExecution(_ConcurrentJobExecution):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self._should_raise = True
+
+        async def _process_event(self, event):
+            if self._should_raise:
+                self._should_raise = False
+                raise ATestException()
+
+        async def _handle_completed(self, event, response):
+            await self._do_downstream(event)
+
+    class ContextWithPushError(Context):
+        def push_error(self, event, message, source):
+            pass
+
+    context = ContextWithPushError()
+
+    concurrent_step = _TestConcurrentExecution(max_in_flight=2, context=context)
+    controller = build_flow([
+        SyncEmitSource(),
+        concurrent_step,
+        Complete()
+    ]).run()
+
+    awaitable_result = controller.emit(0)
+    with pytest.raises(ATestException):
+        awaitable_result.await_result()
+    for i in range(1, 5):
+        awaitable_result = controller.emit(i)
+        awaitable_result.await_result()
+    controller.terminate()
+    controller.await_termination()
+
+
+class MockLogger:
+    def __init__(self):
+        self.logs = []
+
+    def error(self, *args, **kwargs):
+        self.logs.append(('error', args, kwargs))
+
+    def warn(self, *args, **kwargs):
+        self.logs.append(('warn', args, kwargs))
+
+    def info(self, *args, **kwargs):
+        self.logs.append(('info', args, kwargs))
+
+    def debug(self, *args, **kwargs):
+        self.logs.append(('debug', args, kwargs))
+
+
+class MockContext:
+    def __init__(self, logger, verbose):
+        self.logger = logger
+        self.verbose = verbose
+
+
+def test_verbose_logs():
+    logger = MockLogger()
+    context = MockContext(logger, True)
+
+    controller = build_flow([
+        SyncEmitSource(context=context),
+        Map(lambda x: x, name='Map1', context=context),
+        Map(lambda x: x, name='Map2', context=context),
+    ]).run()
+
+    controller.emit(Event(id='myid', time=datetime.fromisoformat("2020-07-21T21:40:00+00:00"), body={}))
+    controller.terminate()
+    controller.await_termination()
+
+    assert len(logger.logs) == 2
+
+    level, args, kwargs = logger.logs[0]
+    assert level == 'debug'
+    assert args == (
+        'SyncEmitSource -> Map1 | Event(id=myid, time=2020-07-21 21:40:00+00:00, path=/, body={})',
+    )
+    assert kwargs == {}
+
+    level, args, kwargs = logger.logs[1]
+    assert level == 'debug'
+    assert args == (
+        'Map1 -> Map2 | Event(id=myid, time=2020-07-21 21:40:00+00:00, path=/, body={})',
+    )
+    assert kwargs == {}

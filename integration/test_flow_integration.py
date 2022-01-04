@@ -216,6 +216,31 @@ def test_write_to_v3io_stream_unbalanced(assign_stream_teardown_test):
     assert shard1_data == []
 
 
+def test_push_error_on_write_to_v3io_stream(assign_stream_teardown_test):
+    class Context:
+        def __init__(self):
+            self.num_push_error_called = 0
+
+        def push_error(self, *args, **kwargs):
+            self.num_push_error_called += 1
+
+    context = Context()
+    stream_path = assign_stream_teardown_test
+    controller = build_flow([
+        SyncEmitSource(),
+        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: 0, shard_count=1, context=context)
+    ]).run()
+    # Write a 3MB record, which exceeds the 2MB v3io record size limit, then a small record.
+    controller.emit('3' * (1024 * 1024 * 3))
+    controller.emit('0')
+
+    controller.terminate()
+    controller.await_termination()
+    assert context.num_push_error_called == 1
+    shard0_data = asyncio.run(GetShardData().get_shard_data(f'{stream_path}/0'))
+    assert shard0_data == [b'0']
+
+
 def test_write_to_tsdb():
     table_name = f'tsdb_path-{int(time.time_ns() / 1000)}'
     tsdb_path = f'v3io://bigdata/{table_name}'
