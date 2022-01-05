@@ -404,6 +404,17 @@ class FlatMap(_UnaryFunctionFlow):
 
 
 class Extend(_UnaryFunctionFlow):
+    """Adds fields to each incoming event.
+
+    :param fn: Function to transform each event to a dictionary. The fields in the returned dictionary are then added to the original event.
+    :type fn: Function (Event=>Dict)
+    :param name: Name of this step, as it should appear in logs. Defaults to class name (Extend).
+    :type name: string
+    :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
+        Defaults to False.
+    :type full_event: boolean
+    """
+
     async def _do_internal(self, event, fn_result):
         for key, value in fn_result.items():
             event.body[key] = value
