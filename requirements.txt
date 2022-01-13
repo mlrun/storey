@@ -7,4 +7,4 @@ pyarrow>=1,<6
 grpcio-tools>=1.30,<1.33
 grpcio>=1.30,<1.33
 v3io-frames>=0.10.2,==0.*
-v3iofs~=0.1
+v3iofs~=0.1.9
