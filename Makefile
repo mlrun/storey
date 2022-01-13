@@ -1,3 +1,5 @@
+#test
+
 .PHONY: all
 all:
 	$(error please pick a target)
