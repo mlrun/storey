@@ -59,11 +59,8 @@ def _convert_to_datetime(obj, time_format: Optional[str] = None):
         raise ValueError(f"Could not parse '{obj}' (of type {type(obj)}) as a time.")
 
 
-class FlowControllerBase:
-    def __init__(self, key_field: Optional[Union[str, List[str]]], time_field: Optional[str], time_format: Optional[str]):
-        self._key_field = key_field
-        self._time_field = time_field
-        self._time_format = time_format
+class WithUUID:
+    def __init__(self):
         self._current_uuid_base = None
         self._current_uuid_count = 0
 
@@ -74,6 +71,16 @@ class FlowControllerBase:
         result = f'{self._current_uuid_base}-{self._current_uuid_count:04}'
         self._current_uuid_count += 1
         return result
+
+
+class FlowControllerBase(WithUUID):
+    def __init__(self, key_field: Optional[Union[str, List[str]]], time_field: Optional[str], time_format: Optional[str],
+                 id_field: Optional[str]):
+        super().__init__()
+        self._key_field = key_field
+        self._time_field = time_field
+        self._time_format = time_format
+        self._id_field = id_field
 
     def _build_event(self, element, key, event_time):
         body = element
@@ -107,12 +114,11 @@ class FlowControllerBase:
 class FlowController(FlowControllerBase):
     """Used to emit events into the associated flow, terminate the flow, and await the flow's termination.
     To be used from a synchronous context.
-
     """
 
     def __init__(self, emit_fn, await_termination_fn, return_awaitable_result, key_field: Optional[str] = None,
-                 time_field: Optional[str] = None, time_format: Optional[str] = None):
-        super().__init__(key_field, time_field, time_format)
+                 time_field: Optional[str] = None, time_format: Optional[str] = None, id_field: Optional[str] = None):
+        super().__init__(key_field, time_field, time_format, id_field)
         self._emit_fn = emit_fn
         self._await_termination_fn = await_termination_fn
         self._return_awaitable_result = return_awaitable_result
@@ -301,8 +307,8 @@ class AsyncFlowController(FlowControllerBase):
     """
 
     def __init__(self, emit_fn, loop_task, await_result, key_field: Optional[str] = None, time_field: Optional[str] = None,
-                 time_format: Optional[str] = None):
-        super().__init__(key_field, time_field, time_format)
+                 time_format: Optional[str] = None, id_field: Optional[str] = None):
+        super().__init__(key_field, time_field, time_format, id_field)
         self._emit_fn = emit_fn
         self._loop_task = loop_task
         self._key_field = key_field
@@ -487,7 +493,7 @@ class _IterableSource(Flow):
         return await self._run_loop()
 
 
-class CSVSource(_IterableSource):
+class CSVSource(_IterableSource, WithUUID):
     """
     Reads CSV files as input source for a flow.
 
@@ -495,12 +501,14 @@ class CSVSource(_IterableSource):
     :parameter header: whether CSV files have a header or not. Defaults to False.
     :parameter build_dict: whether to format each record produced from the input file as a dictionary (as opposed to a list).
         Default to False.
-    :parameter key_field: the CSV field to be use as the key for events. May be an int (field index) or string (field name) if
+    :parameter key_field: the CSV field to be used as the key for events. May be an int (field index) or string (field name) if
         with_header is True. Defaults to None (no key). Can be a list of keys
     :parameter time_field: the CSV field to be parsed as the timestamp for events. May be an int (field index) or string (field name)
         if with_header is True. Defaults to None (no timestamp field).
     :parameter timestamp_format: timestamp format as defined in datetime.strptime(). Default to ISO-8601 as defined in
         datetime.fromisoformat().
+    :parameter id_field: the CSV field to be used as the ID for events. May be an int (field index) or string (field name)
+        if with_header is True. Defaults to None (random ID will be generated per event).
     :parameter type_inference: Whether to infer data types from the data (when True), or read all fields in as strings (when False).
         Defaults to True.
     :parameter parse_dates: list of columns (names or integers) that will be attempted to parse as date column
@@ -510,7 +518,7 @@ class CSVSource(_IterableSource):
 
     def __init__(self, paths: Union[List[str], str], header: bool = False, build_dict: bool = False,
                  key_field: Union[int, str, List[int], List[str], None] = None, time_field: Union[int, str, None] = None,
-                 timestamp_format: Optional[str] = None, type_inference: bool = True,
+                 timestamp_format: Optional[str] = None, id_field: Union[str, int, None] = None, type_inference: bool = True,
                  parse_dates: Optional[Union[List[int], List[str]]] = None, **kwargs):
         kwargs['paths'] = paths
         kwargs['header'] = header
@@ -519,10 +527,13 @@ class CSVSource(_IterableSource):
             kwargs['key_field'] = key_field
         if time_field is not None:
             kwargs['time_field'] = time_field
+        if id_field is not None:
+            kwargs['id_field'] = id_field
         if timestamp_format is not None:
             kwargs['timestamp_format'] = timestamp_format
         kwargs['type_inference'] = type_inference
-        super().__init__(**kwargs)
+        _IterableSource.__init__(self, **kwargs)
+        WithUUID.__init__(self)
         if isinstance(paths, str):
             paths = [paths]
         self._paths = paths
@@ -531,6 +542,7 @@ class CSVSource(_IterableSource):
         self._key_field = key_field
         self._time_field = time_field
         self._timestamp_format = timestamp_format
+        self._id_field = id_field
         self._type_inference = type_inference
         self._storage_options = kwargs.get('storage_options')
         self._parse_dates = parse_dates
@@ -682,7 +694,14 @@ class CSVSource(_IterableSource):
                                 time_as_datetime = parsed_line[time_field]
                             else:
                                 time_as_datetime = datetime.now()
-                            event = Event(element, key=key, time=time_as_datetime)
+                            if self._id_field:
+                                id_field = self._id_field
+                                if self._with_header and isinstance(id_field, str):
+                                    id_field = field_name_to_index[id_field]
+                                id = parsed_line[id_field]
+                            else:
+                                id = self._get_uuid()
+                            event = Event(element, key=key, time=time_as_datetime, id=id)
                             self._event_buffer.put(event)
                         else:
                             if self.context:
@@ -719,7 +738,7 @@ class CSVSource(_IterableSource):
                     return res
 
 
-class DataframeSource(_IterableSource):
+class DataframeSource(_IterableSource, WithUUID):
     """Use pandas dataframe as input source for a flow.
 
     :param dfs: A pandas dataframe, or dataframes, to be used as input source for the flow.
@@ -738,7 +757,8 @@ class DataframeSource(_IterableSource):
             kwargs['time_field'] = time_field
         if id_field is not None:
             kwargs['id_field'] = id_field
-        super().__init__(**kwargs)
+        _IterableSource.__init__(self, **kwargs)
+        WithUUID.__init__(self)
         if isinstance(dfs, pandas.DataFrame):
             dfs = [dfs]
         self._dfs = dfs
@@ -775,9 +795,10 @@ class DataframeSource(_IterableSource):
                     time = None
                     if self._time_field:
                         time = body[self._time_field]
-                    id = None
                     if self._id_field:
                         id = body[self._id_field]
+                    else:
+                        id = self._get_uuid()
                     event = Event(body, key=key, time=time, id=id)
                     await self._do_downstream(event)
                 else:
@@ -798,6 +819,9 @@ class ParquetSource(DataframeSource):
     :parameter end_filter: datetime. If not None, the results will be filtered by partitions 'filter_column' <= end_filter.
         Default is None
     :parameter filter_column: Optional. if not None, the results will be filtered by this column and before and/or after
+    :param key_field: column to be used as key for events. can be list of columns
+    :param time_field: column to be used as time for events.
+    :param id_field: column to be used as ID for events.
     """
 
     def __init__(self, paths: Union[str, Iterable[str]], columns=None, start_filter: Optional[datetime] = None,

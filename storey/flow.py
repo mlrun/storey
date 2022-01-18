@@ -6,7 +6,7 @@ import time
 import traceback
 from asyncio import Task
 from collections import defaultdict
-from typing import Optional, Union, Callable, List, Dict, Any, Set
+from typing import Optional, Union, Callable, List, Dict, Any, Set, Iterable
 
 import aiohttp
 
@@ -517,6 +517,30 @@ class MapClass(Flow):
                 await self._do_downstream(mapped_event)
             else:
                 self._filter = False  # clear the flag for future runs
+
+
+class ReifyMetadata(Flow):
+    """
+    Inserts event metadata into the event body.
+    :param mapping: Dictionary from event attribute name to entry key in the event body (which must be a dictionary). Alternatively,
+    an iterable of names may be provided, and these will be used as both attribute name and entry key.
+    :param name: Name of this step, as it should appear in logs. Defaults to class name (ReifyMetadata).
+    :type name: string
+    """
+
+    def __init__(self, mapping: Iterable[str], **kwargs):
+        super().__init__(**kwargs)
+        self.mapping = mapping
+
+    async def _do(self, event):
+        if event is not _termination_obj:
+            if isinstance(self.mapping, dict):
+                for attribute_name, entry_key in self.mapping:
+                    event.body[entry_key] = getattr(event, attribute_name)
+            else:
+                for attribute_name in self.mapping:
+                    event.body[attribute_name] = getattr(event, attribute_name)
+        return await self._do_downstream(event)
 
 
 class Complete(Flow):

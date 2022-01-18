@@ -3,8 +3,8 @@ from ..dataframe import (  # noqa: F401
 )
 
 from ..flow import (  # noqa: F401
-    Map, MapWithState, Filter, FlatMap, Extend, JoinWithTable, SendToHttp, Choice, Batch, MapClass, _ConcurrentJobExecution,
-    _FunctionWithStateFlow, _UnaryFunctionFlow, _Batching
+    Map, MapWithState, Filter, FlatMap, Extend, JoinWithTable, SendToHttp, Choice, Batch, MapClass, ReifyMetadata,
+    _ConcurrentJobExecution, _FunctionWithStateFlow, _UnaryFunctionFlow, _Batching
 )
 
 from ..steps import (  # noqa: F401

@@ -21,7 +21,7 @@ from storey import build_flow, SyncEmitSource, Map, Filter, FlatMap, Reduce, Map
     Event, Batch, Table, CSVTarget, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, \
     ParquetTarget, QueryByKey, \
     TSDBTarget, Extend, SendToHttp, HttpRequest, NoSqlTarget, NoopDriver, Driver, Recover, V3ioDriver, ParquetSource
-from storey.flow import _ConcurrentJobExecution, Context
+from storey.flow import _ConcurrentJobExecution, Context, ReifyMetadata
 
 
 class ATestException(Exception):
@@ -2614,7 +2614,7 @@ def test_non_existing_key_query_by_key():
     controller.await_termination()
 
 
-def test_csv_reader_with_none_values():
+def test_csv_source_with_none_values():
     controller = build_flow([
         CSVSource('tests/test-with-none-values.csv', header=True, key_field='string'),
         Reduce([], append_and_return, full_event=True),
@@ -2629,6 +2629,43 @@ def test_csv_reader_with_none_values():
     assert termination_result[0].body == ['a', True, False, 1, 2.3, '2021-04-21 15:56:53.385444']
     assert termination_result[1].key == 'b'
     assert termination_result[1].body == ['b', True, None, math.nan, math.nan, None]
+
+
+def test_csv_source_event_metadata():
+    controller = build_flow([
+        CSVSource('tests/test-with-timestamp.csv',
+                  header=True,
+                  build_dict=True,
+                  key_field='k',
+                  time_field='t',
+                  timestamp_format='%d/%m/%Y %H:%M:%S',
+                  id_field='k'),
+        ReifyMetadata({'key', 'time', 'id'}),
+        Reduce([], append_and_return, full_event=False),
+    ]).run()
+
+    termination_result = controller.await_termination()
+
+    assert termination_result == [
+        {
+            'b': True,
+            'id': 'm1',
+            'k': 'm1',
+            'key': 'm1',
+            't': datetime(2020, 2, 15, 2, 0),
+            'time': datetime(2020, 2, 15, 2, 0),
+            'v': 8
+        },
+        {
+            'b': False,
+            'id': 'm2',
+            'k': 'm2',
+            'key': 'm2',
+            't': datetime(2020, 2, 16, 2, 0),
+            'time': datetime(2020, 2, 16, 2, 0),
+            'v': 14
+        }
+    ]
 
 
 def test_bad_time_string_input():
