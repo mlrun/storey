@@ -1959,6 +1959,34 @@ def test_join_by_string_key():
     assert termination_result == expected
 
 
+def test_join_with_join_function():
+    table = Table('test', NoopDriver())
+    table._update_static_attrs(2, {'age': 2, 'color': 'blue'})
+    table._update_static_attrs(3, {'age': 3, 'color': 'red'})
+
+    def join_function(event, aug):
+        event.update(aug)
+        if event['color'] != 'blue':
+            event['color'] = 'Not blue'
+        return event
+
+    controller = build_flow([
+        SyncEmitSource(),
+        JoinWithTable(table, 'col1', inner_join=True, join_function=join_function),
+        Reduce([], lambda acc, x: append_and_return(acc, x))
+    ]).run()
+    for i in range(5):
+        controller.emit({'col1': i})
+
+    expected = [
+        {'col1': 2, 'age': 2, 'color': 'blue'},
+        {'col1': 3, 'age': 3, 'color': 'Not blue'},
+    ]
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == expected
+
+
 def test_termination_result_order():
     controller = build_flow([
         SyncEmitSource(),

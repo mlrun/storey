@@ -985,7 +985,7 @@ class JoinWithTable(_ConcurrentJobExecution):
 
     def __init__(self, table: Union[Table, str], key_extractor: Union[str, Callable[[Event], str]],
                  attributes: Optional[List[str]] = None, inner_join: bool = False,
-                 join_function: Optional[Callable[[Event, Dict[str, object]], Event]] = None, **kwargs):
+                 join_function: Optional[Callable[[Any, Dict[str, object]], Any]] = None, **kwargs):
         if isinstance(table, str):
             kwargs['table'] = table
         if isinstance(key_extractor, str):
