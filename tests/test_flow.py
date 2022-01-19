@@ -1939,6 +1939,26 @@ def test_join_by_key():
     assert termination_result == expected
 
 
+def test_join_by_key_full_event():
+    table = Table('test', NoopDriver())
+    table._update_static_attrs(9, {'age': 1, 'color': 'blue9'})
+    table._update_static_attrs(7, {'age': 3, 'color': 'blue7'})
+
+    controller = build_flow([
+        SyncEmitSource(),
+        Filter(lambda x: x['col1'] > 8),
+        JoinWithTable(table, 'col1', full_event=True),
+        Reduce([], lambda acc, x: append_and_return(acc, x))
+    ]).run()
+    for i in range(10):
+        controller.emit({'col1': i})
+
+    expected = [{'col1': 9, 'age': 1, 'color': 'blue9'}]
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == expected
+
+
 def test_join_by_string_key():
     table = Table('test', NoopDriver())
     table._update_static_attrs(9, {'age': 1, 'color': 'blue9'})
