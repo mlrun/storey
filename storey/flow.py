@@ -6,7 +6,7 @@ import time
 import traceback
 from asyncio import Task
 from collections import defaultdict
-from typing import Optional, Union, Callable, List, Dict, Any, Set
+from typing import Optional, Union, Callable, List, Dict, Any, Set, Iterable
 
 import aiohttp
 
@@ -404,6 +404,17 @@ class FlatMap(_UnaryFunctionFlow):
 
 
 class Extend(_UnaryFunctionFlow):
+    """Adds fields to each incoming event.
+
+    :param fn: Function to transform each event to a dictionary. The fields in the returned dictionary are then added to the original event.
+    :type fn: Function (Event=>Dict)
+    :param name: Name of this step, as it should appear in logs. Defaults to class name (Extend).
+    :type name: string
+    :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
+        Defaults to False.
+    :type full_event: boolean
+    """
+
     async def _do_internal(self, event, fn_result):
         for key, value in fn_result.items():
             event.body[key] = value
@@ -417,6 +428,10 @@ class _FunctionWithStateFlow(Flow):
             raise TypeError(f'Expected a callable, got {type(fn)}')
         self._is_async = asyncio.iscoroutinefunction(fn)
         self._state = initial_state
+        if isinstance(self._state, str) and self._state.startswith('v3io://'):
+            if not self.context:
+                raise TypeError("Table can not be string if no context was provided to the step")
+            self._state = self.context.get_table(self._state)
         self._fn = fn
         self._group_by_key = group_by_key
         if hasattr(initial_state, 'close'):
@@ -502,6 +517,30 @@ class MapClass(Flow):
                 await self._do_downstream(mapped_event)
             else:
                 self._filter = False  # clear the flag for future runs
+
+
+class ReifyMetadata(Flow):
+    """
+    Inserts event metadata into the event body.
+    :param mapping: Dictionary from event attribute name to entry key in the event body (which must be a dictionary). Alternatively,
+    an iterable of names may be provided, and these will be used as both attribute name and entry key.
+    :param name: Name of this step, as it should appear in logs. Defaults to class name (ReifyMetadata).
+    :type name: string
+    """
+
+    def __init__(self, mapping: Iterable[str], **kwargs):
+        super().__init__(**kwargs)
+        self.mapping = mapping
+
+    async def _do(self, event):
+        if event is not _termination_obj:
+            if isinstance(self.mapping, dict):
+                for attribute_name, entry_key in self.mapping:
+                    event.body[entry_key] = getattr(event, attribute_name)
+            else:
+                for attribute_name in self.mapping:
+                    event.body[attribute_name] = getattr(event, attribute_name)
+        return await self._do_downstream(event)
 
 
 class Complete(Flow):
@@ -970,7 +1009,7 @@ class JoinWithTable(_ConcurrentJobExecution):
 
     def __init__(self, table: Union[Table, str], key_extractor: Union[str, Callable[[Event], str]],
                  attributes: Optional[List[str]] = None, inner_join: bool = False,
-                 join_function: Optional[Callable[[Event, Dict[str, object]], Event]] = None, **kwargs):
+                 join_function: Optional[Callable[[Any, Dict[str, object]], Any]] = None, **kwargs):
         if isinstance(table, str):
             kwargs['table'] = table
         if isinstance(key_extractor, str):

@@ -13,7 +13,7 @@ from random import choice
 import pandas as pd
 import pytest
 import pytz
-from aiohttp import InvalidURL
+from aiohttp import InvalidURL, ClientConnectorError
 from pandas.testing import assert_frame_equal
 
 from storey import build_flow, SyncEmitSource, Map, Filter, FlatMap, Reduce, MapWithState, CSVSource, Complete, \
@@ -21,7 +21,7 @@ from storey import build_flow, SyncEmitSource, Map, Filter, FlatMap, Reduce, Map
     Event, Batch, Table, CSVTarget, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, \
     ParquetTarget, QueryByKey, \
     TSDBTarget, Extend, SendToHttp, HttpRequest, NoSqlTarget, NoopDriver, Driver, Recover, V3ioDriver, ParquetSource
-from storey.flow import _ConcurrentJobExecution, Context
+from storey.flow import _ConcurrentJobExecution, Context, ReifyMetadata
 
 
 class ATestException(Exception):
@@ -682,7 +682,7 @@ def test_map_with_state_flow_keyless_event():
     assert termination_result == 1036
 
 
-def test_map_with_cache_state_flow():
+def test_map_with_table_state_flow():
     table_object = Table("table", NoopDriver())
     table_object['tal'] = {'color': 'blue'}
     table_object['dina'] = {'color': 'red'}
@@ -692,9 +692,12 @@ def test_map_with_cache_state_flow():
         state['counter'] = state.get('counter', 0) + 1
         return event, state
 
+    table_path = 'v3io:///mycontainer/mytable/'
     controller = build_flow([
         SyncEmitSource(),
-        MapWithState(table_object, lambda x, state: enrich(x, state), group_by_key=True),
+        MapWithState(table_path, lambda x, state: enrich(x, state),
+                     group_by_key=True,
+                     context=Context(initial_tables={table_path: table_object})),
         Reduce([], append_and_return),
     ]).run()
 
@@ -724,7 +727,7 @@ def test_map_with_cache_state_flow():
     assert table_object['dina'] == expected_cache['dina']
 
 
-def test_map_with_empty_cache_state_flow():
+def test_map_with_empty_table_state_flow():
     table_object = Table("table", NoopDriver())
 
     def enrich(event, state):
@@ -1978,6 +1981,34 @@ def test_join_by_string_key():
     assert termination_result == expected
 
 
+def test_join_with_join_function():
+    table = Table('test', NoopDriver())
+    table._update_static_attrs(2, {'age': 2, 'color': 'blue'})
+    table._update_static_attrs(3, {'age': 3, 'color': 'red'})
+
+    def join_function(event, aug):
+        event.update(aug)
+        if event['color'] != 'blue':
+            event['color'] = 'Not blue'
+        return event
+
+    controller = build_flow([
+        SyncEmitSource(),
+        JoinWithTable(table, 'col1', inner_join=True, join_function=join_function),
+        Reduce([], lambda acc, x: append_and_return(acc, x))
+    ]).run()
+    for i in range(5):
+        controller.emit({'col1': i})
+
+    expected = [
+        {'col1': 2, 'age': 2, 'color': 'blue'},
+        {'col1': 3, 'age': 3, 'color': 'Not blue'},
+    ]
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == expected
+
+
 def test_termination_result_order():
     controller = build_flow([
         SyncEmitSource(),
@@ -2164,21 +2195,19 @@ def test_csv_reader_parquet_write_nanosecs(tmpdir):
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
 
 
-def test_error_in_concurrent_by_key_task():
-    table = Table('table', V3ioDriver(webapi='https://localhost:12345', access_key='abc'))
+def test_error_in_table_persist():
+    table = Table('table', V3ioDriver(webapi='https://localhost:12345', access_key='abc', v3io_client_kwargs={'retry_intervals': [0]}))
 
     controller = build_flow([
         SyncEmitSource(),
-        NoSqlTarget(table, columns=['twice_total_activities']),
+        NoSqlTarget(table, columns=['col1']),
     ]).run()
 
     controller.emit({'col1': 0}, 'tal')
 
     controller.terminate()
-    try:
+    with pytest.raises(ClientConnectorError):
         controller.await_termination()
-    except TypeError:
-        pass
 
 
 def test_async_task_error_and_complete():
@@ -2635,7 +2664,7 @@ def test_non_existing_key_query_by_key():
     controller.await_termination()
 
 
-def test_csv_reader_with_none_values():
+def test_csv_source_with_none_values():
     controller = build_flow([
         CSVSource('tests/test-with-none-values.csv', header=True, key_field='string'),
         Reduce([], append_and_return, full_event=True),
@@ -2650,6 +2679,43 @@ def test_csv_reader_with_none_values():
     assert termination_result[0].body == ['a', True, False, 1, 2.3, '2021-04-21 15:56:53.385444']
     assert termination_result[1].key == 'b'
     assert termination_result[1].body == ['b', True, None, math.nan, math.nan, None]
+
+
+def test_csv_source_event_metadata():
+    controller = build_flow([
+        CSVSource('tests/test-with-timestamp.csv',
+                  header=True,
+                  build_dict=True,
+                  key_field='k',
+                  time_field='t',
+                  timestamp_format='%d/%m/%Y %H:%M:%S',
+                  id_field='k'),
+        ReifyMetadata({'key', 'time', 'id'}),
+        Reduce([], append_and_return, full_event=False),
+    ]).run()
+
+    termination_result = controller.await_termination()
+
+    assert termination_result == [
+        {
+            'b': True,
+            'id': 'm1',
+            'k': 'm1',
+            'key': 'm1',
+            't': datetime(2020, 2, 15, 2, 0),
+            'time': datetime(2020, 2, 15, 2, 0),
+            'v': 8
+        },
+        {
+            'b': False,
+            'id': 'm2',
+            'k': 'm2',
+            'key': 'm2',
+            't': datetime(2020, 2, 16, 2, 0),
+            'time': datetime(2020, 2, 16, 2, 0),
+            'v': 14
+        }
+    ]
 
 
 def test_bad_time_string_input():
