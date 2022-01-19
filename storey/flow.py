@@ -1030,7 +1030,10 @@ class JoinWithTable(_ConcurrentJobExecution):
             if callable(key_extractor):
                 self._key_extractor = key_extractor
             elif isinstance(key_extractor, str):
-                self._key_extractor = lambda element: element[key_extractor]
+                if self._full_event:
+                    self._key_extractor = lambda event: event.body[key_extractor]
+                else:
+                    self._key_extractor = lambda element: element[key_extractor]
             else:
                 raise TypeError(f'key is expected to be either a callable or string but got {type(key_extractor)}')
 
@@ -1038,8 +1041,12 @@ class JoinWithTable(_ConcurrentJobExecution):
             event.update(join_res)
             return event
 
+        def default_join_fn_full_event(event, join_res):
+            event.body.update(join_res)
+            return event
+
         self._inner_join = inner_join
-        self._join_function = join_function or default_join_fn
+        self._join_function = join_function or (default_join_fn_full_event if self._full_event else default_join_fn)
 
         self._attributes = attributes or '*'
 
