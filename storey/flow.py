@@ -1046,7 +1046,7 @@ class JoinWithTable(_ConcurrentJobExecution):
             return event
 
         self._inner_join = inner_join
-        self._join_function = join_function or default_join_fn_full_event if self._full_event else default_join_fn
+        self._join_function = join_function or (default_join_fn_full_event if self._full_event else default_join_fn)
 
         self._attributes = attributes or '*'
 
