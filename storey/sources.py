@@ -20,25 +20,31 @@ from .utils import url_to_file_system, find_filters, find_partitions
 class AwaitableResult:
     """Future result of a computation. Calling await_result() will return with the result once the computation is completed."""
 
-    def __init__(self, on_error: Optional[Callable[[], None]] = None):
+    def __init__(self, on_error: Optional[Callable[[], None]] = None, expected_number_of_results: int = 1):
         self._on_error = on_error
-        self._q = queue.Queue(1)
-        self._completed = False
+        self._expected_number_of_results = expected_number_of_results
+        self._number_of_results = 0
+        self._q = queue.Queue(expected_number_of_results)
 
     def await_result(self):
         """Returns the result, once the computation is completed"""
-        result = self._q.get()
-        if isinstance(result, BaseException):
-            if self._on_error:
-                self._on_error()
-            # Python appends trace frames to a raised exception, so we must copy
-            # it before raising to prevent it from growing each time
-            raise copy.copy(result)
-        return result
+        results = []
+        for _ in range(self._expected_number_of_results):
+            result = self._q.get()
+            if isinstance(result, BaseException):
+                if self._on_error:
+                    self._on_error()
+                # Python appends trace frames to a raised exception, so we must copy
+                # it before raising to prevent it from growing each time
+                raise copy.copy(result)
+            results.append(result)
+        if len(results) == 1:
+            results = results[0]
+        return results
 
     def _set_result(self, element):
-        if not self._completed:
-            self._completed = True
+        if self._number_of_results < self._expected_number_of_results:
+            self._number_of_results += 1
             self._q.put(element)
 
     def _set_error(self, ex):
@@ -124,13 +130,15 @@ class FlowController(FlowControllerBase):
         self._return_awaitable_result = return_awaitable_result
 
     def emit(self, element: object, key: Optional[Union[str, List[str]]] = None, event_time: Optional[datetime] = None,
-             return_awaitable_result: Optional[bool] = None):
+             return_awaitable_result: Optional[bool] = None, expected_number_of_results: Optional[int] = None):
         """Emits an event into the associated flow.
 
         :param element: The event data, or payload. To set metadata as well, pass an Event object.
         :param key: The event key(s) (optional) #add to async
         :param event_time: The event time (default to current time, UTC).
         :param return_awaitable_result: Deprecated! An awaitable result object will be returned if a Complete step appears in the flow.
+        :param expected_number_of_results: Number of times the event will have to pass through a Complete step to be completed (for graph
+        flows).
 
         :returns: AsyncAwaitableResult if a Complete appears in the flow. None otherwise.
         """
@@ -142,7 +150,7 @@ class FlowController(FlowControllerBase):
         event = self._build_event(element, key, event_time)
         awaitable_result = None
         if self._return_awaitable_result:
-            awaitable_result = AwaitableResult()
+            awaitable_result = AwaitableResult(expected_number_of_results=expected_number_of_results or 1)
         event._awaitable_result = awaitable_result
         self._emit_fn(event)
         return awaitable_result
@@ -276,25 +284,31 @@ class AsyncAwaitableResult:
     """Future result of a computation. Calling await_result() will return with the result once the computation is completed.
     Same as AwaitableResult but for an async context."""
 
-    def __init__(self, on_error: Optional[Callable[[BaseException], Coroutine]] = None):
+    def __init__(self, on_error: Optional[Callable[[BaseException], Coroutine]] = None, expected_number_of_results: int = 1):
         self._on_error = on_error
-        self._q = asyncio.Queue(1)
-        self._completed = False
+        self._expected_number_of_results = expected_number_of_results
+        self._number_of_results = 0
+        self._q = asyncio.Queue(expected_number_of_results)
 
     async def await_result(self):
         """returns the result of the computation, once the computation is complete"""
-        result = await self._q.get()
-        if isinstance(result, BaseException):
-            if self._on_error:
-                await self._on_error()
-            # Python appends trace frames to a raised exception, so we must copy
-            # it before raising to prevent it from growing each time
-            raise copy.copy(result)
-        return result
+        results = []
+        for _ in range(self._expected_number_of_results):
+            result = await self._q.get()
+            if isinstance(result, BaseException):
+                if self._on_error:
+                    await self._on_error()
+                # Python appends trace frames to a raised exception, so we must copy
+                # it before raising to prevent it from growing each time
+                raise copy.copy(result)
+            results.append(result)
+        if len(results) == 1:
+            results = results[0]
+        return results
 
     async def _set_result(self, element):
-        if not self._completed:
-            self._completed = True
+        if self._number_of_results < self._expected_number_of_results:
+            self._number_of_results += 1
             await self._q.put(element)
 
     async def _set_error(self, ex):
@@ -317,13 +331,15 @@ class AsyncFlowController(FlowControllerBase):
         self._await_result = await_result
 
     async def emit(self, element: object, key: Optional[Union[str, List[str]]] = None, event_time: Optional[datetime] = None,
-                   await_result: Optional[bool] = None) -> object:
+                   await_result: Optional[bool] = None, expected_number_of_results: Optional[int] = None) -> object:
         """Emits an event into the associated flow.
 
         :param element: The event data, or payload. To set metadata as well, pass an Event object.
         :param key: The event key(s) (optional)
         :param event_time: The event time (default to current time, UTC).
         :param await_result: Deprecated. Will await a result if a Complete step appears in the flow.
+        :param expected_number_of_results: Number of times the event will have to pass through a Complete step to be completed (for graph
+        flows).
 
         :returns: The result received from the flow if a Complete step appears in the flow. None otherwise.
         """
