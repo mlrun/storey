@@ -25,7 +25,6 @@ class AwaitableResult:
         self._expected_number_of_results = expected_number_of_results
         self._number_of_results = 0
         self._q = queue.Queue(expected_number_of_results)
-        self._completed = False
 
     def await_result(self):
         """Returns the result, once the computation is completed"""
@@ -290,7 +289,6 @@ class AsyncAwaitableResult:
         self._expected_number_of_results = expected_number_of_results
         self._number_of_results = 0
         self._q = asyncio.Queue(expected_number_of_results)
-        self._completed = False
 
     async def await_result(self):
         """returns the result of the computation, once the computation is complete"""
