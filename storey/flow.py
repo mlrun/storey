@@ -144,7 +144,14 @@ class Flow:
         if not self._legal_first_step and not self._runnable:
             raise ValueError('Flow must start with a source')
         self._init()
-        for outlet in self._outlets:
+        outlets = []
+        outlets.extend(self._outlets)
+        if self._recovery_step:
+            if isinstance(self._recovery_step, dict):
+                outlets.extend(self._recovery_step.values())
+            else:
+                outlets.append(self._recovery_step)
+        for outlet in outlets:
             outlet._runnable = True
             self._closeables.extend(outlet.run())
         return self._closeables

@@ -16,6 +16,7 @@ import pytz
 from aiohttp import InvalidURL, ClientConnectorError
 from pandas.testing import assert_frame_equal
 
+import storey
 from storey import build_flow, SyncEmitSource, Map, Filter, FlatMap, Reduce, MapWithState, CSVSource, Complete, \
     AsyncEmitSource, Choice, \
     Event, Batch, Table, CSVTarget, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, \
@@ -3178,3 +3179,29 @@ def test_verbose_logs():
         'Map1 -> Map2 | Event(id=myid, time=2020-07-21 21:40:00+00:00, path=/, body={})',
     )
     assert kwargs == {}
+
+
+# ML-1716
+def test_init_of_recovery_step():
+    class WasInitCalled(storey.Flow):
+        def __init__(self):
+            super().__init__()
+            self.times_init_called = 0
+
+        def _init(self):
+            self.times_init_called += 1
+
+        async def _do(self, event):
+            return event
+
+    was_init_called_step = WasInitCalled()
+
+    controller = build_flow([
+        SyncEmitSource(),
+        Map(lambda x: x, recovery_step=was_init_called_step)
+    ]).run()
+
+    controller.terminate()
+    controller.await_termination()
+
+    assert was_init_called_step.times_init_called == 1
