@@ -689,7 +689,7 @@ class _ConcurrentJobExecution(Flow):
                         if recovery_step is not None:
                             event.origin_state = self.name
                             event.error = ex
-                            return await recovery_step._do(event)
+                            await recovery_step._do(event)
                         else:
                             if event._awaitable_result:
                                 none_or_coroutine = event._awaitable_result._set_error(ex)

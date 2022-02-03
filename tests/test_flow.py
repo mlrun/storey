@@ -1962,6 +1962,28 @@ def test_join_by_key():
     assert termination_result == expected
 
 
+def test_join_by_key_error():
+    table = Table('test', NoopDriver())
+    table._update_static_attrs(1, {'age': 1, 'color': 'blue'})
+    table._update_static_attrs(3, {'age': 3, 'color': 'red'})
+
+    recovery_step = Reduce([], lambda acc, x: append_and_return(acc, x))
+    terminal_step = Reduce([], lambda acc, x: append_and_return(acc, x))
+
+    controller = build_flow([
+        SyncEmitSource(),
+        JoinWithTable(table, 'col1', join_function=lambda event, aug: aug['color'], recovery_step=recovery_step),
+        terminal_step,
+    ]).run()
+    for i in range(5):
+        controller.emit({'col1': i})
+
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == ['blue', 'red']
+    assert recovery_step._result == [{'col1': 0}, {'col1': 2}, {'col1': 4}]
+
+
 def test_join_by_key_full_event():
     table = Table('test', NoopDriver())
     table._update_static_attrs(9, {'age': 1, 'color': 'blue9'})
