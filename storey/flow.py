@@ -333,15 +333,21 @@ class Recover(Flow):
 
 
 class _UnaryFunctionFlow(Flow):
-    def __init__(self, fn, **kwargs):
+    def __init__(self, fn, long_running=None, **kwargs):
         super().__init__(**kwargs)
         if not callable(fn):
             raise TypeError(f'Expected a callable, got {type(fn)}')
         self._is_async = asyncio.iscoroutinefunction(fn)
+        if self._is_async and long_running:
+            raise ValueError('long_running=True cannot be used in conjunction with a coroutine')
+        self._long_running = long_running
         self._fn = fn
 
     async def _call(self, element):
-        res = self._fn(element)
+        if self._long_running:
+            res = await asyncio.get_running_loop().run_in_executor(None, self._fn, element)
+        else:
+            res = self._fn(element)
         if self._is_async:
             res = await res
         return res
@@ -363,6 +369,9 @@ class Map(_UnaryFunctionFlow):
 
     :param fn: Function to apply to each event
     :type fn: Function (Event=>Event)
+    :param long_running: Whether fn is a long-running function. Long-running functions are run in an executor to avoid blocking other
+    concurrent processing. Default is False.
+    :type long_running: boolean
     :param name: Name of this step, as it should appear in logs. Defaults to class name (Map).
     :type name: string
     :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
@@ -380,6 +389,9 @@ class Filter(_UnaryFunctionFlow):
 
     :param fn: Function to decide whether to keep each event.
     :type fn: Function (Event=>boolean)
+    :param long_running: Whether fn is a long-running function. Long-running functions are run in an executor to avoid blocking other
+    concurrent processing. Default is False.
+    :type long_running: boolean
     :param name: Name of this step, as it should appear in logs. Defaults to class name (Filter).
     :type name: string
     :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
@@ -397,6 +409,9 @@ class FlatMap(_UnaryFunctionFlow):
 
     :param fn: Function to transform each event to a list of events.
     :type fn: Function (Event=>list of Event)
+    :param long_running: Whether fn is a long-running function. Long-running functions are run in an executor to avoid blocking other
+    concurrent processing. Default is False.
+    :type long_running: boolean
     :param name: Name of this step, as it should appear in logs. Defaults to class name (FlatMap).
     :type name: string
     :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
@@ -415,6 +430,9 @@ class Extend(_UnaryFunctionFlow):
 
     :param fn: Function to transform each event to a dictionary. The fields in the returned dictionary are then added to the original event.
     :type fn: Function (Event=>Dict)
+    :param long_running: Whether fn is a long-running function. Long-running functions are run in an executor to avoid blocking other
+    concurrent processing. Default is False.
+    :type long_running: boolean
     :param name: Name of this step, as it should appear in logs. Defaults to class name (Extend).
     :type name: string
     :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
@@ -495,9 +513,12 @@ class MapWithState(_FunctionWithStateFlow):
 class MapClass(Flow):
     """Similar to Map, but instead of a function argument, this class should be extended and its do() method overridden."""
 
-    def __init__(self, **kwargs):
+    def __init__(self, long_running=None, **kwargs):
         super().__init__(**kwargs)
         self._is_async = asyncio.iscoroutinefunction(self.do)
+        if self._is_async and long_running:
+            raise ValueError('long_running=True cannot be used in conjunction with a coroutine do()')
+        self._long_running = long_running
         self._filter = False
 
     def filter(self):
@@ -508,7 +529,10 @@ class MapClass(Flow):
         raise NotImplementedError()
 
     async def _call(self, event):
-        res = self.do(event)
+        if self._long_running:
+            res = await asyncio.get_running_loop().run_in_executor(None, self.do, event)
+        else:
+            res = self.do(event)
         if self._is_async:
             res = await res
         return res

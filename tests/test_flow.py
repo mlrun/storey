@@ -3227,3 +3227,59 @@ def test_init_of_recovery_step():
     controller.await_termination()
 
     assert was_init_called_step.times_init_called == 1
+
+
+# ML-1727
+@pytest.mark.parametrize(['long_running', 'use_mapclass'], [(True, True), (True, False), (False, True), (False, False)])
+def test_long_running_parameter(long_running, use_mapclass):
+    class CheckTime(storey.Flow):
+        def __init__(self):
+            super().__init__()
+            self.failed = False
+            self._worker_task = None
+            self._terminate = False
+
+        async def worker(self):
+            last_time = time.monotonic()
+            while not self._terminate:
+                await asyncio.sleep(0)
+                time_now = time.monotonic()
+                self.failed = self.failed or time_now > last_time + 0.5
+                last_time = time_now
+
+        async def _do(self, event):
+            if not self._worker_task:
+                self._worker_task = asyncio.create_task(self.worker())
+            if event is storey.dtypes._termination_obj:
+                self._terminate = True
+                await self._worker_task
+            return await self._do_downstream(event)
+
+    def sleep_and_return(event):
+        time.sleep(0.6)
+        return event
+
+    class MyLongMap(MapClass):
+        def do(self, event):
+            return sleep_and_return(event)
+
+    check_time = CheckTime()
+    if use_mapclass:
+        map_step = MyLongMap(long_running=long_running)
+    else:
+        map_step = Map(sleep_and_return, long_running=long_running)
+    controller = build_flow([
+        SyncEmitSource(),
+        map_step,
+        check_time,
+        Reduce([], lambda acc, x: append_and_return(acc, x)),
+    ]).run()
+
+    controller.emit(1)
+    controller.emit(2)
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == [1, 2]
+
+    should_fail = not long_running
+    assert check_time.failed == should_fail
