@@ -10,3 +10,7 @@ from ..flow import (  # noqa: F401
 from ..steps import (  # noqa: F401
     Flatten, Assert, Partition, SampleWindow, ForEach
 )
+
+from ..aggregations import (  # noqa: F401
+    AggregateByKey
+)
