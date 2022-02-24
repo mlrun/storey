@@ -16,7 +16,8 @@ from .integration_test_utils import setup_teardown_test, append_return, test_bas
 @pytest.mark.parametrize('fixed_window_type', [FixedWindowType.CurrentOpenWindow, FixedWindowType.LastClosedWindow])
 @pytest.mark.parametrize('partitioned_by_key', [True, False])
 @pytest.mark.parametrize('flush_interval', [None, 1])
-def test_aggregate_with_fixed_windows_and_query_past_and_future_times(setup_teardown_test, partitioned_by_key, flush_interval, fixed_window_type):
+def test_aggregate_with_fixed_windows_and_query_past_and_future_times(setup_teardown_test, partitioned_by_key, flush_interval,
+                                                                      fixed_window_type):
     table = Table(setup_teardown_test, V3ioDriver(), partitioned_by_key=partitioned_by_key, flush_interval_secs=flush_interval)
 
     controller = build_flow([
@@ -711,7 +712,7 @@ def test_aggregate_by_key_with_extra_aliases(setup_teardown_test):
     controller = build_flow([
         SyncEmitSource(),
         QueryByKey(['number_of_stuff_sum_2h', 'number_of_stuff_avg_2h', 'color', 'age', 'iss', 'sometime'],
-                   other_table, aliases={'color': 'external.color', 'iss': 'external.iss'}),
+                   other_table, aliases={'color': 'external.color', 'iss': 'external.iss', 'number_of_stuff_avg_2h': 'my_avg'}),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
@@ -722,7 +723,7 @@ def test_aggregate_by_key_with_extra_aliases(setup_teardown_test):
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [
-        {'number_of_stuff_sum_2h': 30, 'number_of_stuff_avg_2h': 7.5, 'col1': 10, 'external.color': 'blue', 'age': 41, 'external.iss': True,
+        {'number_of_stuff_sum_2h': 30, 'my_avg': 7.5, 'col1': 10, 'external.color': 'blue', 'age': 41, 'external.iss': True,
          'sometime': test_base_time}]
 
     assert actual == expected_results, \
@@ -1749,6 +1750,7 @@ def test_aggregate_and_query_persist_before_advancing_window(setup_teardown_test
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
+
 def test_aggregate_and_query_by_key_with_holes(setup_teardown_test):
     table = Table(setup_teardown_test, V3ioDriver(), partitioned_by_key=False, flush_interval_secs=None)
 
@@ -1804,4 +1806,3 @@ def test_aggregate_and_query_by_key_with_holes(setup_teardown_test):
 
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
-
