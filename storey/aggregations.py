@@ -29,7 +29,8 @@ class AggregateByKey(Flow):
     :param emit_policy: Policy indicating when the data will be emitted. Defaults to EmitEveryEvent
     :param augmentation_fn: Function that augments the features into the event's body. Defaults to updating a dict. (Optional)
     :param enrich_with: List of attributes names from the associated storage object to be fetched and added to every event. (Optional)
-    :param aliases: Dictionary specifying aliases to the enriched columns, of the format `{'col_name': 'new_col_name'}`. (Optional)
+    :param aliases: Dictionary specifying aliases for enriched or aggregate columns, of the
+     format `{'col_name': 'new_col_name'}`. (Optional)
     """
 
     def __init__(self, aggregates: Union[List[FieldAggregator], List[Dict[str, object]]], table: Union[Table, str],
@@ -186,6 +187,11 @@ class AggregateByKey(Flow):
         safe_key = stringify_key(key)
         await self._table._lazy_load_key_with_aggregates(safe_key, event_timestamp)
         features = await self._table._get_features(safe_key, event_timestamp)
+        for feature_name in list(features.keys()):
+            if feature_name in self._aliases:
+                new_feature_name = self._aliases[feature_name]
+                features[new_feature_name] = features[feature_name]
+                del features[feature_name]
         features = self._augmentation_fn(event.body, features)
 
         for col in self._enrich_with:
@@ -232,7 +238,8 @@ class QueryByKey(AggregateByKey):
     :param key: Key field to aggregate by, accepts either a string representing the key field or a key extracting function.
      Defaults to the key in the event's metadata. (Optional). Can be list of keys
     :param augmentation_fn: Function that augments the features into the event's body. Defaults to updating a dict. (Optional)
-    :param aliases: Dictionary specifying aliases to the enriched columns, of the format `{'col_name': 'new_col_name'}`. (Optional)
+    :param aliases: Dictionary specifying aliases for enriched or aggregate columns, of the
+     format `{'col_name': 'new_col_name'}`. (Optional)
     :param options: Enum flags specifying query options. (Optional)
     """
 
@@ -259,7 +266,7 @@ class QueryByKey(AggregateByKey):
         if isinstance(table, Table):
             other_table = table._clone() if table._aggregates is not None else table
         else:
-            other_table = table   # str - pass table string along with the context object
+            other_table = table  # str - pass table string along with the context object
         AggregateByKey.__init__(self, self._aggrs, other_table, key, augmentation_fn=augmentation_fn,
                                 enrich_with=self._enrich_cols, aliases=aliases, use_windows_from_schema=True, **kwargs)
         self._table._aggregations_read_only = True
