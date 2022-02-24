@@ -550,6 +550,27 @@ class MapClass(Flow):
                 self._filter = False  # clear the flag for future runs
 
 
+class Rename(Flow):
+    """
+    Rename fields in event body.
+    :param mapping: Dictionary from old name to new name.
+    :param name: Name of this step, as it should appear in logs. Defaults to class name (Rename).
+    :type name: string
+    """
+
+    def __init__(self, mapping: Dict[str, str], **kwargs):
+        super().__init__(**kwargs)
+        self.mapping = mapping
+
+    async def _do(self, event):
+        if event is not _termination_obj:
+            for old_name, new_name in self.mapping.items():
+                if old_name in event.body:
+                    event.body[new_name] = event.body.get(old_name)
+                    del event.body[old_name]
+        return await self._do_downstream(event)
+
+
 class ReifyMetadata(Flow):
     """
     Inserts event metadata into the event body.

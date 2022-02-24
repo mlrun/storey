@@ -17,7 +17,7 @@ from .dtypes import (  # noqa: F401
     EmitAfterDelay, EmitEveryEvent, LateDataHandling, FixedWindowType
 )
 from .flow import (  # noqa: F401
-    Filter, FlatMap, Flow, FlowError, JoinWithV3IOTable, SendToHttp, JoinWithTable, Map, Extend, Reduce, Batch,
+    Filter, FlatMap, Flow, FlowError, JoinWithV3IOTable, SendToHttp, JoinWithTable, Map, Extend, Rename, Reduce, Batch,
     MapWithState, MapClass, Complete, Choice, Recover, HttpRequest, HttpResponse, build_flow, Context
 )
 from .sources import (  # noqa: F401
