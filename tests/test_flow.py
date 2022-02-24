@@ -22,7 +22,7 @@ from storey import build_flow, SyncEmitSource, Map, Filter, FlatMap, Reduce, Map
     Event, Batch, Table, CSVTarget, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, \
     ParquetTarget, QueryByKey, \
     TSDBTarget, Extend, SendToHttp, HttpRequest, NoSqlTarget, NoopDriver, Driver, Recover, V3ioDriver, ParquetSource
-from storey.flow import _ConcurrentJobExecution, Context, ReifyMetadata
+from storey.flow import _ConcurrentJobExecution, Context, ReifyMetadata, Rename
 
 
 class ATestException(Exception):
@@ -3283,3 +3283,18 @@ def test_long_running_parameter(long_running, use_mapclass):
 
     should_fail = not long_running
     assert check_time.failed == should_fail
+
+
+def test_rename():
+    controller = build_flow([
+        SyncEmitSource(),
+        Rename({}),
+        Rename({'a': 'b', 'c': 'd'}),
+        Rename({'d': 'c'}),
+        Reduce([], lambda acc, x: append_and_return(acc, x)),
+    ]).run()
+
+    controller.emit({'a': 1, 'b': 2, 'c': 3, 'd': 4, 'e': 5})
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == [{'b': 1, 'c': 3, 'e': 5}]
