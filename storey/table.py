@@ -85,6 +85,7 @@ class Table:
                 # Try load from the store, and create a new one only if the key really is new
                 aggregate_initial_data, additional_data = \
                     await self._storage._load_aggregates_by_key(self._container, self._table_path, key)
+
                 # Create new aggregation element
                 await self._add_aggregation_by_key(key, timestamp, aggregate_initial_data)
 
