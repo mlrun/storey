@@ -5,7 +5,7 @@ import math
 import pandas as pd
 
 from storey import build_flow, SyncEmitSource, Reduce, Table, V3ioDriver, MapWithState, AggregateByKey, FieldAggregator, \
-    QueryByKey, NoSqlTarget, Context, DataframeSource, Map
+    QueryByKey, NoSqlTarget, Context, DataframeSource, Map, CSVSource
 
 from storey.dtypes import SlidingWindows, FixedWindows, EmitAfterMaxEvent, FixedWindowType
 from storey.utils import _split_path
@@ -1639,6 +1639,50 @@ def test_multiple_keys_int(setup_teardown_test):
     actual = controller.await_termination()
     expected_results = [
         {'number_of_stuff_sum_1h': 1.0, 'key_column1': 10, 'key_column2': 30, 'key_column3': 5, 'key_column4': 50}
+    ]
+
+    assert actual == expected_results, \
+        f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
+
+
+def test_column_begin_t(setup_teardown_test):
+    t0 = pd.Timestamp(test_base_time)
+    data = pd.DataFrame(
+        {
+            'key_column': ['a', 'b'],
+            'some_data': [1, 2],
+            't_col': ['storey', 'rules'],
+            'time': [t0 - pd.Timedelta(minutes=25), t0 - pd.Timedelta(minutes=30)]
+        }
+    )
+
+    keys = ['key_column']
+    table = Table(setup_teardown_test, V3ioDriver())
+    controller = build_flow([
+        DataframeSource(data, key_field=keys, time_field='time'),
+        AggregateByKey([FieldAggregator('number_of_stuff', 'some_data', ['sum'],
+                                        SlidingWindows(['1h'], '10m'))],
+                       table, emit_policy=EmitAfterMaxEvent(1)),
+        NoSqlTarget(table),
+    ]).run()
+
+    controller.await_termination()
+
+    other_table = Table(setup_teardown_test, V3ioDriver())
+    controller = build_flow([
+        SyncEmitSource(),
+        QueryByKey(['number_of_stuff_sum_1h', 't_col'],
+                   other_table, key=keys),
+        Reduce([], lambda acc, x: append_return(acc, x)),
+    ]).run()
+
+    controller.emit({'key_column': 'a'},
+                    key=['a'], event_time=test_base_time)
+
+    controller.terminate()
+    actual = controller.await_termination()
+    expected_results = [
+        {'number_of_stuff_sum_1h': 1.0, 'key_column': 'a', 't_col': 'storey'}
     ]
 
     assert actual == expected_results, \

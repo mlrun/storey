@@ -80,7 +80,7 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
         self._closed = True
 
         self._aggregation_attribute_prefix = 'aggr_'
-        self._aggregation_time_attribute_prefix = 't_'
+        self._aggregation_time_attribute_prefix = '_'
         self._error_code_string = "ErrorCode"
         self._false_condition_error_code = "16777244"
         self._mtime_header_name = 'X-v3io-transaction-verifier'
