@@ -190,8 +190,9 @@ class AggregateByKey(Flow):
         for feature_name in list(features.keys()):
             if feature_name in self._aliases:
                 new_feature_name = self._aliases[feature_name]
-                features[new_feature_name] = features[feature_name]
-                del features[feature_name]
+                if feature_name != new_feature_name:
+                    features[new_feature_name] = features[feature_name]
+                    del features[feature_name]
         features = self._augmentation_fn(event.body, features)
 
         for col in self._enrich_with:
