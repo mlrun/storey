@@ -73,7 +73,8 @@ def test_aggregation_flow_with_aliases():
         AggregateByKey([FieldAggregator("number_of_stuff", "col1", ["sum", "avg", "min", "max"],
                                         SlidingWindows(['1h', '2h', '24h'], '10m'))],
                        Table("test", NoopDriver()),
-                       aliases={'number_of_stuff_min_2h': 'number_of_stuff_min_2h', 'number_of_stuff_max_24h': 'a_number_of_stuff_max_24h'}),
+                       aliases={'number_of_stuff_min_2h': 'number_of_stuff_min_2h',
+                                'number_of_stuff_max_24h': 'a_number_of_stuff_max_24h'}),
         Reduce([], lambda acc, x: append_return(acc, x)),
     ]).run()
 
