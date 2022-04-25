@@ -7,5 +7,5 @@ pyarrow>=1,<6
 # Upper limit is in order to avoid surprises with this sensitive dependency.
 grpcio-tools>1.34.0,<1.42
 grpcio>1.34.0,<1.42
-v3io-frames>=0.10.2<1
+v3io-frames>=0.10.2,<1
 v3iofs~=0.1.9
