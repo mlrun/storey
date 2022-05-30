@@ -6,10 +6,8 @@ import time
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from functools import partial
-from typing import Optional
 from collections import OrderedDict
-from typing import Optional, Union
-from typing import List, Optional, Union
+from typing import List, Union, Optional
 import pandas as pd
 
 import redis
@@ -17,11 +15,6 @@ import rediscluster
 import v3io
 import v3io.aio.dataplane
 from v3io.dataplane import kv_array
-from redis import Redis
-from rediscluster import RedisCluster
-from redis import WatchError
-from redis.client import Pipeline
-from redis import WatchError, ResponseError
 from redis import WatchError
 
 from .dtypes import V3ioError, RedisError, RedisTimeoutError
