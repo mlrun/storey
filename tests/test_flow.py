@@ -3340,8 +3340,8 @@ def test_redis_driver_write(redis):
     controller.terminate()
     controller.await_termination()
 
-    data = driver.redis.hgetall("/key")
-    assert data == {b"col1": b"0"}
+    data = driver.redis.hgetall("storey:test:/:key:static")
+    assert data == {"col1": '0'}
 
 
 def test_redis_driver_join(redis):
@@ -3349,8 +3349,7 @@ def test_redis_driver_join(redis):
     table = Table('test', driver)
 
     # Create the data we'll join with in Redis.
-    driver.redis.hset("/1", mapping={"name": "1234"})
-
+    driver.redis.hset("storey:test:/:1:static", mapping={"name": "1234"})
     controller = build_flow([
         SyncEmitSource(),
         JoinWithTable(table, lambda x: x['col2']),
@@ -3363,8 +3362,8 @@ def test_redis_driver_join(redis):
     termination_result = controller.await_termination()
 
     assert termination_result == [
-        {'col1': 1, 'col2': '1', b'name': b'1234'},
-        {'col1': 1, 'col2': '1', b'name': b'1234'}]
+        {'col1': 1, 'col2': '1', 'name': 1234},
+        {'col1': 1, 'col2': '1', 'name': 1234}]
 
 
 def test_redis_driver_read(redis):
