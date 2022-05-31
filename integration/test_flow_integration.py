@@ -242,7 +242,7 @@ def test_push_error_on_write_to_v3io_stream(assign_stream_teardown_test):
 
 
 def test_write_to_tsdb():
-    table_name = f'tsdb_path-{int(time.time_ns() / 1000)}'
+    table_name = f'storey_ci/tsdb_path-{int(time.time_ns() / 1000)}'
     tsdb_path = f'v3io://bigdata/{table_name}'
     controller = build_flow([
         SyncEmitSource(),
