@@ -13,9 +13,7 @@ import v3io_frames as frames
 from storey import Filter, JoinWithV3IOTable, SendToHttp, Map, Reduce, SyncEmitSource, HttpRequest, build_flow, \
     StreamTarget, V3ioDriver, TSDBTarget, Table, JoinWithTable, MapWithState, NoSqlTarget, DataframeSource, \
     CSVSource, AsyncEmitSource
-from .integration_test_utils import V3ioHeaders, append_return, test_base_time, setup_kv_teardown_test, \
-    setup_teardown_test, \
-    assign_stream_teardown_test, create_stream
+from .integration_test_utils import V3ioHeaders, append_return, test_base_time, create_stream
 
 
 class GetShardData(V3ioHeaders):
@@ -242,8 +240,8 @@ def test_push_error_on_write_to_v3io_stream(assign_stream_teardown_test):
 
 
 def test_write_to_tsdb():
-    table_name = f'tsdb_path-{int(time.time_ns() / 1000)}'
-    tsdb_path = f'v3io://bigdata/storey_ci/{table_name}'
+    table_name = f'storey_ci/tsdb_path-{int(time.time_ns() / 1000)}'
+    tsdb_path = f'v3io://bigdata/{table_name}'
     controller = build_flow([
         SyncEmitSource(),
         TSDBTarget(path=tsdb_path, time_col='time', index_cols='node', columns=['cpu', 'disk'], rate='1/h', max_events=2)
