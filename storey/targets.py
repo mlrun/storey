@@ -779,7 +779,7 @@ class KafkaTarget(Flow, _Writer):
             self._producer.close()
             return await self._do_downstream(_termination_obj)
         else:
-            key = event.key.encode("UTF-8")
+            key = stringify_key(event.key).encode("UTF-8")
             record = self._event_to_writer_entry(event)
             record = json.dumps(record).encode("UTF-8")
             partition = None
