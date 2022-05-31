@@ -74,7 +74,7 @@ def append_return(lst, x):
     return lst
 
 
-def _generate_table_name(prefix='bigdata/Aggr_test'):
+def _generate_table_name(prefix='bigdata/storey_ci/Aggr_test'):
     random_table = ''.join([random.choice(string.ascii_letters) for i in range(10)])
     return f'{prefix}/{random_table}'
 
@@ -107,7 +107,7 @@ def setup_kv_teardown_test():
 @pytest.fixture()
 def assign_stream_teardown_test():
     # Setup
-    stream_path = _generate_table_name('bigdata/stream_test')
+    stream_path = _generate_table_name('bigdata/storey_ci/stream_test')
 
     # Test runs
     yield stream_path
