@@ -17,7 +17,7 @@ import datetime
 @pytest.fixture()
 def v3io_create_csv():
     # Setup
-    file_path = _generate_table_name('bigdata/csv_test')
+    file_path = _generate_table_name('bigdata/storey_ci/csv_test')
 
     asyncio.run(_write_test_csv(file_path))
 
@@ -31,7 +31,7 @@ def v3io_create_csv():
 @pytest.fixture()
 def v3io_teardown_file():
     # Setup
-    file_path = _generate_table_name('bigdata/csv_test')
+    file_path = _generate_table_name('bigdata/storey_ci/csv_test')
 
     # Test runs
     yield file_path
