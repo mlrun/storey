@@ -11,6 +11,7 @@ from typing import List, Optional, Union, Callable, Coroutine, Iterable
 
 import pandas
 import pytz
+from pymongo import MongoClient
 
 from .dtypes import _termination_obj, Event
 from .flow import Flow, Complete
@@ -875,3 +876,78 @@ class ParquetSource(DataframeSource):
             else:
                 df = pandas.read_parquet(path, columns=self._columns, storage_options=self._storage_options)
             self._dfs.append(df)
+
+class MongoDBSource(_IterableSource, WithUUID):
+    """Use pandas dataframe as input source for a flow.
+
+    :param dfs: A pandas dataframe, or dataframes, to be used as input source for the flow.
+    :param key_field: column to be used as key for events. can be list of columns
+    :param time_field: column to be used as time for events.
+    :param id_field: column to be used as ID for events.
+
+    for additional params, see documentation of  :class:`~storey.flow.Flow`
+    """
+
+    def __init__(self, db_name: str = None, connection_string: str = None, collection_name: str = None,
+                 query: str = None, key_field: Optional[Union[str, List[str]]] = None,
+                 time_field: Optional[str] = None, id_field: Optional[str] = None, **kwargs):
+        if key_field is not None:
+            kwargs['key_field'] = key_field
+        if time_field is not None:
+            kwargs['time_field'] = time_field
+        if id_field is not None:
+            kwargs['id_field'] = id_field
+        _IterableSource.__init__(self, **kwargs)
+        WithUUID.__init__(self)
+
+        if db_name is None or collection_name is None or connection_string is None:
+            raise TypeError(f"cannot specify without connection_string, db_name and collection_name args")
+        mongodb_client = MongoClient(connection_string)
+        my_db = mongodb_client[db_name]
+        my_collection = my_db[collection_name]
+        self.df = pandas.DataFrame(list(my_collection.find(query)))
+        self.df['_id'] = self.df['_id'].astype(str)
+        self._key_field = key_field
+        self._time_field = time_field
+        self._id_field = id_field
+
+    async def _run_loop(self):
+        for namedtuple in self.df.itertuples():
+            create_event = True
+            body = namedtuple._asdict()
+            index = body.pop('Index')
+            if len(self.df.index.names) > 1:
+                for i, index_column in enumerate(self.df.index.names):
+                    body[index_column] = index[i]
+            elif self.df.index.names[0] is not None:
+                body[self.df.index.names[0]] = index
+
+            key = None
+            if self._key_field:
+                if isinstance(self._key_field, list):
+                    key = []
+                    for key_field in self._key_field:
+                        if key_field not in body or pandas.isna(body[key_field]):
+                            create_event = False
+                            break
+                        key.append(body[key_field])
+                else:
+                    key = body[self._key_field]
+                    if key is None:
+                        create_event = False
+            if create_event:
+                time = None
+                if self._time_field:
+                    time = body[self._time_field]
+                if self._id_field:
+                    id = body[self._id_field]
+                else:
+                    id = self._get_uuid()
+                event = Event(body, key=key, time=time, id=id)
+                await self._do_downstream(event)
+            else:
+                if self.context:
+                    self.context.logger.error(
+                        f"For {body} value of key {key_field} is None"
+                    )
+        return await self._do_downstream(_termination_obj)
