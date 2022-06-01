@@ -738,6 +738,56 @@ class StreamTarget(Flow, _Writer):
                 await self._worker_awaitable
 
 
+class KafkaTarget(Flow, _Writer):
+    def __init__(self, bootstrap_servers: str, topic: str, sharding_func: Optional[Callable[[Event], int]] = None,
+                 columns: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None, **kwargs):
+        if not bootstrap_servers:
+            raise ValueError('bootstrap_servers must be defined')
+        if not topic:
+            raise ValueError('topic must be defined')
+
+        self._bootstrap_servers = bootstrap_servers
+        self._topic = topic
+
+        if sharding_func is not None and not callable(sharding_func):
+            raise TypeError(f'Expected a callable, got {type(sharding_func)}')
+
+        self._sharding_func = sharding_func
+
+        if columns:
+            kwargs['columns'] = columns
+        if infer_columns_from_data:
+            kwargs['infer_columns_from_data'] = infer_columns_from_data
+        Flow.__init__(self, **kwargs)
+        _Writer.__init__(self, columns, infer_columns_from_data, retain_dict=True)
+
+        self._initialized = False
+
+    def _init(self):
+        _Writer._init(self)
+
+    async def _lazy_init(self):
+        from kafka import KafkaProducer
+        if not self._initialized:
+            self._producer = KafkaProducer(bootstrap_servers=self._bootstrap_servers)
+            self._initialized = True
+
+    async def _do(self, event):
+        await self._lazy_init()
+
+        if event is _termination_obj:
+            self._producer.close()
+            return await self._do_downstream(_termination_obj)
+        else:
+            key = stringify_key(event.key).encode("UTF-8")
+            record = self._event_to_writer_entry(event)
+            record = json.dumps(record).encode("UTF-8")
+            partition = None
+            if self._sharding_func:
+                partition = self._sharding_func(event)
+            self._producer.send(self._topic, record, key, partition=partition)
+
+
 class NoSqlTarget(_Writer, Flow):
     """
     Persists the data in `table` to its associated storage by key.
