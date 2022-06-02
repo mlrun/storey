@@ -3341,7 +3341,14 @@ def test_redis_driver_write(redis):
     controller.await_termination()
 
     data = driver.redis.hgetall("storey:test:/:key:static")
-    assert data == {"col1": '0'}
+    data_strings = {}
+    for key, val in data.items():
+        if isinstance(key,bytes):
+            data_strings[key.decode('utf-8')] = val.decode('utf-8')
+        else:
+            data_strings[key] = val
+
+    assert data_strings == {"col1": '0'}
 
 
 def test_redis_driver_join(redis):

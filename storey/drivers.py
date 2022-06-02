@@ -520,6 +520,8 @@ class RedisDriver(Driver):
     REDIS_WATCH_INTERVAL = 1  # Seconds
     DATETIME_FIELD_PREFIX = "_dt:"
     TIMEDELTA_FIELD_PREFIX = "_td:"
+    DATETIME_FIELD_PREFIX_B = b"_dt:"
+    TIMEDELTA_FIELD_PREFIX_B = b"_td:"
     DEFAULT_KEY_PREFIX = "storey:"
 
     def __init__(self, redis_client: Optional[Union[redis.Redis, rediscluster.RedisCluster]] = None,
@@ -625,12 +627,24 @@ class RedisDriver(Driver):
 
     @classmethod
     def _convert_redis_value_to_python_obj(cls, value):
-        if value.startswith(cls.TIMEDELTA_FIELD_PREFIX):
-            return timedelta(seconds=float(value.split(":")[1]))
-        elif value.startswith(cls.DATETIME_FIELD_PREFIX):
-            return datetime.fromtimestamp(float(value.split(":")[1]), tz=timezone.utc)
+        if isinstance(value, str):
+            if value.startswith(cls.TIMEDELTA_FIELD_PREFIX):
+                return timedelta(seconds=float(value.split(":")[1]))
+            elif value.startswith(cls.DATETIME_FIELD_PREFIX):
+                return datetime.fromtimestamp(float(value.split(":")[1]), tz=timezone.utc)
         else:
-            return json.loads(value)
+            if value.startswith(cls.TIMEDELTA_FIELD_PREFIX_B):
+                return timedelta(seconds=float(value.split(b":")[1]))
+            elif value.startswith(cls.DATETIME_FIELD_PREFIX_B):
+                return datetime.fromtimestamp(float(value.split(b":")[1]), tz=timezone.utc)
+        return json.loads(value)
+
+    @classmethod
+    def _convert_to_str(cls, key):
+        if isinstance(key, bytes):
+            return key.decode('utf-8')
+        else:
+            return key
 
     def _discard_old_pending_items(self, pending, max_window_millis):
         res = {}
@@ -758,7 +772,7 @@ class RedisDriver(Driver):
             values = await asyncify(self.redis.hgetall)(redis_key)
         except redis.ResponseError as e:
             raise RedisError(f'Failed to get key {redis_key}. Response error was: {e}')
-        return {key: self._convert_redis_value_to_python_obj(val) for key, val in values.items()
+        return {self._convert_to_str(key): self._convert_redis_value_to_python_obj(val) for key, val in values.items()
                 if not str(key).startswith(self._aggregation_prefixes)}
 
     async def _get_specific_fields(self, redis_key: str, attributes: List[str]):
@@ -770,7 +784,7 @@ class RedisDriver(Driver):
             values = await asyncify(self.redis.hmget)(redis_key, non_aggregation_attrs)
         except redis.ResponseError as e:
             raise RedisError(f'Failed to get key {redis_key}. Response error was: {e}') from e
-        return [{k: self._convert_redis_value_to_python_obj(v)} for k, v in values.items()]
+        return [{self._convert_to_str(k): self._convert_redis_value_to_python_obj(v)} for k, v in values.items()]
 
     async def _load_by_key(self, container, table_path, key, attributes):
         """
@@ -795,6 +809,8 @@ class RedisDriver(Driver):
         associated_time_key = self._aggregation_time_key(redis_key_prefix,
                                                          feature_with_relevant_attr)
         time_val = await asyncify(self.redis.get)(associated_time_key)
+        time_val = self._convert_to_str(time_val)
+
         _, val = time_val.split(":")
 
         # TODO: Time values can hold either a timedelta in seconds or a UNIX timestamp.
@@ -831,6 +847,7 @@ class RedisDriver(Driver):
         aggr_key_prefix = f"{redis_key_prefix}:{self._aggregation_attribute_prefix}"
         # XXX: We can't use `async for` here...
         for aggr_key in self.redis.scan_iter(f"{aggr_key_prefix}*"):
+            aggr_key = self._convert_to_str(aggr_key)
             value = await asyncify(self.redis.lrange)(aggr_key, 0, -1)
             # Build an attribute for this aggregation in the format that Storey
             # expects to receive from this method. The feature and aggregation
