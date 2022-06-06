@@ -909,6 +909,11 @@ class MongoDBSource(_IterableSource, WithUUID):
         if end_filter or start_filter:
             start_filter = datetime.min if start_filter is None else start_filter
             end_filter = datetime.max if end_filter is None else end_filter
+            time_query = self.create_time_query(time_field, start_filter, end_filter)
+            if query:
+                query.update(time_query)
+            else:
+                query = time_query
 
         if key_field is not None:
             kwargs['key_field'] = key_field
@@ -924,8 +929,6 @@ class MongoDBSource(_IterableSource, WithUUID):
         mongodb_client = MongoClient(connection_string)
         my_db = mongodb_client[db_name]
         my_collection = my_db[collection_name]
-        time_query = self.create_time_query(time_field, start_filter, end_filter)
-        query.update(time_query)
         self.df = pandas.DataFrame(list(my_collection.find(query)))
         self.df['_id'] = self.df['_id'].astype(str)
         self._key_field = key_field
