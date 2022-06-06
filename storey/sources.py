@@ -930,11 +930,12 @@ class MongoDBSource(_IterableSource, WithUUID):
         mongodb_client = MongoClient(connection_string)
         my_db = mongodb_client[db_name]
         my_collection = my_db[collection_name]
-        self.df = pandas.DataFrame(list(my_collection.find(query)))
-        if self.df.empty:
-            raise ValueError(f"There is no data inside {collection_name} collection that "
-                             f"satisfied your query and time filter")
-        self.df['_id'] = self.df['_id'].astype(str)
+        self._my_collection = my_collection.find(query)
+        # self.df = pandas.DataFrame(list(my_collection.find(query)))
+        # if self.df.empty:
+        #     raise ValueError(f"There is no data inside {collection_name} collection that "
+        #                      f"satisfied your query and time filter")
+        # self.df['_id'] = self.df['_id'].astype(str)
         self._key_field = key_field
         if time_field:
             self._time_field = time_field.split('.')
@@ -946,9 +947,10 @@ class MongoDBSource(_IterableSource, WithUUID):
             self._id_field = id_field
 
     async def _run_loop(self):
-        for namedtuple in self.df.itertuples():
+        for body in self._my_collection:
             create_event = True
-            body = namedtuple._asdict()
+            if '_id' is body:
+                body['id'] = str(body['id'])
             index = body.pop('Index')
             if len(self.df.index.names) > 1:
                 for i, index_column in enumerate(self.df.index.names):
