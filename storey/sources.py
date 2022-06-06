@@ -892,12 +892,14 @@ class ParquetSource(DataframeSource):
 
 
 class MongoDBSource(_IterableSource, WithUUID):
-    """Use pandas dataframe as input source for a flow.
+    """Use mongodb collection as input source for a flow.
 
-    :param dfs: A pandas dataframe, or dataframes, to be used as input source for the flow.
-    :param key_field: column to be used as key for events. can be list of columns
-    :param time_field: column to be used as time for events.
-    :param id_field: column to be used as ID for events.
+    :parameter key_field: column to be used as key for events. can be list of columns
+    :parameter time_field: column to be used as time for events.
+    :parameter id_field: column to be used as ID for events.
+    :parameter db_name: the name of the database as mention on mongodb
+    :parameter connection_string:
+    :parameter collection_name: the name of the collection as mention on mongodb
 
     for additional params, see documentation of  :class:`~storey.flow.Flow`
     """
@@ -931,11 +933,6 @@ class MongoDBSource(_IterableSource, WithUUID):
         my_db = mongodb_client[db_name]
         my_collection = my_db[collection_name]
         self._my_collection = my_collection.find(query)
-        # self.df = pandas.DataFrame(list(my_collection.find(query)))
-        # if self.df.empty:
-        #     raise ValueError(f"There is no data inside {collection_name} collection that "
-        #                      f"satisfied your query and time filter")
-        # self.df['_id'] = self.df['_id'].astype(str)
         self._key_field = key_field
         if time_field:
             self._time_field = time_field.split('.')
@@ -950,7 +947,7 @@ class MongoDBSource(_IterableSource, WithUUID):
         for body in self._my_collection:
             create_event = True
             if '_id' in body.keys():
-                body['id'] = str(body['id'])
+                body['_id'] = str(body['_id'])
 
             key = None
             if self._key_field:
