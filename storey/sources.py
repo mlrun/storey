@@ -936,8 +936,8 @@ class MongoDBSource(_IterableSource, WithUUID):
                              f"satisfied your query and time filter")
         self.df['_id'] = self.df['_id'].astype(str)
         self._key_field = key_field
-        self._time_field = time_field.splite('.')
-        self._id_field = id_field.splite('.')
+        self._time_field = time_field.split('.')
+        self._id_field = id_field.split('.')
 
     async def _run_loop(self):
         for namedtuple in self.df.itertuples():
