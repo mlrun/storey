@@ -949,7 +949,7 @@ class MongoDBSource(_IterableSource, WithUUID):
     async def _run_loop(self):
         for body in self._my_collection:
             create_event = True
-            if '_id' is body:
+            if '_id' in body.keys():
                 body['id'] = str(body['id'])
 
             key = None
