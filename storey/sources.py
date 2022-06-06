@@ -935,7 +935,7 @@ class MongoDBSource(_IterableSource, WithUUID):
             raise ValueError(f"There is no data inside {collection_name} collection that "
                              f"satisfied your query and time filter")
         self.df['_id'] = self.df['_id'].astype(str)
-        self._key_field = key_field.splite('.')
+        self._key_field = key_field
         self._time_field = time_field.splite('.')
         self._id_field = id_field.splite('.')
 
