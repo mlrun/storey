@@ -951,12 +951,6 @@ class MongoDBSource(_IterableSource, WithUUID):
             create_event = True
             if '_id' is body:
                 body['id'] = str(body['id'])
-            index = body.pop('Index')
-            if len(self.df.index.names) > 1:
-                for i, index_column in enumerate(self.df.index.names):
-                    body[index_column] = index[i]
-            elif self.df.index.names[0] is not None:
-                body[self.df.index.names[0]] = index
 
             key = None
             if self._key_field:
