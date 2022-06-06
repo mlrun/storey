@@ -909,7 +909,7 @@ class MongoDBSource(_IterableSource, WithUUID):
         if end_filter or start_filter:
             start_filter = datetime.min if start_filter is None else start_filter
             end_filter = datetime.max if end_filter is None else end_filter
-            time_query = self.create_time_query(time_field, start_filter, end_filter)
+            time_query = {time_field: {"$gte": start_filter, "$lt": end_filter}}
             if query:
                 query.update(time_query)
             else:
@@ -976,8 +976,4 @@ class MongoDBSource(_IterableSource, WithUUID):
                     )
         return await self._do_downstream(_termination_obj)
 
-    def create_time_query(self, time_field, start_filter: datetime, end_filter: datetime):
-        start_ios = start_filter.isoformat()
-        end_ios = end_filter.isoformat()
 
-        return {time_field: {"$gte": start_ios, "$lt": end_ios}}
