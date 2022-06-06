@@ -12,6 +12,7 @@ from typing import List, Optional, Union, Callable, Coroutine, Iterable
 import pandas
 import pytz
 from pymongo import MongoClient
+import isodate
 
 from .dtypes import _termination_obj, Event
 from .flow import Flow, Complete
@@ -81,7 +82,8 @@ class WithUUID:
 
 
 class FlowControllerBase(WithUUID):
-    def __init__(self, key_field: Optional[Union[str, List[str]]], time_field: Optional[str], time_format: Optional[str],
+    def __init__(self, key_field: Optional[Union[str, List[str]]], time_field: Optional[str],
+                 time_format: Optional[str],
                  id_field: Optional[str]):
         super().__init__()
         self._key_field = key_field
@@ -144,9 +146,10 @@ class FlowController(FlowControllerBase):
         :returns: AsyncAwaitableResult if a Complete appears in the flow. None otherwise.
         """
         if return_awaitable_result is not None:
-            warnings.warn('return_awaitable_result is deprecated. An awaitable result object will be returned if a Complete step appears '
-                          'in the flow.',
-                          DeprecationWarning)
+            warnings.warn(
+                'return_awaitable_result is deprecated. An awaitable result object will be returned if a Complete step appears '
+                'in the flow.',
+                DeprecationWarning)
 
         event = self._build_event(element, key, event_time)
         awaitable_result = None
@@ -277,7 +280,8 @@ class SyncEmitSource(Flow):
 
         has_complete = self._check_step_in_flow(Complete)
 
-        return FlowController(self._emit, raise_error_or_return_termination_result, has_complete, self._key_field, self._time_field,
+        return FlowController(self._emit, raise_error_or_return_termination_result, has_complete, self._key_field,
+                              self._time_field,
                               self._time_format)
 
 
@@ -285,7 +289,8 @@ class AsyncAwaitableResult:
     """Future result of a computation. Calling await_result() will return with the result once the computation is completed.
     Same as AwaitableResult but for an async context."""
 
-    def __init__(self, on_error: Optional[Callable[[BaseException], Coroutine]] = None, expected_number_of_results: int = 1):
+    def __init__(self, on_error: Optional[Callable[[BaseException], Coroutine]] = None,
+                 expected_number_of_results: int = 1):
         self._on_error = on_error
         self._expected_number_of_results = expected_number_of_results
         self._number_of_results = 0
@@ -321,7 +326,8 @@ class AsyncFlowController(FlowControllerBase):
     Used to emit events into the associated flow, terminate the flow, and await the flow's termination. To be used from inside an async def.
     """
 
-    def __init__(self, emit_fn, loop_task, await_result, key_field: Optional[str] = None, time_field: Optional[str] = None,
+    def __init__(self, emit_fn, loop_task, await_result, key_field: Optional[str] = None,
+                 time_field: Optional[str] = None,
                  time_format: Optional[str] = None, id_field: Optional[str] = None):
         super().__init__(key_field, time_field, time_format, id_field)
         self._emit_fn = emit_fn
@@ -331,7 +337,8 @@ class AsyncFlowController(FlowControllerBase):
         self._time_format = time_format
         self._await_result = await_result
 
-    async def emit(self, element: object, key: Optional[Union[str, List[str]]] = None, event_time: Optional[datetime] = None,
+    async def emit(self, element: object, key: Optional[Union[str, List[str]]] = None,
+                   event_time: Optional[datetime] = None,
                    await_result: Optional[bool] = None, expected_number_of_results: Optional[int] = None) -> object:
         """Emits an event into the associated flow.
 
@@ -345,9 +352,10 @@ class AsyncFlowController(FlowControllerBase):
         :returns: The result received from the flow if a Complete step appears in the flow. None otherwise.
         """
         if await_result is not None:
-            warnings.warn('await_result is deprecated. An awaitable result object will be returned if a Complete step appears '
-                          'in the flow.',
-                          DeprecationWarning)
+            warnings.warn(
+                'await_result is deprecated. An awaitable result object will be returned if a Complete step appears '
+                'in the flow.',
+                DeprecationWarning)
 
         event = self._build_event(element, key, event_time)
         awaitable = None
@@ -385,7 +393,8 @@ class AsyncEmitSource(Flow):
     """
     _legal_first_step = True
 
-    def __init__(self, buffer_size: int = None, key_field: Union[list, str, None] = None, time_field: Optional[str] = None,
+    def __init__(self, buffer_size: int = None, key_field: Union[list, str, None] = None,
+                 time_field: Optional[str] = None,
                  time_format: Optional[str] = None, **kwargs):
         super().__init__(**kwargs)
         if buffer_size is None:
@@ -534,8 +543,10 @@ class CSVSource(_IterableSource, WithUUID):
     """
 
     def __init__(self, paths: Union[List[str], str], header: bool = False, build_dict: bool = False,
-                 key_field: Union[int, str, List[int], List[str], None] = None, time_field: Union[int, str, None] = None,
-                 timestamp_format: Optional[str] = None, id_field: Union[str, int, None] = None, type_inference: bool = True,
+                 key_field: Union[int, str, List[int], List[str], None] = None,
+                 time_field: Union[int, str, None] = None,
+                 timestamp_format: Optional[str] = None, id_field: Union[str, int, None] = None,
+                 type_inference: bool = True,
                  parse_dates: Optional[Union[List[int], List[str]]] = None, **kwargs):
         kwargs['paths'] = paths
         kwargs['header'] = header
@@ -766,7 +777,8 @@ class DataframeSource(_IterableSource, WithUUID):
     for additional params, see documentation of  :class:`~storey.flow.Flow`
     """
 
-    def __init__(self, dfs: Union[pandas.DataFrame, Iterable[pandas.DataFrame]], key_field: Optional[Union[str, List[str]]] = None,
+    def __init__(self, dfs: Union[pandas.DataFrame, Iterable[pandas.DataFrame]],
+                 key_field: Optional[Union[str, List[str]]] = None,
                  time_field: Optional[str] = None, id_field: Optional[str] = None, **kwargs):
         if key_field is not None:
             kwargs['key_field'] = key_field
@@ -877,6 +889,7 @@ class ParquetSource(DataframeSource):
                 df = pandas.read_parquet(path, columns=self._columns, storage_options=self._storage_options)
             self._dfs.append(df)
 
+
 class MongoDBSource(_IterableSource, WithUUID):
     """Use pandas dataframe as input source for a flow.
 
@@ -889,8 +902,14 @@ class MongoDBSource(_IterableSource, WithUUID):
     """
 
     def __init__(self, db_name: str = None, connection_string: str = None, collection_name: str = None,
-                 query: str = None, key_field: Optional[Union[str, List[str]]] = None,
+                 query: dict = None, key_field: Optional[Union[str, List[str]]] = None,
+                 start_filter: Optional[datetime] = None, end_filter: Optional[datetime] = None,
                  time_field: Optional[str] = None, id_field: Optional[str] = None, **kwargs):
+
+        if end_filter or start_filter:
+            start_filter = datetime.min if start_filter is None else start_filter
+            end_filter = datetime.max if end_filter is None else end_filter
+
         if key_field is not None:
             kwargs['key_field'] = key_field
         if time_field is not None:
@@ -905,6 +924,8 @@ class MongoDBSource(_IterableSource, WithUUID):
         mongodb_client = MongoClient(connection_string)
         my_db = mongodb_client[db_name]
         my_collection = my_db[collection_name]
+        time_query = self.create_time_query(time_field, start_filter, end_filter)
+        query.update(time_query)
         self.df = pandas.DataFrame(list(my_collection.find(query)))
         self.df['_id'] = self.df['_id'].astype(str)
         self._key_field = key_field
@@ -951,3 +972,9 @@ class MongoDBSource(_IterableSource, WithUUID):
                         f"For {body} value of key {key_field} is None"
                     )
         return await self._do_downstream(_termination_obj)
+
+    def create_time_query(self, time_field, start_filter: datetime, end_filter: datetime):
+        start_ios = start_filter.isoformat()
+        end_ios = end_filter.isoformat()
+
+        return {time_field: {"$gte": start_ios, "$lt": end_ios}}
