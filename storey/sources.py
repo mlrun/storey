@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import List, Optional, Union, Callable, Coroutine, Iterable
 
 import pandas
+import pandas as pd
 import pytz
 from pymongo import MongoClient
 import isodate
@@ -930,10 +931,13 @@ class MongoDBSource(_IterableSource, WithUUID):
         my_db = mongodb_client[db_name]
         my_collection = my_db[collection_name]
         self.df = pandas.DataFrame(list(my_collection.find(query)))
+        if self.df == pd.DataFrame():
+            raise ValueError(f"There is no data inside {collection_name} collection that "
+                             f"satisfied your query and time filter")
         self.df['_id'] = self.df['_id'].astype(str)
-        self._key_field = key_field
-        self._time_field = time_field
-        self._id_field = id_field
+        self._key_field = key_field.splite('.')
+        self._time_field = time_field.splite('.')
+        self._id_field = id_field.splite('.')
 
     async def _run_loop(self):
         for namedtuple in self.df.itertuples():
@@ -962,9 +966,9 @@ class MongoDBSource(_IterableSource, WithUUID):
             if create_event:
                 time = None
                 if self._time_field:
-                    time = body[self._time_field]
+                    time = self.get_val_from_multi_dictionry(body, self._time_field)
                 if self._id_field:
-                    id = body[self._id_field]
+                    id = self.get_val_from_multi_dictionry(body, self._id_field)
                 else:
                     id = self._get_uuid()
                 event = Event(body, key=key, time=time, id=id)
@@ -976,4 +980,8 @@ class MongoDBSource(_IterableSource, WithUUID):
                     )
         return await self._do_downstream(_termination_obj)
 
+    def get_val_from_multi_dictionry(self, event, field):
+        for f in field:
+            event = event[f]
 
+        return event
