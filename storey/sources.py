@@ -931,7 +931,7 @@ class MongoDBSource(_IterableSource, WithUUID):
         my_db = mongodb_client[db_name]
         my_collection = my_db[collection_name]
         self.df = pandas.DataFrame(list(my_collection.find(query)))
-        if self.df == pd.DataFrame():
+        if self.df.empty:
             raise ValueError(f"There is no data inside {collection_name} collection that "
                              f"satisfied your query and time filter")
         self.df['_id'] = self.df['_id'].astype(str)
