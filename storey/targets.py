@@ -739,8 +739,24 @@ class StreamTarget(Flow, _Writer):
 
 
 class KafkaTarget(Flow, _Writer):
-    def __init__(self, bootstrap_servers: str, topic: str, sharding_func: Optional[Callable[[Event], int]] = None,
-                 columns: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None, **kwargs):
+    """Writes all incoming events into a Kafka stream.
+
+    :param topic: Kafka topic.
+    :param bootstrap_servers: Kafka bootstrap servers (brokers).
+    :param producer_options: Extra options to be passed as kwargs to kafka.KafkaProducer.
+    :param sharding_func: Function for determining the partition ID to which to write each event. Optional. Default is None
+    :param columns: Fields to be written to topic. Will be extracted from events when an event is a dictionary (other types will be written
+        as is). Use = notation for renaming fields (e.g. write_this=event_field). Use $ notation to refer to metadata
+        ($key, event_time=$time). Optional. Defaults to None (will be inferred if event is dictionary).
+    :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries. If True, columns will be
+        inferred from data and used in place of explicit columns list if none was provided, or appended to the provided list. If header is
+        True and columns is not provided, infer_columns_from_data=True is implied. Optional. Default to False if columns is provided,
+        True otherwise.
+    """
+
+    def __init__(self, bootstrap_servers: str, topic: str, producer_options: Optional[dict] = None,
+                 sharding_func: Optional[Callable[[Event], int]] = None, columns: Optional[List[str]] = None,
+                 infer_columns_from_data: Optional[bool] = None, **kwargs):
         if not bootstrap_servers:
             raise ValueError('bootstrap_servers must be defined')
         if not topic:
@@ -748,6 +764,7 @@ class KafkaTarget(Flow, _Writer):
 
         self._bootstrap_servers = bootstrap_servers
         self._topic = topic
+        self._producer_options = producer_options
 
         if sharding_func is not None and not callable(sharding_func):
             raise TypeError(f'Expected a callable, got {type(sharding_func)}')
@@ -769,7 +786,8 @@ class KafkaTarget(Flow, _Writer):
     async def _lazy_init(self):
         from kafka import KafkaProducer
         if not self._initialized:
-            self._producer = KafkaProducer(bootstrap_servers=self._bootstrap_servers)
+            kwargs = self._producer_options or {}
+            self._producer = KafkaProducer(bootstrap_servers=self._bootstrap_servers, **kwargs)
             self._initialized = True
 
     async def _do(self, event):
