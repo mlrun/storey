@@ -11,7 +11,6 @@ from typing import List, Optional, Union, Callable, Coroutine, Iterable
 
 import pandas
 import pytz
-from pymongo import MongoClient
 
 from .dtypes import _termination_obj, Event
 from .flow import Flow, Complete
@@ -926,6 +925,9 @@ class ParquetSource(DataframeSource):
                 raise TypeError(
                     "cannot specify without connection_string, db_name and collection_name args"
                 )
+
+            from pymongo import MongoClient
+
             mongodb_client = MongoClient(connection_string)
             my_db = mongodb_client[db_name]
             my_collection = my_db[collection_name]
