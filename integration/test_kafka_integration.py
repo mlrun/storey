@@ -45,7 +45,10 @@ def test_kafka_target(kafka_topic_setup_teardown):
     ]).run()
     events = []
     for i in range(100):
-        event = Event({'hello': i}, f'key{i}')
+        key = None
+        if i > 0:
+            key = f'key{i}'
+        event = Event({'hello': i}, key)
         events.append(event)
         controller.emit(event)
 
@@ -55,5 +58,9 @@ def test_kafka_target(kafka_topic_setup_teardown):
     kafka_consumer.subscribe([topic])
     for event in events:
         record = next(kafka_consumer)
-        assert record.key.decode('UTF-8') == event.key
+        if event.key is None:
+            if event.key is None:
+                assert record.key is None
+            else:
+                assert record.key.decode('UTF-8') == event.key
         assert record.value.decode('UTF-8') == json.dumps(event.body)
