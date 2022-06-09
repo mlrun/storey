@@ -1055,7 +1055,7 @@ class MongoDBSource(_IterableSource, WithUUID):
 
         if db_name is None or collection_name is None or connection_string is None:
             raise TypeError(
-                f"cannot specify without connection_string, db_name and collection_name args"
+                "cannot specify without connection_string, db_name and collection_name args"
             )
         mongodb_client = MongoClient(connection_string)
         my_db = mongodb_client[db_name]
