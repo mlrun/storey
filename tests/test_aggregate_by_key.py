@@ -1,6 +1,7 @@
 import math
 import queue
 from datetime import datetime, timedelta, timezone
+
 import pandas as pd
 
 from storey import build_flow, SyncEmitSource, Reduce, Table, AggregateByKey, FieldAggregator, NoopDriver, \
@@ -1400,5 +1401,5 @@ def test_fixed_window_aggregation_with_first_and_last_aggregates():
     ]
 
     assert (
-        termination_result == expected
+            termination_result == expected
     ), f"actual did not match expected. \n actual: {termination_result} \n expected: {expected}"

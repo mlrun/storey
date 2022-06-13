@@ -2707,6 +2707,12 @@ def test_non_existing_key_query_by_key():
     controller.await_termination()
 
 
+# ML-2257
+def test_query_by_key_edge_case_field_name():
+    table = Table('table', NoopDriver())
+    QueryByKey(["my_color_5sec"], table, key="name"),
+
+
 def test_csv_source_with_none_values():
     controller = build_flow([
         CSVSource('tests/test-with-none-values.csv', header=True, key_field='string'),

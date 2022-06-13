@@ -1,14 +1,15 @@
 import asyncio
-from datetime import datetime
-import time
 import re
+import time
+from datetime import datetime
 from typing import Optional, Union, Callable, List, Dict
+
 import pandas as pd
 
 from .dtypes import EmitEveryEvent, FixedWindows, SlidingWindows, EmitAfterPeriod, EmitAfterWindow, EmitAfterMaxEvent, \
     _dict_to_emit_policy, FieldAggregator, EmitPolicy, FixedWindowType
-from .table import Table
 from .flow import Flow, _termination_obj, Event
+from .table import Table
 from .utils import stringify_key
 
 _default_emit_policy = EmitEveryEvent()
@@ -252,7 +253,7 @@ class QueryByKey(AggregateByKey):
         self._enrich_cols = []
         resolved_aggrs = {}
         for feature in features:
-            if re.match(r".*_[a-z]+_[0-9]+[smhd]", feature):
+            if re.match(r'.*_[a-z]+_[0-9]+[smhd]$', feature):
                 name, window = feature.rsplit('_', 1)
                 if name in resolved_aggrs:
                     resolved_aggrs[name].append(window)
