@@ -879,14 +879,19 @@ class ParquetSource(DataframeSource):
     class MongoDBSource(_IterableSource, WithUUID):
         """Use mongodb collection as input source for a flow.
 
-        :parameter key_field: column to be used as key for events. can be list of columns
-        :parameter time_field: column to be used as time for events.
-        :parameter id_field: column to be used as ID for events.
-        :parameter db_name: the name of the database as mention on mongodb
-        :parameter connection_string:
-        :parameter collection_name: the name of the collection as mention on mongodb
+        :parameter key_field: string. column to be used as key for events. can be list of columns
+        :parameter time_field: string. column to be used as time for events.
+        :parameter id_field: string. column to be used as ID for events.
+        :parameter db_name: string. the name of the database you would like to access as it mention on mongodb
+        :parameter connection_string: string. your mongodb connection string
+        :parameter collection_name: string. the collection name you would like to access,
+                                    from the current db as it mention on mongodb
+        :parameter query: dict. dictionary query for mongodb
+        :parameter start_filter: datetime. If not None, the results will be filtered by partitions and 'filter_column' > start_filter.
+                                Default is None
+        :parameter end_filter: datetime. If not None, the results will be filtered by partitions 'filter_column' <= end_filter.
+                                Default is None
 
-        for additional params, see documentation of  :class:`~storey.flow.Flow`
         """
 
         def __init__(
@@ -903,13 +908,15 @@ class ParquetSource(DataframeSource):
                 **kwargs,
         ):
 
-            if end_filter or start_filter:
-                start_filter = datetime.min if start_filter is None else start_filter
-                end_filter = datetime.max if end_filter is None else end_filter
-                time_query = {time_field: {"$gte": start_filter, "$lt": end_filter}}
-                if query:
+            if time_field:
+                time_query = {time_field: None}
+                if start_filter:
+                    time_query[time_field] = {"$gte": start_filter}
+                if end_filter:
+                    time_query[time_field]["$lt"] = end_filter
+                if time_query[time_field] is not None and query is not None:
                     query.update(time_query)
-                else:
+                elif time_query[time_field] is not None and query is None:
                     query = time_query
 
             if key_field is not None:
@@ -921,17 +928,17 @@ class ParquetSource(DataframeSource):
             _IterableSource.__init__(self, **kwargs)
             WithUUID.__init__(self)
 
-            if db_name is None or collection_name is None or connection_string is None:
-                raise TypeError(
+            if not all([db_name, collection_name, connection_string]):
+                raise ValueError(
                     "cannot specify without connection_string, db_name and collection_name args"
                 )
+            self.attrs = {
+                "query": query,
+                "collection_name": collection_name,
+                "db_name": db_name,
+                "connection_string": connection_string,
+            }
 
-            from pymongo import MongoClient
-
-            mongodb_client = MongoClient(connection_string)
-            my_db = mongodb_client[db_name]
-            my_collection = my_db[collection_name]
-            self._my_collection = my_collection.find(query)
             self._key_field = key_field
             if time_field:
                 self._time_field = time_field.split(".")
@@ -943,7 +950,13 @@ class ParquetSource(DataframeSource):
                 self._id_field = id_field
 
         async def _run_loop(self):
-            for body in self._my_collection:
+            from pymongo import MongoClient
+
+            mongodb_client = MongoClient(self.attrs['connection_string'])
+            my_db = mongodb_client[self.attrs["db_name"]]
+            my_collection = my_db[self.attrs["collection_name"]]
+            my_collection = my_collection.find(self.attrs["query"])
+            for body in my_collection:
                 create_event = True
                 if "_id" in body.keys():
                     body["_id"] = str(body["_id"])
@@ -964,12 +977,12 @@ class ParquetSource(DataframeSource):
                 if create_event:
                     time = None
                     if self._time_field:
-                        time = self.get_val_from_multi_dictionry(body, self._time_field)
+                        time = self.get_val_from_multi_dictionary(body, self._time_field)
                     if self._id_field:
-                        id = self.get_val_from_multi_dictionry(body, self._id_field)
+                        _id = self.get_val_from_multi_dictionary(body, self._id_field)
                     else:
-                        id = self._get_uuid()
-                    event = Event(body, key=key, time=time, id=id)
+                        _id = self._get_uuid()
+                    event = Event(body, key=key, time=time, id=_id)
                     await self._do_downstream(event)
                 else:
                     if self.context:
@@ -978,7 +991,7 @@ class ParquetSource(DataframeSource):
                         )
             return await self._do_downstream(_termination_obj)
 
-        def get_val_from_multi_dictionry(self, event, field):
+        def get_val_from_multi_dictionary(self, event, field):
             for f in field:
                 event = event[f]
 
