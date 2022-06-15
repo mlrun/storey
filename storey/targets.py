@@ -928,4 +928,4 @@ class MongoDBTarget(Flow, _Writer):
         else:
             record = self._event_to_writer_entry(event)
             record = json.dumps(record).encode("UTF-8")
-            self._my_collection.insert(record)
+            self._my_collection.insert_one(record)
