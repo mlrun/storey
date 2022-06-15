@@ -27,7 +27,7 @@ from .table import (  # noqa: F401
     Table
 )
 from .targets import (  # noqa: F401
-    StreamTarget, CSVTarget, ParquetTarget, TSDBTarget, NoSqlTarget, KafkaTarget
+    StreamTarget, CSVTarget, ParquetTarget, TSDBTarget, NoSqlTarget, KafkaTarget, MongoDBTarget
 )
 
 # clear module namespace
