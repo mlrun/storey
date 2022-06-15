@@ -24,8 +24,10 @@ from .utils import url_to_file_system, stringify_key
 
 
 class _Writer:
-    def __init__(self, columns: Union[str, List[Union[str, Tuple[str, str]]], None], infer_columns_from_data: Optional[bool],
-                 index_cols: Union[str, List[Union[str, Tuple[str, str]]], None] = None, partition_cols: Union[str, List[str], None] = None,
+    def __init__(self, columns: Union[str, List[Union[str, Tuple[str, str]]], None],
+                 infer_columns_from_data: Optional[bool],
+                 index_cols: Union[str, List[Union[str, Tuple[str, str]]], None] = None,
+                 partition_cols: Union[str, List[str], None] = None,
                  retain_dict: bool = False, storage_options: Optional[dict] = None):
         if infer_columns_from_data is None:
             infer_columns_from_data = not bool(columns)
@@ -75,7 +77,8 @@ class _Writer:
         index_cols_no_types, index_cols_types = unzip_cols(index_cols)
 
         self._initial_columns = parse_notation(columns_no_types, self._metadata_columns, self._rename_columns)
-        self._initial_index_cols = parse_notation(index_cols_no_types, self._metadata_index_columns, self._rename_index_columns)
+        self._initial_index_cols = parse_notation(index_cols_no_types, self._metadata_index_columns,
+                                                  self._rename_index_columns)
         self._column_types = column_types
         self._index_column_types = index_cols_types
 
@@ -106,8 +109,9 @@ class _Writer:
         if partition_cols is not None and index_cols is not None:
             cols_both_partition_and_index = set(partition_cols).intersection(set(index_cols))
             if cols_both_partition_and_index:
-                raise ValueError(f'The following columns are used both for partitioning and indexing, which is not allowed: '
-                                 f'{list(cols_both_partition_and_index)}')
+                raise ValueError(
+                    f'The following columns are used both for partitioning and indexing, which is not allowed: '
+                    f'{list(cols_both_partition_and_index)}')
 
     _type_string_to_pyarrow_type = {
         'str': pyarrow.string(),
@@ -237,7 +241,8 @@ class _Writer:
                 self._infer_columns_from_data = False
                 self._init_partition_col_indices()
             data = {} if self._retain_dict else []
-            self._get_column_data_from_dict(data, event, self._index_cols, self._index_column_types, self._metadata_index_columns,
+            self._get_column_data_from_dict(data, event, self._index_cols, self._index_column_types,
+                                            self._metadata_index_columns,
                                             self._rename_index_columns)
             self._get_column_data_from_dict(data, event, self._non_partition_columns, self._non_partition_column_types,
                                             self._metadata_columns, self._rename_columns)
@@ -245,12 +250,14 @@ class _Writer:
             for index in self._partition_col_indices:
                 del data[index]
             if self._infer_columns_from_data:
-                raise TypeError('Cannot infer_columns_from_data when event type is list. Inference is only possible from dict.')
+                raise TypeError(
+                    'Cannot infer_columns_from_data when event type is list. Inference is only possible from dict.')
             sub_metadata = bool(self._columns) and bool(self._metadata_columns)
             sub_index_metadata = bool(self._index_cols) and bool(self._metadata_index_columns)
             if sub_metadata or sub_index_metadata:
                 data = []
-                cursor = self._get_column_data_from_list(data, event, event.body, self._index_cols, self._metadata_index_columns)
+                cursor = self._get_column_data_from_list(data, event, event.body, self._index_cols,
+                                                         self._metadata_index_columns)
                 self._get_column_data_from_list(data, event, event.body[cursor:], self._columns, self._metadata_columns)
         elif self._columns:
             raise TypeError('Writer supports only events of type dict or list.')
@@ -297,7 +304,8 @@ class CSVTarget(_Batching, _Writer):
     :type storage_options: dict
     """
 
-    def __init__(self, path: str, columns: Optional[List[str]] = None, header: bool = False, infer_columns_from_data: Optional[bool] = None,
+    def __init__(self, path: str, columns: Optional[List[str]] = None, header: bool = False,
+                 infer_columns_from_data: Optional[bool] = None,
                  max_lines_before_flush: int = 128, max_seconds_before_flush: int = 3, **kwargs):
         _Batching.__init__(self, max_events=max_lines_before_flush, timeout_secs=max_seconds_before_flush, **kwargs)
         _Writer.__init__(self, columns, infer_columns_from_data, storage_options=kwargs.get('storage_options'))
@@ -332,7 +340,8 @@ class CSVTarget(_Batching, _Writer):
                     for data in batch:
                         if not got_first_event:
                             if not self._columns and self._write_header:
-                                raise ValueError('columns must be defined when header is True and events type is not dictionary')
+                                raise ValueError(
+                                    'columns must be defined when header is True and events type is not dictionary')
                             if self._write_header:
                                 csv_writer.writerow(self._columns)
                             got_first_event = True
@@ -433,8 +442,10 @@ class ParquetTarget(_Batching, _Writer):
 
         path_from_event = self._path_from_event if partition_cols else None
 
-        _Batching.__init__(self, max_events=max_events, flush_after_seconds=flush_after_seconds, key=path_from_event, **kwargs)
-        _Writer.__init__(self, columns, infer_columns_from_data, index_cols, partition_cols, storage_options=storage_options)
+        _Batching.__init__(self, max_events=max_events, flush_after_seconds=flush_after_seconds, key=path_from_event,
+                           **kwargs)
+        _Writer.__init__(self, columns, infer_columns_from_data, index_cols, partition_cols,
+                         storage_options=storage_options)
 
         self._field_extractor = lambda event_body, field_name: event_body.get(field_name)
         self._write_missing_fields = True
@@ -601,7 +612,8 @@ class StreamTarget(Flow, _Writer):
     :type storage_options: dict
     """
 
-    def __init__(self, storage: Driver, stream_path: str, sharding_func: Optional[Callable[[Event], int]] = None, batch_size: int = 8,
+    def __init__(self, storage: Driver, stream_path: str, sharding_func: Optional[Callable[[Event], int]] = None,
+                 batch_size: int = 8,
                  columns: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None,
                  shard_count: int = 1, retention_period_hours: int = 24, **kwargs):
         kwargs['stream_path'] = stream_path
@@ -848,3 +860,73 @@ class NoSqlTarget(_Writer, Flow):
                 self._table._update_static_attrs(key, data_to_persist)
             self._table._init_flush_task()
             await self._do_downstream(event)
+
+
+class MongoDBTarget(Flow, _Writer):
+    def __init__(self, db_name: str = None, connection_string: str = None, collection_name: str = None,
+                 sharding_func: Optional[Callable[[Event], int]] = None,
+                 columns: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None, **kwargs):
+
+        if not all([db_name, collection_name, connection_string]):
+            raise ValueError(
+                "cannot specify without connection_string, db_name and collection_name args"
+            )
+        from pymongo import MongoClient
+
+        mongodb_client = MongoClient(connection_string)
+        all_dbs = mongodb_client.list_database_names()
+        if db_name not in all_dbs:
+            raise ValueError(
+                f"DataBase named {db_name} is not exist"
+            )
+
+        all_collections = mongodb_client[db_name].list_collection_names()
+        if collection_name not in all_collections:
+            raise ValueError(
+                f"Collection named {collection_name} is not exist in {db_name} database"
+            )
+        self._my_collection = mongodb_client[db_name][collection_name]
+        self.attrs = {
+            "collection_name": collection_name,
+            "db_name": db_name,
+            "connection_string": connection_string,
+        }
+        kwargs["collection_name"] = collection_name
+        kwargs["db_name"] = db_name
+        kwargs["connection_string"] = connection_string
+
+        if sharding_func is not None and not callable(sharding_func):
+            raise TypeError(f'Expected a callable, got {type(sharding_func)}')
+
+        self._sharding_func = sharding_func
+
+        if columns:
+            kwargs['columns'] = columns
+        if infer_columns_from_data:
+            kwargs['infer_columns_from_data'] = infer_columns_from_data
+        Flow.__init__(self, **kwargs)
+        _Writer.__init__(self, columns, infer_columns_from_data, retain_dict=True)
+
+        self._initialized = True
+
+    def _init(self):
+        _Writer._init(self)
+
+    async def _lazy_init(self):
+        from pymongo import MongoClient
+        if self._initialized:
+            mongodb_client = MongoClient(self.attrs['connection_string'])
+            my_db = mongodb_client[self.attrs["db_name"]]
+            my_collection = my_db[self.attrs["collection_name"]]
+            self._my_collection = my_collection.find(self.attrs["query"])
+            self._initialized = True
+
+    async def _do(self, event):
+        await self._lazy_init()
+
+        if event is _termination_obj:
+            return await self._do_downstream(_termination_obj)
+        else:
+            record = self._event_to_writer_entry(event)
+            record = json.dumps(record).encode("UTF-8")
+            self._my_collection.insert(record)
