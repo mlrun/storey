@@ -917,8 +917,7 @@ class MongoDBTarget(Flow, _Writer):
         if self._initialized:
             mongodb_client = MongoClient(self.attrs['connection_string'])
             my_db = mongodb_client[self.attrs["db_name"]]
-            my_collection = my_db[self.attrs["collection_name"]]
-            self._my_collection = my_collection.find(self.attrs["query"])
+            self._my_collection = my_db[self.attrs["collection_name"]]
             self._initialized = True
 
     async def _do(self, event):
