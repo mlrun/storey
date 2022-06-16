@@ -80,7 +80,8 @@ class WithUUID:
 
 
 class FlowControllerBase(WithUUID):
-    def __init__(self, key_field: Optional[Union[str, List[str]]], time_field: Optional[str], time_format: Optional[str],
+    def __init__(self, key_field: Optional[Union[str, List[str]]], time_field: Optional[str],
+                 time_format: Optional[str],
                  id_field: Optional[str]):
         super().__init__()
         self._key_field = key_field
@@ -143,9 +144,10 @@ class FlowController(FlowControllerBase):
         :returns: AsyncAwaitableResult if a Complete appears in the flow. None otherwise.
         """
         if return_awaitable_result is not None:
-            warnings.warn('return_awaitable_result is deprecated. An awaitable result object will be returned if a Complete step appears '
-                          'in the flow.',
-                          DeprecationWarning)
+            warnings.warn(
+                'return_awaitable_result is deprecated. An awaitable result object will be returned if a Complete step appears '
+                'in the flow.',
+                DeprecationWarning)
 
         event = self._build_event(element, key, event_time)
         awaitable_result = None
@@ -276,7 +278,8 @@ class SyncEmitSource(Flow):
 
         has_complete = self._check_step_in_flow(Complete)
 
-        return FlowController(self._emit, raise_error_or_return_termination_result, has_complete, self._key_field, self._time_field,
+        return FlowController(self._emit, raise_error_or_return_termination_result, has_complete, self._key_field,
+                              self._time_field,
                               self._time_format)
 
 
@@ -284,7 +287,8 @@ class AsyncAwaitableResult:
     """Future result of a computation. Calling await_result() will return with the result once the computation is completed.
     Same as AwaitableResult but for an async context."""
 
-    def __init__(self, on_error: Optional[Callable[[BaseException], Coroutine]] = None, expected_number_of_results: int = 1):
+    def __init__(self, on_error: Optional[Callable[[BaseException], Coroutine]] = None,
+                 expected_number_of_results: int = 1):
         self._on_error = on_error
         self._expected_number_of_results = expected_number_of_results
         self._number_of_results = 0
@@ -320,7 +324,8 @@ class AsyncFlowController(FlowControllerBase):
     Used to emit events into the associated flow, terminate the flow, and await the flow's termination. To be used from inside an async def.
     """
 
-    def __init__(self, emit_fn, loop_task, await_result, key_field: Optional[str] = None, time_field: Optional[str] = None,
+    def __init__(self, emit_fn, loop_task, await_result, key_field: Optional[str] = None,
+                 time_field: Optional[str] = None,
                  time_format: Optional[str] = None, id_field: Optional[str] = None):
         super().__init__(key_field, time_field, time_format, id_field)
         self._emit_fn = emit_fn
@@ -330,7 +335,8 @@ class AsyncFlowController(FlowControllerBase):
         self._time_format = time_format
         self._await_result = await_result
 
-    async def emit(self, element: object, key: Optional[Union[str, List[str]]] = None, event_time: Optional[datetime] = None,
+    async def emit(self, element: object, key: Optional[Union[str, List[str]]] = None,
+                   event_time: Optional[datetime] = None,
                    await_result: Optional[bool] = None, expected_number_of_results: Optional[int] = None) -> object:
         """Emits an event into the associated flow.
 
@@ -344,9 +350,10 @@ class AsyncFlowController(FlowControllerBase):
         :returns: The result received from the flow if a Complete step appears in the flow. None otherwise.
         """
         if await_result is not None:
-            warnings.warn('await_result is deprecated. An awaitable result object will be returned if a Complete step appears '
-                          'in the flow.',
-                          DeprecationWarning)
+            warnings.warn(
+                'await_result is deprecated. An awaitable result object will be returned if a Complete step appears '
+                'in the flow.',
+                DeprecationWarning)
 
         event = self._build_event(element, key, event_time)
         awaitable = None
@@ -384,7 +391,8 @@ class AsyncEmitSource(Flow):
     """
     _legal_first_step = True
 
-    def __init__(self, buffer_size: int = None, key_field: Union[list, str, None] = None, time_field: Optional[str] = None,
+    def __init__(self, buffer_size: int = None, key_field: Union[list, str, None] = None,
+                 time_field: Optional[str] = None,
                  time_format: Optional[str] = None, **kwargs):
         super().__init__(**kwargs)
         if buffer_size is None:
@@ -533,8 +541,10 @@ class CSVSource(_IterableSource, WithUUID):
     """
 
     def __init__(self, paths: Union[List[str], str], header: bool = False, build_dict: bool = False,
-                 key_field: Union[int, str, List[int], List[str], None] = None, time_field: Union[int, str, None] = None,
-                 timestamp_format: Optional[str] = None, id_field: Union[str, int, None] = None, type_inference: bool = True,
+                 key_field: Union[int, str, List[int], List[str], None] = None,
+                 time_field: Union[int, str, None] = None,
+                 timestamp_format: Optional[str] = None, id_field: Union[str, int, None] = None,
+                 type_inference: bool = True,
                  parse_dates: Optional[Union[List[int], List[str]]] = None, **kwargs):
         kwargs['paths'] = paths
         kwargs['header'] = header
@@ -765,7 +775,8 @@ class DataframeSource(_IterableSource, WithUUID):
     for additional params, see documentation of  :class:`~storey.flow.Flow`
     """
 
-    def __init__(self, dfs: Union[pandas.DataFrame, Iterable[pandas.DataFrame]], key_field: Optional[Union[str, List[str]]] = None,
+    def __init__(self, dfs: Union[pandas.DataFrame, Iterable[pandas.DataFrame]],
+                 key_field: Optional[Union[str, List[str]]] = None,
                  time_field: Optional[str] = None, id_field: Optional[str] = None, **kwargs):
         if key_field is not None:
             kwargs['key_field'] = key_field
@@ -876,8 +887,9 @@ class ParquetSource(DataframeSource):
                 df = pandas.read_parquet(path, columns=self._columns, storage_options=self._storage_options)
             self._dfs.append(df)
 
-    class MongoDBSource(_IterableSource, WithUUID):
-        """Use mongodb collection as input source for a flow.
+
+class MongoDBSource(_IterableSource, WithUUID):
+    """Use mongodb collection as input source for a flow.
 
         :parameter key_field: string. column to be used as key for events. can be list of columns
         :parameter time_field: string. column to be used as time for events.
@@ -894,105 +906,105 @@ class ParquetSource(DataframeSource):
 
         """
 
-        def __init__(
-                self,
-                db_name: str = None,
-                connection_string: str = None,
-                collection_name: str = None,
-                query: dict = None,
-                key_field: Optional[Union[str, List[str]]] = None,
-                start_filter: Optional[datetime] = None,
-                end_filter: Optional[datetime] = None,
-                time_field: Optional[str] = None,
-                id_field: Optional[str] = None,
-                **kwargs,
-        ):
+    def __init__(
+            self,
+            db_name: str = None,
+            connection_string: str = None,
+            collection_name: str = None,
+            query: dict = None,
+            key_field: Optional[Union[str, List[str]]] = None,
+            start_filter: Optional[datetime] = None,
+            end_filter: Optional[datetime] = None,
+            time_field: Optional[str] = None,
+            id_field: Optional[str] = None,
+            **kwargs,
+    ):
 
-            if time_field:
-                time_query = {time_field: None}
-                if start_filter:
-                    time_query[time_field] = {"$gte": start_filter}
-                if end_filter:
-                    time_query[time_field]["$lt"] = end_filter
-                if time_query[time_field] is not None and query is not None:
-                    query.update(time_query)
-                elif time_query[time_field] is not None and query is None:
-                    query = time_query
+        if time_field:
+            time_query = {time_field: None}
+            if start_filter:
+                time_query[time_field] = {"$gte": start_filter}
+            if end_filter:
+                time_query[time_field]["$lt"] = end_filter
+            if time_query[time_field] is not None and query is not None:
+                query.update(time_query)
+            elif time_query[time_field] is not None and query is None:
+                query = time_query
 
-            if key_field is not None:
-                kwargs["key_field"] = key_field
-            if time_field is not None:
-                kwargs["time_field"] = time_field
-            if id_field is not None:
-                kwargs["id_field"] = id_field
-            _IterableSource.__init__(self, **kwargs)
-            WithUUID.__init__(self)
+        if key_field is not None:
+            kwargs["key_field"] = key_field
+        if time_field is not None:
+            kwargs["time_field"] = time_field
+        if id_field is not None:
+            kwargs["id_field"] = id_field
+        _IterableSource.__init__(self, **kwargs)
+        WithUUID.__init__(self)
 
-            if not all([db_name, collection_name, connection_string]):
-                raise ValueError(
-                    "cannot specify without connection_string, db_name and collection_name args"
-                )
-            self.attrs = {
-                "query": query,
-                "collection_name": collection_name,
-                "db_name": db_name,
-                "connection_string": connection_string,
-            }
+        if not all([db_name, collection_name, connection_string]):
+            raise ValueError(
+                "cannot specify without connection_string, db_name and collection_name args"
+            )
+        self.attrs = {
+            "query": query,
+            "collection_name": collection_name,
+            "db_name": db_name,
+            "connection_string": connection_string,
+        }
 
-            self._key_field = key_field
-            if time_field:
-                self._time_field = time_field.split(".")
-            else:
-                self._time_field = time_field
-            if id_field:
-                self._id_field = id_field.split(".")
-            else:
-                self._id_field = id_field
+        self._key_field = key_field
+        if time_field:
+            self._time_field = time_field.split(".")
+        else:
+            self._time_field = time_field
+        if id_field:
+            self._id_field = id_field.split(".")
+        else:
+            self._id_field = id_field
 
-        async def _run_loop(self):
-            from pymongo import MongoClient
+    async def _run_loop(self):
+        from pymongo import MongoClient
 
-            mongodb_client = MongoClient(self.attrs['connection_string'])
-            my_db = mongodb_client[self.attrs["db_name"]]
-            my_collection = my_db[self.attrs["collection_name"]]
-            my_collection = my_collection.find(self.attrs["query"])
-            for body in my_collection:
-                create_event = True
-                if "_id" in body.keys():
-                    body["_id"] = str(body["_id"])
+        mongodb_client = MongoClient(self.attrs['connection_string'])
+        my_db = mongodb_client[self.attrs["db_name"]]
+        my_collection = my_db[self.attrs["collection_name"]]
+        my_collection = my_collection.find(self.attrs["query"])
+        for body in my_collection:
+            create_event = True
+            if "_id" in body.keys():
+                body["_id"] = str(body["_id"])
 
-                key = None
-                if self._key_field:
-                    if isinstance(self._key_field, list):
-                        key = []
-                        for key_field in self._key_field:
-                            if key_field not in body or pandas.isna(body[key_field]):
-                                create_event = False
-                                break
-                            key.append(body[key_field])
-                    else:
-                        key = body[self._key_field]
-                        if key is None:
+            key = None
+            if self._key_field:
+                if isinstance(self._key_field, list):
+                    key = []
+                    for key_field in self._key_field:
+                        if key_field not in body or pandas.isna(body[key_field]):
                             create_event = False
-                if create_event:
-                    time = None
-                    if self._time_field:
-                        time = self.get_val_from_multi_dictionary(body, self._time_field)
-                    if self._id_field:
-                        _id = self.get_val_from_multi_dictionary(body, self._id_field)
-                    else:
-                        _id = self._get_uuid()
-                    event = Event(body, key=key, time=time, id=_id)
-                    await self._do_downstream(event)
+                            break
+                        key.append(body[key_field])
                 else:
-                    if self.context:
-                        self.context.logger.error(
-                            f"For {body} value of key {key_field} is None"
-                        )
-            return await self._do_downstream(_termination_obj)
+                    key = body[self._key_field]
+                    if key is None:
+                        create_event = False
+            if create_event:
+                time = None
+                if self._time_field:
+                    time = self.get_val_from_multi_dictionary(body, self._time_field)
+                if self._id_field:
+                    _id = self.get_val_from_multi_dictionary(body, self._id_field)
+                else:
+                    _id = self._get_uuid()
+                event = Event(body, key=key, time=time, id=_id)
+                await self._do_downstream(event)
+            else:
+                if self.context:
+                    self.context.logger.error(
+                        f"For {body} value of key {key_field} is None"
+                    )
+        return await self._do_downstream(_termination_obj)
 
-        def get_val_from_multi_dictionary(self, event, field):
-            for f in field:
-                event = event[f]
+    def get_val_from_multi_dictionary(self, event, field):
+        for f in field:
+            event = event[f]
 
-            return event
+        return event
