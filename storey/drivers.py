@@ -158,27 +158,42 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
                                                                                                                partitioned_by_key)
         if not update_expression:
             return
+        print("_save_key update_expr ",update_expression)
+        print("_save_key cond_expr ",condition_expression)
 
         key = str(key)
         response = await self._v3io_client.kv.update(container, table_path, key, expression=update_expression,
                                                      condition=condition_expression,
                                                      raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
+
         if response.status_code == 200:
             if aggr_item:
                 aggr_item.storage_specific_cache[self._mtime_header_name] = response.headers[self._mtime_header_name]
+            dd_response = await self._v3io_client.kv.get(container, table_path, key, raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
+            for name, value in dd_response.output.item.items():
+                print("After v3io update:", name, value)
+
         # In case Mtime condition evaluated to False, we run the conditioned expression, then fetch and cache the latest key's state
         elif self._is_false_condition_error(response):
             update_expression, condition_expression, pending_updates = self._build_feature_store_update_expression(aggr_item,
                                                                                                                    additional_data,
                                                                                                                    False,
                                                                                                                    pending_updates)
+            print("_save_key update false update_expr ",update_expression)
+            print("_save_key update cond_expr ",condition_expression)
             response = await self._v3io_client.kv.update(container, table_path, key, expression=update_expression,
                                                          condition=condition_expression,
                                                          raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
+
+            dd_response = await self._v3io_client.kv.get(container, table_path, key, raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
+            for name, value in dd_response.output.item.items():
+                print("After second v3io update:", name, value)
+
             if response.status_code == 200 and aggr_item:
                 await self._fetch_state_by_key(aggr_item, container, table_path, key)
             else:
                 should_raise_error = True
+
         else:
             should_raise_error = True
 
@@ -240,7 +255,6 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
                 condition_expression = aggregation_element.storage_specific_cache.get(self._mtime_header_name, "")
             else:
                 expressions, pending_updates = self._build_conditioned_feature_store_request(aggregation_element, pending)
-
         # Generating additional cache expressions
         if additional_data:
             for name, value in additional_data.items():
@@ -251,7 +265,6 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
                     expressions.append(f'{name}={self._convert_python_obj_to_expression_value(value)}')
                 else:
                     expressions.append(f'REMOVE {name}')
-
         update_expression = ';'.join(expressions)
         return update_expression, condition_expression, pending_updates
 
@@ -446,6 +459,8 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
         elif response.status_code == 200:
             aggregations, additional_data = {}, {}
             for name, value in response.output.item.items():
+                if "number_of_stuff_sum" in name:
+                    print("kuku v3io ",name,value)
                 if name.startswith(self._aggregation_attribute_prefix):
                     feature_and_aggr_name = name[len(self._aggregation_attribute_prefix):-2]
                     feature_name = feature_and_aggr_name[:feature_and_aggr_name.rindex('_')]
@@ -456,8 +471,12 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
                         aggregations[feature_and_aggr_name] = {}
                     aggregations[feature_and_aggr_name][time_in_millis] = value
                     aggregations[feature_and_aggr_name][associated_time_attr] = time_in_millis
+                    print("kuku v3io ",name, value, feature_and_aggr_name, associated_time_attr, time_in_millis)
+
                 elif not name.startswith(self._aggregation_time_attribute_prefix):
                     additional_data[name] = value
+            print("_load_aggregates_by_key aggregation ",aggregations)
+            print("_load_aggregates_by_key additional ",additional_data)
             return aggregations, additional_data
         else:
             raise V3ioError(f'Failed to get item. Response status code was {response.status_code}: {response.body}')
@@ -520,20 +539,20 @@ class RedisDriver(Driver):
     REDIS_WATCH_INTERVAL = 1  # Seconds
     DATETIME_FIELD_PREFIX = "_dt:"
     TIMEDELTA_FIELD_PREFIX = "_td:"
-    DATETIME_FIELD_PREFIX_B = b"_dt:"
-    TIMEDELTA_FIELD_PREFIX_B = b"_td:"
     DEFAULT_KEY_PREFIX = "storey:"
 
     def __init__(self, redis_client: Optional[Union[redis.Redis, rediscluster.RedisCluster]] = None,
                  redis_type: RedisType = RedisType.STANDALONE,
                  key_prefix: str = None,
                  aggregation_attribute_prefix: str = 'aggr_',
-                 aggregation_time_attribute_prefix: str = 't_'):
+                 aggregation_time_attribute_prefix: str = '_'):
 
         self._redis = redis_client
         self._conn_str = os.getenv('REDIS_CONNECTION', 'redis://localhost:6379?')
         self._key_prefix = key_prefix if key_prefix else self.DEFAULT_KEY_PREFIX
         self._type = redis_type
+        self._mtime_name = '$_mtime_'
+
         self._aggregation_attribute_prefix = aggregation_attribute_prefix
         self._aggregation_time_attribute_prefix = aggregation_time_attribute_prefix
         self._aggregation_prefixes = (self._aggregation_attribute_prefix,
@@ -580,71 +599,71 @@ class RedisDriver(Driver):
         """
         return f"{redis_key_prefix}:{list_attribute_name}"
 
-    async def _lincr(self, key: str, index_to_update: int, incr_by: float):
-        """Atomically increment the numeric value at an index in a list.
-
-        This is, in effect, a client-side LINCR command (list-increment) -- a command
-        that does not exist in Redis.
-        """
-        timeout = datetime.now() + timedelta(seconds=self.REDIS_TIMEOUT)
-        while True:
-            with self.redis.pipeline() as pipeline:
-                try:
-                    pipeline.watch(key)
-                    old = json.loads(pipeline.lindex(key, index_to_update))
-                    pipeline.multi()
-                    # XXX: Some aggregations use these values as their defaults, so we
-                    # initialize our lists with them. But you can't create a float('inf')
-                    # and then add to it, so we use 0 instead.
-                    if old == 'inf' or old == '-inf':
-                        old = 0
-                    new_value = self._convert_python_obj_to_redis_value(float(old) + incr_by)
-                    pipeline.lset(key, index_to_update, new_value)
-                    return await asyncify(pipeline.execute)()
-                except WatchError as e:
-                    if datetime.now() < timeout:
-                        time.sleep(self.REDIS_WATCH_INTERVAL)
-                        continue
-                    raise RedisTimeoutError(f"Timed out trying to increment key {key}") from e
-
     @classmethod
     def _convert_python_obj_to_redis_value(cls, value):
         if isinstance(value, datetime):
             if pd.isnull(value):
                 return None
-            return f"{cls.DATETIME_FIELD_PREFIX}{value.timestamp()}"
+            return f'{cls.DATETIME_FIELD_PREFIX}{value.timestamp()}'
         elif isinstance(value, timedelta):
-            return f"{cls.TIMEDELTA_FIELD_PREFIX}{value.total_seconds()}"
+            return f'{cls.TIMEDELTA_FIELD_PREFIX}{value.total_seconds()}'
         else:
             if isinstance(value, float):
                 if value == math.inf or value == -math.inf:
                     # Use the shorter infinity form (inf, -inf) to save space.
-                    value = str(value)
+                    value = f'{str(value)}'
                 elif not value % 1:
                     # Store whole numbers as integers to save space.
                     value = int(value)
             return json.dumps(value)
 
+    def _convert_python_obj_to_lua_value(cls, value):
+        if isinstance(value, datetime):
+            if pd.isnull(value):
+                return None
+            return f'"{cls.DATETIME_FIELD_PREFIX}{value.timestamp()}"'
+        elif isinstance(value, timedelta):
+            return f'"{cls.TIMEDELTA_FIELD_PREFIX}{value.total_seconds()}"'
+        elif isinstance(value, bool):
+            return f'"{json.dumps(value)}"'
+        else:
+            if isinstance(value, float):
+                if value == math.inf:
+                    value = "math.huge"
+                elif value == -math.inf:
+                    value = "-math.huge"
+                elif not value % 1:
+                    # Store whole numbers as integers to save space.
+                    value = int(value)
+
+            return json.dumps(value)
+
     @classmethod
     def _convert_redis_value_to_python_obj(cls, value):
-        if isinstance(value, str):
-            if value.startswith(cls.TIMEDELTA_FIELD_PREFIX):
-                return timedelta(seconds=float(value.split(":")[1]))
-            elif value.startswith(cls.DATETIME_FIELD_PREFIX):
-                return datetime.fromtimestamp(float(value.split(":")[1]), tz=timezone.utc)
-        else:
-            if value.startswith(cls.TIMEDELTA_FIELD_PREFIX_B):
-                return timedelta(seconds=float(value.split(b":")[1]))
-            elif value.startswith(cls.DATETIME_FIELD_PREFIX_B):
-                return datetime.fromtimestamp(float(value.split(b":")[1]), tz=timezone.utc)
-        return json.loads(value)
+        value = cls._convert_to_str(value)
+        if value.startswith(cls.TIMEDELTA_FIELD_PREFIX):
+            return timedelta(seconds=float(value.split(":")[1]))
+        elif value.startswith(cls.DATETIME_FIELD_PREFIX):
+            return datetime.fromtimestamp(float(value.split(":")[1]), tz=timezone.utc)
+        elif value == "inf":
+            return math.inf
+        elif value == "-inf":
+            return -math.inf
+        try:
+            return json.loads(value)
+        except Exception as e:
+            return value
 
     @classmethod
     def _convert_to_str(cls, key):
-        if isinstance(key, bytes):
-            return key.decode('utf-8')
-        else:
-            return key
+        try:
+            if isinstance(key, bytes):
+                return key.decode('utf-8')
+            else:
+                return key
+        except Exception as e:
+            print(e)
+            # Logs the error appropriately. 
 
     def _discard_old_pending_items(self, pending, max_window_millis):
         res = {}
@@ -656,78 +675,97 @@ class RedisDriver(Driver):
                     res[_time] = value
         return res
 
-    async def _build_feature_store_request(self, redis_key_prefix, aggregation_element, pipeline):
-        atomic_updates = []
-        times_updates = {}
-        new_cached_times = {}
+    def _build_feature_store_lua_update_script(self, redis_key_prefix, aggregation_element, partitioned_by_key, additional_data):
+        lua_script=None
+        redis_keys_involved=[]
         pending_updates = {}
-        initialized_attributes = {}
+        condition_expression = None
+        additional_data_lua_script=""
 
-        for name, bucket in aggregation_element.aggregation_buckets.items():
-            # Only save raw aggregates, not virtual
-            if bucket.should_persist:
+        # Static attributes, like "name," "age," -- everything that isn't an agg.
+        if additional_data:
+            redis_keys_involved.append(self._static_data_key(redis_key_prefix))
+            additional_data_lua_script = f'local additional_data_key="{self._static_data_key(redis_key_prefix)}";\n'
+            for name, value in additional_data.items():
+                expression_value = self._convert_python_obj_to_lua_value(value)
+                # NOTE: This logic assumes that static attributes we're supposed
+                # to delete will appear in the `additional_data` dict with a
+                # "falsey" value. This is the same logic the V3ioDriver uses.
+                if expression_value:
+                    # additional_data_lua_script = f"""{additional_data_lua_script}
+                    #                             """
+                    additional_data_lua_script = f'{additional_data_lua_script}redis.call("HSET",additional_data_key, "{name}", {expression_value});\n'
+                else:
+                    additional_data_lua_script = f'{additional_data_lua_script}redis.call("HDEL",additional_data_key, "{name}");\n'
+        
+        lua_script=additional_data_lua_script
+        
+        if aggregation_element:
+            times_updates = {}
+            new_cached_times = {}
+            initialized_attributes = {}
+            if partitioned_by_key:
+                condition_expression = aggregation_element.storage_specific_cache.get(self._mtime_name, None)
+            lua_tonum_function = 'local function tonum(str) if str == "inf" then return math.huge elseif str == "-inf" then return -math.huge end return tonumber(str) end'
+            lua_script=f'{lua_script}local len;local redis_key_prefix="{redis_key_prefix}";local list_attribute_key;\n'
+            lua_script=f'{lua_script}{lua_tonum_function}\n'
+            for name, bucket in aggregation_element.aggregation_buckets.items():
+                # Only save raw aggregates, not virtual
+                if bucket.should_persist:
+                    # In case we have pending data that spreads over more then 2 windows, discard the old ones.
+                    pending_updates[name] = self._discard_old_pending_items(bucket.get_and_flush_pending(),
+                                                                            bucket.max_window_millis)
+                    for bucket_start_time, aggregation_values in pending_updates[name].items():
+                        # the relevant attribute out of the 2 feature attributes
+                        feature_attr = 'a' if int(bucket_start_time / bucket.max_window_millis) % 2 == 0 else 'b'
 
-                # In case we have pending data that spreads over more then 2 windows, discard the old ones.
-                pending_updates[name] = self._discard_old_pending_items(bucket.get_and_flush_pending(),
-                                                                        bucket.max_window_millis)
-                for bucket_start_time, aggregation_values in pending_updates[name].items():
-                    # the relevant attribute out of the 2 feature attributes
-                    feature_attr = 'a' if int(bucket_start_time / bucket.max_window_millis) % 2 == 0 else 'b'
+                        aggr_time_attribute_name = f'{bucket.name}_{feature_attr}'
+                        array_time_attribute_key = self._aggregation_time_key(redis_key_prefix,
+                                                                            aggr_time_attribute_name)
 
-                    aggr_time_attribute_name = f'{bucket.name}_{feature_attr}'
-                    array_time_attribute_key = self._aggregation_time_key(redis_key_prefix,
-                                                                          aggr_time_attribute_name)
+                        cached_time = bucket.storage_specific_cache.get(array_time_attribute_key, 0)
 
-                    cached_time = bucket.storage_specific_cache.get(array_time_attribute_key, 0)
+                        expected_time = int(bucket_start_time / bucket.max_window_millis) * bucket.max_window_millis
+                        expected_time_expr = self._convert_python_obj_to_lua_value(
+                            datetime.fromtimestamp(expected_time / 1000))
+                        index_to_update = int((bucket_start_time - expected_time) / bucket.period_millis)
 
-                    expected_time = int(bucket_start_time / bucket.max_window_millis) * bucket.max_window_millis
-                    expected_time_expr = self._convert_python_obj_to_redis_value(
-                        datetime.fromtimestamp(expected_time / 1000))
-                    index_to_update = int((bucket_start_time - expected_time) / bucket.period_millis)
+                        for aggregation, aggregation_value in aggregation_values.items():
+                            list_attribute_name = f'{self._aggregation_attribute_prefix}{name}_{aggregation}_{feature_attr}'
+                            list_attribute_key = self._list_key(redis_key_prefix, list_attribute_name)
+                            redis_keys_involved.append(redis_key_prefix)
+                            redis_keys_involved.append(array_time_attribute_key)
+                            lua_script=f'{lua_script}list_attribute_key="{list_attribute_key}";\n'
 
-                    for aggregation, aggregation_value in aggregation_values.items():
-                        list_attribute_name = f'{self._aggregation_attribute_prefix}{name}_{aggregation}_{feature_attr}'
-                        list_attribute_key = self._list_key(redis_key_prefix, list_attribute_name)
-                        if cached_time < expected_time:
-                            if not initialized_attributes.get(list_attribute_key, 0) == expected_time:
-                                initialized_attributes[list_attribute_key] = expected_time
-                                # XXX: Run LLEN and LPUSH commands in immediate execution
-                                # mode, instead of using the pipeline, to initialize the
-                                # list here, in case we need the list to exist when we run
-                                # our atomic _lincr() operations later in this method.
-                                list_length = await asyncify(self.redis.llen)(list_attribute_key)
-                                if list_length != bucket.total_number_of_buckets:
-                                    # The list doesn't exist yet, or it's the wrong size,
-                                    # so we initialize it (or right-pad it) to the
-                                    # expected length with default values.
-                                    new_length = bucket.total_number_of_buckets - list_length
-                                    defaults = [self._convert_python_obj_to_redis_value(
-                                        aggregation_value.default_value)] * new_length
-                                    self.redis.rpush(list_attribute_key, *defaults)
-                            if array_time_attribute_key not in times_updates:
-                                times_updates[array_time_attribute_key] = expected_time_expr
-                            new_cached_times[name] = (array_time_attribute_key, expected_time)
+                            if cached_time < expected_time:
+                                if not initialized_attributes.get(list_attribute_key, 0) == expected_time:
+                                    initialized_attributes[list_attribute_key] = expected_time
+                                    # # Creating a new list
+                                    # if not partitioned_by_key:
+                                    #     lua_script=f'{lua_script}redis.call("DEL",list_attribute_key);\n'
+                                    # else:
+                                    lua_script=f'{lua_script}local t=redis.call("GET","{array_time_attribute_key}");if (type(t)~="boolean" and (tonumber(t) < {expected_time})) then redis.call("DEL",list_attribute_key); end;\n'
+                                    default_value = self._convert_python_obj_to_redis_value(aggregation_value.default_value)
+                                    lua_script=f'{lua_script}len=redis.call("LLEN",list_attribute_key) for i=1,({bucket.total_number_of_buckets}-len) do redis.call("RPUSH",list_attribute_key,{default_value}) end;\n'
+                                if array_time_attribute_key not in times_updates:
+                                    times_updates[array_time_attribute_key] = expected_time_expr
+                                new_cached_times[name] = (array_time_attribute_key, expected_time)
 
-                        # Updating the specific cells
-                        if cached_time <= expected_time:
-                            # Increment the value in the list index by the new value
-                            atomic_updates.append(
-                                partial(self._lincr, list_attribute_key, index_to_update, aggregation_value.value))
+                            # Updating the specific cells
+                            if cached_time <= expected_time:
+                                condition = None
+                                if partitioned_by_key and self._mtime_name in aggregation_element.storage_specific_cache:
+                                    condition = aggregation_element.storage_specific_cache[self._mtime_name]
+                                lua_script=f'{lua_script}local old_value=redis.call("LINDEX", list_attribute_key, {index_to_update});old_value=tonum(old_value);\n'
+                                lua_script=f'{lua_script}old_value=tonum(old_value)\n'
+                                new_value_expression=aggregation_value.aggregate_lua_script('old_value',aggregation_value.value)
+                                lua_script=f'{lua_script}redis.call("LSET", list_attribute_key, {index_to_update}, {new_value_expression});\n'
 
-        for atomic_update in atomic_updates:
-            # TODO: Check result, handle RedisError?
-            await atomic_update()
+                        redis_keys_involved.append(array_time_attribute_key)
+                        lua_script=f'{lua_script}redis.call("SET","{array_time_attribute_key}",{expected_time}); \n'
 
-        # Separating time attribute updates, so that they will be executed in the end
-        # and only once per feature name.
-        for array_time_attribute_key, expected_time_expr in times_updates.items():
-            pipeline.set(array_time_attribute_key, expected_time_expr)
+        return lua_script, condition_expression, pending_updates
 
-        for name, new_value in new_cached_times.items():
-            attribute_name = new_value[0]
-            new_time = new_value[1]
-            aggregation_element.aggregation_buckets[name].storage_specific_cache[attribute_name] = new_time
-        return pending_updates
 
     async def _build_updates(self, redis_key_prefix, aggregation_element, additional_data, partitioned_by_key):
         # Use a transaction if multiple workers might be writing (AKA, "partitioned_by_key").
@@ -736,7 +774,7 @@ class RedisDriver(Driver):
 
         if aggregation_element:
             # Generating aggregation related expressions
-            await self._build_feature_store_request(redis_key_prefix, aggregation_element, pipeline)
+            await self._build_feature_store_request(redis_key_prefix, aggregation_element, pipeline, partitioned_by_key)
 
         # Static attributes, like "name," "age," -- everything that isn't an agg.
         if additional_data:
@@ -763,7 +801,45 @@ class RedisDriver(Driver):
 
     async def _save_key(self, container, table_path, key, aggr_item, partitioned_by_key, additional_data):
         redis_key_prefix = self.make_key(container, table_path, key)
-        await self._build_updates(redis_key_prefix, aggr_item, additional_data, partitioned_by_key)
+        update_expression, mtime_condition, pending_updates = self._build_feature_store_lua_update_script(redis_key_prefix, aggr_item,
+                                                                                                               partitioned_by_key, additional_data)
+        if not update_expression:
+            return
+        current_time=int(time.time_ns()/1000)
+
+        if mtime_condition != None:
+            update_expression = f'if redis.call("HGET", "{redis_key_prefix}","{self._mtime_name}") == "{mtime_condition}" then {update_expression} redis.call("HSET","{redis_key_prefix}","{self._mtime_name}",{current_time}); return 1; else return 0; end;'
+        else:
+            update_expression = f'{update_expression}return redis.call("HSET","{redis_key_prefix}","{self._mtime_name}",{current_time});'
+
+        update_expression = f"""{update_expression}"""
+        print("Before 1", update_expression)
+        update_ok = self.redis.eval(update_expression, 0)
+        await self._fetch_state_by_key(aggr_item, container, table_path, key)
+        print("After 1\n")
+        should_raise_error = False
+
+        if update_ok:
+            if aggr_item:
+                aggr_item.storage_specific_cache[self._mtime_name] = current_time
+        # In case Mtime condition evaluated to False, we run the conditioned expression, then fetch and cache the latest key's state
+        else: 
+            update_expression, condition_expression, pending_updates = self._build_feature_store_lua_update_script(redis_key_prefix, aggr_item,
+                                                                                                               False, additional_data)
+            update_expression = f'{update_expression}return redis.call("HSET","{redis_key_prefix}","{self._mtime_name}",{current_time});'
+            print("Before 2", update_expression)
+            update_ok = self.redis.eval(update_expression, 0)
+            if update_ok and aggr_item:
+                await self._fetch_state_by_key(aggr_item, container, table_path, key)
+            else:
+                should_raise_error = True
+            print("After 2\n")
+
+        # if should_raise_error:
+        #     raise RedisError(
+        #         f'Failed to save aggregation for {table_path}/{key}. Response status code was {response.status_code}: {response.body}\n'
+        #         f'Update expression was: {update_expression}'
+        #     )
 
     async def _get_all_fields(self, redis_key: str):
         try:
@@ -772,8 +848,9 @@ class RedisDriver(Driver):
             values = await asyncify(self.redis.hgetall)(redis_key)
         except redis.ResponseError as e:
             raise RedisError(f'Failed to get key {redis_key}. Response error was: {e}')
-        return {self._convert_to_str(key): self._convert_redis_value_to_python_obj(val) for key, val in values.items()
+        res = {self._convert_to_str(key): self._convert_redis_value_to_python_obj(val) for key, val in values.items()
                 if not str(key).startswith(self._aggregation_prefixes)}
+        return res
 
     async def _get_specific_fields(self, redis_key: str, attributes: List[str]):
         non_aggregation_attrs = [
@@ -811,14 +888,8 @@ class RedisDriver(Driver):
         time_val = await asyncify(self.redis.get)(associated_time_key)
         time_val = self._convert_to_str(time_val)
 
-        _, val = time_val.split(":")
-
-        # TODO: Time values can hold either a timedelta in seconds or a UNIX timestamp.
-        # What are we supposed to do (and how does Storey know) if the value was a
-        # timedelta?
         try:
-            # Storey requires the timestamp to be an integer when it processes this value.
-            time_in_millis = int(float(val) * 1000)
+            time_in_millis = int(time_val)
         except TypeError as e:
             raise RedisError(f"Invalid associated time attribute: {associated_time_key} "
                              f"-> {time_val}") from e
@@ -855,6 +926,8 @@ class RedisDriver(Driver):
             # portion of the key, which is "the relevant attribute out of the 2
             # feature attributes," according to comments in the V3IO driver.
             feature_and_aggr_name = aggr_key[len(aggr_key_prefix):-2]
+            if feature_and_aggr_name == 'number_of_stuff_count':
+                print("")
             # To get the associated time, we need the aggregation name and the relevant
             # attribute (a or b), so we take a second form of the string for that purpose.
             aggr_name_with_relevant_attribute = aggr_key[len(aggr_key_prefix):]
@@ -862,14 +935,48 @@ class RedisDriver(Driver):
                 redis_key_prefix, aggr_name_with_relevant_attribute)
             if feature_and_aggr_name not in aggregations:
                 aggregations[feature_and_aggr_name] = {}
-            aggregations[feature_and_aggr_name][time_in_millis] = [float(json.loads(v)) for v in value]
+            aggregations[feature_and_aggr_name][time_in_millis] = [float(self._convert_redis_value_to_python_obj(v)) for v in value]
             aggregations[feature_and_aggr_name][associated_time_attr] = time_in_millis
+            if "number_of_stuff_sum" in aggr_key:
+                print("kuku redis ",aggr_key, value, feature_and_aggr_name, associated_time_attr, time_in_millis)
+            
 
         # Story expects to get None back if there were no aggregations, and the
         # same for additional data.
         aggregations_to_return = aggregations if aggregations else None
         additional_data_to_return = additional_data if additional_data else None
+        print("_load_aggregates_by_key aggregation ",aggregations_to_return)
+        print("_load_aggregates_by_key additional ",additional_data_to_return)
         return aggregations_to_return, additional_data_to_return
+
+    async def _fetch_state_by_key(self, aggr_item, container, table_path, key):
+        if aggr_item==None:
+            return
+        attributes_to_get = self._get_time_attributes_from_aggregations(aggr_item)
+        key = str(key)
+
+        aggregations_to_return, additional_data_to_return = await self._load_aggregates_by_key(container, table_path, key)
+
+        # First reset all relevant cache items
+        for bucket in aggr_item.aggregation_buckets.values():
+            if bucket.should_persist:
+                for attribute_to_reset in attributes_to_get:
+                    if attribute_to_reset.startswith(f'{self._aggregation_time_attribute_prefix}{bucket.name}_'):
+                        bucket.storage_specific_cache.pop(attribute_to_reset, None)
+
+        for aggr_name, aggr_value in aggregations_to_return.items():
+            for name, value in aggr_value.items():
+                for bucket in aggr_item.aggregation_buckets.values():
+                    if bucket.should_persist:
+                        if isinstance(name,str) and name.startswith(f'{self._aggregation_time_attribute_prefix}{bucket.name}_'):
+                            bucket.storage_specific_cache[name] = int(value)
+
+    def _get_time_attributes_from_aggregations(self, aggregation_element):
+        attributes = {}
+        for bucket in aggregation_element.aggregation_buckets.values():
+            attributes[f'{bucket.name}_a'] = f'{self._aggregation_time_attribute_prefix}{bucket.name}_a'
+            attributes[f'{bucket.name}_b'] = f'{self._aggregation_time_attribute_prefix}{bucket.name}_b'
+        return list(attributes.values())
 
     async def _save_schema(self, container, table_path, schema):
         redis_key = self.make_key(container, table_path, schema_file_name)
