@@ -891,17 +891,17 @@ class ParquetSource(DataframeSource):
 class MongoDBSource(_IterableSource, WithUUID):
     """Use mongodb collection as input source for a flow.
 
-        :parameter key_field: string. column to be used as key for events. can be list of columns
-        :parameter time_field: string. column to be used as time for events.
-        :parameter id_field: string. column to be used as ID for events.
-        :parameter db_name: string. the name of the database you would like to access as it mention on mongodb
-        :parameter connection_string: string. your mongodb connection string
-        :parameter collection_name: string. the collection name you would like to access,
-                                    from the current db as it mention on mongodb
-        :parameter query: dict. dictionary query for mongodb
-        :parameter start_filter: datetime. If not None, the results will be filtered by partitions and 'filter_column' > start_filter.
+        :parameter key_field: column to be used as key for events. can be list of columns
+        :parameter time_field: column to be used as time for events.
+        :parameter id_field: column to be used as ID for events.
+        :parameter db_name: the name of the database to access
+        :parameter connection_string: your mongodb connection string
+        :parameter collection_name: the name of the collection to access,
+                                    from the current database
+        :parameter query: dictionary query for mongodb
+        :parameter start_filter: If not None, the results will be filtered by partitions and 'filter_column' > start_filter.
                                 Default is None
-        :parameter end_filter: datetime. If not None, the results will be filtered by partitions 'filter_column' <= end_filter.
+        :parameter end_filter:  If not None, the results will be filtered by partitions 'filter_column' <= end_filter.
                                 Default is None
 
         """
@@ -919,17 +919,16 @@ class MongoDBSource(_IterableSource, WithUUID):
             id_field: Optional[str] = None,
             **kwargs,
     ):
-
+        if query is None:
+            query = {}
         if time_field:
-            time_query = {time_field: None}
+            time_query = {time_field: {}}
             if start_filter:
-                time_query[time_field] = {"$gte": start_filter}
+                time_query[time_field]["$gte"] = start_filter
             if end_filter:
                 time_query[time_field]["$lt"] = end_filter
-            if time_query[time_field] is not None and query is not None:
+            if time_query[time_field]:
                 query.update(time_query)
-            elif time_query[time_field] is not None and query is None:
-                query = time_query
 
         if key_field is not None:
             kwargs["key_field"] = key_field
@@ -944,12 +943,11 @@ class MongoDBSource(_IterableSource, WithUUID):
             raise ValueError(
                 "cannot specify without connection_string, db_name and collection_name args"
             )
-        self.attrs = {
-            "query": query,
-            "collection_name": collection_name,
-            "db_name": db_name,
-            "connection_string": connection_string,
-        }
+
+        self.query = query
+        self.collection_name =  collection_name
+        self.db_name = db_name
+        self.connection_string =  connection_string
 
         self._key_field = key_field
         if time_field:
@@ -964,11 +962,11 @@ class MongoDBSource(_IterableSource, WithUUID):
     async def _run_loop(self):
         from pymongo import MongoClient
 
-        mongodb_client = MongoClient(self.attrs['connection_string'])
-        my_db = mongodb_client[self.attrs["db_name"]]
-        my_collection = my_db[self.attrs["collection_name"]]
-        my_collection = my_collection.find(self.attrs["query"])
-        for body in my_collection:
+        mongodb_client = MongoClient(self.connection_string)
+        db = mongodb_client[self.db_name]
+        collection = db[self.collection_name]
+        cursor = collection.find(self.query)
+        for body in cursor:
             create_event = True
             if "_id" in body.keys():
                 body["_id"] = str(body["_id"])
