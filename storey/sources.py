@@ -945,9 +945,9 @@ class MongoDBSource(_IterableSource, WithUUID):
             )
 
         self.query = query
-        self.collection_name =  collection_name
+        self.collection_name = collection_name
         self.db_name = db_name
-        self.connection_string =  connection_string
+        self.connection_string = connection_string
 
         self._key_field = key_field
         if time_field:
