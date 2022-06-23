@@ -520,7 +520,27 @@ class RedisType(Enum):
     CLUSTER = 2
 
 
-class RedisDriver(Driver):
+class NeedsRedisAccess:
+    """Checks that params for access to Redis exist and are legal
+
+    :param webapi: URL to the web API (https or http). If not set, the REDIS_URL environment variable will be used.
+
+    """
+
+    def __init__(self, webapi=None):
+        webapi = webapi or os.getenv('REDIS_URL')
+        if not webapi:
+            self._webapi_url = None
+            print('Missing webapi parameter or REDIS_URL environment variable. Using fakeredit instead')
+            return
+
+        if not webapi.startswith('redis://'):
+            webapi = f'redis://{webapi}'
+
+        self._webapi_url = webapi
+
+
+class RedisDriver(NeedsRedisAccess, Driver):
     REDIS_TIMEOUT = 5  # Seconds
     REDIS_WATCH_INTERVAL = 1  # Seconds
     DATETIME_FIELD_PREFIX = "_dt:"
@@ -530,11 +550,12 @@ class RedisDriver(Driver):
     def __init__(self, redis_client: Optional[Union[redis.Redis, rediscluster.RedisCluster]] = None,
                  redis_type: RedisType = RedisType.STANDALONE,
                  key_prefix: str = None,
+                 webapi: Optional[str] = None,
                  aggregation_attribute_prefix: str = 'aggr_',
                  aggregation_time_attribute_prefix: str = '_'):
 
+        NeedsRedisAccess.__init__(self, webapi)
         self._redis = redis_client
-        self._conn_str = os.getenv('REDIS_CONNECTION', 'redis://localhost:6379?')
         self._key_prefix = key_prefix if key_prefix else self.DEFAULT_KEY_PREFIX
         self._type = redis_type
         self._mtime_name = '$_mtime_'
@@ -549,8 +570,8 @@ class RedisDriver(Driver):
         if self._redis:
             return self._redis
         if self._type is RedisType.STANDALONE:
-            return redis.Redis.from_url(self._conn_str, decode_responses=True)
-        self._redis = rediscluster.RedisCluster.from_url(self._conn_str, decode_response=True)
+            return redis.Redis.from_url(self._webapi_url, decode_responses=True)
+        self._redis = rediscluster.RedisCluster.from_url(self._webapi_url, decode_response=True)
         return self._redis
 
     def make_key(self, *parts):
