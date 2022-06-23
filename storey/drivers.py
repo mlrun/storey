@@ -5,7 +5,6 @@ import os
 import time
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from functools import partial
 from collections import OrderedDict
 from typing import List, Union, Optional
 import pandas as pd
@@ -15,9 +14,8 @@ import rediscluster
 import v3io
 import v3io.aio.dataplane
 from v3io.dataplane import kv_array
-from redis import WatchError
 
-from .dtypes import V3ioError, RedisError, RedisTimeoutError
+from .dtypes import V3ioError, RedisError
 from .utils import schema_file_name, asyncify
 
 
@@ -639,7 +637,7 @@ class RedisDriver(Driver):
             return -math.inf
         try:
             return json.loads(value)
-        except Exception as e:
+        except Exception:
             return value
 
     @classmethod
@@ -651,7 +649,7 @@ class RedisDriver(Driver):
                 return key
         except Exception as e:
             print(e)
-            # Logs the error appropriately. 
+            # Logs the error appropriately.
 
     def _discard_old_pending_items(self, pending, max_window_millis):
         res = {}
@@ -664,11 +662,11 @@ class RedisDriver(Driver):
         return res
 
     def _build_feature_store_lua_update_script(self, redis_key_prefix, aggregation_element, partitioned_by_key, additional_data):
-        lua_script=None
-        redis_keys_involved=[]
+        lua_script = None
+        redis_keys_involved = []
         pending_updates = {}
         condition_expression = None
-        additional_data_lua_script=""
+        additional_data_lua_script = ""
 
         # Static attributes, like "name," "age," -- everything that isn't an agg.
         if additional_data:
@@ -682,21 +680,23 @@ class RedisDriver(Driver):
                 if expression_value:
                     # additional_data_lua_script = f"""{additional_data_lua_script}
                     #                             """
-                    additional_data_lua_script = f'{additional_data_lua_script}redis.call("HSET",additional_data_key, "{name}", {expression_value});\n'
+                    additional_data_lua_script = f'{additional_data_lua_script}\
+                        redis.call("HSET",additional_data_key, "{name}", {expression_value});\n'
                 else:
                     additional_data_lua_script = f'{additional_data_lua_script}redis.call("HDEL",additional_data_key, "{name}");\n'
-        
-        lua_script=additional_data_lua_script
-        
+
+        lua_script = additional_data_lua_script
+
         if aggregation_element:
             times_updates = {}
             new_cached_times = {}
             initialized_attributes = {}
             if partitioned_by_key:
                 condition_expression = aggregation_element.storage_specific_cache.get(self._mtime_name, None)
-            lua_tonum_function = 'local function tonum(str) if str == "inf" then return math.huge elseif str == "-inf" then return -math.huge end return tonumber(str) end'
-            lua_script=f'{lua_script}local len;local redis_key_prefix="{redis_key_prefix}";local list_attribute_key;\n'
-            lua_script=f'{lua_script}{lua_tonum_function}\n'
+            lua_tonum_function = 'local function tonum(str) if str == "inf" then return math.huge elseif str == "-inf" \
+                then return -math.huge end return tonumber(str) end'
+            lua_script = f'{lua_script}local len;local redis_key_prefix="{redis_key_prefix}";local list_attribute_key;\n'
+            lua_script = f'{lua_script}{lua_tonum_function}\n'
             for name, bucket in aggregation_element.aggregation_buckets.items():
                 # Only save raw aggregates, not virtual
                 if bucket.should_persist:
@@ -708,8 +708,7 @@ class RedisDriver(Driver):
                         feature_attr = 'a' if int(bucket_start_time / bucket.max_window_millis) % 2 == 0 else 'b'
 
                         aggr_time_attribute_name = f'{bucket.name}_{feature_attr}'
-                        array_time_attribute_key = self._aggregation_time_key(redis_key_prefix,
-                                                                            aggr_time_attribute_name)
+                        array_time_attribute_key = self._aggregation_time_key(redis_key_prefix, aggr_time_attribute_name)
 
                         cached_time = bucket.storage_specific_cache.get(array_time_attribute_key, 0)
 
@@ -723,65 +722,69 @@ class RedisDriver(Driver):
                             list_attribute_key = self._list_key(redis_key_prefix, list_attribute_name)
                             if list_attribute_key not in redis_keys_involved:
                                 redis_keys_involved.append(list_attribute_key)
-                            lua_script=f'{lua_script}list_attribute_key="{list_attribute_key}";\n'
+                            lua_script = f'{lua_script}list_attribute_key="{list_attribute_key}";\n'
 
                             if cached_time < expected_time:
                                 if not initialized_attributes.get(list_attribute_key, 0) == expected_time:
                                     initialized_attributes[list_attribute_key] = expected_time
-                                    lua_script=f'{lua_script}local t=redis.call("GET","{array_time_attribute_key}");if (type(t)~="boolean" and (tonumber(t) < {expected_time})) then redis.call("DEL",list_attribute_key); end;\n'
+                                    lua_script = f'{lua_script}local t=redis.call("GET","{array_time_attribute_key}");if (type(t)~="boolean" and (tonumber(t) < {expected_time})) \
+                                        then redis.call("DEL",list_attribute_key); end;\n'
                                     default_value = self._convert_python_obj_to_redis_value(aggregation_value.default_value)
-                                    lua_script=f'{lua_script}len=redis.call("LLEN",list_attribute_key) for i=1,({bucket.total_number_of_buckets}-len) do redis.call("RPUSH",list_attribute_key,{default_value}) end;\n'
+                                    lua_script = f'{lua_script}len=redis.call("LLEN",list_attribute_key) for i=1,({bucket.total_number_of_buckets}-len) \
+                                        do redis.call("RPUSH",list_attribute_key,{default_value}) end;\n'
                                 if array_time_attribute_key not in times_updates:
                                     times_updates[array_time_attribute_key] = expected_time_expr
                                 new_cached_times[name] = (array_time_attribute_key, expected_time)
 
                             # Updating the specific cells
                             if cached_time <= expected_time:
-                                condition = None
-                                if partitioned_by_key and self._mtime_name in aggregation_element.storage_specific_cache:
-                                    condition = aggregation_element.storage_specific_cache[self._mtime_name]
-                                lua_script=f'{lua_script}local old_value=redis.call("LINDEX", list_attribute_key, {index_to_update});old_value=tonum(old_value);\n'
-                                lua_script=f'{lua_script}old_value=tonum(old_value)\n'
-                                new_value_expression=aggregation_value.aggregate_lua_script('old_value',aggregation_value.value)
-                                lua_script=f'{lua_script}redis.call("LSET", list_attribute_key, {index_to_update}, {new_value_expression});\n'
+                                # condition = None
+                                # if partitioned_by_key and self._mtime_name in aggregation_element.storage_specific_cache:
+                                #     condition = aggregation_element.storage_specific_cache[self._mtime_name]
+                                lua_script = f'{lua_script}local old_value=redis.call("LINDEX", list_attribute_key, {index_to_update});\
+                                    old_value=tonum(old_value);\n'
+                                lua_script = f'{lua_script}old_value=tonum(old_value)\n'
+                                new_value_expression = aggregation_value.aggregate_lua_script('old_value', aggregation_value.value)
+                                lua_script = f'{lua_script}\
+                                    redis.call("LSET", list_attribute_key, {index_to_update}, {new_value_expression});\n'
 
                         redis_keys_involved.append(array_time_attribute_key)
-                        lua_script=f'{lua_script}redis.call("SET","{array_time_attribute_key}",{expected_time}); \n'
+                        lua_script = f'{lua_script}redis.call("SET","{array_time_attribute_key}",{expected_time}); \n'
 
         return lua_script, condition_expression, pending_updates, redis_keys_involved
 
-
     async def _save_key(self, container, table_path, key, aggr_item, partitioned_by_key, additional_data):
         redis_key_prefix = self.make_key(container, table_path, key)
-        update_expression, mtime_condition, pending_updates, redis_keys_involved = self._build_feature_store_lua_update_script(redis_key_prefix, aggr_item,
-                                                                                                               partitioned_by_key, additional_data)
+        update_expression, mtime_condition, pending_updates, redis_keys_involved = self._build_feature_store_lua_update_script(
+            redis_key_prefix, aggr_item, partitioned_by_key, additional_data)
         if not update_expression:
             return
-        current_time=int(time.time_ns()/1000)
-        if mtime_condition != None:
-            update_expression = f'if redis.call("HGET", "{redis_key_prefix}","{self._mtime_name}") == "{mtime_condition}" then {update_expression} redis.call("HSET","{redis_key_prefix}","{self._mtime_name}",{current_time}); return 1; else return 0; end;'
+        current_time = int(time.time_ns()/1000)
+        if mtime_condition is not None:
+            update_expression = f'if redis.call("HGET", "{redis_key_prefix}","{self._mtime_name}") == "{mtime_condition}" then \
+                {update_expression} redis.call("HSET","{redis_key_prefix}","{self._mtime_name}",{current_time});return 1;else return 0;end;'
         else:
             update_expression = f'{update_expression}redis.call("HSET","{redis_key_prefix}","{self._mtime_name}",{current_time});return 1;'
 
         redis_keys_involved.append(redis_key_prefix)
         update_expression = f"""{update_expression}"""
         update_ok = await asyncify(self.redis.eval)(update_expression, len(redis_keys_involved), *redis_keys_involved)
-        should_raise_error = False
+        # should_raise_error = False
 
         if update_ok:
             if aggr_item:
                 aggr_item.storage_specific_cache[self._mtime_name] = current_time
         # In case Mtime condition evaluated to False, we run the conditioned expression, then fetch and cache the latest key's state
-        else: 
-            update_expression, condition_expression, pending_updates,redis_keys_involved = self._build_feature_store_lua_update_script(redis_key_prefix, aggr_item,
-                                                                                                               False, additional_data)
+        else:
+            update_expression, condition_expression, pending_updates, redis_keys_involved = self._build_feature_store_lua_update_script(
+                redis_key_prefix, aggr_item, False, additional_data)
             update_expression = f'{update_expression}redis.call("HSET","{redis_key_prefix}","{self._mtime_name}",{current_time});return 1;'
             redis_keys_involved.append(redis_key_prefix)
             update_ok = await asyncify(self.redis.eval)(update_expression, len(redis_keys_involved), *redis_keys_involved)
             if update_ok and aggr_item:
                 await self._fetch_state_by_key(aggr_item, container, table_path, key)
-            else:
-                should_raise_error = True
+            # else:
+                # should_raise_error = True
 
         # if should_raise_error:
         #     raise RedisError(
@@ -797,7 +800,7 @@ class RedisDriver(Driver):
         except redis.ResponseError as e:
             raise RedisError(f'Failed to get key {redis_key}. Response error was: {e}')
         res = {self._convert_to_str(key): self._convert_redis_value_to_python_obj(val) for key, val in values.items()
-                if not str(key).startswith(self._aggregation_prefixes)}
+               if not str(key).startswith(self._aggregation_prefixes)}
         return res
 
     async def _get_specific_fields(self, redis_key: str, attributes: List[str]):
@@ -884,7 +887,6 @@ class RedisDriver(Driver):
                 aggregations[feature_and_aggr_name] = {}
             aggregations[feature_and_aggr_name][time_in_millis] = [float(self._convert_redis_value_to_python_obj(v)) for v in value]
             aggregations[feature_and_aggr_name][associated_time_attr] = time_in_millis
-            
 
         # Story expects to get None back if there were no aggregations, and the
         # same for additional data.
