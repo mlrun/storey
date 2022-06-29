@@ -103,8 +103,7 @@ def setup_redis_teardown_test(redis, redis_driver):
     yield table_name
 
     # Teardown
-    for key in redis_driver.redis.scan_iter(f"{redis_driver._key_prefix}*"):
-        redis_driver.redis.delete(key)
+    redis_driver.redis.flushdb()
 
 
 @pytest.fixture()
