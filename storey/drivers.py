@@ -591,7 +591,7 @@ class MongoDBDriver(NeedsMongoDBAccess, Driver):
         table_path = f"/{table_path[1:].split('/')[0]}"
         collection = self.collection(container, table_path)
         values = await self._get_all_fields(mongodb_key, collection)
-        return values
+        return [None, values]
 
     async def _load_by_key(self, container, table_path, key, attribute):
         from pymongo import MongoClient
