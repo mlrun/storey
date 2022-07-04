@@ -13,9 +13,7 @@ import v3io_frames as frames
 from storey import Filter, JoinWithV3IOTable, SendToHttp, Map, Reduce, SyncEmitSource, HttpRequest, build_flow, \
     StreamTarget, V3ioDriver, TSDBTarget, Table, JoinWithTable, MapWithState, NoSqlTarget, DataframeSource, \
     CSVSource, AsyncEmitSource
-from .integration_test_utils import V3ioHeaders, append_return, test_base_time, setup_kv_teardown_test, \
-    setup_teardown_test, \
-    assign_stream_teardown_test, create_stream
+from .integration_test_utils import V3ioHeaders, append_return, test_base_time, create_stream
 
 
 class GetShardData(V3ioHeaders):
@@ -122,7 +120,10 @@ def test_write_to_v3io_stream_timestamps(assign_stream_teardown_test):
     ]).run()
     controller.await_termination()
     shard0_data = asyncio.run(GetShardData().get_shard_data(f'{stream_path}/0'))
-    assert shard0_data == [b'{"datetime": "2012-08-08 21:46:24.862000", "string": "hello", "ts": "2018-05-07 13:52:37"}']
+    assert len(shard0_data) == 1
+    assert json.loads(shard0_data[0].decode("utf-8")) == {
+        "datetime": "2012-08-08 21:46:24.862000", "string": "hello", "ts": "2018-05-07 13:52:37"
+    }
 
 
 def test_write_to_v3io_stream_with_column_inference(assign_stream_teardown_test):
