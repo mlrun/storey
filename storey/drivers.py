@@ -617,7 +617,7 @@ class MongoDBDriver(NeedsMongoDBAccess, Driver):
         from pymongo import MongoClient
 
         try:
-            response = await collection.find_one(filter={self._storey_key: {"$eq": mongodb_key}})
+            response = collection.find_one(filter={self._storey_key: {"$eq": mongodb_key}})
         except Exception as e:
             raise RuntimeError(f'Failed to get key {mongodb_key}. Response error was: {e}')
         return {key: val for key, val in response.items()
@@ -627,7 +627,7 @@ class MongoDBDriver(NeedsMongoDBAccess, Driver):
         from pymongo import MongoClient
 
         try:
-            response = await collection.find_one(filter={self._storey_key: {"$eq": mongodb_key}})
+            response = collection.find_one(filter={self._storey_key: {"$eq": mongodb_key}})
         except Exception as e:
             raise RuntimeError(f'Failed to get key {mongodb_key}. Response error was: {e}')
         return {key: val for key, val in response.items()
