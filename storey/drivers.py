@@ -529,8 +529,8 @@ class NeedsMongoDBAccess:
             print('Missing webapi parameter or MONGODB_CONNECTION_STR environment variable. Using fakeredit instead')
             return
 
-        if not webapi.startswith('mdb://'):
-            webapi = f'redis://{webapi}'
+        if not webapi.startswith('mongodb+srv://'):
+            webapi = f'mongodb+srv://{webapi}'
 
         self._webapi_url = webapi
 
