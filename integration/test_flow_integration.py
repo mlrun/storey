@@ -13,7 +13,15 @@ import v3io_frames as frames
 from storey import Filter, JoinWithV3IOTable, SendToHttp, Map, Reduce, SyncEmitSource, HttpRequest, build_flow, \
     StreamTarget, V3ioDriver, TSDBTarget, Table, JoinWithTable, MapWithState, NoSqlTarget, DataframeSource, \
     CSVSource, AsyncEmitSource
-from .integration_test_utils import V3ioHeaders, append_return, test_base_time, create_stream
+from .integration_test_utils import V3ioHeaders, append_return, test_base_time, setup_kv_teardown_test, \
+    setup_teardown_test, \
+    assign_stream_teardown_test, create_stream
+
+_prevents_ide_from_optimizing_these_away = [
+    setup_kv_teardown_test,
+    setup_teardown_test,
+    assign_stream_teardown_test,
+]
 
 
 class GetShardData(V3ioHeaders):
