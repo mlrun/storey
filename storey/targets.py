@@ -914,7 +914,7 @@ class MongoDBTarget(Flow, _Writer):
 
     async def _lazy_init(self):
         from pymongo import MongoClient
-        if self._initialized:
+        if not self._initialized:
             mongodb_client = MongoClient(self.attrs['connection_string'])
             my_db = mongodb_client[self.attrs["db_name"]]
             self._my_collection = my_db[self.attrs["collection_name"]]
