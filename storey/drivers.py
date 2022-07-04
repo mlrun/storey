@@ -581,6 +581,7 @@ class MongoDBDriver(NeedsMongoDBAccess, Driver):
         self._lazy_init()
         mongodb_key = self.make_key(table_path, key)
         data = dict({key: str(val) for key, val in additional_data.items()}, **{self._storey_key: mongodb_key})
+        self.temp = self.collection(container, table_path)
         return self.collection(container, table_path).insert_one(data)
 
     async def _load_aggregates_by_key(self, container, table_path, key):
