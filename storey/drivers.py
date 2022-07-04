@@ -566,7 +566,7 @@ class MongoDBDriver(NeedsMongoDBAccess, Driver):
     @property
     async def collection(self, container, table_path):
         from pymongo import MongoClient
-        return self._mongodb_client[container][table_path]
+        return self._mongodb_client[container[1:]][table_path]
 
     async def _save_schema(self, container, table_path, schema):
         self._lazy_init()
