@@ -563,10 +563,9 @@ class MongoDBDriver(NeedsMongoDBAccess, Driver):
         if not self._mongodb_client:
             self._mongodb_client = MongoClient(self._webapi_url)
 
-    @property
     async def collection(self, container, table_path):
         from pymongo import MongoClient
-        return self._mongodb_client[container[1:]][table_path]
+        return self._mongodb_client[container][table_path[1:]]
 
     async def _save_schema(self, container, table_path, schema):
         self._lazy_init()
@@ -582,7 +581,7 @@ class MongoDBDriver(NeedsMongoDBAccess, Driver):
         self._lazy_init()
         mongodb_key = self.make_key(table_path, key)
         data = {key: str(val) for key, val in additional_data.items()}.update({self._storey_key: mongodb_key})
-        return self.collection.insert_one(data)
+        return self.collection(container, table_path).insert_one(data)
 
     async def _load_aggregates_by_key(self, container, table_path, key):
         from pymongo import MongoClient
@@ -596,11 +595,11 @@ class MongoDBDriver(NeedsMongoDBAccess, Driver):
         from pymongo import MongoClient
 
         mongodb_key = self.make_key(table_path, key)
-        collection = self._mongodb_client[container][table_path]
+        collection = self.collection(container, table_path)
         if attribute == "*":
-            values = await self._get_all_fields(mongodb_key)
+            values = await self._get_all_fields(mongodb_key, collection)
         else:
-            values = await self._get_specific_fields(mongodb_key, attribute)
+            values = await self._get_specific_fields(mongodb_key, attribute, collection)
         return values
 
     async def close(self):
@@ -611,21 +610,21 @@ class MongoDBDriver(NeedsMongoDBAccess, Driver):
 
         return "{}{}{}".format(self._key_prefix, table_path, key)
 
-    async def _get_all_fields(self, mongodb_key: str):
+    async def _get_all_fields(self, mongodb_key: str, collection):
         from pymongo import MongoClient
 
         try:
-            response = await self.collection.find_one(filter={self._storey_key: {"$eq": mongodb_key}})
+            response = await collection.find_one(filter={self._storey_key: {"$eq": mongodb_key}})
         except Exception as e:
             raise RuntimeError(f'Failed to get key {mongodb_key}. Response error was: {e}')
         return {key: val for key, val in response.items()
                 if key is not self._storey_key}
 
-    async def _get_specific_fields(self, mongodb_key: str, attributes: List[str]):
+    async def _get_specific_fields(self, mongodb_key: str, collection, attributes: List[str]):
         from pymongo import MongoClient
 
         try:
-            response = await self.collection.find_one(filter={self._storey_key: {"$eq": mongodb_key}})
+            response = await collection.find_one(filter={self._storey_key: {"$eq": mongodb_key}})
         except Exception as e:
             raise RuntimeError(f'Failed to get key {mongodb_key}. Response error was: {e}')
         return {key: val for key, val in response.items()
