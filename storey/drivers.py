@@ -609,7 +609,7 @@ class MongoDBDriver(NeedsMongoDBAccess, Driver):
     def make_key(self, table_path, key):
         from pymongo import MongoClient
 
-        return "{}{}{}".format(self._key_prefix, table_path, key)
+        return "{}{}{}".format(self._key_prefix, table_path[1:].split('/')[0], key)
 
     async def _get_all_fields(self, mongodb_key: str, collection):
         from pymongo import MongoClient
