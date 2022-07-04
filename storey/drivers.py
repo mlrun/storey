@@ -2,7 +2,7 @@ import base64
 import json
 import os
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, List
 from collections import OrderedDict
 import pandas as pd
 
@@ -99,9 +99,12 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
             await self._v3io_client.close()
             self._v3io_client = None
 
-    saved_engine_words = {'min', 'max', 'sqrt', 'avg', 'stddev', 'sum', 'length', 'init_array', 'set', 'remove', 'regexp_replace', 'find',
-                          'find_all_indices', 'extract_by_indices', 'sort_array', 'blob', 'if_else', 'in', 'true', 'false', 'and', 'or',
-                          'not', 'contains', 'ends', 'starts', 'exists', 'select', 'str', 'to_int', 'if_not_exists', 'regexp_instr',
+    saved_engine_words = {'min', 'max', 'sqrt', 'avg', 'stddev', 'sum', 'length', 'init_array', 'set', 'remove',
+                          'regexp_replace', 'find',
+                          'find_all_indices', 'extract_by_indices', 'sort_array', 'blob', 'if_else', 'in', 'true',
+                          'false', 'and', 'or',
+                          'not', 'contains', 'ends', 'starts', 'exists', 'select', 'str', 'to_int', 'if_not_exists',
+                          'regexp_instr',
                           'delete', 'as', 'maxdbl', 'inf', 'nan', 'isnan', 'nanaszero'}
     parallel_aggregates = {'min': 'pmin', 'max': 'pmax', 'sum': 'psum', 'count': 'psum', 'sqr': 'psum'}
 
@@ -114,7 +117,8 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
                                                       raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
 
         if not response.status_code == 200:
-            raise V3ioError(f'Failed to save schema file. Response status code was {response.status_code}: {response.body}')
+            raise V3ioError(
+                f'Failed to save schema file. Response status code was {response.status_code}: {response.body}')
 
     async def _load_schema(self, container, table_path):
         self._lazy_init()
@@ -127,7 +131,8 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
         elif response.status_code == 200:
             schema = json.loads(response.body)
         else:
-            raise V3ioError(f'Failed to get schema at {schema_path}. Response status code was {response.status_code}: {response.body}')
+            raise V3ioError(
+                f'Failed to get schema at {schema_path}. Response status code was {response.status_code}: {response.body}')
 
         return schema
 
@@ -147,8 +152,9 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
                 pass
 
         should_raise_error = False
-        update_expression, condition_expression, pending_updates = self._build_feature_store_update_expression(aggr_item, additional_data,
-                                                                                                               partitioned_by_key)
+        update_expression, condition_expression, pending_updates = self._build_feature_store_update_expression(
+            aggr_item, additional_data,
+            partitioned_by_key)
         if not update_expression:
             return
 
@@ -161,10 +167,11 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
                 aggr_item.storage_specific_cache[self._mtime_header_name] = response.headers[self._mtime_header_name]
         # In case Mtime condition evaluated to False, we run the conditioned expression, then fetch and cache the latest key's state
         elif self._is_false_condition_error(response):
-            update_expression, condition_expression, pending_updates = self._build_feature_store_update_expression(aggr_item,
-                                                                                                                   additional_data,
-                                                                                                                   False,
-                                                                                                                   pending_updates)
+            update_expression, condition_expression, pending_updates = self._build_feature_store_update_expression(
+                aggr_item,
+                additional_data,
+                False,
+                pending_updates)
             response = await self._v3io_client.kv.update(container, table_path, key, expression=update_expression,
                                                          condition=condition_expression,
                                                          raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
@@ -184,10 +191,12 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
     async def _fetch_state_by_key(self, aggr_item, container, table_path, key):
         attributes_to_get = self._get_time_attributes_from_aggregations(aggr_item)
         key = str(key)
-        get_item_response = await self._v3io_client.kv.get(container, table_path, key, attribute_names=attributes_to_get,
+        get_item_response = await self._v3io_client.kv.get(container, table_path, key,
+                                                           attribute_names=attributes_to_get,
                                                            raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
         if get_item_response.status_code == 200:
-            aggr_item.storage_specific_cache[self._mtime_header_name] = get_item_response.headers[self._mtime_header_name]
+            aggr_item.storage_specific_cache[self._mtime_header_name] = get_item_response.headers[
+                self._mtime_header_name]
 
             # First reset all relevant cache items
             for bucket in aggr_item.aggregation_buckets.values():
@@ -219,7 +228,8 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
                 return True
         return False
 
-    def _build_feature_store_update_expression(self, aggregation_element, additional_data, partitioned_by_key, pending=None):
+    def _build_feature_store_update_expression(self, aggregation_element, additional_data, partitioned_by_key,
+                                               pending=None):
         condition_expression = None
         expressions = []
         pending_updates = {}
@@ -232,7 +242,8 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
                 expressions, pending_updates = self._build_simplified_feature_store_request(aggregation_element)
                 condition_expression = aggregation_element.storage_specific_cache.get(self._mtime_header_name, "")
             else:
-                expressions, pending_updates = self._build_conditioned_feature_store_request(aggregation_element, pending)
+                expressions, pending_updates = self._build_conditioned_feature_store_request(aggregation_element,
+                                                                                             pending)
 
         # Generating additional cache expressions
         if additional_data:
@@ -274,7 +285,8 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
                     items_to_update = pending[name]
                 else:
                     # In case we have pending data that spreads over more then 2 windows discard the old ones.
-                    pending_updates[name] = self._discard_old_pending_items(bucket.get_and_flush_pending(), bucket.max_window_millis)
+                    pending_updates[name] = self._discard_old_pending_items(bucket.get_and_flush_pending(),
+                                                                            bucket.max_window_millis)
                     items_to_update = pending_updates[name]
                 for bucket_start_time, aggregation_values in items_to_update.items():
                     # the relevant attribute out of the 2 feature attributes
@@ -283,7 +295,8 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
                     array_time_attribute_name = f'{self._aggregation_time_attribute_prefix}{bucket.name}_{feature_attr}'
 
                     expected_time = int(bucket_start_time / bucket.max_window_millis) * bucket.max_window_millis
-                    expected_time_expr = self._convert_python_obj_to_expression_value(datetime.fromtimestamp(expected_time / 1000))
+                    expected_time_expr = self._convert_python_obj_to_expression_value(
+                        datetime.fromtimestamp(expected_time / 1000))
                     index_to_update = int((bucket_start_time - expected_time) / bucket.period_millis)
 
                     get_array_time_expr = f'if_not_exists({array_time_attribute_name},0:0)'
@@ -433,7 +446,8 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
 
         key = str(key)
 
-        response = await self._v3io_client.kv.get(container, table_path, key, raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
+        response = await self._v3io_client.kv.get(container, table_path, key,
+                                                  raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
         if response.status_code == 404:
             return None, None
         elif response.status_code == 200:
@@ -501,3 +515,111 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
 
         return await self._v3io_client.kv.get(container, table_path, str(key), attribute_names=attributes,
                                               raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
+
+
+class NeedsMongoDBAccess:
+    """Checks that params for access to Redis exist and are legal
+    :param webapi: URL to the web API (https or http). If not set, the REDIS_URL environment variable will be used.
+    """
+
+    def __init__(self, webapi=None):
+        webapi = webapi or os.getenv('MONGODB_CONNECTION_STR')
+        if not webapi:
+            self._webapi_url = None
+            print('Missing webapi parameter or MONGODB_CONNECTION_STR environment variable. Using fakeredit instead')
+            return
+
+        if not webapi.startswith('mdb://'):
+            webapi = f'redis://{webapi}'
+
+        self._webapi_url = webapi
+
+
+class MongoDBDriver(NeedsMongoDBAccess, Driver):
+    """Abstract class for database connection"""
+    from pymongo import MongoClient
+    def __init__(self,
+                 # redis_type: RedisType = RedisType.STANDALONE,
+                 key_prefix: str = None,
+                 webapi: Optional[str] = None,
+                 aggregation_attribute_prefix: str = 'aggr_',
+                 aggregation_time_attribute_prefix: str = '_'):
+
+        NeedsMongoDBAccess.__init__(self, webapi)
+        self._mongodb_client = None
+        self._key_prefix = key_prefix if key_prefix else "storey: "
+        self._mtime_name = '$_mtime_'
+        self._storey_key = "storey_key"
+
+        self._aggregation_attribute_prefix = aggregation_attribute_prefix
+        self._aggregation_time_attribute_prefix = aggregation_time_attribute_prefix
+        self._aggregation_prefixes = (self._aggregation_attribute_prefix,
+                                      self._aggregation_time_attribute_prefix)
+
+    def _lazy_init(self):
+        from pymongo import MongoClient
+
+        self._closed = False
+        if not self._mongodb_client:
+            self._mongodb_client = MongoClient(self._webapi_url)
+
+    async def _save_schema(self, container, table_path, schema):
+        self._lazy_init()
+        return None
+
+    async def _load_schema(self, container, table_path):
+        self._lazy_init()
+        return None
+
+    async def _save_key(self, container, table_path, key, aggr_item, partitioned_by_key, additional_data):
+        from pymongo import MongoClient
+
+        self._lazy_init()
+        mongodb_key = self.make_key(table_path, key)
+        data = {key: str(val) for key, val in additional_data.items()}.update({self._storey_key: mongodb_key})
+        return self._mongodb_client[container][table_path].insert_one(data)
+
+    async def _load_aggregates_by_key(self, container, table_path, key):
+        from pymongo import MongoClient
+
+        self._lazy_init()
+        return None, None
+
+    async def _load_by_key(self, container, table_path, key, attribute):
+        from pymongo import MongoClient
+
+        mongodb_key = self.make_key(table_path, key)
+        collection = self._mongodb_client[container][table_path]
+        if attribute == "*":
+            values = await self._get_all_fields(mongodb_key, collection)
+        else:
+            values = await self._get_specific_fields(mongodb_key, collection, attribute)
+        return values
+
+    async def close(self):
+        pass
+
+    def make_key(self, table_path, key):
+        from pymongo import MongoClient
+
+        return "{}{}{}".format(self._key_prefix, table_path, key)
+
+    async def _get_all_fields(self, mongodb_key: str, collection):
+        from pymongo import MongoClient
+
+        try:
+            response = await collection.find_one(filter={self._storey_key: {"$eq": mongodb_key}})
+        except Exception as e:
+            raise RuntimeError(f'Failed to get key {mongodb_key}. Response error was: {e}')
+        return {key: val for key, val in response.items()
+                if key is not self._storey_key}
+
+    async def _get_specific_fields(self, mongodb_key: str, collection, attributes: List[str]):
+        from pymongo import MongoClient
+
+        try:
+            response = await collection.find_one(filter={self._storey_key: {"$eq": mongodb_key}})
+        except Exception as e:
+            raise RuntimeError(f'Failed to get key {mongodb_key}. Response error was: {e}')
+        return {key: val for key, val in response.items()
+                if key in attributes}
