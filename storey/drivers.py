@@ -587,8 +587,8 @@ class MongoDBDriver(NeedsMongoDBAccess, Driver):
         from pymongo import MongoClient
         self._lazy_init()
         mongodb_key = self.make_key(table_path, key)
+        table_path = f"/{table_path[1:].split('/')[0]}"
         collection = self.collection(container, table_path)
-
         values = await self._get_all_fields(mongodb_key, collection)
         return values
 
@@ -596,6 +596,7 @@ class MongoDBDriver(NeedsMongoDBAccess, Driver):
         from pymongo import MongoClient
 
         mongodb_key = self.make_key(table_path, key)
+        table_path = f"/{table_path[1:].split('/')[0]}"
         collection = self.collection(container, table_path)
         if attribute == "*":
             values = await self._get_all_fields(mongodb_key, collection)
