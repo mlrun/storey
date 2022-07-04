@@ -581,9 +581,12 @@ class MongoDBDriver(NeedsMongoDBAccess, Driver):
 
     async def _load_aggregates_by_key(self, container, table_path, key):
         from pymongo import MongoClient
-
         self._lazy_init()
-        return None, None
+        mongodb_key = self.make_key(table_path, key)
+        collection = self._mongodb_client[container][table_path]
+
+        values = await self._get_all_fields(mongodb_key, collection)
+        return values
 
     async def _load_by_key(self, container, table_path, key, attribute):
         from pymongo import MongoClient
