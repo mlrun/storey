@@ -563,7 +563,7 @@ class MongoDBDriver(NeedsMongoDBAccess, Driver):
         if not self._mongodb_client:
             self._mongodb_client = MongoClient(self._webapi_url)
 
-    async def collection(self, container, table_path):
+    def collection(self, container, table_path):
         from pymongo import MongoClient
         return self._mongodb_client[container][table_path[1:].split('/')[0]]
 
