@@ -1,5 +1,6 @@
 import base64
 import json
+import re
 import os
 from datetime import datetime, timedelta
 from typing import Optional, List
@@ -553,8 +554,8 @@ class MongoDBDriver(NeedsMongoDBAccess, Driver):
 
         self._aggregation_attribute_prefix = aggregation_attribute_prefix
         self._aggregation_time_attribute_prefix = aggregation_time_attribute_prefix
-        self._aggregation_prefixes = (self._aggregation_attribute_prefix,
-                                      self._aggregation_time_attribute_prefix)
+        # self._aggregation_prefixes = (self._aggregation_attribute_prefix,
+        #                               self._aggregation_time_attribute_prefix)
 
     def _lazy_init(self):
         from pymongo import MongoClient
@@ -580,8 +581,13 @@ class MongoDBDriver(NeedsMongoDBAccess, Driver):
 
         self._lazy_init()
         mongodb_key = self.make_key(table_path, key)
-        data = dict({key: str(val) for key, val in additional_data.items()}, **{self._storey_key: mongodb_key})
-        self.temp = self.collection(container, table_path)
+        data = {}
+        for key in additional_data.keys():
+            if re.match(r".*_[a-z]+_[0-9]+[smhd]", key):
+                data[self._aggregation_attribute_prefix + key] = additional_data[key]
+            else:
+                data[key] = additional_data[key]
+        data = dict(data, **{self._storey_key: mongodb_key})
         return self.collection(container, table_path).insert_one(data)
 
     async def _load_aggregates_by_key(self, container, table_path, key):
@@ -590,17 +596,25 @@ class MongoDBDriver(NeedsMongoDBAccess, Driver):
         mongodb_key = self.make_key(table_path, key)
         table_path = f"/{table_path[1:].split('/')[0]}"
         collection = self.collection(container, table_path)
-        values = await self._get_all_fields(mongodb_key, collection)
-        return [None, values]
+        try:
+            agg_val, values = await self._get_all_fields(mongodb_key, collection)
+            if not agg_val:
+                agg_val = None
+            if not values:
+                values = None
+            return [agg_val, values]
+        except Exception:
+            return [None, None]
+
 
     async def _load_by_key(self, container, table_path, key, attribute):
         from pymongo import MongoClient
-
+        self._lazy_init()
         mongodb_key = self.make_key(table_path, key)
         table_path = f"/{table_path[1:].split('/')[0]}"
         collection = self.collection(container, table_path)
         if attribute == "*":
-            values = await self._get_all_fields(mongodb_key, collection)
+            _, values = await self._get_all_fields(mongodb_key, collection)
         else:
             values = await self._get_specific_fields(mongodb_key, attribute, collection)
         return values
@@ -620,8 +634,11 @@ class MongoDBDriver(NeedsMongoDBAccess, Driver):
             response = collection.find_one(filter={self._storey_key: {"$eq": mongodb_key}})
         except Exception as e:
             raise RuntimeError(f'Failed to get key {mongodb_key}. Response error was: {e}')
-        return {key: val for key, val in response.items()
-                if key is not self._storey_key}
+        return {key[len(self._aggregation_attribute_prefix):]: val for key, val in response.items()
+                if key is not self._storey_key and key.startswith(self._aggregation_attribute_prefix)},\
+               {key: val for key, val in response.items()
+                if key is not self._storey_key and not key.startswith(self._aggregation_attribute_prefix)}
+
 
     async def _get_specific_fields(self, mongodb_key: str, collection, attributes: List[str]):
         from pymongo import MongoClient
