@@ -601,7 +601,6 @@ class MongoDBDriver(NeedsMongoDBAccess, Driver):
         except Exception:
             return [None, None]
 
-
     async def _load_by_key(self, container, table_path, key, attribute):
         from pymongo import MongoClient
         self._lazy_init()
@@ -631,10 +630,9 @@ class MongoDBDriver(NeedsMongoDBAccess, Driver):
             raise RuntimeError(f'Failed to get key {mongodb_key}. Response error was: {e}')
         aggr_data, additional_data = {}, {}
 
-        return {'_'.join(key[len(self._aggregation_attribute_prefix):].split('_')[:-1]): {'1h': val} for key, val in response.items()
-                if key is not self._storey_key and key.startswith(self._aggregation_attribute_prefix)},\
-               None
-
+        return None, \
+               {key: val for key, val in response.items()
+                if key is not self._storey_key and not key.startswith(self._aggregation_attribute_prefix)}
 
     async def _get_specific_fields(self, mongodb_key: str, collection, attributes: List[str]):
         from pymongo import MongoClient
