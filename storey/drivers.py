@@ -577,16 +577,11 @@ class MongoDBDriver(NeedsMongoDBAccess, Driver):
         return None
 
     async def _save_key(self, container, table_path, key, aggr_item, partitioned_by_key, additional_data):
-        from pymongo import MongoClient
-
         self._lazy_init()
         mongodb_key = self.make_key(table_path, key)
         data = {}
         for key in additional_data.keys():
-            if re.match(r".*_[a-z]+_[0-9]+[smhd]", key):
-                data[self._aggregation_attribute_prefix + key] = additional_data[key]
-            else:
-                data[key] = additional_data[key]
+            data[key] = additional_data[key]
         data = dict(data, **{self._storey_key: mongodb_key})
         return self.collection(container, table_path).insert_one(data)
 
@@ -605,6 +600,7 @@ class MongoDBDriver(NeedsMongoDBAccess, Driver):
             return [agg_val, values]
         except Exception:
             return [None, None]
+
 
     async def _load_by_key(self, container, table_path, key, attribute):
         from pymongo import MongoClient
@@ -633,10 +629,12 @@ class MongoDBDriver(NeedsMongoDBAccess, Driver):
             response = collection.find_one(filter={self._storey_key: {"$eq": mongodb_key}})
         except Exception as e:
             raise RuntimeError(f'Failed to get key {mongodb_key}. Response error was: {e}')
-        return {key[len(self._aggregation_attribute_prefix):]: val for key, val in response.items()
-                if key is not self._storey_key and key.startswith(self._aggregation_attribute_prefix)}, \
-               {key: val for key, val in response.items()
-                if key is not self._storey_key and not key.startswith(self._aggregation_attribute_prefix)}
+        aggr_data, additional_data = {}, {}
+
+        return {'_'.join(key[len(self._aggregation_attribute_prefix):].split('_')[:-1]): {'1h': val} for key, val in response.items()
+                if key is not self._storey_key and key.startswith(self._aggregation_attribute_prefix)},\
+               None
+
 
     async def _get_specific_fields(self, mongodb_key: str, collection, attributes: List[str]):
         from pymongo import MongoClient
