@@ -2,7 +2,6 @@ import asyncio
 import copy
 import math
 import os
-import pyarrow.parquet as pq
 import queue
 import time
 import traceback
@@ -11,6 +10,7 @@ from datetime import datetime
 from random import choice
 
 import pandas as pd
+import pyarrow.parquet as pq
 import pytest
 import pytz
 from aiohttp import InvalidURL, ClientConnectorError
@@ -866,6 +866,22 @@ async def async_test_async_awaitable_result_error():
 
 def test_async_awaitable_result_error():
     asyncio.run(async_test_async_awaitable_result_error())
+
+
+def test_complete_without_awaitable_result():
+    def delete_awaitable(event):
+        event._awaitable_result = None
+        return event
+
+    controller = build_flow([
+        SyncEmitSource(),
+        Map(delete_awaitable, full_event=True),
+        Complete()
+    ]).run()
+    for i in range(3):
+        controller.emit(i)
+    controller.terminate()
+    controller.await_termination()
 
 
 async def async_test_async_source():
