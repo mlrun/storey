@@ -252,14 +252,17 @@ class QueryByKey(AggregateByKey):
         self._aggrs = []
         self._enrich_cols = []
         self._support_aggr = False
+        self._table = None
         resolved_aggrs = {}
         Flow.__init__(self, **kwargs)
         if isinstance(table, str):
             if not self.context:
                 raise TypeError("Table can not be string if no context was provided to the step")
             self._table = self.context.get_table(table)
+        if isinstance(table, Table):
+            self._table = table
         for feature in features:
-            if re.match(r".*_[a-z]+_[0-9]+[smhd]", feature) and self._table._support_aggr:
+            if re.match(r".*_[a-z]+_[0-9]+[smhd]", feature) and self._table and self._table._support_aggr:
                 name, window = feature.rsplit('_', 1)
                 if name in resolved_aggrs:
                     resolved_aggrs[name].append(window)
