@@ -211,7 +211,6 @@ class _Writer:
                     new_data.append(new_value)
                 else:
                     new_data[column] = new_value
-            return new_data
         elif isinstance(new_data, dict):
             for column in metadata_columns:
                 metadata_attr = metadata_columns[column]
@@ -387,7 +386,7 @@ class ParquetTarget(_Batching, _Writer):
     :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries.
         If True, columns will be inferred from data and used in place of explicit columns list if none was provided, or appended to the
         provided list. If columns were not provided and infer_columns_from_data=False, PyArrow will infer the schema per file written,
-        which may cause the schemas to differ between files (e.g. if a column in all null in one file but not in another).
+        which may cause the schemas to differ between files (e.g. if a column is all null in one file but not in another).
         Optional. Defaults to False.
     :param partition_cols: Columns by which to partition the data into directories. The following metadata columns are also supported:
         $key, $date (e.g. 2020-02-09), $year, $month, $day, $hour, $minute, $second. A column may be specified as a tuple, such as
