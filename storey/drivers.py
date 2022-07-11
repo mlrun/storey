@@ -1,6 +1,5 @@
 import base64
 import json
-import re
 import os
 from datetime import datetime, timedelta
 from typing import Optional, List
@@ -620,15 +619,10 @@ class MongoDBDriver(NeedsMongoDBAccess, Driver):
             response = collection.find_one(filter={self._storey_key: {"$eq": mongodb_key}})
         except Exception as e:
             raise RuntimeError(f'Failed to get key {mongodb_key}. Response error was: {e}')
-        aggr_data, additional_data = {}, {}
-
-        return None, \
-               {key: val for key, val in response.items()
-                if key is not self._storey_key and not key.startswith(self._aggregation_attribute_prefix)}
+        return None, {key: val for key, val in response.items()
+                      if key is not self._storey_key and not key.startswith(self._aggregation_attribute_prefix)}
 
     async def _get_specific_fields(self, mongodb_key: str, collection, attributes: List[str]):
-        from pymongo import MongoClient
-
         try:
             response = collection.find_one(filter={self._storey_key: {"$eq": mongodb_key}})
         except Exception as e:
