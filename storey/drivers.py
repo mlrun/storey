@@ -575,7 +575,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
         return self._redis
 
     def make_key(self, *parts):
-        return f"{self._key_prefix}{':'.join([str(p) for p in parts])}"
+        return f"{self._key_prefix}{''.join([str(p) for p in parts])}"
 
     @staticmethod
     def _static_data_key(redis_key_prefix):
