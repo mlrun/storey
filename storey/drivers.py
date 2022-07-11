@@ -538,7 +538,6 @@ class NeedsMongoDBAccess:
 
 class MongoDBDriver(NeedsMongoDBAccess, Driver):
     """Abstract class for database connection"""
-    from pymongo import MongoClient
     def __init__(self,
                  # redis_type: RedisType = RedisType.STANDALONE,
                  key_prefix: str = None,
@@ -554,8 +553,6 @@ class MongoDBDriver(NeedsMongoDBAccess, Driver):
 
         self._aggregation_attribute_prefix = aggregation_attribute_prefix
         self._aggregation_time_attribute_prefix = aggregation_time_attribute_prefix
-        # self._aggregation_prefixes = (self._aggregation_attribute_prefix,
-        #                               self._aggregation_time_attribute_prefix)
 
     def _lazy_init(self):
         from pymongo import MongoClient
@@ -565,7 +562,6 @@ class MongoDBDriver(NeedsMongoDBAccess, Driver):
             self._mongodb_client = MongoClient(self._webapi_url)
 
     def collection(self, container, table_path):
-        from pymongo import MongoClient
         return self._mongodb_client[container][table_path[1:].split('/')[0]]
 
     async def _save_schema(self, container, table_path, schema):
@@ -586,7 +582,6 @@ class MongoDBDriver(NeedsMongoDBAccess, Driver):
         return self.collection(container, table_path).insert_one(data)
 
     async def _load_aggregates_by_key(self, container, table_path, key):
-        from pymongo import MongoClient
         self._lazy_init()
         mongodb_key = self.make_key(table_path, key)
         table_path = f"/{table_path[1:].split('/')[0]}"
@@ -602,7 +597,6 @@ class MongoDBDriver(NeedsMongoDBAccess, Driver):
             return [None, None]
 
     async def _load_by_key(self, container, table_path, key, attribute):
-        from pymongo import MongoClient
         self._lazy_init()
         mongodb_key = self.make_key(table_path, key)
         table_path = f"/{table_path[1:].split('/')[0]}"
@@ -617,12 +611,10 @@ class MongoDBDriver(NeedsMongoDBAccess, Driver):
         pass
 
     def make_key(self, table_path, key):
-        from pymongo import MongoClient
 
         return "{}{}{}".format(self._key_prefix, table_path[1:].split('/')[0], key)
 
     async def _get_all_fields(self, mongodb_key: str, collection):
-        from pymongo import MongoClient
 
         try:
             response = collection.find_one(filter={self._storey_key: {"$eq": mongodb_key}})
