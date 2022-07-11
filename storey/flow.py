@@ -607,10 +607,11 @@ class Complete(Flow):
     async def _do(self, event):
         termination_result = await self._do_downstream(event)
         if event is not _termination_obj:
-            result = self._get_event_or_body(event)
-            res = event._awaitable_result._set_result(result)
-            if res:
-                await res
+            if event._awaitable_result:
+                result = self._get_event_or_body(event)
+                res = event._awaitable_result._set_result(result)
+                if res:
+                    await res
         return termination_result
 
 

@@ -2,7 +2,6 @@ import asyncio
 import copy
 import math
 import os
-import pyarrow.parquet as pq
 import queue
 import time
 import traceback
@@ -11,6 +10,7 @@ from datetime import datetime
 from random import choice
 
 import pandas as pd
+import pyarrow.parquet as pq
 import pytest
 import pytz
 from aiohttp import InvalidURL, ClientConnectorError
@@ -866,6 +866,22 @@ async def async_test_async_awaitable_result_error():
 
 def test_async_awaitable_result_error():
     asyncio.run(async_test_async_awaitable_result_error())
+
+
+def test_complete_without_awaitable_result():
+    def delete_awaitable(event):
+        event._awaitable_result = None
+        return event
+
+    controller = build_flow([
+        SyncEmitSource(),
+        Map(delete_awaitable, full_event=True),
+        Complete()
+    ]).run()
+    for i in range(3):
+        controller.emit(i)
+    controller.terminate()
+    controller.await_termination()
 
 
 async def async_test_async_source():
@@ -1922,10 +1938,14 @@ def test_write_to_parquet_with_inference(tmpdir):
     ]).run()
 
     expected = []
+    controller.emit({'only_first_event': "first", 'my_int': -1}, key=f'first_key!')
+    expected.append([f'first_key!', "first", -1, None, None])
     for i in range(10):
         controller.emit({'my_int': i, 'my_string': f'this is {i}'}, key=f'key{i}')
-        expected.append([f'key{i}', i, f'this is {i}'])
-    expected = pd.DataFrame(expected, columns=['key', 'my_int', 'my_string'], dtype='int64')
+        expected.append([f'key{i}', None, i, f'this is {i}', None])
+    controller.emit({'only_last_event': "last", 'my_int': 1000}, key=f'last_key!')
+    expected.append([f'last_key!', None, 1000, None, "last"])
+    expected = pd.DataFrame(expected, columns=['key', 'only_first_event', 'my_int', 'my_string', 'only_last_event'], dtype='int64')
     expected.set_index(['key'], inplace=True)
     controller.terminate()
     controller.await_termination()
@@ -2705,6 +2725,12 @@ def test_non_existing_key_query_by_key():
     controller.emit({'nameeeee': 'katya'}, 'katya')
     controller.terminate()
     controller.await_termination()
+
+
+# ML-2257
+def test_query_by_key_edge_case_field_name():
+    table = Table('table', NoopDriver())
+    QueryByKey(["my_color_5sec"], table, key="name"),
 
 
 def test_csv_source_with_none_values():

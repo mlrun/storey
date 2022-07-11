@@ -1,14 +1,15 @@
 import asyncio
-from datetime import datetime
-import time
 import re
+import time
+from datetime import datetime
 from typing import Optional, Union, Callable, List, Dict
+
 import pandas as pd
 
 from .dtypes import EmitEveryEvent, FixedWindows, SlidingWindows, EmitAfterPeriod, EmitAfterWindow, EmitAfterMaxEvent, \
     _dict_to_emit_policy, FieldAggregator, EmitPolicy, FixedWindowType
-from .table import Table
 from .flow import Flow, _termination_obj, Event
+from .table import Table
 from .utils import stringify_key
 
 _default_emit_policy = EmitEveryEvent()

@@ -29,10 +29,7 @@ class _Writer:
                  index_cols: Union[str, List[Union[str, Tuple[str, str]]], None] = None,
                  partition_cols: Union[str, List[str], None] = None,
                  retain_dict: bool = False, storage_options: Optional[dict] = None):
-        if infer_columns_from_data is None:
-            infer_columns_from_data = not bool(columns)
         self._infer_columns_from_data = infer_columns_from_data
-
         self._metadata_columns = {}
         self._metadata_index_columns = {}
         self._rename_columns = {}
@@ -218,6 +215,11 @@ class _Writer:
                     new_data.append(new_value)
                 else:
                     new_data[column] = new_value
+        elif isinstance(new_data, dict):
+            for column in metadata_columns:
+                metadata_attr = metadata_columns[column]
+                value = getattr(event, metadata_attr)
+                new_data[column] = value
 
     @staticmethod
     def _get_column_data_from_list(new_data, event, original_data, columns, metadata_columns):
@@ -246,6 +248,8 @@ class _Writer:
                                             self._rename_index_columns)
             self._get_column_data_from_dict(data, event, self._non_partition_columns, self._non_partition_column_types,
                                             self._metadata_columns, self._rename_columns)
+            if not self._non_partition_columns:
+                data.update(event.body)
         elif isinstance(data, list):
             for index in self._partition_col_indices:
                 del data[index]
@@ -285,7 +289,7 @@ class CSVTarget(_Batching, _Writer):
     :param header: Whether to write the columns as a CSV header.
     :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries. If True, columns will be
         inferred from data and used in place of explicit columns list if none was provided, or appended to the provided list.
-        If header is True and columns is not provided, infer_columns_from_data=True is implied.
+        If columns is not provided, infer_columns_from_data=True is implied.
         Optional. Default to False if columns is provided, True otherwise.
     :param max_lines_before_flush: Number of lines to write before flushing data to the output file. Defaults to 128.
     :param max_seconds_before_flush: Maximum delay in seconds before flushing lines. Defaults to 3.
@@ -307,6 +311,9 @@ class CSVTarget(_Batching, _Writer):
     def __init__(self, path: str, columns: Optional[List[str]] = None, header: bool = False,
                  infer_columns_from_data: Optional[bool] = None,
                  max_lines_before_flush: int = 128, max_seconds_before_flush: int = 3, **kwargs):
+        if not columns:
+            infer_columns_from_data = True
+
         _Batching.__init__(self, max_events=max_lines_before_flush, timeout_secs=max_seconds_before_flush, **kwargs)
         _Writer.__init__(self, columns, infer_columns_from_data, storage_options=kwargs.get('storage_options'))
 
@@ -387,8 +394,9 @@ class ParquetTarget(_Batching, _Writer):
         Optional. Defaults to None (will be inferred if event is dictionary).
     :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries.
         If True, columns will be inferred from data and used in place of explicit columns list if none was provided, or appended to the
-        provided list. If header is True and columns is not provided, infer_columns_from_data=True is implied.
-        Optional. Default to False if columns is provided, True otherwise.
+        provided list. If columns were not provided and infer_columns_from_data=False, PyArrow will infer the schema per file written,
+        which may cause the schemas to differ between files (e.g. if a column is all null in one file but not in another).
+        Optional. Defaults to False.
     :param partition_cols: Columns by which to partition the data into directories. The following metadata columns are also supported:
         $key, $date (e.g. 2020-02-09), $year, $month, $day, $hour, $minute, $second. A column may be specified as a tuple, such as
         ('$key', 64), which means partitioning by the event key hashed into 64 partitions.
@@ -442,6 +450,7 @@ class ParquetTarget(_Batching, _Writer):
 
         path_from_event = self._path_from_event if partition_cols else None
 
+
         _Batching.__init__(self, max_events=max_events, flush_after_seconds=flush_after_seconds, key=path_from_event,
                            **kwargs)
         _Writer.__init__(self, columns, infer_columns_from_data, index_cols, partition_cols,
@@ -461,9 +470,12 @@ class ParquetTarget(_Batching, _Writer):
 
     async def _emit(self, batch, batch_key, batch_time, last_event_time=None):
         df_columns = []
-        if self._index_cols:
-            df_columns.extend(self._index_cols)
-        df_columns.extend(self._non_partition_columns)
+        if self._non_partition_columns:
+            if self._index_cols:
+                df_columns.extend(self._index_cols)
+            df_columns.extend(self._non_partition_columns)
+        if not df_columns:
+            df_columns = None
         df = pd.DataFrame(batch, columns=df_columns)
         if self._index_cols:
             df.set_index(self._index_cols, inplace=True)
@@ -751,8 +763,24 @@ class StreamTarget(Flow, _Writer):
 
 
 class KafkaTarget(Flow, _Writer):
-    def __init__(self, bootstrap_servers: str, topic: str, sharding_func: Optional[Callable[[Event], int]] = None,
-                 columns: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None, **kwargs):
+    """Writes all incoming events into a Kafka stream.
+
+    :param topic: Kafka topic.
+    :param bootstrap_servers: Kafka bootstrap servers (brokers).
+    :param producer_options: Extra options to be passed as kwargs to kafka.KafkaProducer.
+    :param sharding_func: Function for determining the partition ID to which to write each event. Optional. Default is None
+    :param columns: Fields to be written to topic. Will be extracted from events when an event is a dictionary (other types will be written
+        as is). Use = notation for renaming fields (e.g. write_this=event_field). Use $ notation to refer to metadata
+        ($key, event_time=$time). Optional. Defaults to None (will be inferred if event is dictionary).
+    :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries. If True, columns will be
+        inferred from data and used in place of explicit columns list if none was provided, or appended to the provided list. If header is
+        True and columns is not provided, infer_columns_from_data=True is implied. Optional. Default to False if columns is provided,
+        True otherwise.
+    """
+
+    def __init__(self, bootstrap_servers: str, topic: str, producer_options: Optional[dict] = None,
+                 sharding_func: Optional[Callable[[Event], int]] = None, columns: Optional[List[str]] = None,
+                 infer_columns_from_data: Optional[bool] = None, **kwargs):
         if not bootstrap_servers:
             raise ValueError('bootstrap_servers must be defined')
         if not topic:
@@ -760,6 +788,7 @@ class KafkaTarget(Flow, _Writer):
 
         self._bootstrap_servers = bootstrap_servers
         self._topic = topic
+        self._producer_options = producer_options
 
         if sharding_func is not None and not callable(sharding_func):
             raise TypeError(f'Expected a callable, got {type(sharding_func)}')
@@ -781,7 +810,8 @@ class KafkaTarget(Flow, _Writer):
     async def _lazy_init(self):
         from kafka import KafkaProducer
         if not self._initialized:
-            self._producer = KafkaProducer(bootstrap_servers=self._bootstrap_servers)
+            kwargs = self._producer_options or {}
+            self._producer = KafkaProducer(bootstrap_servers=self._bootstrap_servers, **kwargs)
             self._initialized = True
 
     async def _do(self, event):
@@ -791,7 +821,9 @@ class KafkaTarget(Flow, _Writer):
             self._producer.close()
             return await self._do_downstream(_termination_obj)
         else:
-            key = stringify_key(event.key).encode("UTF-8")
+            key = None
+            if event.key is not None:
+                key = stringify_key(event.key).encode("UTF-8")
             record = self._event_to_writer_entry(event)
             record = json.dumps(record).encode("UTF-8")
             partition = None
