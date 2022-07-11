@@ -450,7 +450,6 @@ class ParquetTarget(_Batching, _Writer):
 
         path_from_event = self._path_from_event if partition_cols else None
 
-
         _Batching.__init__(self, max_events=max_events, flush_after_seconds=flush_after_seconds, key=path_from_event,
                            **kwargs)
         _Writer.__init__(self, columns, infer_columns_from_data, index_cols, partition_cols,
