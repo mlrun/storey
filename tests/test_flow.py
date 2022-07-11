@@ -1938,10 +1938,14 @@ def test_write_to_parquet_with_inference(tmpdir):
     ]).run()
 
     expected = []
+    controller.emit({'only_first_event': "first", 'my_int': -1}, key=f'first_key!')
+    expected.append([f'first_key!', "first", -1, None, None])
     for i in range(10):
         controller.emit({'my_int': i, 'my_string': f'this is {i}'}, key=f'key{i}')
-        expected.append([f'key{i}', i, f'this is {i}'])
-    expected = pd.DataFrame(expected, columns=['key', 'my_int', 'my_string'], dtype='int64')
+        expected.append([f'key{i}', None, i, f'this is {i}', None])
+    controller.emit({'only_last_event': "last", 'my_int': 1000}, key=f'last_key!')
+    expected.append([f'last_key!', None, 1000, None, "last"])
+    expected = pd.DataFrame(expected, columns=['key', 'only_first_event', 'my_int', 'my_string', 'only_last_event'], dtype='int64')
     expected.set_index(['key'], inplace=True)
     controller.terminate()
     controller.await_termination()

@@ -17,6 +17,12 @@ from .integration_test_utils import V3ioHeaders, append_return, test_base_time, 
     setup_teardown_test, \
     assign_stream_teardown_test, create_stream
 
+_prevents_ide_from_optimizing_these_away = [
+    setup_kv_teardown_test,
+    setup_teardown_test,
+    assign_stream_teardown_test,
+]
+
 
 class GetShardData(V3ioHeaders):
     async def get_shard_data(self, path):
@@ -122,7 +128,10 @@ def test_write_to_v3io_stream_timestamps(assign_stream_teardown_test):
     ]).run()
     controller.await_termination()
     shard0_data = asyncio.run(GetShardData().get_shard_data(f'{stream_path}/0'))
-    assert shard0_data == [b'{"datetime": "2012-08-08 21:46:24.862000", "string": "hello", "ts": "2018-05-07 13:52:37"}']
+    assert len(shard0_data) == 1
+    assert json.loads(shard0_data[0].decode("utf-8")) == {
+        "datetime": "2012-08-08 21:46:24.862000", "string": "hello", "ts": "2018-05-07 13:52:37"
+    }
 
 
 def test_write_to_v3io_stream_with_column_inference(assign_stream_teardown_test):
