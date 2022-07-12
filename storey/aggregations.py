@@ -262,7 +262,7 @@ class QueryByKey(AggregateByKey):
         if isinstance(table, Table):
             self._table = table
         for feature in features:
-            if re.match(r".*_[a-z]+_[0-9]+[smhd]", feature) and self._table and self._table._support_aggr:
+            if re.match(r'.*_[a-z]+_[0-9]+[smhd]$', feature) and self._table and self._table._support_aggr:
                 name, window = feature.rsplit('_', 1)
                 if name in resolved_aggrs:
                     resolved_aggrs[name].append(window)
