@@ -451,7 +451,8 @@ class ParquetTarget(_Batching, _Writer):
         path_from_event = self._path_from_event if partition_cols else None
 
         _Batching.__init__(self, max_events=max_events, flush_after_seconds=flush_after_seconds, key=path_from_event, **kwargs)
-        _Writer.__init__(self, columns, infer_columns_from_data, index_cols, partition_cols, retain_dict=True, storage_options=storage_options)
+        _Writer.__init__(self, columns, infer_columns_from_data, index_cols, partition_cols, retain_dict=True,
+                         storage_options=storage_options)
 
         self._field_extractor = lambda event_body, field_name: event_body.get(field_name)
         self._write_missing_fields = True
