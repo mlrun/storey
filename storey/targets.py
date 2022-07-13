@@ -880,3 +880,65 @@ class NoSqlTarget(_Writer, Flow):
                 self._table._update_static_attrs(key, data_to_persist)
             self._table._init_flush_task()
             await self._do_downstream(event)
+
+
+class RedisNoSqlTarget(_Writer, Flow):
+    """
+    Persists the data in `table` to its associated storage by key.
+
+    :param table: A Table object or name to persist. If a table name is provided, it will be looked up in the context.
+    :param columns: Fields to be written to the storage. Will be extracted from events when an event is a dictionary (lists will be written
+        as is). Use = notation for renaming fields (e.g. write_this=event_field).
+        Use $ notation to refer to metadata ($key, event_time=$time). Optional. Defaults to None (will be inferred if event is dictionary).
+    :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries. If True, columns will be
+        inferred from data and used in place of explicit columns list if none was provided, or appended to the provided list. If header is
+        True and columns is not provided, infer_columns_from_data=True is implied. Optional. Default to False if columns is provided, True
+        otherwise.
+    :param storage_options: Extra options that make sense for a particular storage connection, e.g. host, port, username, password, etc.,
+        if using a URL that will be parsed by fsspec, e.g., starting “s3://”, “gcs://”. Optional
+    :type storage_options: dict
+    """
+
+    def __init__(self, table: Union[Table, str], columns: Optional[List[Union[str, Tuple[str, str]]]] = None,
+                 infer_columns_from_data: Optional[bool] = None, **kwargs):
+        kwargs['table'] = table
+        if columns:
+            kwargs['columns'] = columns
+        if infer_columns_from_data:
+            kwargs['infer_columns_from_data'] = infer_columns_from_data
+        Flow.__init__(self, **kwargs)
+        _Writer.__init__(self, columns, infer_columns_from_data, retain_dict=True)
+        self._table = table
+        if isinstance(table, str):
+            if not self.context:
+                raise TypeError("Table can not be string if no context was provided to the step")
+            self._table = self.context.get_table(table)
+        self._closeables = [self._table]
+
+        self._field_extractor = lambda event_body, field_name: event_body.get(field_name)
+        self._write_missing_fields = False
+
+    def _init(self):
+        _Writer._init(self)
+
+    async def _handle_completed(self, event, response):
+        await self._do_downstream(event)
+
+    async def _do(self, event):
+        if event is _termination_obj:
+            await self._table._terminate()
+            return await self._do_downstream(_termination_obj)
+
+        if event.key is None:
+            raise ValueError("Event could not be written to table because it has no key")
+
+        key = stringify_key(event.key)
+        if not self._table._flush_interval_secs:
+            data_to_persist = self._event_to_writer_entry(event)
+            await self._table._persist(_PersistJob(key, data_to_persist, self._handle_completed, event))
+        else:
+            data_to_persist = self._event_to_writer_entry(event)
+            async with self._table._get_lock(key):
+                self._table._update_static_attrs(key, data_to_persist)
+            self._table._init_flush_task()
+            await self._do_downstream(event)
