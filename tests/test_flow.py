@@ -21,7 +21,7 @@ from storey import build_flow, SyncEmitSource, Map, Filter, FlatMap, Reduce, Map
     AsyncEmitSource, Choice, \
     Event, Batch, Table, CSVTarget, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, \
     ParquetTarget, QueryByKey, \
-    TSDBTarget, Extend, SendToHttp, HttpRequest, NoSqlTarget, NoopDriver, Driver, Recover, V3ioDriver, ParquetSource
+    TSDBTarget, Extend, SendToHttp, HttpRequest, NoSqlTarget, RedisNoSqlTarget, NoopDriver, Driver, Recover, V3ioDriver, ParquetSource
 from storey.flow import _ConcurrentJobExecution, Context, ReifyMetadata, Rename
 from integration.integration_test_utils import append_return
 
@@ -3333,14 +3333,14 @@ def test_redis_driver_write(redis):
     driver = RedisDriver(redis)
     controller = build_flow([
         SyncEmitSource(),
-        NoSqlTarget(Table('test', driver)),
+        RedisNoSqlTarget(Table('test', driver)),
         Complete()
     ]).run()
     controller.emit({'col1': 0}, 'key').await_result()
     controller.terminate()
     controller.await_termination()
 
-    data = driver.redis.hgetall("storey:test:/:key:static")
+    data = driver.redis.hgetall("storey:test/key:static")
     data_strings = {}
     for key, val in data.items():
         if isinstance(key,bytes):
@@ -3356,7 +3356,7 @@ def test_redis_driver_join(redis):
     table = Table('test', driver)
 
     # Create the data we'll join with in Redis.
-    driver.redis.hset("storey:test:/:1:static", mapping={"name": "1234"})
+    driver.redis.hset("storey:test/1:static", mapping={"name": "1234"})
     controller = build_flow([
         SyncEmitSource(),
         JoinWithTable(table, lambda x: x['col2']),
@@ -3379,7 +3379,7 @@ def test_redis_driver_read(redis):
 
     write_controller = build_flow([
         SyncEmitSource(),
-        NoSqlTarget(Table('test', driver)),
+        RedisNoSqlTarget(Table('test', driver)),
         Complete()
     ]).run()
     write_controller.emit({'col1': 0}, 'key').await_result()
