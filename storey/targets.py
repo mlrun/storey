@@ -244,6 +244,8 @@ class _Writer:
             self._get_column_data_from_dict(data, event, self._non_partition_columns, self._non_partition_column_types,
                                             self._metadata_columns, self._rename_columns)
             if not self._non_partition_columns:
+                if not isinstance(data, dict) or not isinstance(event.body, dict):
+                    raise ValueError("List data type is only supported when columns is provided or infer_columns_from_data is True")
                 data.update(event.body)
         elif isinstance(data, list):
             for index in self._partition_col_indices:

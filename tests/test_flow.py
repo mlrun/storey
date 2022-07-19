@@ -2148,6 +2148,64 @@ def test_write_to_tsdb():
         i += 1
 
 
+def test_write_dict_to_tsdb():
+    mock_frames_client = MockFramesClient()
+
+    controller = build_flow([
+        SyncEmitSource(),
+        TSDBTarget(path='container/some/path', time_col='time', index_cols='node', rate='1/h', infer_columns_from_data=True,
+                   max_events=1,
+                   frames_client=mock_frames_client)
+    ]).run()
+
+    expected_data = []
+    date_time_str = '18/09/19 01:55:1'
+    for i in range(9):
+        now = datetime.strptime(date_time_str + str(i) + ' UTC-0000', '%d/%m/%y %H:%M:%S UTC%z')
+        controller.emit({'time': now, 'node': i, 'cpu': i + 1, 'disk': i + 2})
+        expected_data.append([now, i, i + 1, i + 2])
+
+    controller.terminate()
+    controller.await_termination()
+
+    expected_create = (
+        'create', {'if_exists': 1, 'rate': '1/h', 'aggregates': '', 'aggregation_granularity': '', 'backend': 'tsdb',
+                   'table': '/some/path'})
+    assert mock_frames_client.call_log[0] == expected_create
+    i = 0
+    for write_call in mock_frames_client.call_log[1:]:
+        assert write_call[0] == 'write'
+        expected = pd.DataFrame([expected_data[i]], columns=['time', 'node', 'cpu', 'disk'])
+        expected.set_index(keys=['time', 'node'], inplace=True)
+        res = write_call[1]['dfs']
+        assert expected.equals(res), f"result{res}\n!=\nexpected{expected}"
+        del write_call[1]['dfs']
+        assert write_call[1] == {'backend': 'tsdb', 'table': '/some/path'}
+        i += 1
+
+
+def test_write_dict_to_tsdb_error():
+    mock_frames_client = MockFramesClient()
+
+    controller = build_flow([
+        SyncEmitSource(),
+        TSDBTarget(path='container/some/path', time_col='time', index_cols='node', rate='1/h',
+                   max_events=1,
+                   frames_client=mock_frames_client)
+    ]).run()
+
+    expected_data = []
+    date_time_str = '18/09/19 01:55:1'
+    for i in range(9):
+        now = datetime.strptime(date_time_str + str(i) + ' UTC-0000', '%d/%m/%y %H:%M:%S UTC%z')
+        controller.emit({'time': now, 'node': i, 'cpu': i + 1, 'disk': i + 2})
+        expected_data.append([now, i, i + 1, i + 2])
+
+    controller.terminate()
+    with pytest.raises(ValueError):
+        controller.await_termination()
+
+
 def test_write_to_tsdb_with_key_index():
     mock_frames_client = MockFramesClient()
 
