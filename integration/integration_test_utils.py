@@ -11,10 +11,9 @@ import aiohttp
 import pytest
 import redis as r
 
-from storey.drivers import NeedsV3ioAccess, RedisDriver
+from storey.drivers import NeedsV3ioAccess
 from storey.flow import V3ioError
 
-REDIS_ENDPOINT = os.environ.get('REDIS_URL')
 _non_int_char_pattern = re.compile(r"[^-0-9]")
 test_base_time = datetime.fromisoformat("2020-07-21T21:40:00+00:00")
 
