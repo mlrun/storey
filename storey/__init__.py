@@ -10,7 +10,10 @@ from .dataframe import (  # noqa: F401
     ToDataFrame, ReduceToDataFrame
 )
 from .drivers import (  # noqa: F401
-    Driver, NoopDriver, V3ioDriver, RedisDriver
+    Driver, NoopDriver, V3ioDriver
+)
+from .redis_driver import (
+    RedisDriver
 )
 from .dtypes import (  # noqa: F401
     Event, FieldAggregator, SlidingWindows, FixedWindows, EmissionType, EmitPolicy, EmitAfterPeriod, EmitAfterWindow, EmitAfterMaxEvent,

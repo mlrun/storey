@@ -408,7 +408,7 @@ def test_write_parquet_read_parquet_partitioned(tmpdir):
 
 
 from unittest.mock import MagicMock
-from storey.drivers import RedisDriver
+from storey.redis_driver import RedisDriver
 from storey.aggregations import AggregateByKey
 from storey.dtypes import FieldAggregator, FixedWindows, SlidingWindows
 
