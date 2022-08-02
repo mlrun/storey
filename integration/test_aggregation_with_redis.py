@@ -1,11 +1,10 @@
 import asyncio
-import datetime
 import math
 from datetime import timedelta
 
 import pandas as pd
 import pytest
-from storey import (AggregateByKey, Context, CSVSource, DataframeSource,
+from storey import (AggregateByKey, Context, DataframeSource,
                     FieldAggregator, Map, MapWithState, NoSqlTarget,
                     QueryByKey, RedisDriver, Reduce, SyncEmitSource, Table,
                     build_flow)

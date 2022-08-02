@@ -3440,6 +3440,7 @@ def test_rename():
     termination_result = controller.await_termination()
     assert termination_result == [{'b': 1, 'c': 3, 'e': 5}]
 
+
 def test_redis_driver_write(redis):
     driver = RedisDriver(redis)
     controller = build_flow([

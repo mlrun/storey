@@ -455,7 +455,6 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
                         aggregations[feature_and_aggr_name] = {}
                     aggregations[feature_and_aggr_name][time_in_millis] = value
                     aggregations[feature_and_aggr_name][associated_time_attr] = time_in_millis
-
                 elif not name.startswith(self._aggregation_time_attribute_prefix):
                     additional_data[name] = value
             return aggregations, additional_data

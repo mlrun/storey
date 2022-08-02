@@ -64,10 +64,6 @@ class RedisError(Exception):
     pass
 
 
-class RedisTimeoutError(Exception):
-    pass
-
-
 class FlowError(Exception):
     pass
 

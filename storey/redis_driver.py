@@ -6,13 +6,16 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import List, Union, Optional
 import pandas as pd
+import asyncio
+import concurrent
+from functools import partial
 
 from .drivers import Driver
 
 import redis
 import rediscluster
 from .dtypes import RedisError
-from .utils import schema_file_name, asyncify
+from .utils import schema_file_name
 
 
 class RedisType(Enum):
@@ -64,6 +67,16 @@ class RedisDriver(NeedsRedisAccess, Driver):
         self._aggregation_time_attribute_prefix = aggregation_time_attribute_prefix
         self._aggregation_prefixes = (self._aggregation_attribute_prefix,
                                       self._aggregation_time_attribute_prefix)
+
+        self._thread_pool = concurrent.futures.ThreadPoolExecutor()
+
+    def asyncify(self, fn):
+        """Run a synchronous function asynchronously."""
+        async def inner_fn(*args, **kwargs):
+            loop = asyncio.get_event_loop()
+            partial_hset = partial(fn, *args, **kwargs)
+            return await loop.run_in_executor(self._thread_pool, partial_hset)
+        return inner_fn
 
     @property
     def redis(self):
@@ -118,12 +131,13 @@ class RedisDriver(NeedsRedisAccess, Driver):
             if isinstance(value, float):
                 if value == math.inf or value == -math.inf:
                     # Use the shorter infinity form (inf, -inf) to save space.
-                    value = f'{str(value)}'
-                elif not value % 1:
+                    value = str(value)
+                elif value % 1 == 0:
                     # Store whole numbers as integers to save space.
                     value = int(value)
             return json.dumps(value)
 
+    @classmethod
     def _convert_python_obj_to_lua_value(cls, value):
         if isinstance(value, datetime):
             if pd.isnull(value):
@@ -139,7 +153,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
                     value = "math.huge"
                 elif value == -math.inf:
                     value = "-math.huge"
-                elif not value % 1:
+                elif value % 1 == 0:
                     # Store whole numbers as integers to save space.
                     value = int(value)
 
@@ -163,14 +177,10 @@ class RedisDriver(NeedsRedisAccess, Driver):
 
     @classmethod
     def _convert_to_str(cls, key):
-        try:
-            if isinstance(key, bytes):
-                return key.decode('utf-8')
-            else:
-                return key
-        except Exception as e:
-            print(e)
-            # Logs the error appropriately.
+        if isinstance(key, bytes):
+            return key.decode('utf-8')
+        else:
+            return key
 
     def _discard_old_pending_items(self, pending, max_window_millis):
         res = {}
@@ -183,7 +193,6 @@ class RedisDriver(NeedsRedisAccess, Driver):
         return res
 
     def _build_feature_store_lua_update_script(self, redis_key_prefix, aggregation_element, partitioned_by_key, additional_data):
-        lua_script = None
         redis_keys_involved = []
         pending_updates = {}
         condition_expression = None
@@ -199,8 +208,6 @@ class RedisDriver(NeedsRedisAccess, Driver):
                 # to delete will appear in the `additional_data` dict with a
                 # "falsey" value. This is the same logic the V3ioDriver uses.
                 if expression_value:
-                    # additional_data_lua_script = f"""{additional_data_lua_script}
-                    #                             """
                     additional_data_lua_script = f'{additional_data_lua_script}\
                         redis.call("HSET",additional_data_key, "{name}", {expression_value});\n'
                 else:
@@ -221,7 +228,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
             for name, bucket in aggregation_element.aggregation_buckets.items():
                 # Only save raw aggregates, not virtual
                 if bucket.should_persist:
-                    # In case we have pending data that spreads over more then 2 windows, discard the old ones.
+                    # In case we have pending data that spreads over more than 2 windows, discard the old ones.
                     pending_updates[name] = self._discard_old_pending_items(bucket.get_and_flush_pending(),
                                                                             bucket.max_window_millis)
                     for bucket_start_time, aggregation_values in pending_updates[name].items():
@@ -259,10 +266,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
 
                             # Updating the specific cells
                             if cached_time <= expected_time:
-                                # condition = None
-                                # if partitioned_by_key and self._mtime_name in aggregation_element.storage_specific_cache:
-                                #     condition = aggregation_element.storage_specific_cache[self._mtime_name]
-                                lua_script = f'{lua_script}local old_value=redis.call("LINDEX", list_attribute_key, {index_to_update});\
+                                lua_script = f'{lua_script}local old_value=redis.call("LINDEX",list_attribute_key,{index_to_update});\
                                     old_value=tonum(old_value);\n'
                                 lua_script = f'{lua_script}old_value=tonum(old_value)\n'
                                 new_value_expression = aggregation_value.aggregate_lua_script('old_value', aggregation_value.value)
@@ -289,7 +293,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
 
         redis_keys_involved.append(redis_key_prefix)
         update_expression = f"""{update_expression}"""
-        update_ok = await asyncify(self.redis.eval)(update_expression, len(redis_keys_involved), *redis_keys_involved)
+        update_ok = await self.asyncify(self.redis.eval)(update_expression, len(redis_keys_involved), *redis_keys_involved)
         # should_raise_error = False
 
         if update_ok:
@@ -301,23 +305,15 @@ class RedisDriver(NeedsRedisAccess, Driver):
                 redis_key_prefix, aggr_item, False, additional_data)
             update_expression = f'{update_expression}redis.call("HSET","{redis_key_prefix}","{self._mtime_name}",{current_time});return 1;'
             redis_keys_involved.append(redis_key_prefix)
-            update_ok = await asyncify(self.redis.eval)(update_expression, len(redis_keys_involved), *redis_keys_involved)
+            update_ok = await self.asyncify(self.redis.eval)(update_expression, len(redis_keys_involved), *redis_keys_involved)
             if update_ok and aggr_item:
                 await self._fetch_state_by_key(aggr_item, container, table_path, key)
-            # else:
-                # should_raise_error = True
-
-        # if should_raise_error:
-        #     raise RedisError(
-        #         f'Failed to save aggregation for {table_path}/{key}. Response status code was {response.status_code}: {response.body}\n'
-        #         f'Update expression was: {update_expression}'
-        #     )
 
     async def _get_all_fields(self, redis_key: str):
         try:
             # TODO: This should be HSCAN, not HGETALL, to avoid blocking Redis
             # with very large hashes.
-            values = await asyncify(self.redis.hgetall)(redis_key)
+            values = await self.asyncify(self.redis.hgetall)(redis_key)
         except redis.ResponseError as e:
             raise RedisError(f'Failed to get key {redis_key}. Response error was: {e}')
         res = {self._convert_to_str(key): self._convert_redis_value_to_python_obj(val) for key, val in values.items()
@@ -330,7 +326,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
             if not name.startswith(self._aggregation_prefixes)
         ]
         try:
-            values = await asyncify(self.redis.hmget)(redis_key, non_aggregation_attrs)
+            values = await self.asyncify(self.redis.hmget)(redis_key, non_aggregation_attrs)
         except redis.ResponseError as e:
             raise RedisError(f'Failed to get key {redis_key}. Response error was: {e}') from e
         return [{self._convert_to_str(k): self._convert_redis_value_to_python_obj(v)} for k, v in values.items()]
@@ -357,7 +353,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
         feature_with_relevant_attr = f"{feature_name_only}{aggr_name[-2:]}"
         associated_time_key = self._aggregation_time_key(redis_key_prefix,
                                                          feature_with_relevant_attr)
-        time_val = await asyncify(self.redis.get)(associated_time_key)
+        time_val = await self.asyncify(self.redis.get)(associated_time_key)
         time_val = self._convert_to_str(time_val)
 
         try:
@@ -388,10 +384,10 @@ class RedisDriver(NeedsRedisAccess, Driver):
         # Aggregation Redis keys start with the Redis key prefix for this Storey container, table
         # path, and "key," followed by ":aggr_"
         aggr_key_prefix = f"{redis_key_prefix}:{self._aggregation_attribute_prefix}"
-        # XXX: We can't use `async for` here...
+        # We can't use `async for` here...
         for aggr_key in self.redis.scan_iter(f"{aggr_key_prefix}*"):
             aggr_key = self._convert_to_str(aggr_key)
-            value = await asyncify(self.redis.lrange)(aggr_key, 0, -1)
+            value = await self.asyncify(self.redis.lrange)(aggr_key, 0, -1)
             # Build an attribute for this aggregation in the format that Storey
             # expects to receive from this method. The feature and aggregation
             # name are embedded in the Redis key. Also, drop the "_a" or "_b"
@@ -423,10 +419,10 @@ class RedisDriver(NeedsRedisAccess, Driver):
 
         redis_key_prefix = self.make_key(container, table_path, key)
         aggr_key_prefix = f"{redis_key_prefix}:{self._aggregation_attribute_prefix}"
-        # XXX: We can't use `async for` here...
+        # We can't use `async for` here...
         for aggr_key in self.redis.scan_iter(f"{aggr_key_prefix}*"):
             aggr_key = self._convert_to_str(aggr_key)
-            value = await asyncify(self.redis.lrange)(aggr_key, 0, -1)
+            value = await self.asyncify(self.redis.lrange)(aggr_key, 0, -1)
             # Build an attribute for this aggregation in the format that Storey
             # expects to receive from this method. The feature and aggregation
             # name are embedded in the Redis key. Also, drop the "_a" or "_b"
@@ -453,10 +449,10 @@ class RedisDriver(NeedsRedisAccess, Driver):
 
     async def _save_schema(self, container, table_path, schema):
         redis_key = self.make_key(container, table_path, schema_file_name)
-        await asyncify(self.redis.set)(redis_key, json.dumps(schema))
+        await self.asyncify(self.redis.set)(redis_key, json.dumps(schema))
 
     async def _load_schema(self, container, table_path):
         redis_key = self.make_key(container, table_path, schema_file_name)
-        schema = await asyncify(self.redis.get)(redis_key)
+        schema = await self.asyncify(self.redis.get)(redis_key)
         if schema:
             return json.loads(schema)

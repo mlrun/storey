@@ -12,7 +12,7 @@ from .dataframe import (  # noqa: F401
 from .drivers import (  # noqa: F401
     Driver, NoopDriver, V3ioDriver
 )
-from .redis_driver import (
+from .redis_driver import (  # noqa: F401
     RedisDriver
 )
 from .dtypes import (  # noqa: F401

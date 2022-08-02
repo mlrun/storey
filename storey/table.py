@@ -975,9 +975,6 @@ class AggregationValue:
     def aggregate_lua_script(self):
         raise NotImplementedError()
 
-    def aggregate_argument(self, time, argument):
-        return self.aggregate(time, argument)
-
     @staticmethod
     def new_from_name(aggregation, max_value=None, set_data=None, set_time=None):
         if aggregation == 'min':
@@ -1036,7 +1033,7 @@ class MinValue(AggregationValue):
             self.value = float(value)
 
     def aggregate_lua_script(self, vl1, vl2):
-        return 'type({}) == "number" and math.min({},{}) or {}'.format(vl1, vl1, vl2, vl2)
+        return f'type({vl1}) == "number" and math.min({vl1},{vl2}) or {vl2}'
 
 
 class MaxValue(AggregationValue):
@@ -1054,7 +1051,7 @@ class MaxValue(AggregationValue):
         return f'max({old}, {self.value})'
 
     def aggregate_lua_script(self, vl1, vl2):
-        return 'type({}) == "number" and math.max({},{}) or {}'.format(vl1, vl1, vl2, vl2)
+        return f'type({vl1}) == "number" and math.max({vl1},{vl2}) or {vl2}'
 
 
 class SumValue(AggregationValue):
@@ -1068,7 +1065,7 @@ class SumValue(AggregationValue):
         self._set_value(self.value + value)
 
     def aggregate_lua_script(self, vl1, vl2):
-        return '{}+{}'.format(vl1, vl2)
+        return f'{vl1}+{vl2}'
 
 
 class CountValue(AggregationValue):
@@ -1081,11 +1078,8 @@ class CountValue(AggregationValue):
     def aggregate(self, time, value):
         self._set_value(self.value + 1)
 
-    def aggregate_argument(self, time, argument):
-        self._set_value(self.value + argument)
-
     def aggregate_lua_script(self, vl1, vl2):
-        return '{}+{}'.format(vl1, vl2)
+        return f'{vl1}+{vl2}'
 
 
 class SqrValue(AggregationValue):
@@ -1098,11 +1092,8 @@ class SqrValue(AggregationValue):
     def aggregate(self, time, value):
         self._set_value(self.value + value * value)
 
-    def aggregate_argument(self, time, argument):
-        self._set_value(self.value + argument)
-
     def aggregate_lua_script(self, vl1, vl2):
-        return '{}+{}'.format(vl1, vl2)
+        return f'{vl1}+{vl2}'
 
 
 class LastValue(AggregationValue):
