@@ -802,6 +802,8 @@ class _ConcurrentJobExecution(Flow):
             if self._queue_size > 0:
                 await self._q.put(_termination_obj)
                 await self._worker_awaitable
+            else:
+                await self._cleanup()
             return await self._do_downstream(_termination_obj)
         else:
             coroutine = self._process_event_with_retries(event)
