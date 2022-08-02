@@ -91,7 +91,7 @@ def test_multiple_upstreams_completion():
     results = []
     try:
         for i in range(3):
-            result = controller.emit(i, return_awaitable_result=True, expected_number_of_results=2).await_result()
+            result = controller.emit(i, expected_number_of_results=2).await_result()
             results.append(result)
     finally:
         controller.terminate()
@@ -861,7 +861,7 @@ async def async_test_async_awaitable_result_error():
     except ValueError:
         pass
     finally:
-        controller.terminate()
+        await controller.terminate()
 
 
 def test_async_awaitable_result_error():
