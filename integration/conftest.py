@@ -6,13 +6,13 @@ import pytest
 
 from storey import RedisDriver
 
-REDIS_ENDPOINT = os.environ.get('REDIS_URL')
+REDIS_URL = os.environ.get('REDIS_URL')
 
 
 @pytest.fixture()
 def redis():
-    if REDIS_ENDPOINT:
-        yield r.Redis.from_url(REDIS_ENDPOINT)
+    if REDIS_URL:
+        yield r.Redis.from_url(REDIS_URL)
     else:
         yield fakeredis.FakeRedis(decode_responses=True)
 
