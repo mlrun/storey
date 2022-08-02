@@ -2196,13 +2196,13 @@ def test_write_dict_to_tsdb_error():
 
     expected_data = []
     date_time_str = '18/09/19 01:55:1'
-    for i in range(9):
-        now = datetime.strptime(date_time_str + str(i) + ' UTC-0000', '%d/%m/%y %H:%M:%S UTC%z')
-        controller.emit({'time': now, 'node': i, 'cpu': i + 1, 'disk': i + 2})
-        expected_data.append([now, i, i + 1, i + 2])
-
-    controller.terminate()
     with pytest.raises(ValueError):
+        for i in range(9):
+            now = datetime.strptime(date_time_str + str(i) + ' UTC-0000', '%d/%m/%y %H:%M:%S UTC%z')
+            controller.emit({'time': now, 'node': i, 'cpu': i + 1, 'disk': i + 2})
+            expected_data.append([now, i, i + 1, i + 2])
+
+        controller.terminate()
         controller.await_termination()
 
 
