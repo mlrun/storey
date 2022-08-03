@@ -91,7 +91,7 @@ def test_multiple_upstreams_completion():
     results = []
     try:
         for i in range(3):
-            result = controller.emit(i, return_awaitable_result=True, expected_number_of_results=2).await_result()
+            result = controller.emit(i, expected_number_of_results=2).await_result()
             results.append(result)
     finally:
         controller.terminate()
@@ -861,7 +861,7 @@ async def async_test_async_awaitable_result_error():
     except ValueError:
         pass
     finally:
-        controller.terminate()
+        await controller.terminate()
 
 
 def test_async_awaitable_result_error():
@@ -2196,13 +2196,13 @@ def test_write_dict_to_tsdb_error():
 
     expected_data = []
     date_time_str = '18/09/19 01:55:1'
-    for i in range(9):
-        now = datetime.strptime(date_time_str + str(i) + ' UTC-0000', '%d/%m/%y %H:%M:%S UTC%z')
-        controller.emit({'time': now, 'node': i, 'cpu': i + 1, 'disk': i + 2})
-        expected_data.append([now, i, i + 1, i + 2])
-
-    controller.terminate()
     with pytest.raises(ValueError):
+        for i in range(9):
+            now = datetime.strptime(date_time_str + str(i) + ' UTC-0000', '%d/%m/%y %H:%M:%S UTC%z')
+            controller.emit({'time': now, 'node': i, 'cpu': i + 1, 'disk': i + 2})
+            expected_data.append([now, i, i + 1, i + 2])
+
+        controller.terminate()
         controller.await_termination()
 
 
