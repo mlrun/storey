@@ -9,7 +9,6 @@ import pandas as pd
 import asyncio
 import concurrent
 from functools import partial
-
 from .drivers import Driver
 
 import redis
@@ -161,19 +160,30 @@ class RedisDriver(NeedsRedisAccess, Driver):
 
     @classmethod
     def _convert_redis_value_to_python_obj(cls, value):
-        value = cls._convert_to_str(value)
+        str_value = cls._convert_to_str(value)
+
+        value = str_value.lower()
         if value.startswith(cls.TIMEDELTA_FIELD_PREFIX):
-            return timedelta(seconds=float(value.split(":")[1]))
+            ret = timedelta(seconds=float(value.split(":")[1]))
         elif value.startswith(cls.DATETIME_FIELD_PREFIX):
-            return datetime.fromtimestamp(float(value.split(":")[1]), tz=timezone.utc)
+            ret = datetime.fromtimestamp(float(value.split(":")[1]), tz=timezone.utc)
         elif value == "inf":
-            return math.inf
+            ret = math.inf
         elif value == "-inf":
-            return -math.inf
-        try:
-            return json.loads(value)
-        except Exception:
-            return value
+            ret = -math.inf
+        elif value == "true":
+            ret = True
+        elif value == "false":
+            ret = False
+        else:
+            # if value is a number, convert type to int / float
+            if value[0] in ('-', '+'):
+                value = value[1:]
+            if value.replace('.', '', 1).isdigit():
+                ret = int(value) if int(float(value)) == float(value) else float(value)
+            else:
+                ret = str_value
+        return ret
 
     @classmethod
     def _convert_to_str(cls, key):
