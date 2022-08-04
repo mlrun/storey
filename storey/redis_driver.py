@@ -30,17 +30,17 @@ class NeedsRedisAccess:
 
     """
 
-    def __init__(self, webapi=None):
-        webapi = webapi or os.getenv('REDIS_URL')
-        if not webapi:
-            self._webapi_url = None
+    def __init__(self, redis_url=None):
+        redis_url = redis_url or os.getenv('REDIS_URL')
+        if not redis_url:
+            self._redis_url = None
             print('Missing webapi parameter or REDIS_URL environment variable. Using fakeredit instead')
             return
 
-        if not webapi.startswith('redis://'):
-            webapi = f'redis://{webapi}'
+        if not redis_url.startswith('redis://'):
+            redis_url = f'redis://{redis_url}'
 
-        self._webapi_url = webapi
+        self._redis_url = redis_url
 
 
 class RedisDriver(NeedsRedisAccess, Driver):
@@ -53,11 +53,11 @@ class RedisDriver(NeedsRedisAccess, Driver):
     def __init__(self, redis_client: Optional[Union[redis.Redis, rediscluster.RedisCluster]] = None,
                  redis_type: RedisType = RedisType.STANDALONE,
                  key_prefix: str = None,
-                 webapi: Optional[str] = None,
+                 redis_url: Optional[str] = None,
                  aggregation_attribute_prefix: str = 'aggr_',
                  aggregation_time_attribute_prefix: str = '_'):
 
-        NeedsRedisAccess.__init__(self, webapi)
+        NeedsRedisAccess.__init__(self, redis_url)
         self._redis = redis_client
         self._key_prefix = key_prefix if key_prefix else self.DEFAULT_KEY_PREFIX
         self._type = redis_type
@@ -83,8 +83,8 @@ class RedisDriver(NeedsRedisAccess, Driver):
         if self._redis:
             return self._redis
         if self._type is RedisType.STANDALONE:
-            return redis.Redis.from_url(self._webapi_url, decode_responses=True)
-        self._redis = rediscluster.RedisCluster.from_url(self._webapi_url, decode_response=True)
+            return redis.Redis.from_url(self._redis_url, decode_responses=True)
+        self._redis = rediscluster.RedisCluster.from_url(self._redis_url, decode_response=True)
         return self._redis
 
     def make_key(self, *parts):
