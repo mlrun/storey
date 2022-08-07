@@ -3491,7 +3491,7 @@ def test_redis_driver_read(redis):
 
     write_controller = build_flow([
         SyncEmitSource(),
-        RedisNoSqlTarget(Table('test', driver)),
+        NoSqlTarget(Table('test', driver)),
         Complete()
     ]).run()
     write_controller.emit({'col1': 0}, 'key').await_result()
