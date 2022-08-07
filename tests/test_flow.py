@@ -980,19 +980,6 @@ def test_awaitable_result_error_in_by_key_async_downstream():
     finally:
         controller.terminate()
 
-def test_assafb():
-    controller = build_flow([
-        SyncEmitSource(),
-        CSVTarget('myfile.csv', columns=['n', 'n*10'], header=True)
-    ]).run()
-
-    for i in range(10):
-        controller.emit({'n': i, 'n*10': 10 * i})
-
-    controller.terminate()
-    controller.await_termination()
-    import pdb; pdb.set_trace()
-
 
 def test_error_async_flow():
     loop = asyncio.new_event_loop()
