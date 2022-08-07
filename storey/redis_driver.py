@@ -48,6 +48,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
     DATETIME_FIELD_PREFIX = "_dt:"
     TIMEDELTA_FIELD_PREFIX = "_td:"
     DEFAULT_KEY_PREFIX = "storey:"
+    _thread_pool = concurrent.futures.ThreadPoolExecutor()
 
     def __init__(self, redis_client: Optional[Union[redis.Redis, rediscluster.RedisCluster]] = None,
                  redis_type: RedisType = RedisType.STANDALONE,
@@ -67,14 +68,12 @@ class RedisDriver(NeedsRedisAccess, Driver):
         self._aggregation_prefixes = (self._aggregation_attribute_prefix,
                                       self._aggregation_time_attribute_prefix)
 
-        self._thread_pool = concurrent.futures.ThreadPoolExecutor()
-
     def asyncify(self, fn):
         """Run a synchronous function asynchronously."""
         async def inner_fn(*args, **kwargs):
             loop = asyncio.get_event_loop()
             partial_hset = partial(fn, *args, **kwargs)
-            return await loop.run_in_executor(self._thread_pool, partial_hset)
+            return await loop.run_in_executor(RedisDriver._thread_pool, partial_hset)
         return inner_fn
 
     @property

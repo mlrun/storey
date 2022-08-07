@@ -21,7 +21,7 @@ from storey import build_flow, SyncEmitSource, Map, Filter, FlatMap, Reduce, Map
     AsyncEmitSource, Choice, \
     Event, Batch, Table, CSVTarget, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, \
     ParquetTarget, QueryByKey, \
-    TSDBTarget, Extend, SendToHttp, HttpRequest, NoSqlTarget, RedisNoSqlTarget, NoopDriver, Driver, Recover, V3ioDriver, ParquetSource
+    TSDBTarget, Extend, SendToHttp, HttpRequest, NoSqlTarget, NoopDriver, Driver, Recover, V3ioDriver, ParquetSource
 from storey.flow import _ConcurrentJobExecution, Context, ReifyMetadata, Rename
 from integration.integration_test_utils import append_return
 
@@ -979,6 +979,19 @@ def test_awaitable_result_error_in_by_key_async_downstream():
         pass
     finally:
         controller.terminate()
+
+def test_assafb():
+    controller = build_flow([
+        SyncEmitSource(),
+        CSVTarget('myfile.csv', columns=['n', 'n*10'], header=True)
+    ]).run()
+
+    for i in range(10):
+        controller.emit({'n': i, 'n*10': 10 * i})
+
+    controller.terminate()
+    controller.await_termination()
+    import pdb; pdb.set_trace()
 
 
 def test_error_async_flow():
@@ -3445,7 +3458,7 @@ def test_redis_driver_write(redis):
     driver = RedisDriver(redis)
     controller = build_flow([
         SyncEmitSource(),
-        RedisNoSqlTarget(Table('test', driver)),
+        NoSqlTarget(Table('test', driver)),
         Complete()
     ]).run()
     controller.emit({'col1': 0}, 'key').await_result()
