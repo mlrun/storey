@@ -24,7 +24,7 @@ class Table:
      """
 
     def __init__(self, table_path: str, storage: Driver, partitioned_by_key: bool = True,
-                 flush_interval_secs: Optional[int] = 300, max_updates_in_flight: int = 8):
+                 flush_interval_secs: Optional[int] = 300, max_updates_in_flight: int = 8, support_aggr=True):
         self._container, self._table_path = _split_path(table_path)
         self._storage = storage
         self._partitioned_by_key = partitioned_by_key
@@ -43,6 +43,7 @@ class Table:
         self._flush_exception = None
         self._changed_keys = set()
         self.fixed_window_type = None
+        self._support_aggr = support_aggr
 
     def __str__(self):
         return f'{self._container}/{self._table_path}'
