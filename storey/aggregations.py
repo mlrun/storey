@@ -251,7 +251,6 @@ class QueryByKey(AggregateByKey):
                  fixed_window_type: Optional[FixedWindowType] = FixedWindowType.CurrentOpenWindow, **kwargs):
         self._aggrs = []
         self._enrich_cols = []
-        self._support_aggr = False
         self._table = None
         resolved_aggrs = {}
         Flow.__init__(self, **kwargs)
