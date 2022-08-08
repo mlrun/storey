@@ -28,7 +28,7 @@ extras_require = {
     "az": ["adlfs~=0.5"],
     "kafka": ["kafka-python~=2.0"],
     "redis": ["redis~=3.5"],
-    "redis-cluster": ["redis-py-cluster~=2.1.3"],
+    "redis-cluster": ["redis-py-cluster~=2.1"],
     "lupa": ["lupa~=1.13"],
 }
 

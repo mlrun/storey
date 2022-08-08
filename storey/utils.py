@@ -304,11 +304,3 @@ def find_filters(partitions_time_attributes, start, end, filters, filter_column)
     # for start=1.2.2018 08:53:15, end=5.2.2018 16:24:31, this method will append to filters
     # [(year=2018, month=2,day<=5, filter_column<5.2.2018 16:24:31)]
     _find_filter_helper(partitions_time_attributes, end, "<", "<=", first_uncommon, filters, filter_column)
-
-
-def drop_reserved_columns(df):
-    cols_to_drop = []
-    for col in df.columns:
-        if col.startswith('igzpart_'):
-            cols_to_drop.append(col)
-    df.drop(labels=cols_to_drop, axis=1, inplace=True, errors='ignore')

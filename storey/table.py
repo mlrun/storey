@@ -972,7 +972,12 @@ class AggregationValue:
     def aggregate(self, time, value):
         raise NotImplementedError()
 
-    def aggregate_lua_script(self):
+    def aggregate_lua_script(self, vl1, vl2):
+        '''
+        The aggregate_lua_script() method is used for creating part of a lua script, to be sent
+        to the Redis DB (see _build_feature_store_lua_update_script).
+        The math function (for example Sqr: x*x, increment: x+1) is implemented in the aggregate method.'''
+
         raise NotImplementedError()
 
     @staticmethod
@@ -1091,6 +1096,9 @@ class SqrValue(AggregationValue):
 
     def aggregate(self, time, value):
         self._set_value(self.value + value * value)
+
+    def aggregate_argument(self, time, argument):
+        self._set_value(self.value + argument)
 
     def aggregate_lua_script(self, vl1, vl2):
         return f'{vl1}+{vl2}'
