@@ -17,7 +17,7 @@ import datetime
 @pytest.fixture()
 def v3io_create_csv():
     # Setup
-    file_path = _generate_table_name('bigdata/storey_ci/csv_test')
+    file_path = _generate_table_name('bigdata/storey_ci/csv_test') + 'file.csv'
 
     asyncio.run(_write_test_csv(file_path))
 
@@ -194,7 +194,7 @@ def test_write_csv_from_lists_with_metadata_and_column_pruning_to_v3io(v3io_tear
 
 
 def test_write_to_parquet_to_v3io(setup_teardown_test):
-    out_dir = f'v3io:///{setup_teardown_test}'
+    out_dir = f'v3io:///{setup_teardown_test["table_name"]}'
     columns = ['my_int', 'my_string']
     controller = build_flow([
         SyncEmitSource(),
@@ -218,7 +218,7 @@ def test_write_to_parquet_to_v3io(setup_teardown_test):
 
 
 def test_write_to_parquet_to_v3io_single_file_on_termination(setup_teardown_test):
-    out_file = f'v3io:///{setup_teardown_test}/out.parquet'
+    out_file = f'v3io:///{setup_teardown_test["table_name"]}/out.parquet'
     columns = ['my_int', 'my_string']
     controller = build_flow([
         SyncEmitSource(),
@@ -239,7 +239,7 @@ def test_write_to_parquet_to_v3io_single_file_on_termination(setup_teardown_test
 
 # ML-775
 def test_write_to_parquet_key_hash_partitioning(setup_teardown_test):
-    out_dir = f'v3io:///{setup_teardown_test}/test_write_to_parquet_default_partitioning{uuid.uuid4().hex}/'
+    out_dir = f'v3io:///{setup_teardown_test["table_name"]}/test_write_to_parquet_default_partitioning{uuid.uuid4().hex}/'
     controller = build_flow([
         SyncEmitSource(key_field=1),
         ParquetTarget(out_dir, columns=['my_int', 'my_string'], partition_cols=[('$key', 4)])
@@ -263,7 +263,7 @@ def test_write_to_parquet_key_hash_partitioning(setup_teardown_test):
 
 # ML-701
 def test_write_to_parquet_to_v3io_force_string_to_timestamp(setup_teardown_test):
-    out_file = f'v3io:///{setup_teardown_test}/out.parquet'
+    out_file = f'v3io:///{setup_teardown_test["table_name"]}/out.parquet'
     columns = ['time']
     controller = build_flow([
         SyncEmitSource(),
@@ -284,7 +284,7 @@ def test_write_to_parquet_to_v3io_force_string_to_timestamp(setup_teardown_test)
 
 
 def test_write_to_parquet_to_v3io_with_indices(setup_teardown_test):
-    out_file = f'v3io:///{setup_teardown_test}/test_write_to_parquet_with_indices{uuid.uuid4().hex}.parquet'
+    out_file = f'v3io:///{setup_teardown_test["table_name"]}/test_write_to_parquet_with_indices{uuid.uuid4().hex}.parquet'
     controller = build_flow([
         SyncEmitSource(),
         ParquetTarget(out_file, index_cols='event_key=$key', columns=['my_int', 'my_string'])
@@ -306,7 +306,7 @@ def test_write_to_parquet_to_v3io_with_indices(setup_teardown_test):
 
 # ML-602
 def test_write_to_parquet_to_v3io_with_nulls(setup_teardown_test):
-    out_dir = f'v3io:///{setup_teardown_test}/test_write_to_parquet_to_v3io_with_nulls{uuid.uuid4().hex}/'
+    out_dir = f'v3io:///{setup_teardown_test["table_name"]}/test_write_to_parquet_to_v3io_with_nulls{uuid.uuid4().hex}/'
     flow = build_flow([
         SyncEmitSource(),
         ParquetTarget(out_dir, columns=[('key=$key', 'str'), ('my_int', 'int'), ('my_string', 'str'), ('my_datetime', 'datetime')],
@@ -350,7 +350,7 @@ def test_filter_before_after_non_partitioned(setup_teardown_test):
                       columns=columns)
     df.set_index('my_string')
 
-    out_file = f'v3io:///{setup_teardown_test}/before_after_non_partioned/'
+    out_file = f'v3io:///{setup_teardown_test["table_name"]}/before_after_non_partioned/'
     controller = build_flow([
         DataframeSource(df),
         ParquetTarget(out_file, columns=columns, partition_cols=[]),
@@ -412,7 +412,7 @@ def test_filter_before_after_partitioned_random(setup_teardown_test):
     partition_columns = all_partition_columns[:num_part_columns]
     print("partitioned by " + str(partition_columns))
 
-    out_file = f'v3io:///{setup_teardown_test}/random/'
+    out_file = f'v3io:///{setup_teardown_test["table_name"]}/random/'
     controller = build_flow([
         DataframeSource(df, time_field='datetime'),
         ParquetTarget(out_file, columns=['string', 'datetime'], partition_cols=partition_columns),
@@ -448,7 +448,7 @@ def test_filter_before_after_partitioned_inner_other_partition(setup_teardown_te
                       columns=columns)
     df.set_index('my_string')
 
-    out_file = f'v3io:///{setup_teardown_test}/inner_other_partition/'
+    out_file = f'v3io:///{setup_teardown_test["table_name"]}/inner_other_partition/'
     controller = build_flow([
         DataframeSource(df, time_field='my_time'),
         ParquetTarget(out_file, columns=columns, partition_cols=['$year', '$month', '$day', '$hour', 'my_city']),
@@ -482,7 +482,7 @@ def test_filter_before_after_partitioned_outer_other_partition(setup_teardown_te
                       columns=columns)
     df.set_index('my_string')
 
-    out_file = f'v3io:///{setup_teardown_test}/outer_other_partition/'
+    out_file = f'v3io:///{setup_teardown_test["table_name"]}/outer_other_partition/'
     controller = build_flow([
         DataframeSource(df, time_field='my_time'),
         ParquetTarget(out_file, columns=columns, partition_cols=['my_city', '$year', '$month', '$day', '$hour']),

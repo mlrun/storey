@@ -9,8 +9,11 @@ from datetime import datetime
 
 import aiohttp
 import pytest
-import redis as r
 
+import redis as r
+import fakeredis
+
+from storey import V3ioDriver, RedisDriver
 from storey.drivers import NeedsV3ioAccess
 from storey.flow import V3ioError
 
@@ -70,52 +73,101 @@ class V3ioHeaders(NeedsV3ioAccess):
             'X-v3io-session-key': self._access_key
         }
 
-
 def append_return(lst, x):
     lst.append(x)
     return lst
 
-
 def _generate_table_name(prefix='bigdata/storey_ci/Aggr_test'):
     random_table = ''.join([random.choice(string.ascii_letters) for i in range(10)])
-    return f'{prefix}/{random_table}'
+    return f'{prefix}/{random_table}/'
 
+redis_server = None
 
-@pytest.fixture()
-def setup_teardown_test():
+def get_redis_client(redis_fake_server=None):
+    REDIS_URL = os.environ.get('REDIS_URL')
+    if REDIS_URL:
+        return r.Redis.from_url(REDIS_URL)
+    else:
+        return fakeredis.FakeRedis(decode_responses=True, server = redis_fake_server)
+
+def redis_driver(redis_fake_server = None, *args, **kwargs):
+    return RedisDriver(redis_client = get_redis_client(redis_fake_server),key_prefix="storey-test:", *args, **kwargs)
+
+def get_driver(setup_teardown_test, *args, **kwargs):
+    if setup_teardown_test["driver_name"] == "V3ioDriver":
+        return V3ioDriver(*args, **kwargs)
+    elif setup_teardown_test["driver_name"] == "RedisDriver":
+        redis_fake_server = setup_teardown_test["redis_fake_server"] if "redis_fake_server" in setup_teardown_test else None
+        return redis_driver(redis_fake_server = redis_fake_server, *args, **kwargs)
+    else:
+        assert 0
+
+def remove_redis_table(table_name):
+    redis_client = get_redis_client()
+    count = 0
+    ns_keys = "storey-test:" + table_name + "*"
+    for key in redis_client.scan_iter(ns_keys):
+        redis_client.delete(key)
+        count += 1
+
+drivers_list = ["V3ioDriver", "RedisDriver"]
+@pytest.fixture(params=drivers_list)
+def setup_teardown_test(request):
     # Setup
     table_name = _generate_table_name()
+    
+    test_params = {}
+    driver_name = request.param
+    test_params["driver_name"] = driver_name
+    test_params["table_name"] = table_name
+    if driver_name == "RedisDriver":
+        REDIS_URL = os.environ.get('REDIS_URL')
+        if not REDIS_URL:
+            test_params["redis_fake_server"] = fakeredis.FakeServer()
 
     # Test runs
-    yield table_name
+    yield test_params
 
     # Teardown
-    asyncio.run(recursive_delete(table_name, V3ioHeaders()))
+    if driver_name == "V3ioDriver":
+        asyncio.run(recursive_delete(table_name, V3ioHeaders()))
+    elif driver_name == "RedisDriver":
+        remove_redis_table(table_name)
+    else:
+        assert 0
 
 
-@pytest.fixture()
-def setup_redis_teardown_test(redis, redis_driver):
+@pytest.fixture(params=drivers_list)
+def setup_kv_teardown_test(request):
     # Setup
     table_name = _generate_table_name()
+    
+    test_params = {}
+    driver_name = request.param
+    test_params["driver_name"] = driver_name
+    test_params["table_name"] = table_name
+    if driver_name == "RedisDriver":
+        REDIS_URL = os.environ.get('REDIS_URL')
+        if not REDIS_URL:
+            test_params["redis_fake_server"] = fakeredis.FakeServer()
+
+    if driver_name == "V3ioDriver":
+        asyncio.run(create_temp_kv(table_name))
+    elif driver_name == "RedisDriver":
+        create_temp_redis_kv(test_params)
+    else:
+        assert 0
 
     # Test runs
-    yield table_name
+    yield test_params
 
     # Teardown
-    redis_driver.redis.flushdb()
-
-
-@pytest.fixture()
-def setup_kv_teardown_test():
-    # Setup
-    table_path = _generate_table_name()
-    asyncio.run(create_temp_kv(table_path))
-
-    # Test runs
-    yield table_path
-
-    # Teardown
-    asyncio.run(recursive_delete(table_path, V3ioHeaders()))
+    if driver_name == "V3ioDriver":
+        asyncio.run(recursive_delete(table_name, V3ioHeaders()))
+    elif driver_name == "RedisDriver":
+        remove_redis_table(table_name)
+    else:
+        assert 0
 
 
 @pytest.fixture()
@@ -139,6 +191,14 @@ async def create_stream(stream_path):
         'POST', f'{v3io_access._webapi_url}/{stream_path}/', headers=v3io_access._create_stream_headers, data=request_body, ssl=False)
     assert response.status == 204, f'Bad response {await response.text()} to request {request_body}'
 
+def create_temp_redis_kv(setup_teardown_test):
+    # Create the data we'll join with in Redis.
+    table_path = setup_teardown_test["table_name"]
+    redis_fake_server = setup_teardown_test["redis_fake_server"] if "redis_fake_server" in setup_teardown_test else None
+    redis_client = get_redis_client(redis_fake_server=redis_fake_server)
+
+    for i in range(1, 10):
+        redis_client.hmset(f'storey-test:{table_path}{i}:static', mapping={'age': f'{10 - i}', 'color': f'blue{i}'})
 
 async def create_temp_kv(table_path):
     connector = aiohttp.TCPConnector()

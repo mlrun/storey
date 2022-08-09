@@ -33,7 +33,7 @@ class NeedsRedisAccess:
         redis_url = redis_url or os.getenv('REDIS_URL')
         if not redis_url:
             self._redis_url = None
-            print('Missing webapi parameter or REDIS_URL environment variable. Using fakeredit instead')
+            print('Missing redis_url parameter or REDIS_URL environment variable. Using fakeredit instead')
             return
 
         if not redis_url.startswith('redis://'):
@@ -50,12 +50,15 @@ class RedisDriver(NeedsRedisAccess, Driver):
     DEFAULT_KEY_PREFIX = "storey:"
     _thread_pool = concurrent.futures.ThreadPoolExecutor()
 
-    def __init__(self, redis_client: Optional[Union[redis.Redis, rediscluster.RedisCluster]] = None,
+    def __init__(self,
+                 redis_client: Optional[Union[redis.Redis, rediscluster.RedisCluster]] = None,
                  redis_type: RedisType = RedisType.STANDALONE,
                  key_prefix: str = None,
                  redis_url: Optional[str] = None,
                  aggregation_attribute_prefix: str = 'aggr_',
-                 aggregation_time_attribute_prefix: str = '_'):
+                 aggregation_time_attribute_prefix: str = '_',
+                 use_parallel_operations: bool = True,  # unused
+                 ):
 
         NeedsRedisAccess.__init__(self, redis_url)
         self._redis = redis_client
@@ -85,8 +88,12 @@ class RedisDriver(NeedsRedisAccess, Driver):
         self._redis = rediscluster.RedisCluster.from_url(self._redis_url, decode_response=True)
         return self._redis
 
-    def make_key(self, *parts):
-        return f"{self._key_prefix}{''.join([str(p) for p in parts])}"
+    @staticmethod
+    def make_key(key_prefix, *parts):
+        return f"{key_prefix}{''.join([str(p) for p in parts])}"
+
+    def _make_key(self, *parts):
+        return RedisDriver.make_key(self._key_prefix, *parts)
 
     @staticmethod
     def _static_data_key(redis_key_prefix):
@@ -158,8 +165,11 @@ class RedisDriver(NeedsRedisAccess, Driver):
             return json.dumps(value)
 
     @classmethod
-    def _convert_redis_value_to_python_obj(cls, value):
-        str_value = cls._convert_to_str(value)
+    def convert_redis_value_to_python_obj(cls, value):
+        if value is None:
+            return None
+
+        str_value = cls.convert_to_str(value)
 
         value = str_value.lower()
         if value.startswith(cls.TIMEDELTA_FIELD_PREFIX):
@@ -185,7 +195,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
         return ret
 
     @classmethod
-    def _convert_to_str(cls, key):
+    def convert_to_str(cls, key):
         if isinstance(key, bytes):
             return key.decode('utf-8')
         else:
@@ -288,7 +298,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
         return lua_script, condition_expression, pending_updates, redis_keys_involved
 
     async def _save_key(self, container, table_path, key, aggr_item, partitioned_by_key, additional_data):
-        redis_key_prefix = self.make_key(container, table_path, key)
+        redis_key_prefix = self._make_key(container, table_path, key)
         update_expression, mtime_condition, pending_updates, redis_keys_involved = self._build_feature_store_lua_update_script(
             redis_key_prefix, aggr_item, partitioned_by_key, additional_data)
         if not update_expression:
@@ -325,7 +335,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
             values = await self.asyncify(self.redis.hgetall)(redis_key)
         except redis.ResponseError as e:
             raise RedisError(f'Failed to get key {redis_key}. Response error was: {e}')
-        res = {self._convert_to_str(key): self._convert_redis_value_to_python_obj(val) for key, val in values.items()
+        res = {RedisDriver.convert_to_str(key): RedisDriver.convert_redis_value_to_python_obj(val) for key, val in values.items()
                if not str(key).startswith(self._aggregation_prefixes)}
         return res
 
@@ -338,7 +348,12 @@ class RedisDriver(NeedsRedisAccess, Driver):
             values = await self.asyncify(self.redis.hmget)(redis_key, non_aggregation_attrs)
         except redis.ResponseError as e:
             raise RedisError(f'Failed to get key {redis_key}. Response error was: {e}') from e
-        return [{self._convert_to_str(k): self._convert_redis_value_to_python_obj(v)} for k, v in values.items()]
+        if len(values) == 1:
+            if values == [None]:
+                return {}
+            return {non_aggregation_attrs[0]: RedisDriver.convert_redis_value_to_python_obj(values[0])}
+        else:
+            return {RedisDriver.convert_to_str(k): RedisDriver.convert_redis_value_to_python_obj(v) for k, v in values.items()}
 
     async def _load_by_key(self, container, table_path, key, attributes):
         """
@@ -348,7 +363,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
         return aggregation attributes or associated time values -- just static
         data, AKA "additional data."
         """
-        redis_key_prefix = self.make_key(container, table_path, key)
+        redis_key_prefix = self._make_key(container, table_path, key)
         static_key = self._static_data_key(redis_key_prefix)
         if attributes == "*":
             values = await self._get_all_fields(static_key)
@@ -363,7 +378,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
         associated_time_key = self._aggregation_time_key(redis_key_prefix,
                                                          feature_with_relevant_attr)
         time_val = await self.asyncify(self.redis.get)(associated_time_key)
-        time_val = self._convert_to_str(time_val)
+        time_val = RedisDriver.convert_to_str(time_val)
 
         try:
             time_in_millis = int(time_val)
@@ -387,7 +402,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
             'feature_name_aggr2': {<start time A>: [], {<start time B>: []}}
         }
         """
-        redis_key_prefix = self.make_key(container, table_path, key)
+        redis_key_prefix = self._make_key(container, table_path, key)
         additional_data = await self._get_all_fields(self._static_data_key(redis_key_prefix))
         aggregations = {}
         # Aggregation Redis keys start with the Redis key prefix for this Storey container, table
@@ -395,7 +410,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
         aggr_key_prefix = f"{redis_key_prefix}:{self._aggregation_attribute_prefix}"
         # We can't use `async for` here...
         for aggr_key in self.redis.scan_iter(f"{aggr_key_prefix}*"):
-            aggr_key = self._convert_to_str(aggr_key)
+            aggr_key = RedisDriver.convert_to_str(aggr_key)
             value = await self.asyncify(self.redis.lrange)(aggr_key, 0, -1)
             # Build an attribute for this aggregation in the format that Storey
             # expects to receive from this method. The feature and aggregation
@@ -411,7 +426,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
                 redis_key_prefix, aggr_name_with_relevant_attribute)
             if feature_and_aggr_name not in aggregations:
                 aggregations[feature_and_aggr_name] = {}
-            aggregations[feature_and_aggr_name][time_in_millis] = [float(self._convert_redis_value_to_python_obj(v)) for v in value]
+            aggregations[feature_and_aggr_name][time_in_millis] = [float(RedisDriver.convert_redis_value_to_python_obj(v)) for v in value]
             aggregations[feature_and_aggr_name][associated_time_attr] = time_in_millis
 
         # Story expects to get None back if there were no aggregations, and the
@@ -426,11 +441,11 @@ class RedisDriver(NeedsRedisAccess, Driver):
         # path, and "key," followed by ":aggr_"
         aggregations = {}
 
-        redis_key_prefix = self.make_key(container, table_path, key)
+        redis_key_prefix = self._make_key(container, table_path, key)
         aggr_key_prefix = f"{redis_key_prefix}:{self._aggregation_attribute_prefix}"
         # We can't use `async for` here...
         for aggr_key in self.redis.scan_iter(f"{aggr_key_prefix}*"):
-            aggr_key = self._convert_to_str(aggr_key)
+            aggr_key = RedisDriver.convert_to_str(aggr_key)
             value = await self.asyncify(self.redis.lrange)(aggr_key, 0, -1)
             # Build an attribute for this aggregation in the format that Storey
             # expects to receive from this method. The feature and aggregation
@@ -446,7 +461,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
                 redis_key_prefix, aggr_name_with_relevant_attribute)
             if feature_and_aggr_name not in aggregations:
                 aggregations[feature_and_aggr_name] = {}
-            aggregations[feature_and_aggr_name][time_in_millis] = [float(self._convert_redis_value_to_python_obj(v)) for v in value]
+            aggregations[feature_and_aggr_name][time_in_millis] = [float(RedisDriver.convert_redis_value_to_python_obj(v)) for v in value]
             aggregations[feature_and_aggr_name][associated_time_attr] = time_in_millis
 
     def _get_time_attributes_from_aggregations(self, aggregation_element):
@@ -457,11 +472,11 @@ class RedisDriver(NeedsRedisAccess, Driver):
         return list(attributes.values())
 
     async def _save_schema(self, container, table_path, schema):
-        redis_key = self.make_key(container, table_path, schema_file_name)
+        redis_key = self._make_key(container, table_path, schema_file_name)
         await self.asyncify(self.redis.set)(redis_key, json.dumps(schema))
 
     async def _load_schema(self, container, table_path):
-        redis_key = self.make_key(container, table_path, schema_file_name)
+        redis_key = self._make_key(container, table_path, schema_file_name)
         schema = await self.asyncify(self.redis.get)(redis_key)
         if schema:
             return json.loads(schema)
