@@ -2,6 +2,7 @@ __version__ = 'unstable'
 
 # Importing supported filesystems explicitly so that they will get registered as an fsspec filesystem
 import v3iofs  # noqa: F401
+import mlrun.wasbfs
 
 from .aggregations import (  # noqa: F401
     AggregateByKey, QueryByKey
