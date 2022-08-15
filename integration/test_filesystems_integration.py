@@ -20,6 +20,7 @@ import os
 from .integration_test_utils import setup_teardown_test, _generate_table_name, V3ioHeaders, V3ioError
 from storey import build_flow, CSVSource, CSVTarget, SyncEmitSource, Reduce, Map, FlatMap, AsyncEmitSource, ParquetTarget, ParquetSource, \
     DataframeSource, ReduceToDataFrame
+from storey.utils  import get_remaining_path
 import pandas as pd
 import aiohttp
 import pytest
@@ -571,3 +572,10 @@ def test_empty_filter_result(setup_teardown_test):
         pd.testing.assert_frame_equal(read_back_result, pd.DataFrame({}))
     finally:
         os.remove(path)
+
+
+def test_get_path_utils():
+    url = "wasbs://mycontainer@myaccount.blob.core.windows.net/path/to/object.csv"
+    schema, path = get_remaining_path(url)
+    assert path ==  "mycontainer/path/to/object.csv"
+    assert schema == "wasbs"

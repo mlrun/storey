@@ -118,17 +118,25 @@ def _split_path(path):
         return parts[0], f'/{parts[1]}'
 
 
-def url_to_file_system(url, storage_options):
+def get_remaining_path(url):
     remaining_path = url
     scheme = ""
     if "://" in url:
         parsed_url = urlparse(url)
         scheme = parsed_url.scheme.lower()
-        load_fs_dependencies(scheme)
         if scheme == 'v3io':
             remaining_path = parsed_url.path
+        elif scheme in ["wasb", "wasbs"]:
+            remaining_path = f'{parsed_url.username}{parsed_url.path}'
         else:
             remaining_path = f'{parsed_url.netloc}{parsed_url.path}'
+    return scheme, remaining_path
+
+
+def url_to_file_system(url, storage_options):
+    scheme, remaining_path = get_remaining_path(url)
+    if scheme:
+        load_fs_dependencies(scheme)
 
     if storage_options:
         return fsspec.filesystem(scheme, **storage_options), remaining_path
