@@ -1765,6 +1765,32 @@ def test_write_to_parquet_partition_by_datetime(tmpdir):
     assert read_back_df.equals(expected_df)
 
 
+def test_write_to_parquet_string_as_datetime(tmpdir):
+    out_dir = f'{tmpdir}/test_write_to_parquet_string_to_datetime/{uuid.uuid4().hex}/'
+    columns = ['my_int', 'my_string', 'my_datetime']
+    columns_with_type = [('my_int', 'int'), ('my_string', 'str'), ('my_datetime', 'datetime')]
+    controller = build_flow([
+        SyncEmitSource(),
+        ParquetTarget(out_dir, partition_cols=[], columns=columns_with_type, max_events=1)
+    ]).run()
+
+    my_time = datetime(2020, 2, 15)
+
+    expected = []
+    for i in range(10):
+        controller.emit([i, f'this is {i}', my_time.isoformat()])
+        expected.append([i, f'this is {i}', my_time.isoformat(sep=' ')])
+    expected_df = pd.DataFrame(expected, columns=columns)
+    expected_df['my_datetime'] = expected_df['my_datetime'].astype('datetime64[us]')
+    controller.terminate()
+    controller.await_termination()
+
+    read_back_df = pd.read_parquet(out_dir, columns=columns)
+    read_back_df.sort_values('my_int', inplace=True)
+    read_back_df.reset_index(drop=True, inplace=True)
+    assert read_back_df.equals(expected_df)
+
+
 def test_write_sparse_data_to_parquet(tmpdir):
     out_dir = f'{tmpdir}/test_write_sparse_data_to_parquet/{uuid.uuid4().hex}'
     columns = ['my_int', 'my_string']
