@@ -40,15 +40,10 @@ class AggregateByKey(Flow):
                  augmentation_fn: Optional[Callable[[Event, Dict[str, object]], Event]] = None, enrich_with: Optional[List[str]] = None,
                  aliases: Optional[Dict[str, str]] = None, use_windows_from_schema: bool = False, **kwargs):
         if isinstance(self, QueryByKey):
-            self._init_flow_and_table_done = self._init_flow_and_table_done
-        else:
-            self._init_flow_and_table_done = False
-        if not self._init_flow_and_table_done:
-            self._init_flow_and_table(table, **kwargs)
-        elif self._init_flow_and_table_done and isinstance(table, str):
-            self._init_flow_and_table(table, init_flow=False, **kwargs)
-        elif self._init_flow_and_table_done and isinstance(table, Table):
             self._table = table
+        else:
+            self._init_flow_and_table(table, **kwargs)
+
         aggregates = self._parse_aggregates(aggregates)
         self._check_unique_names(aggregates)
 
@@ -93,16 +88,14 @@ class AggregateByKey(Flow):
         self._terminate_worker = False
         self._timeout_task: Optional[asyncio.Task] = None
 
-    def _init_flow_and_table(self, table: Union[str, Table], init_flow: bool = True, **kwargs):
-        if init_flow:
-            Flow.__init__(self, **kwargs)
+    def _init_flow_and_table(self, table: Union[str, Table], **kwargs):
+        Flow.__init__(self, **kwargs)
         if isinstance(table, str):
             if not self.context:
                 raise TypeError("Table can not be string if no context was provided to the step")
             self._table = self.context.get_table(table)
         if isinstance(table, Table):
             self._table = table
-        self._init_flow_and_table_done = True
 
     def _check_unique_names(self, aggregates):
         unique_aggr_names = set()
@@ -282,10 +275,7 @@ class QueryByKey(AggregateByKey):
             feature, aggr = name.rsplit('_', 1)
             # setting as SlidingWindow temporarily until actual window type will be read from schema
             self._aggrs.append(FieldAggregator(name=feature, field=None, aggr=[aggr], windows=SlidingWindows(windows)))
-        if isinstance(table, Table):
-            other_table = self._table._clone() if self._table._aggregates is not None else self._table
-        else:
-            other_table = self._table  # str - pass table string along with the context object
+        other_table = self._table._clone() if self._table._aggregates is not None else self._table
         AggregateByKey.__init__(self, self._aggrs, other_table, key, augmentation_fn=augmentation_fn,
                                 enrich_with=self._enrich_cols, aliases=aliases, use_windows_from_schema=True, **kwargs)
         self._table._aggregations_read_only = True
