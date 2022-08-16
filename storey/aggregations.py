@@ -43,7 +43,7 @@ class AggregateByKey(Flow):
             self._init_flow_and_table_done = self._init_flow_and_table_done
         else:
             self._init_flow_and_table_done = False
-        if not self._init_flow_and_table_done:
+        if not self._init_flow_and_table_done or True:
             self._init_flow_and_table(table, **kwargs)
         aggregates = self._parse_aggregates(aggregates)
         self._check_unique_names(aggregates)
