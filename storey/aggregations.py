@@ -39,7 +39,7 @@ class AggregateByKey(Flow):
                  emit_policy: Union[EmitPolicy, Dict[str, object]] = _default_emit_policy,
                  augmentation_fn: Optional[Callable[[Event, Dict[str, object]], Event]] = None, enrich_with: Optional[List[str]] = None,
                  aliases: Optional[Dict[str, str]] = None, use_windows_from_schema: bool = False, **kwargs):
-        if isinstance(self, QueryByKey):
+        if isinstance(self, QueryByKey) and isinstance(table, Table):
             self._table = table
         else:
             self._init_flow_and_table(table, **kwargs)
