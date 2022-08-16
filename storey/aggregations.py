@@ -43,13 +43,15 @@ class AggregateByKey(Flow):
             self._init_flow_and_table_done = self._init_flow_and_table_done
         else:
             self._init_flow_and_table_done = False
-        if not self._init_flow_and_table_done or True:
+        if not self._init_flow_and_table_done:
             self._init_flow_and_table(table, **kwargs)
+        elif self._init_flow_and_table_done and isinstance(table, str):
+            self._init_flow_and_table(table, init_flow=False, **kwargs)
+        elif self._init_flow_and_table_done and isinstance(table, Table):
+            self._table = table
         aggregates = self._parse_aggregates(aggregates)
         self._check_unique_names(aggregates)
 
-        if isinstance(self._table, str):
-            raise TypeError("Table can not be string if no context was provided to the step")
         self._table._set_aggregation_metadata(aggregates, use_windows_from_schema=use_windows_from_schema)
         self._closeables = [self._table]
 
@@ -91,8 +93,9 @@ class AggregateByKey(Flow):
         self._terminate_worker = False
         self._timeout_task: Optional[asyncio.Task] = None
 
-    def _init_flow_and_table(self, table, **kwargs):
-        Flow.__init__(self, **kwargs)
+    def _init_flow_and_table(self, table: Union[str, Table], init_flow: bool = True, **kwargs):
+        if init_flow:
+            Flow.__init__(self, **kwargs)
         if isinstance(table, str):
             if not self.context:
                 raise TypeError("Table can not be string if no context was provided to the step")
@@ -280,9 +283,9 @@ class QueryByKey(AggregateByKey):
             # setting as SlidingWindow temporarily until actual window type will be read from schema
             self._aggrs.append(FieldAggregator(name=feature, field=None, aggr=[aggr], windows=SlidingWindows(windows)))
         if isinstance(table, Table):
-            other_table = table._clone() if table._aggregates is not None else table
+            other_table = self._table._clone() if self._table._aggregates is not None else self._table
         else:
-            other_table = table  # str - pass table string along with the context object
+            other_table = self._table  # str - pass table string along with the context object
         AggregateByKey.__init__(self, self._aggrs, other_table, key, augmentation_fn=augmentation_fn,
                                 enrich_with=self._enrich_cols, aliases=aliases, use_windows_from_schema=True, **kwargs)
         self._table._aggregations_read_only = True
