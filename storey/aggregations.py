@@ -39,15 +39,19 @@ class AggregateByKey(Flow):
                  emit_policy: Union[EmitPolicy, Dict[str, object]] = _default_emit_policy,
                  augmentation_fn: Optional[Callable[[Event, Dict[str, object]], Event]] = None, enrich_with: Optional[List[str]] = None,
                  aliases: Optional[Dict[str, str]] = None, use_windows_from_schema: bool = False, **kwargs):
-        Flow.__init__(self, **kwargs)
+        # Flow.__init__(self, **kwargs)
+        if self._init_flow_and_table_done:
+            self._init_flow_and_table(table, **kwargs)
         aggregates = self._parse_aggregates(aggregates)
         self._check_unique_names(aggregates)
 
-        self._table = table
-        if isinstance(table, str):
-            if not self.context:
-                raise TypeError("Table can not be string if no context was provided to the step")
-            self._table = self.context.get_table(table)
+        # self._table = table
+        # if isinstance(table, str):
+        #     if not self.context:
+        #         raise TypeError("Table can not be string if no context was provided to the step")
+        #     self._table = self.context.get_table(table)
+        if isinstance(self._table, str):
+            raise TypeError("Table can not be string if no context was provided to the step")
         self._table._set_aggregation_metadata(aggregates, use_windows_from_schema=use_windows_from_schema)
         self._closeables = [self._table]
 
@@ -88,6 +92,16 @@ class AggregateByKey(Flow):
         self._emit_worker_running = False
         self._terminate_worker = False
         self._timeout_task: Optional[asyncio.Task] = None
+
+    def _init_flow_and_table(self, table, **kwargs):
+        Flow.__init__(self, **kwargs)
+        if isinstance(table, str):
+            if not self.context:
+                raise TypeError("Table can not be string if no context was provided to the step")
+            self._table = self.context.get_table(table)
+        if isinstance(table, Table):
+            self._table = table
+        self._init_flow_and_table_done = True
 
     def _check_unique_names(self, aggregates):
         unique_aggr_names = set()
@@ -253,13 +267,14 @@ class QueryByKey(AggregateByKey):
         self._enrich_cols = []
         self._table = None
         resolved_aggrs = {}
-        Flow.__init__(self, **kwargs)
-        if isinstance(table, str):
-            if not self.context:
-                raise TypeError("Table can not be string if no context was provided to the step")
-            self._table = self.context.get_table(table)
-        if isinstance(table, Table):
-            self._table = table
+        self._init_flow_and_table(table, **kwargs)
+        # Flow.__init__(self, **kwargs)
+        # if isinstance(table, str):
+        #     if not self.context:
+        #         raise TypeError("Table can not be string if no context was provided to the step")
+        #     self._table = self.context.get_table(table)
+        # if isinstance(table, Table):
+        #     self._table = table
         for feature in features:
             if re.match(r'.*_[a-z]+_[0-9]+[smhd]$', feature) and self._table and self._table._support_aggr:
                 name, window = feature.rsplit('_', 1)
