@@ -3,6 +3,7 @@ import copy
 import csv
 import math
 import queue
+import sys
 import threading
 import uuid
 import warnings
@@ -152,6 +153,7 @@ class FlowController(FlowControllerBase):
         if self._return_awaitable_result:
             awaitable_result = AwaitableResult(expected_number_of_results=expected_number_of_results or 1)
         event._awaitable_result = awaitable_result
+        event._original_events = [event]
         self._emit_fn(event)
         return awaitable_result
 
@@ -192,7 +194,8 @@ class SyncEmitSource(Flow):
     _legal_first_step = True
 
     def __init__(self, buffer_size: Optional[int] = None, key_field: Union[list, str, int, None] = None,
-                 time_field: Union[str, int, None] = None, time_format: Optional[str] = None, **kwargs):
+                 time_field: Union[str, int, None] = None, time_format: Optional[str] = None,
+                 max_events_before_commit=None, **kwargs):
         if buffer_size is None:
             buffer_size = 8
         else:
@@ -206,21 +209,45 @@ class SyncEmitSource(Flow):
         self._key_field = key_field
         self._time_field = time_field
         self._time_format = time_format
+        self._max_events_before_commit = max_events_before_commit or 1000
         self._termination_q = queue.Queue(1)
         self._ex = None
         self._closeables = []
 
     def _init(self):
         self._is_terminated = False
+        self._outstanding_events = {}
 
     async def _run_loop(self):
         loop = asyncio.get_running_loop()
-        self._termination_future = asyncio.get_running_loop().create_future()
-
+        self._termination_future = loop.create_future()
+        committer = None
+        num_events_handled_without_commit = 0
+        if hasattr(self.context, 'platform') and hasattr(self.context.platform, 'explicit_ack'):
+            committer = self.context.platform.explicit_ack
         while True:
-            event = await loop.run_in_executor(None, self._q.get)
+            event = None
+            if num_events_handled_without_commit > 0 and self._q.empty() or \
+                    num_events_handled_without_commit >= self._max_events_before_commit:
+                num_events_handled_without_commit = 0
+                can_block = await _commit_handled_events(self._outstanding_events, committer)
+                # In case we can't block because there are outstanding events
+                while not can_block:
+                    event = self._q.get_nowait()
+                    if event:
+                        break
+                    await asyncio.sleep(2)
+                    can_block = await _commit_handled_events(self._outstanding_events, committer)
+            if not event:
+                event = await loop.run_in_executor(None, self._q.get)
+            if committer and hasattr(event, 'path') and hasattr(event, 'shard_id') and hasattr(event, 'offset'):
+                qualified_shard = (event.path, event.shard_id)
+                events = self._outstanding_events.get(qualified_shard, [])
+                events.append(event)
+                num_events_handled_without_commit += 1
             try:
                 termination_result = await self._do_downstream(event)
+                await _commit_handled_events(self._outstanding_events, committer)
                 if event is _termination_obj:
                     self._termination_future.set_result(termination_result)
             except BaseException as ex:
@@ -353,6 +380,7 @@ class AsyncFlowController(FlowControllerBase):
         if self._await_result:
             awaitable = AsyncAwaitableResult()
         event._awaitable_result = awaitable
+        event._original_events = [event]
         await self._emit_fn(event)
         if self._await_result:
             result = await awaitable.await_result()
@@ -367,6 +395,25 @@ class AsyncFlowController(FlowControllerBase):
     async def await_termination(self):
         """Awaits the termination of the flow. To be called after terminate. Returns the termination result of the flow (if any)."""
         return await self._loop_task
+
+
+async def _commit_handled_events(outstanding_events_by_qualified_shard, committer):
+    for qualified_shard, events in outstanding_events_by_qualified_shard:
+        num_to_clear = 0
+        last_handled_event = None
+        all_events_handled = True
+        # go over events in the qualified shard by arrival order until we reach an unhandled event
+        for event in events:
+            # handled events should have 3 references: self.original_event, the one we're holding, and argument to getrefcount
+            if sys.getrefcount(event) > 3:
+                all_events_handled = False
+                break
+            last_handled_event = event
+            num_to_clear += 1
+        if last_handled_event:
+            await committer(last_handled_event)
+            outstanding_events_by_qualified_shard[qualified_shard] = events[num_to_clear:]
+        return all_events_handled
 
 
 class AsyncEmitSource(Flow):
@@ -385,7 +432,7 @@ class AsyncEmitSource(Flow):
     _legal_first_step = True
 
     def __init__(self, buffer_size: int = None, key_field: Union[list, str, None] = None, time_field: Optional[str] = None,
-                 time_format: Optional[str] = None, **kwargs):
+                 time_format: Optional[str] = None, max_events_before_commit=None, **kwargs):
         super().__init__(**kwargs)
         if buffer_size is None:
             buffer_size = 8
@@ -397,17 +444,42 @@ class AsyncEmitSource(Flow):
         self._key_field = key_field
         self._time_field = time_field
         self._time_format = time_format
+        self._max_events_before_commit = max_events_before_commit or 1000
         self._ex = None
         self._closeables = []
 
     def _init(self):
         self._is_terminated = False
+        self._outstanding_events = {}
 
     async def _run_loop(self):
+        committer = None
+        num_events_handled_without_commit = 0
+        if hasattr(self.context, 'platform') and hasattr(self.context.platform, 'explicit_ack'):
+            committer = self.context.platform.explicit_ack
         while True:
-            event = await self._q.get()
+            event = None
+            if num_events_handled_without_commit > 0 and self._q.empty() or \
+                    num_events_handled_without_commit >= self._max_events_before_commit:
+                num_events_handled_without_commit = 0
+                can_block = await _commit_handled_events(self._outstanding_events, committer)
+                # In case we can't block because there are outstanding events
+                while not can_block:
+                    event = await self._q.get_nowait()
+                    if event:
+                        break
+                    await asyncio.sleep(2)
+                    can_block = await _commit_handled_events(self._outstanding_events, committer)
+            if not event:
+                event = await self._q.get()
+            if committer and hasattr(event, 'path') and hasattr(event, 'shard_id') and hasattr(event, 'offset'):
+                qualified_shard = (event.path, event.shard_id)
+                events = self._outstanding_events.get(qualified_shard, [])
+                events.append(event)
+                num_events_handled_without_commit += 1
             try:
                 termination_result = await self._do_downstream(event)
+                await _commit_handled_events(self._outstanding_events, committer)
                 if event is _termination_obj:
                     return termination_result
             except BaseException as ex:
