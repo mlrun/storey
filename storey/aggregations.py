@@ -40,10 +40,11 @@ class AggregateByKey(Flow):
                  augmentation_fn: Optional[Callable[[Event, Dict[str, object]], Event]] = None, enrich_with: Optional[List[str]] = None,
                  aliases: Optional[Dict[str, str]] = None, use_windows_from_schema: bool = False, **kwargs):
         if isinstance(self, QueryByKey):
-            self._init_flow_and_table_done = self._init_flow_and_table_done
+            # self._init_flow_and_table_done = self._init_flow_and_table_done
+            self._table = table
         else:
-            self._init_flow_and_table_done = False
-        if not self._init_flow_and_table_done or True:
+        #     self._init_flow_and_table_done = False
+        # if not self._init_flow_and_table_done or True:
             self._init_flow_and_table(table, **kwargs)
         aggregates = self._parse_aggregates(aggregates)
         self._check_unique_names(aggregates)
@@ -99,7 +100,7 @@ class AggregateByKey(Flow):
             self._table = self.context.get_table(table)
         if isinstance(table, Table):
             self._table = table
-        self._init_flow_and_table_done = True
+        # self._init_flow_and_table_done = True
 
     def _check_unique_names(self, aggregates):
         unique_aggr_names = set()
