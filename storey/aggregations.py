@@ -267,7 +267,7 @@ class QueryByKey(AggregateByKey):
         resolved_aggrs = {}
         self._init_flow_and_table(table, **kwargs)
         for feature in features:
-            if re.match(r'.*_[a-z]+_[0-9]+[smhd]$', feature) and self._table and self._table._support_aggr:
+            if re.match(r'.*_[a-z]+_[0-9]+[smhd]$', feature) and self._table and self._table._support_full_aggregation_query:
                 name, window = feature.rsplit('_', 1)
                 if name in resolved_aggrs:
                     resolved_aggrs[name].append(window)
