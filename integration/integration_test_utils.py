@@ -94,13 +94,13 @@ def redis_driver(redis_fake_server = None, *args, **kwargs):
     return RedisDriver(redis_client = get_redis_client(redis_fake_server),key_prefix="storey-test:", *args, **kwargs)
 
 def get_driver(setup_teardown_test, *args, **kwargs):
-    if setup_teardown_test["driver_name"] == "V3ioDriver":
+    if setup_teardown_test.driver_name == "V3ioDriver":
         return V3ioDriver(*args, **kwargs)
-    elif setup_teardown_test["driver_name"] == "RedisDriver":
-        redis_fake_server = setup_teardown_test["redis_fake_server"] if "redis_fake_server" in setup_teardown_test else None
+    elif setup_teardown_test.driver_name == "RedisDriver":
+        redis_fake_server = setup_teardown_test.redis_fake_server
         return redis_driver(redis_fake_server = redis_fake_server, *args, **kwargs)
     else:
-        driver_name = setup_teardown_test["driver_name"]
+        driver_name = setup_teardown_test.driver_name
         raise ValueError(f'Unsupported driver name "{driver_name}"')
 
 def remove_redis_table(table_name):
@@ -111,64 +111,71 @@ def remove_redis_table(table_name):
         redis_client.delete(key)
         count += 1
 
+class TestContext:
+    def __init__(self, driver_name: str, table_name:str):
+        self._driver_name = driver_name
+        self._table_name = table_name
+
+        self._redis_fake_server = None
+        if driver_name == "RedisDriver":
+            redis_url = os.environ.get('REDIS_URL')
+            if not redis_url:
+                # if we are using fakeredis, create fake-server to support tests involving multiple clients
+                self._redis_fake_server = fakeredis.FakeServer()
+
+    @property
+    def driver_name(self):
+        return self._driver_name
+
+    @property
+    def table_name(self):
+        return self._table_name
+
+    @property
+    def redis_fake_server(self):
+        return self._redis_fake_server
+
+
 drivers_list = ["V3ioDriver", "RedisDriver"]
 @pytest.fixture(params=drivers_list)
 def setup_teardown_test(request):
     # Setup
-    table_name = _generate_table_name()
-    
-    test_params = {}
-    driver_name = request.param
-    test_params["driver_name"] = driver_name
-    test_params["table_name"] = table_name
-    if driver_name == "RedisDriver":
-        REDIS_URL = os.environ.get('REDIS_URL')
-        if not REDIS_URL:
-            test_params["redis_fake_server"] = fakeredis.FakeServer()
+    test_context = TestContext(request.param, table_name = _generate_table_name())
 
     # Test runs
-    yield test_params
+    yield test_context
 
     # Teardown
-    if driver_name == "V3ioDriver":
-        asyncio.run(recursive_delete(table_name, V3ioHeaders()))
-    elif driver_name == "RedisDriver":
-        remove_redis_table(table_name)
+    if test_context.driver_name == "V3ioDriver":
+        asyncio.run(recursive_delete(test_context.table_name, V3ioHeaders()))
+    elif test_context.driver_name == "RedisDriver":
+        remove_redis_table(test_context.table_name)
     else:
-        raise ValueError(f'Unsupported driver name "{driver_name}"')
+        raise ValueError(f'Unsupported driver name "{test_context.driver_name}"')
 
 
 @pytest.fixture(params=drivers_list)
 def setup_kv_teardown_test(request):
     # Setup
-    table_name = _generate_table_name()
-    
-    test_params = {}
-    driver_name = request.param
-    test_params["driver_name"] = driver_name
-    test_params["table_name"] = table_name
-    if driver_name == "RedisDriver":
-        REDIS_URL = os.environ.get('REDIS_URL')
-        if not REDIS_URL:
-            test_params["redis_fake_server"] = fakeredis.FakeServer()
+    test_context = TestContext(request.param, table_name = _generate_table_name())
 
-    if driver_name == "V3ioDriver":
-        asyncio.run(create_temp_kv(table_name))
-    elif driver_name == "RedisDriver":
-        create_temp_redis_kv(test_params)
+    if test_context.driver_name == "V3ioDriver":
+        asyncio.run(create_temp_kv(test_context.table_name))
+    elif test_context.driver_name == "RedisDriver":
+        create_temp_redis_kv(test_context)
     else:
         raise ValueError(f'Unsupported driver name "{driver_name}"')
 
     # Test runs
-    yield test_params
+    yield test_context
 
     # Teardown
-    if driver_name == "V3ioDriver":
-        asyncio.run(recursive_delete(table_name, V3ioHeaders()))
-    elif driver_name == "RedisDriver":
-        remove_redis_table(table_name)
+    if test_context.driver_name == "V3ioDriver":
+        asyncio.run(recursive_delete(test_context.table_name, V3ioHeaders()))
+    elif test_context.driver_name == "RedisDriver":
+        remove_redis_table(test_context.table_name)
     else:
-        raise ValueError(f'Unsupported driver name "{driver_name}"')
+        raise ValueError(f'Unsupported driver name "{test_context.driver_name}"')
 
 
 @pytest.fixture()
@@ -194,8 +201,8 @@ async def create_stream(stream_path):
 
 def create_temp_redis_kv(setup_teardown_test):
     # Create the data we'll join with in Redis.
-    table_path = setup_teardown_test["table_name"]
-    redis_fake_server = setup_teardown_test["redis_fake_server"] if "redis_fake_server" in setup_teardown_test else None
+    table_path = setup_teardown_test.table_name
+    redis_fake_server = setup_teardown_test.redis_fake_server
     redis_client = get_redis_client(redis_fake_server=redis_fake_server)
 
     for i in range(1, 10):
