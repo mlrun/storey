@@ -40,10 +40,9 @@ class AggregateByKey(Flow):
                  augmentation_fn: Optional[Callable[[Event, Dict[str, object]], Event]] = None, enrich_with: Optional[List[str]] = None,
                  aliases: Optional[Dict[str, str]] = None, use_windows_from_schema: bool = False, **kwargs):
         if isinstance(self, QueryByKey):
-            # self._init_flow_and_table_done = self._init_flow_and_table_done
             self._table = table
         else:
-            self._init_flow_and_table(table, **kwargs)
+            self._table = self._init_flow_and_table(table, **kwargs)
         aggregates = self._parse_aggregates(aggregates)
         self._check_unique_names(aggregates)
 
@@ -95,10 +94,9 @@ class AggregateByKey(Flow):
         if isinstance(table, str):
             if not self.context:
                 raise TypeError("Table can not be string if no context was provided to the step")
-            self._table = self.context.get_table(table)
+            return self.context.get_table(table)
         if isinstance(table, Table):
-            self._table = table
-        # self._init_flow_and_table_done = True
+            return table
 
     def _check_unique_names(self, aggregates):
         unique_aggr_names = set()
@@ -262,9 +260,8 @@ class QueryByKey(AggregateByKey):
                  fixed_window_type: Optional[FixedWindowType] = FixedWindowType.CurrentOpenWindow, **kwargs):
         self._aggrs = []
         self._enrich_cols = []
-        self._table = None
         resolved_aggrs = {}
-        self._init_flow_and_table(table, **kwargs)
+        self._table = self._init_flow_and_table(table, **kwargs)
         for feature in features:
             if re.match(r'.*_[a-z]+_[0-9]+[smhd]$', feature) and self._table and self._table._support_full_aggregation_query:
                 name, window = feature.rsplit('_', 1)
@@ -278,10 +275,10 @@ class QueryByKey(AggregateByKey):
             feature, aggr = name.rsplit('_', 1)
             # setting as SlidingWindow temporarily until actual window type will be read from schema
             self._aggrs.append(FieldAggregator(name=feature, field=None, aggr=[aggr], windows=SlidingWindows(windows)))
-        if isinstance(table, Table):
-            other_table = table._clone() if table._aggregates is not None else table
+        if isinstance(self._table, Table):
+            other_table = self._table._clone() if self._table._aggregates is not None else self._table
         else:
-            other_table = table  # str - pass table string along with the context object
+            other_table = self._table  # str - pass table string along with the context object
         AggregateByKey.__init__(self, self._aggrs, other_table, key, augmentation_fn=augmentation_fn,
                                 enrich_with=self._enrich_cols, aliases=aliases, use_windows_from_schema=True, **kwargs)
         self._table._aggregations_read_only = True
