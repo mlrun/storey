@@ -23,23 +23,24 @@ class RedisType(Enum):
 
 
 class NeedsRedisAccess:
-    """Checks that params for access to Redis exist and are legal
+    """
+    Checks that params for access to Redis exist and are legal
 
-    :param webapi: URL to the web API (https or http). If not set, the REDIS_URL environment variable will be used.
-
+    :param redis_utl: URL to the redis server. If not set, the REDIS_URL environment variable will be used.
     """
 
     def __init__(self, redis_url=None):
         redis_url = redis_url or os.getenv('REDIS_URL')
         if not redis_url:
             self._redis_url = None
-            print('Missing redis_url parameter or REDIS_URL environment variable. Using fakeredit instead')
-            return
+            raise ValueError(f'no redis_client or redis_url provided, aborting')
 
         if not redis_url.startswith('redis://'):
             redis_url = f'redis://{redis_url}'
 
         self._redis_url = redis_url
+
+        # TODO: redis auth/cred handling
 
 
 class RedisDriver(NeedsRedisAccess, Driver):
@@ -59,9 +60,13 @@ class RedisDriver(NeedsRedisAccess, Driver):
                  aggregation_time_attribute_prefix: str = '_',
                  use_parallel_operations: bool = True,  # unused
                  ):
+        # if client provided a redis-client object, use it. otherwise store the redis url, and create redis-client
+        # upon demand (any access to self.redis)
+        if redis_client is not None:
+            self._redis = redis_client
+        else:
+            NeedsRedisAccess.__init__(self, redis_url)
 
-        NeedsRedisAccess.__init__(self, redis_url)
-        self._redis = redis_client
         self._key_prefix = key_prefix if key_prefix else self.DEFAULT_KEY_PREFIX
         self._type = redis_type
         self._mtime_name = '$_mtime_'
@@ -71,12 +76,13 @@ class RedisDriver(NeedsRedisAccess, Driver):
         self._aggregation_prefixes = (self._aggregation_attribute_prefix,
                                       self._aggregation_time_attribute_prefix)
 
-    def asyncify(self, fn):
+    @staticmethod
+    def asyncify(fn):
         """Run a synchronous function asynchronously."""
         async def inner_fn(*args, **kwargs):
             loop = asyncio.get_event_loop()
-            partial_hset = partial(fn, *args, **kwargs)
-            return await loop.run_in_executor(RedisDriver._thread_pool, partial_hset)
+            partial_fn = partial(fn, *args, **kwargs)
+            return await loop.run_in_executor(RedisDriver._thread_pool, partial_fn)
         return inner_fn
 
     @property
@@ -186,9 +192,8 @@ class RedisDriver(NeedsRedisAccess, Driver):
             ret = False
         else:
             # if value is a number, convert type to int / float
-            if value[0] in ('-', '+'):
-                value = value[1:]
-            if value.replace('.', '', 1).isdigit():
+            no_sign_value = value[1:] if value[0] in ('-', '+') else value
+            if no_sign_value.replace('.', '', 1).isdigit():
                 ret = int(value) if int(float(value)) == float(value) else float(value)
             else:
                 ret = str_value
@@ -311,9 +316,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
             update_expression = f'{update_expression}redis.call("HSET","{redis_key_prefix}","{self._mtime_name}",{current_time});return 1;'
 
         redis_keys_involved.append(redis_key_prefix)
-        update_expression = f"""{update_expression}"""
-        update_ok = await self.asyncify(self.redis.eval)(update_expression, len(redis_keys_involved), *redis_keys_involved)
-        # should_raise_error = False
+        update_ok = await RedisDriver.asyncify(self.redis.eval)(update_expression, len(redis_keys_involved), *redis_keys_involved)
 
         if update_ok:
             if aggr_item:
@@ -324,7 +327,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
                 redis_key_prefix, aggr_item, False, additional_data)
             update_expression = f'{update_expression}redis.call("HSET","{redis_key_prefix}","{self._mtime_name}",{current_time});return 1;'
             redis_keys_involved.append(redis_key_prefix)
-            update_ok = await self.asyncify(self.redis.eval)(update_expression, len(redis_keys_involved), *redis_keys_involved)
+            update_ok = await RedisDriver.asyncify(self.redis.eval)(update_expression, len(redis_keys_involved), *redis_keys_involved)
             if update_ok and aggr_item:
                 await self._fetch_state_by_key(aggr_item, container, table_path, key)
 
@@ -332,7 +335,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
         try:
             # TODO: This should be HSCAN, not HGETALL, to avoid blocking Redis
             # with very large hashes.
-            values = await self.asyncify(self.redis.hgetall)(redis_key)
+            values = await RedisDriver.asyncify(self.redis.hgetall)(redis_key)
         except redis.ResponseError as e:
             raise RedisError(f'Failed to get key {redis_key}. Response error was: {e}')
         res = {RedisDriver.convert_to_str(key): RedisDriver.convert_redis_value_to_python_obj(val) for key, val in values.items()
@@ -345,7 +348,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
             if not name.startswith(self._aggregation_prefixes)
         ]
         try:
-            values = await self.asyncify(self.redis.hmget)(redis_key, non_aggregation_attrs)
+            values = await RedisDriver.asyncify(self.redis.hmget)(redis_key, non_aggregation_attrs)
         except redis.ResponseError as e:
             raise RedisError(f'Failed to get key {redis_key}. Response error was: {e}') from e
         if len(values) == 1:
@@ -377,7 +380,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
         feature_with_relevant_attr = f"{feature_name_only}{aggr_name[-2:]}"
         associated_time_key = self._aggregation_time_key(redis_key_prefix,
                                                          feature_with_relevant_attr)
-        time_val = await self.asyncify(self.redis.get)(associated_time_key)
+        time_val = await RedisDriver.asyncify(self.redis.get)(associated_time_key)
         time_val = RedisDriver.convert_to_str(time_val)
 
         try:
@@ -411,7 +414,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
         # We can't use `async for` here...
         for aggr_key in self.redis.scan_iter(f"{aggr_key_prefix}*"):
             aggr_key = RedisDriver.convert_to_str(aggr_key)
-            value = await self.asyncify(self.redis.lrange)(aggr_key, 0, -1)
+            value = await RedisDriver.asyncify(self.redis.lrange)(aggr_key, 0, -1)
             # Build an attribute for this aggregation in the format that Storey
             # expects to receive from this method. The feature and aggregation
             # name are embedded in the Redis key. Also, drop the "_a" or "_b"
@@ -446,7 +449,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
         # We can't use `async for` here...
         for aggr_key in self.redis.scan_iter(f"{aggr_key_prefix}*"):
             aggr_key = RedisDriver.convert_to_str(aggr_key)
-            value = await self.asyncify(self.redis.lrange)(aggr_key, 0, -1)
+            value = await RedisDriver.asyncify(self.redis.lrange)(aggr_key, 0, -1)
             # Build an attribute for this aggregation in the format that Storey
             # expects to receive from this method. The feature and aggregation
             # name are embedded in the Redis key. Also, drop the "_a" or "_b"
@@ -473,10 +476,10 @@ class RedisDriver(NeedsRedisAccess, Driver):
 
     async def _save_schema(self, container, table_path, schema):
         redis_key = self._make_key(container, table_path, schema_file_name)
-        await self.asyncify(self.redis.set)(redis_key, json.dumps(schema))
+        await RedisDriver.asyncify(self.redis.set)(redis_key, json.dumps(schema))
 
     async def _load_schema(self, container, table_path):
         redis_key = self._make_key(container, table_path, schema_file_name)
-        schema = await self.asyncify(self.redis.get)(redis_key)
+        schema = await RedisDriver.asyncify(self.redis.get)(redis_key)
         if schema:
             return json.loads(schema)

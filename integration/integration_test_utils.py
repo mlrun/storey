@@ -84,9 +84,9 @@ def _generate_table_name(prefix='bigdata/storey_ci/Aggr_test'):
 redis_server = None
 
 def get_redis_client(redis_fake_server=None):
-    REDIS_URL = os.environ.get('REDIS_URL')
-    if REDIS_URL:
-        return r.Redis.from_url(REDIS_URL)
+    redis_url = os.environ.get('REDIS_URL')
+    if redis_url:
+        return r.Redis.from_url(redis_url)
     else:
         return fakeredis.FakeRedis(decode_responses=True, server = redis_fake_server)
 
@@ -100,7 +100,8 @@ def get_driver(setup_teardown_test, *args, **kwargs):
         redis_fake_server = setup_teardown_test["redis_fake_server"] if "redis_fake_server" in setup_teardown_test else None
         return redis_driver(redis_fake_server = redis_fake_server, *args, **kwargs)
     else:
-        assert 0
+        driver_name = setup_teardown_test["driver_name"]
+        raise ValueError(f'Unsupported driver name "{driver_name}"')
 
 def remove_redis_table(table_name):
     redis_client = get_redis_client()
@@ -134,7 +135,7 @@ def setup_teardown_test(request):
     elif driver_name == "RedisDriver":
         remove_redis_table(table_name)
     else:
-        assert 0
+        raise ValueError(f'Unsupported driver name "{driver_name}"')
 
 
 @pytest.fixture(params=drivers_list)
@@ -156,7 +157,7 @@ def setup_kv_teardown_test(request):
     elif driver_name == "RedisDriver":
         create_temp_redis_kv(test_params)
     else:
-        assert 0
+        raise ValueError(f'Unsupported driver name "{driver_name}"')
 
     # Test runs
     yield test_params
@@ -167,7 +168,7 @@ def setup_kv_teardown_test(request):
     elif driver_name == "RedisDriver":
         remove_redis_table(table_name)
     else:
-        assert 0
+        raise ValueError(f'Unsupported driver name "{driver_name}"')
 
 
 @pytest.fixture()

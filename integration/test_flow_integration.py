@@ -62,13 +62,12 @@ def _get_redis_kv_all_attrs(setup_teardown_test: dict, key:str):
     from .integration_test_utils import get_redis_client
     from storey import RedisDriver
     table_name = setup_teardown_test["table_name"]
-    redis_key = ''.join(('storey-test:', table_name, key, ':static'))
+    redis_key = f'storey-test:{table_name}{key}:static'
     redis_fake_server = setup_teardown_test["redis_fake_server"] if "redis_fake_server" in setup_teardown_test else None
     values = get_redis_client(redis_fake_server= redis_fake_server).hgetall(redis_key)    
     return {RedisDriver.convert_to_str(key): RedisDriver.convert_redis_value_to_python_obj(val) for key, val in values.items()}
 
 def get_key_all_attrs_test_helper(setup_teardown_test: dict, key:str):
-    result = None
     if setup_teardown_test["driver_name"] == "RedisDriver":
         result = _get_redis_kv_all_attrs(setup_teardown_test, key)
     else:
@@ -86,7 +85,7 @@ def test_join_with_v3io_table(setup_kv_teardown_test):
         SyncEmitSource(),
         Map(lambda x: x + 1),
         Filter(lambda x: x < 8),
-        JoinWithV3IOTable(get_driver(setup_kv_teardown_test), lambda x: x, lambda x, y: y['age'], table_path),
+        JoinWithV3IOTable(V3ioDriver(), lambda x: x, lambda x, y: y['age'], table_path),
         Reduce(0, lambda x, y: x + y)
     ]).run()
     for i in range(10):

@@ -160,7 +160,6 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
         response = await self._v3io_client.kv.update(container, table_path, key, expression=update_expression,
                                                      condition=condition_expression,
                                                      raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
-
         if response.status_code == 200:
             if aggr_item:
                 aggr_item.storage_specific_cache[self._mtime_header_name] = response.headers[self._mtime_header_name]

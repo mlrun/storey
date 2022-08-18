@@ -2,20 +2,12 @@ import pytest
 
 from storey import build_flow, SyncEmitSource,  Reduce, Complete, \
     RedisDriver,NoSqlTarget, Table,JoinWithTable
-from .integration_test_utils import append_return
+from .integration_test_utils import append_return, get_redis_client
 
 
 @pytest.fixture()
 def redis():
-    import os
-    import fakeredis
-    import redis as r
-    REDIS_URL = os.environ.get('REDIS_URL')
-    if REDIS_URL:
-        yield r.Redis.from_url(REDIS_URL)
-    else:
-        yield fakeredis.FakeRedis(decode_responses=True)
-
+    return get_redis_client()
 
 def test_redis_driver_write(redis):
     driver = RedisDriver(redis)

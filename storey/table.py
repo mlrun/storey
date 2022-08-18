@@ -973,10 +973,11 @@ class AggregationValue:
         raise NotImplementedError()
 
     def aggregate_lua_script(self, vl1, vl2):
-        '''
+        """
         The aggregate_lua_script() method is used for creating part of a lua script, to be sent
         to the Redis DB (see _build_feature_store_lua_update_script).
-        The math function (for example Sqr: x*x, increment: x+1) is implemented in the aggregate method.'''
+        The math function (for example Sqr: x*x, increment: x+1) is implemented in the aggregate method.
+        """
 
         raise NotImplementedError()
 

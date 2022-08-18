@@ -23,7 +23,6 @@ from storey import build_flow, SyncEmitSource, Map, Filter, FlatMap, Reduce, Map
     ParquetTarget, QueryByKey, \
     TSDBTarget, Extend, SendToHttp, HttpRequest, NoSqlTarget, NoopDriver, Driver, Recover, V3ioDriver, ParquetSource
 from storey.flow import _ConcurrentJobExecution, Context, ReifyMetadata, Rename
-from integration.integration_test_utils import append_return
 
 
 class ATestException(Exception):
