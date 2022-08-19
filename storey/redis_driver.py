@@ -34,12 +34,7 @@ class NeedsRedisAccess:
         if not redis_url:
             raise ValueError('no redis_client object or REDIS_URL environment-var provided, aborting')
 
-        if not redis_url.startswith('redis://'):
-            redis_url = f'redis://{redis_url}'
-
         self._redis_url = redis_url
-
-        # TODO: redis auth/cred handling
 
 
 class RedisDriver(NeedsRedisAccess, Driver):
