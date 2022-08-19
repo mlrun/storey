@@ -12,7 +12,7 @@ from functools import partial
 from .drivers import Driver
 
 import redis
-import rediscluster
+import redis.cluster
 from .dtypes import RedisError
 from .utils import schema_file_name
 
@@ -32,8 +32,7 @@ class NeedsRedisAccess:
     def __init__(self, redis_url=None):
         redis_url = redis_url or os.getenv('REDIS_URL')
         if not redis_url:
-            self._redis_url = None
-            raise ValueError(f'no redis_client or redis_url provided, aborting')
+            raise ValueError('no redis_client object or REDIS_URL environment-var provided, aborting')
 
         if not redis_url.startswith('redis://'):
             redis_url = f'redis://{redis_url}'
@@ -52,7 +51,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
     _thread_pool = concurrent.futures.ThreadPoolExecutor()
 
     def __init__(self,
-                 redis_client: Optional[Union[redis.Redis, rediscluster.RedisCluster]] = None,
+                 redis_client: Optional[Union[redis.Redis, redis.cluster.RedisCluster]] = None,
                  redis_type: RedisType = RedisType.STANDALONE,
                  key_prefix: str = None,
                  redis_url: Optional[str] = None,
@@ -66,6 +65,9 @@ class RedisDriver(NeedsRedisAccess, Driver):
             self._redis = redis_client
         else:
             NeedsRedisAccess.__init__(self, redis_url)
+
+        if type(redis_type) != RedisType:
+            raise ValueError(f'unsupported RedisType value provided  ("{redis_type}"), aborting')
 
         self._key_prefix = key_prefix if key_prefix else self.DEFAULT_KEY_PREFIX
         self._type = redis_type
@@ -91,8 +93,8 @@ class RedisDriver(NeedsRedisAccess, Driver):
             return self._redis
         if self._type is RedisType.STANDALONE:
             return redis.Redis.from_url(self._redis_url, decode_responses=True)
-        self._redis = rediscluster.RedisCluster.from_url(self._redis_url, decode_response=True)
-        return self._redis
+        else:
+            return redis.cluster.RedisCluster.from_url(self._redis_url, decode_response=True)
 
     @staticmethod
     def make_key(key_prefix, *parts):
