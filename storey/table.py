@@ -1128,6 +1128,9 @@ class LastValue(AggregationValue):
         else:
             self.value = value
 
+    def aggregate_lua_script(self, vl1, vl2):
+        return f'{vl2}'
+
 
 class FirstValue(AggregationValue):
     name = 'first'
@@ -1152,6 +1155,9 @@ class FirstValue(AggregationValue):
             self.value = self.default_value
         else:
             self.value = value
+
+    def aggregate_lua_script(self, vl1, vl2):
+        return f'{vl1}~={vl1} and {vl2} or {vl1}'
 
 
 class AggregatedStoreElement:

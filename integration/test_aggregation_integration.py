@@ -1606,9 +1606,6 @@ def test_separate_aggregate_steps(setup_teardown_test):
 
 def test_write_read_first_last(setup_teardown_test):
 
-    if setup_teardown_test.driver_name == "RedisDriver":
-        pytest.skip() # TODO
-
     table = Table(setup_teardown_test.table_name, get_driver(setup_teardown_test), flush_interval_secs=None)
     controller = build_flow([
         SyncEmitSource(),
@@ -1617,7 +1614,7 @@ def test_write_read_first_last(setup_teardown_test):
     ]).run()
 
     try:
-        for i in range(10):
+        for i in range(1,10):
             controller.emit({'attr': i}, key='onekey', event_time=test_base_time + timedelta(minutes=i))
             controller.emit({'attr': i * 10}, key='onekey', event_time=test_base_time + timedelta(hours=1, minutes=i))
     finally:
@@ -1637,8 +1634,8 @@ def test_write_read_first_last(setup_teardown_test):
     controller.terminate()
     result = controller.await_termination()
 
-    assert result == [{'mykey': 'onekey', 'attr_first_1h': 0.0, 'attr_last_1h': 9.0},
-                      {'mykey': 'onekey', 'attr_first_1h': 0.0, 'attr_last_1h': 90.0}]
+    assert result == [{'mykey': 'onekey', 'attr_first_1h': 1.0, 'attr_last_1h': 9.0},
+                      {'mykey': 'onekey', 'attr_first_1h': 10.0, 'attr_last_1h': 90.0}]
 
 
 def test_non_existing_key_query_by_key_from_v3io_key_is_list(setup_teardown_test):

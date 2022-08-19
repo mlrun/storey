@@ -143,11 +143,12 @@ class RedisDriver(NeedsRedisAccess, Driver):
         else:
             if isinstance(value, float):
                 if value == math.inf or value == -math.inf:
-                    # Use the shorter infinity form (inf, -inf) to save space.
-                    value = str(value)
+                    value = str(value) # stored in redis as "inf" string
+                elif math.isnan(value):
+                    value = str(value) # stored in redis as "nan" string
                 elif value % 1 == 0:
-                    # Store whole numbers as integers to save space.
-                    value = int(value)
+                    value = int(value) # cast whole numbers to integer
+
             return json.dumps(value)
 
     @classmethod
@@ -166,6 +167,8 @@ class RedisDriver(NeedsRedisAccess, Driver):
                     value = "math.huge"
                 elif value == -math.inf:
                     value = "-math.huge"
+                elif math.isnan(value):
+                    value = "0/0"
                 elif value % 1 == 0:
                     # Store whole numbers as integers to save space.
                     value = int(value)
@@ -188,6 +191,8 @@ class RedisDriver(NeedsRedisAccess, Driver):
             ret = math.inf
         elif value == "-inf":
             ret = -math.inf
+        elif value == "nan" or value == "-nan":
+            ret = float("nan")
         elif value == "true":
             ret = True
         elif value == "false":
@@ -234,8 +239,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
                 # to delete will appear in the `additional_data` dict with a
                 # "falsey" value. This is the same logic the V3ioDriver uses.
                 if expression_value:
-                    additional_data_lua_script = f'{additional_data_lua_script}\
-                        redis.call("HSET",additional_data_key, "{name}", {expression_value});\n'
+                    additional_data_lua_script = f'{additional_data_lua_script}redis.call("HSET",additional_data_key, "{name}", {expression_value});\n'
                 else:
                     additional_data_lua_script = f'{additional_data_lua_script}redis.call("HDEL",additional_data_key, "{name}");\n'
 
@@ -247,8 +251,8 @@ class RedisDriver(NeedsRedisAccess, Driver):
             initialized_attributes = {}
             if partitioned_by_key:
                 condition_expression = aggregation_element.storage_specific_cache.get(self._mtime_name, None)
-            lua_tonum_function = 'local function tonum(str) if str == "inf" then return math.huge elseif str == "-inf" \
-                then return -math.huge end return tonumber(str) end'
+            lua_tonum_function = ('local function tonum(str) if str == "inf" then return math.huge elseif str == "-inf" then '
+            'return -math.huge elseif str == "nan" then return 0/0 end return tonumber(str) end')
             lua_script = f'{lua_script}local len;local redis_key_prefix="{redis_key_prefix}";local list_attribute_key;\n'
             lua_script = f'{lua_script}{lua_tonum_function}\n'
             for name, bucket in aggregation_element.aggregation_buckets.items():
@@ -281,23 +285,21 @@ class RedisDriver(NeedsRedisAccess, Driver):
                             if cached_time < expected_time:
                                 if not initialized_attributes.get(list_attribute_key, 0) == expected_time:
                                     initialized_attributes[list_attribute_key] = expected_time
-                                    lua_script = f'{lua_script}local t=redis.call("GET","{array_time_attribute_key}");if (type(t)~="boolean" and (tonumber(t) < {expected_time})) \
-                                        then redis.call("DEL",list_attribute_key); end;\n'
+                                    lua_script = (f'{lua_script}local t=redis.call("GET","{array_time_attribute_key}");\n'
+                                    f'if (type(t)~="boolean" and (tonumber(t) < {expected_time})) then redis.call("DEL",list_attribute_key); end;\n')
                                     default_value = self._convert_python_obj_to_redis_value(aggregation_value.default_value)
-                                    lua_script = f'{lua_script}len=redis.call("LLEN",list_attribute_key) for i=1,({bucket.total_number_of_buckets}-len) \
-                                        do redis.call("RPUSH",list_attribute_key,{default_value}) end;\n'
+                                    lua_script = (f'{lua_script}len=redis.call("LLEN",list_attribute_key);\n'
+                                    f'for i=1,({bucket.total_number_of_buckets}-len) do redis.call("RPUSH",list_attribute_key,{default_value}) end;\n')
                                 if array_time_attribute_key not in times_updates:
                                     times_updates[array_time_attribute_key] = expected_time_expr
                                 new_cached_times[name] = (array_time_attribute_key, expected_time)
 
                             # Updating the specific cells
                             if cached_time <= expected_time:
-                                lua_script = f'{lua_script}local old_value=redis.call("LINDEX",list_attribute_key,{index_to_update});\
-                                    old_value=tonum(old_value);\n'
+                                lua_script = f'{lua_script}local old_value=redis.call("LINDEX",list_attribute_key,{index_to_update});\n'
                                 lua_script = f'{lua_script}old_value=tonum(old_value)\n'
                                 new_value_expression = aggregation_value.aggregate_lua_script('old_value', aggregation_value.value)
-                                lua_script = f'{lua_script}\
-                                    redis.call("LSET", list_attribute_key, {index_to_update}, {new_value_expression});\n'
+                                lua_script = f'{lua_script}redis.call("LSET", list_attribute_key, {index_to_update}, {new_value_expression});\n'
 
                         redis_keys_involved.append(array_time_attribute_key)
                         lua_script = f'{lua_script}redis.call("SET","{array_time_attribute_key}",{expected_time}); \n'
@@ -312,13 +314,13 @@ class RedisDriver(NeedsRedisAccess, Driver):
             return
         current_time = int(time.time_ns() / 1000)
         if mtime_condition is not None:
-            update_expression = f'if redis.call("HGET", "{redis_key_prefix}","{self._mtime_name}") == "{mtime_condition}" then \
-                {update_expression} redis.call("HSET","{redis_key_prefix}","{self._mtime_name}",{current_time});return 1;else return 0;end;'
+            update_expression = (f'if redis.call("HGET", "{redis_key_prefix}","{self._mtime_name}") == "{mtime_condition}" then\n'
+                f'{update_expression}redis.call("HSET","{redis_key_prefix}","{self._mtime_name}",{current_time});\nreturn 1;else return 0;end;')
         else:
             update_expression = f'{update_expression}redis.call("HSET","{redis_key_prefix}","{self._mtime_name}",{current_time});return 1;'
 
         redis_keys_involved.append(redis_key_prefix)
-        update_ok = await RedisDriver.asyncify(self.redis.eval)(update_expression, len(redis_keys_involved), *redis_keys_involved)
+        update_ok = await self.asyncify(self.redis.eval)(update_expression, len(redis_keys_involved), *redis_keys_involved)
 
         if update_ok:
             if aggr_item:
