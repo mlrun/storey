@@ -84,12 +84,16 @@ class RedisDriver(NeedsRedisAccess, Driver):
 
     @property
     def redis(self):
+        if self._redis is None:
+            if self._type is RedisType.STANDALONE:
+                self._redis = redis.Redis.from_url(self._redis_url, decode_responses=True)
+            else:
+                self._redis = redis.cluster.RedisCluster.from_url(self._redis_url, decode_response=True)
+        return self._redis
+
+    async def close(self):
         if self._redis:
-            return self._redis
-        if self._type is RedisType.STANDALONE:
-            return redis.Redis.from_url(self._redis_url, decode_responses=True)
-        else:
-            return redis.cluster.RedisCluster.from_url(self._redis_url, decode_response=True)
+            self._redis.close()
 
     @staticmethod
     def make_key(key_prefix, *parts):
