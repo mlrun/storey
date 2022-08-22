@@ -338,7 +338,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
         # In case Mtime condition evaluated to False, we run the conditioned
         # expression, then fetch and cache the latest key's state
         else:
-            update_expression, condition_expression, pending_updates, redis_keys_involved = self._build_feature_store_lua_update_script(
+            update_expression, _, _, redis_keys_involved = self._build_feature_store_lua_update_script(
                 redis_key_prefix, aggr_item, False, additional_data)
             update_expression = f'{update_expression}redis.call("HSET","{redis_key_prefix}","{self._mtime_name}",{current_time});return 1;'
             redis_keys_involved.append(redis_key_prefix)
