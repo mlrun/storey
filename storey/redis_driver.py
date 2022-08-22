@@ -26,13 +26,13 @@ class NeedsRedisAccess:
     """
     Checks that params for access to Redis exist and are legal
 
-    :param redis_utl: URL to the redis server. If not set, the REDIS_URL environment variable will be used.
+    :param redis_utl: URL to the redis server. If not set, the MLRUN_REDIS_URL environment variable will be used.
     """
 
     def __init__(self, redis_url=None):
-        redis_url = redis_url or os.getenv('REDIS_URL')
+        redis_url = redis_url or os.getenv('MLRUN_REDIS_URL')
         if not redis_url:
-            raise ValueError('no redis_client object or REDIS_URL environment-var provided, aborting')
+            raise ValueError('no redis_client object or MLRUN_REDIS_URL environment-var provided, aborting')
 
         self._redis_url = redis_url
 

@@ -84,7 +84,7 @@ def _generate_table_name(prefix='bigdata/storey_ci/Aggr_test'):
 redis_server = None
 
 def get_redis_client(redis_fake_server=None):
-    redis_url = os.environ.get('REDIS_URL')
+    redis_url = os.environ.get('MLRUN_REDIS_URL')
     if redis_url:
         return r.Redis.from_url(redis_url)
     else:
@@ -118,7 +118,7 @@ class TestContext:
 
         self._redis_fake_server = None
         if driver_name == "RedisDriver":
-            redis_url = os.environ.get('REDIS_URL')
+            redis_url = os.environ.get('MLRUN_REDIS_URL')
             if not redis_url:
                 # if we are using fakeredis, create fake-server to support tests involving multiple clients
                 self._redis_fake_server = fakeredis.FakeServer()
