@@ -163,7 +163,6 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
         if response.status_code == 200:
             if aggr_item:
                 aggr_item.storage_specific_cache[self._mtime_header_name] = response.headers[self._mtime_header_name]
-
         # In case Mtime condition evaluated to False, we run the conditioned expression, then fetch and cache the latest key's state
         elif self._is_false_condition_error(response):
             update_expression, condition_expression, pending_updates = self._build_feature_store_update_expression(aggr_item,
@@ -173,12 +172,10 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
             response = await self._v3io_client.kv.update(container, table_path, key, expression=update_expression,
                                                          condition=condition_expression,
                                                          raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
-
             if response.status_code == 200 and aggr_item:
                 await self._fetch_state_by_key(aggr_item, container, table_path, key)
             else:
                 should_raise_error = True
-
         else:
             should_raise_error = True
 
@@ -250,6 +247,7 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
                     expressions.append(f'{name}={self._convert_python_obj_to_expression_value(value)}')
                 else:
                     expressions.append(f'REMOVE {name}')
+
         update_expression = ';'.join(expressions)
         return update_expression, condition_expression, pending_updates
 
