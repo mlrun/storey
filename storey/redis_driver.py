@@ -60,6 +60,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
             self._redis = redis_client
         else:
             NeedsRedisAccess.__init__(self, redis_url)
+            self._redis = None
 
         if not isinstance(redis_type, RedisType):
             raise ValueError(f'unsupported RedisType value provided  ("{redis_type}"), aborting')
