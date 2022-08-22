@@ -65,7 +65,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
         if not isinstance(redis_type, RedisType):
             raise ValueError(f'unsupported RedisType value provided  ("{redis_type}"), aborting')
 
-        self._key_prefix = key_prefix if key_prefix else self.DEFAULT_KEY_PREFIX
+        self._key_prefix = key_prefix if key_prefix is not None else self.DEFAULT_KEY_PREFIX
         self._type = redis_type
         self._mtime_name = '$_mtime_'
 

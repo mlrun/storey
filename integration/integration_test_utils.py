@@ -81,27 +81,12 @@ def _generate_table_name(prefix='bigdata/storey_ci/Aggr_test'):
     random_table = ''.join([random.choice(string.ascii_letters) for i in range(10)])
     return f'{prefix}/{random_table}/'
 
-redis_server = None
-
 def get_redis_client(redis_fake_server=None):
     redis_url = os.environ.get('MLRUN_REDIS_URL')
     if redis_url:
         return r.Redis.from_url(redis_url)
     else:
         return fakeredis.FakeRedis(decode_responses=True, server = redis_fake_server)
-
-def redis_driver(redis_fake_server = None, *args, **kwargs):
-    return RedisDriver(redis_client = get_redis_client(redis_fake_server),key_prefix="storey-test:", *args, **kwargs)
-
-def get_driver(setup_teardown_test, *args, **kwargs):
-    if setup_teardown_test.driver_name == "V3ioDriver":
-        return V3ioDriver(*args, **kwargs)
-    elif setup_teardown_test.driver_name == "RedisDriver":
-        redis_fake_server = setup_teardown_test.redis_fake_server
-        return redis_driver(redis_fake_server = redis_fake_server, *args, **kwargs)
-    else:
-        driver_name = setup_teardown_test.driver_name
-        raise ValueError(f'Unsupported driver name "{driver_name}"')
 
 def remove_redis_table(table_name):
     redis_client = get_redis_client()
@@ -124,16 +109,35 @@ class TestContext:
                 self._redis_fake_server = fakeredis.FakeServer()
 
     @property
-    def driver_name(self):
-        return self._driver_name
-
-    @property
     def table_name(self):
         return self._table_name
 
     @property
     def redis_fake_server(self):
         return self._redis_fake_server
+
+    @property
+    def driver_name(self):
+        return self._driver_name
+
+    class AggregationlessV3ioDriver(V3ioDriver):
+        def supports_aggregations(self):
+            return False
+
+    class AggregationlessRedisDriver(RedisDriver):
+        def supports_aggregations(self):
+            return False
+
+    def driver(self, IsAggregationlessDriver = False,  *args, **kwargs):
+        if self.driver_name == "V3ioDriver":
+            v3io_driver_class =  TestContext.AggregationlessV3ioDriver if IsAggregationlessDriver else V3ioDriver
+            return v3io_driver_class(*args, **kwargs)
+        elif self.driver_name == "RedisDriver":
+            redis_driver_class =  TestContext.AggregationlessRedisDriver if IsAggregationlessDriver else RedisDriver
+            return redis_driver_class(redis_client = get_redis_client(self.redis_fake_server), key_prefix="storey-test:", *args, **kwargs)
+        else:
+            driver_name = self.driver_name
+            raise ValueError(f'Unsupported driver name "{driver_name}"')
 
 
 drivers_list = ["V3ioDriver", "RedisDriver"]

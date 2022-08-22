@@ -14,7 +14,7 @@ from storey import Filter, JoinWithV3IOTable, SendToHttp, Map, Reduce, SyncEmitS
     StreamTarget, V3ioDriver, TSDBTarget, Table, JoinWithTable, MapWithState, NoSqlTarget, DataframeSource, \
     CSVSource, AsyncEmitSource
 from .integration_test_utils import V3ioHeaders, append_return, test_base_time, setup_kv_teardown_test, \
-    setup_teardown_test, get_driver, TestContext, assign_stream_teardown_test, create_stream
+    setup_teardown_test, TestContext, assign_stream_teardown_test, create_stream
 
 _prevents_ide_from_optimizing_these_away = [
     setup_kv_teardown_test,
@@ -324,7 +324,7 @@ def test_write_to_tsdb_with_metadata_label():
 
 
 def test_join_by_key(setup_kv_teardown_test):
-    table = Table(setup_kv_teardown_test.table_name, get_driver(setup_kv_teardown_test))
+    table = Table(setup_kv_teardown_test.table_name, setup_kv_teardown_test.driver())
 
     controller = build_flow([
         SyncEmitSource(),
@@ -341,7 +341,7 @@ def test_join_by_key(setup_kv_teardown_test):
 
 
 def test_join_by_key_specific_attributes(setup_kv_teardown_test):
-    table = Table(setup_kv_teardown_test.table_name, get_driver(setup_kv_teardown_test))
+    table = Table(setup_kv_teardown_test.table_name, setup_kv_teardown_test.driver())
 
     controller = build_flow([
         SyncEmitSource(),
@@ -357,7 +357,7 @@ def test_join_by_key_specific_attributes(setup_kv_teardown_test):
 
 
 def test_outer_join_by_key(setup_kv_teardown_test):
-    table = Table(setup_kv_teardown_test.table_name, get_driver(setup_kv_teardown_test))
+    table = Table(setup_kv_teardown_test.table_name, setup_kv_teardown_test.driver())
 
     controller = build_flow([
         SyncEmitSource(),
@@ -377,7 +377,7 @@ def test_outer_join_by_key(setup_kv_teardown_test):
 
 
 def test_inner_join_by_key(setup_kv_teardown_test):
-    table = Table(setup_kv_teardown_test.table_name, get_driver(setup_kv_teardown_test))
+    table = Table(setup_kv_teardown_test.table_name, setup_kv_teardown_test.driver())
 
     controller = build_flow([
         SyncEmitSource(),
@@ -396,7 +396,7 @@ def test_inner_join_by_key(setup_kv_teardown_test):
 
 
 def test_write_table_specific_columns(setup_teardown_test):
-    table = Table(setup_teardown_test.table_name, get_driver(setup_teardown_test))
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
 
     table['tal'] = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': test_base_time, 'min': 1, 'Avg': 3}
 
@@ -449,7 +449,7 @@ def test_write_table_specific_columns(setup_teardown_test):
 
 
 def test_write_table_metadata_columns(setup_teardown_test):
-    table = Table(setup_teardown_test.table_name, get_driver(setup_teardown_test))
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
 
     table['tal'] = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': test_base_time}
 
@@ -514,7 +514,7 @@ async def get_kv_item(full_path, key):
 
 
 def test_writing_int_key(setup_teardown_test):
-    table = Table(setup_teardown_test.table_name, get_driver(setup_teardown_test))
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
 
     df = pd.DataFrame({"num": [0, 1, 2], "color": ["green", "blue", "red"]})
 
@@ -527,7 +527,7 @@ def test_writing_int_key(setup_teardown_test):
 
 
 def test_writing_timedelta_key(setup_teardown_test):
-    table = Table(setup_teardown_test.table_name, get_driver(setup_teardown_test))
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
 
     df = pd.DataFrame({"key": ['a', 'b'], "timedelta": [pd.Timedelta("-1 days 2 min 3us"), pd.Timedelta("P0DT0H1M0S")]})
 
@@ -540,7 +540,7 @@ def test_writing_timedelta_key(setup_teardown_test):
 
 
 def test_write_two_keys_to_v3io_from_df(setup_teardown_test):
-    table = Table(setup_teardown_test.table_name, get_driver(setup_teardown_test))
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     data = pd.DataFrame(
         {
             'first_name': ['moshe', 'yosi'],
@@ -563,7 +563,7 @@ def test_write_two_keys_to_v3io_from_df(setup_teardown_test):
 
 # ML-775
 def test_write_three_keys_to_v3io_from_df(setup_teardown_test):
-    table = Table(setup_teardown_test.table_name, get_driver(setup_teardown_test))
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     data = pd.DataFrame(
         {
             'first_name': ['moshe', 'yosi'],
@@ -586,7 +586,7 @@ def test_write_three_keys_to_v3io_from_df(setup_teardown_test):
 
 
 def test_write_string_as_time_via_time_field(setup_teardown_test):
-    table = Table(setup_teardown_test.table_name, get_driver(setup_teardown_test))
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     t1 = '2020-03-16T05:00:00+00:00'
     t2 = '2020-03-15T18:00:00+00:00'
     df = pd.DataFrame(
@@ -608,7 +608,7 @@ def test_write_string_as_time_via_time_field(setup_teardown_test):
 
 
 def test_write_string_as_time_via_schema(setup_teardown_test):
-    table = Table(setup_teardown_test.table_name, get_driver(setup_teardown_test))
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     t1 = '2020-03-16T05:00:00+00:00'
     t2 = '2020-03-15T18:00:00+00:00'
     df = pd.DataFrame(
@@ -630,7 +630,7 @@ def test_write_string_as_time_via_schema(setup_teardown_test):
 
 
 def test_write_multiple_keys_to_v3io_from_csv(setup_teardown_test):
-    table = Table(setup_teardown_test.table_name, get_driver(setup_teardown_test))
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
 
     controller = build_flow([
         CSVSource('tests/test.csv', header=True, key_field=['n1', 'n2'], build_dict=True),
@@ -648,7 +648,7 @@ def test_write_multiple_keys_to_v3io_from_csv(setup_teardown_test):
 
 
 def test_write_multiple_keys_to_v3io(setup_teardown_test):
-    table = Table(setup_teardown_test.table_name, get_driver(setup_teardown_test))
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
 
     controller = build_flow([
         SyncEmitSource(key_field=['n1', 'n2']),
@@ -671,7 +671,7 @@ def test_write_multiple_keys_to_v3io(setup_teardown_test):
 
 
 def test_write_none_time(setup_teardown_test):
-    table = Table(setup_teardown_test.table_name, get_driver(setup_teardown_test))
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     data = pd.DataFrame(
         {
             'first_name': ['moshe', 'yosi'],
@@ -703,7 +703,7 @@ def test_write_none_time(setup_teardown_test):
 
 
 def test_cache_flushing(setup_teardown_test):
-    table = Table(setup_teardown_test.table_name, get_driver(setup_teardown_test), flush_interval_secs=3)
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver(), flush_interval_secs=3)
     controller = build_flow([
         SyncEmitSource(),
         NoSqlTarget(table),
@@ -732,7 +732,7 @@ def test_cache_flushing(setup_teardown_test):
 
 
 def test_write_empty_df(setup_teardown_test):
-    table = Table(setup_teardown_test.table_name, get_driver(setup_teardown_test))
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     df = pd.DataFrame({})
 
     controller = build_flow([
