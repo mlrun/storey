@@ -253,7 +253,7 @@ class QueryByKey(AggregateByKey):
         self._enrich_cols = []
         resolved_aggrs = {}
         for feature in features:
-            if re.match(r'.*_[a-z]+_[0-9]+[smhd]$', feature):
+            if table.supports_aggregations() and re.match(r'.*_[a-z]+_[0-9]+[smhd]$', feature):
                 name, window = feature.rsplit('_', 1)
                 if name in resolved_aggrs:
                     resolved_aggrs[name].append(window)

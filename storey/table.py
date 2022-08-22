@@ -6,7 +6,6 @@ import math
 from .drivers import Driver
 from .dtypes import FieldAggregator, SlidingWindows, FixedWindows, FlowError, _termination_obj, FixedWindowType
 
-
 from .aggregation_utils import is_raw_aggregate, get_virtual_aggregation_func, get_implied_aggregates, get_all_raw_aggregates, \
     get_all_raw_aggregates_with_hidden
 from .utils import _split_path
@@ -46,6 +45,9 @@ class Table:
 
     def __str__(self):
         return f'{self._container}/{self._table_path}'
+
+    def supports_aggregations(self):
+        return self._storage.supports_aggregations()
 
     def _clone(self):
         new_table = Table(self._table_path, self._storage, self._partitioned_by_key,
@@ -792,7 +794,7 @@ class ReadOnlyAggregationBuckets:
         self.buckets = [None] * self.total_number_of_buckets
 
         self.last_bucket_start_time = self._window_start_time
-        self.first_bucket_start_time =\
+        self.first_bucket_start_time = \
             self.last_bucket_start_time - (self.total_number_of_buckets - 1) * period
 
         bucket_index = self.total_number_of_buckets - 1
@@ -1385,7 +1387,7 @@ class AggregationBuckets:
                     current_window_end_index = self.get_bucket_index_by_timestamp(current_window_end_time) - 1
 
                     if timestamp >= self._last_data_point_timestamp \
-                       and index in range(current_window_start_index, current_window_end_index + 1):
+                            and index in range(current_window_start_index, current_window_end_index + 1):
                         aggr.aggregate(timestamp, value)
                 if timestamp > self._last_data_point_timestamp:
                     self._last_data_point_timestamp = timestamp

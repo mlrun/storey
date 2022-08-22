@@ -35,6 +35,10 @@ class Driver:
     async def close(self):
         pass
 
+    # Override if driver does not support aggregations
+    def supports_aggregations(self):
+        return True
+
 
 class NoopDriver(Driver):
     pass
