@@ -252,8 +252,12 @@ class QueryByKey(AggregateByKey):
         self._aggrs = []
         self._enrich_cols = []
         resolved_aggrs = {}
+        if isinstance(table, str):
+            if 'context' not in kwargs:
+                raise TypeError("Table can not be string if no context was provided to the step")
+            table = kwargs['context'].get_table(table)
         for feature in features:
-            if re.match(r'.*_[a-z]+_[0-9]+[smhd]$', feature):
+            if table.supports_aggregations() and re.match(r'.*_[a-z]+_[0-9]+[smhd]$', feature):
                 name, window = feature.rsplit('_', 1)
                 if name in resolved_aggrs:
                     resolved_aggrs[name].append(window)
@@ -265,10 +269,7 @@ class QueryByKey(AggregateByKey):
             feature, aggr = name.rsplit('_', 1)
             # setting as SlidingWindow temporarily until actual window type will be read from schema
             self._aggrs.append(FieldAggregator(name=feature, field=None, aggr=[aggr], windows=SlidingWindows(windows)))
-        if isinstance(table, Table):
-            other_table = table._clone() if table._aggregates is not None else table
-        else:
-            other_table = table  # str - pass table string along with the context object
+        other_table = table._clone() if table._aggregates is not None else table
         AggregateByKey.__init__(self, self._aggrs, other_table, key, augmentation_fn=augmentation_fn,
                                 enrich_with=self._enrich_cols, aliases=aliases, use_windows_from_schema=True, **kwargs)
         self._table._aggregations_read_only = True
