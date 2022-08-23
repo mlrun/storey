@@ -4,8 +4,8 @@ import pytest
 import math
 import pandas as pd
 
-from storey import build_flow, SyncEmitSource, Reduce, Table, V3ioDriver, MapWithState, AggregateByKey, FieldAggregator, \
-    QueryByKey, NoSqlTarget, Context, DataframeSource, Map, RedisDriver
+from storey import build_flow, SyncEmitSource, Reduce, Table, MapWithState, AggregateByKey, FieldAggregator, \
+    QueryByKey, NoSqlTarget, Context, DataframeSource, Map
 
 from storey.dtypes import SlidingWindows, FixedWindows, EmitAfterMaxEvent, FixedWindowType
 from storey.utils import _split_path

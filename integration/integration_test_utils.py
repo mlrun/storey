@@ -13,7 +13,8 @@ import pytest
 import redis as r
 import fakeredis
 
-from storey import V3ioDriver, RedisDriver
+from storey import V3ioDriver
+from storey.redis_driver import RedisDriver
 from storey.drivers import NeedsV3ioAccess
 from storey.flow import V3ioError
 

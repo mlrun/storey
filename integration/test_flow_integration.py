@@ -59,7 +59,7 @@ class GetShardData(V3ioHeaders):
 
 def _get_redis_kv_all_attrs(setup_teardown_test: TestContext, key:str):
     from .integration_test_utils import get_redis_client
-    from storey import RedisDriver
+    from storey.redis_driver import RedisDriver
     table_name = setup_teardown_test.table_name
     redis_key = f'storey-test:{table_name}{key}:static'
     redis_fake_server = setup_teardown_test.redis_fake_server

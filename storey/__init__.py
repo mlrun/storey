@@ -12,9 +12,6 @@ from .dataframe import (  # noqa: F401
 from .drivers import (  # noqa: F401
     Driver, NoopDriver, V3ioDriver
 )
-from .redis_driver import (  # noqa: F401
-    RedisDriver, RedisType
-)
 from .dtypes import (  # noqa: F401
     Event, FieldAggregator, SlidingWindows, FixedWindows, EmissionType, EmitPolicy, EmitAfterPeriod, EmitAfterWindow, EmitAfterMaxEvent,
     EmitAfterDelay, EmitEveryEvent, LateDataHandling, FixedWindowType

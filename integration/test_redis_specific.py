@@ -1,7 +1,8 @@
 import pytest
 
 from storey import build_flow, SyncEmitSource,  Reduce, Complete, \
-    RedisDriver,NoSqlTarget, Table,JoinWithTable
+    NoSqlTarget, Table,JoinWithTable
+from storey.redis_driver import RedisDriver
 from .integration_test_utils import append_return, get_redis_client
 
 

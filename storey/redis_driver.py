@@ -43,7 +43,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
     DATETIME_FIELD_PREFIX = "_dt:"
     TIMEDELTA_FIELD_PREFIX = "_td:"
     DEFAULT_KEY_PREFIX = "storey:"
-    _thread_pool = concurrent.futures.ThreadPoolExecutor()
+    _thread_pool = None
 
     def __init__(self,
                  redis_client: Optional[Union[redis.Redis, redis.cluster.RedisCluster]] = None,
@@ -73,6 +73,8 @@ class RedisDriver(NeedsRedisAccess, Driver):
         self._aggregation_time_attribute_prefix = aggregation_time_attribute_prefix
         self._aggregation_prefixes = (self._aggregation_attribute_prefix,
                                       self._aggregation_time_attribute_prefix)
+        if RedisDriver._thread_pool is None:
+            RedisDriver._thread_pool = concurrent.futures.ThreadPoolExecutor()
 
     @staticmethod
     def asyncify(fn):
