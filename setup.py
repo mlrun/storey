@@ -27,6 +27,8 @@ extras_require = {
     "s3": ["s3fs~=0.5"],
     "az": ["adlfs~=0.5"],
     "kafka": ["kafka-python~=2.0"],
+    "redis": ["redis~=4.3"],
+    "lupa": ["lupa~=1.13"],
 }
 
 

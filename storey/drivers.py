@@ -2,8 +2,8 @@ import base64
 import json
 import os
 from datetime import datetime, timedelta
-from typing import Optional
 from collections import OrderedDict
+from typing import Optional
 import pandas as pd
 
 import v3io
@@ -29,7 +29,7 @@ class Driver:
     async def _load_aggregates_by_key(self, container, table_path, key):
         return None, None
 
-    async def _load_by_key(self, container, table_path, key, attribute):
+    async def _load_by_key(self, container, table_path, key, attributes):
         pass
 
     async def close(self):
@@ -237,7 +237,6 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
                 condition_expression = aggregation_element.storage_specific_cache.get(self._mtime_header_name, "")
             else:
                 expressions, pending_updates = self._build_conditioned_feature_store_request(aggregation_element, pending)
-
         # Generating additional cache expressions
         if additional_data:
             for name, value in additional_data.items():
@@ -259,9 +258,9 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
             pending_keys.sort()
             last_time = int(pending_keys[-1] / max_window_millis) * max_window_millis
             min_time = last_time - max_window_millis
-            for time in pending_keys:
-                if time > min_time:
-                    res[time] = pending[time]
+            for _time in pending_keys:
+                if _time > min_time:
+                    res[_time] = pending[_time]
         return res
 
     def _build_conditioned_feature_store_request(self, aggregation_element, pending=None):

@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import json
+import os
 import random
 import re
 import string
@@ -9,6 +10,11 @@ from datetime import datetime
 import aiohttp
 import pytest
 
+import redis as r
+import fakeredis
+
+from storey import V3ioDriver
+from storey.redis_driver import RedisDriver
 from storey.drivers import NeedsV3ioAccess
 from storey.flow import V3ioError
 
@@ -68,40 +74,113 @@ class V3ioHeaders(NeedsV3ioAccess):
             'X-v3io-session-key': self._access_key
         }
 
-
 def append_return(lst, x):
     lst.append(x)
     return lst
 
-
 def _generate_table_name(prefix='bigdata/storey_ci/Aggr_test'):
     random_table = ''.join([random.choice(string.ascii_letters) for i in range(10)])
-    return f'{prefix}/{random_table}'
+    return f'{prefix}/{random_table}/'
+
+def get_redis_client(redis_fake_server=None):
+    redis_url = os.environ.get('MLRUN_REDIS_URL')
+    if redis_url:
+        return r.Redis.from_url(redis_url)
+    else:
+        return fakeredis.FakeRedis(decode_responses=True, server = redis_fake_server)
+
+def remove_redis_table(table_name):
+    redis_client = get_redis_client()
+    count = 0
+    ns_keys = "storey-test:" + table_name + "*"
+    for key in redis_client.scan_iter(ns_keys):
+        redis_client.delete(key)
+        count += 1
+
+class TestContext:
+    def __init__(self, driver_name: str, table_name:str):
+        self._driver_name = driver_name
+        self._table_name = table_name
+
+        self._redis_fake_server = None
+        if driver_name == "RedisDriver":
+            redis_url = os.environ.get('MLRUN_REDIS_URL')
+            if not redis_url:
+                # if we are using fakeredis, create fake-server to support tests involving multiple clients
+                self._redis_fake_server = fakeredis.FakeServer()
+
+    @property
+    def table_name(self):
+        return self._table_name
+
+    @property
+    def redis_fake_server(self):
+        return self._redis_fake_server
+
+    @property
+    def driver_name(self):
+        return self._driver_name
+
+    class AggregationlessV3ioDriver(V3ioDriver):
+        def supports_aggregations(self):
+            return False
+
+    class AggregationlessRedisDriver(RedisDriver):
+        def supports_aggregations(self):
+            return False
+
+    def driver(self, IsAggregationlessDriver = False,  *args, **kwargs):
+        if self.driver_name == "V3ioDriver":
+            v3io_driver_class =  TestContext.AggregationlessV3ioDriver if IsAggregationlessDriver else V3ioDriver
+            return v3io_driver_class(*args, **kwargs)
+        elif self.driver_name == "RedisDriver":
+            redis_driver_class =  TestContext.AggregationlessRedisDriver if IsAggregationlessDriver else RedisDriver
+            return redis_driver_class(redis_client = get_redis_client(self.redis_fake_server), key_prefix="storey-test:", *args, **kwargs)
+        else:
+            driver_name = self.driver_name
+            raise ValueError(f'Unsupported driver name "{driver_name}"')
 
 
-@pytest.fixture()
-def setup_teardown_test():
+drivers_list = ["V3ioDriver", "RedisDriver"]
+@pytest.fixture(params=drivers_list)
+def setup_teardown_test(request):
     # Setup
-    table_name = _generate_table_name()
+    test_context = TestContext(request.param, table_name = _generate_table_name())
 
     # Test runs
-    yield table_name
+    yield test_context
 
     # Teardown
-    asyncio.run(recursive_delete(table_name, V3ioHeaders()))
+    if test_context.driver_name == "V3ioDriver":
+        asyncio.run(recursive_delete(test_context.table_name, V3ioHeaders()))
+    elif test_context.driver_name == "RedisDriver":
+        remove_redis_table(test_context.table_name)
+    else:
+        raise ValueError(f'Unsupported driver name "{test_context.driver_name}"')
 
 
-@pytest.fixture()
-def setup_kv_teardown_test():
+@pytest.fixture(params=drivers_list)
+def setup_kv_teardown_test(request):
     # Setup
-    table_path = _generate_table_name()
-    asyncio.run(create_temp_kv(table_path))
+    test_context = TestContext(request.param, table_name = _generate_table_name())
+
+    if test_context.driver_name == "V3ioDriver":
+        asyncio.run(create_temp_kv(test_context.table_name))
+    elif test_context.driver_name == "RedisDriver":
+        create_temp_redis_kv(test_context)
+    else:
+        raise ValueError(f'Unsupported driver name "{driver_name}"')
 
     # Test runs
-    yield table_path
+    yield test_context
 
     # Teardown
-    asyncio.run(recursive_delete(table_path, V3ioHeaders()))
+    if test_context.driver_name == "V3ioDriver":
+        asyncio.run(recursive_delete(test_context.table_name, V3ioHeaders()))
+    elif test_context.driver_name == "RedisDriver":
+        remove_redis_table(test_context.table_name)
+    else:
+        raise ValueError(f'Unsupported driver name "{test_context.driver_name}"')
 
 
 @pytest.fixture()
@@ -125,6 +204,14 @@ async def create_stream(stream_path):
         'POST', f'{v3io_access._webapi_url}/{stream_path}/', headers=v3io_access._create_stream_headers, data=request_body, ssl=False)
     assert response.status == 204, f'Bad response {await response.text()} to request {request_body}'
 
+def create_temp_redis_kv(setup_teardown_test):
+    # Create the data we'll join with in Redis.
+    table_path = setup_teardown_test.table_name
+    redis_fake_server = setup_teardown_test.redis_fake_server
+    redis_client = get_redis_client(redis_fake_server=redis_fake_server)
+
+    for i in range(1, 10):
+        redis_client.hmset(f'storey-test:{table_path}{i}:static', mapping={'age': f'{10 - i}', 'color': f'blue{i}'})
 
 async def create_temp_kv(table_path):
     connector = aiohttp.TCPConnector()

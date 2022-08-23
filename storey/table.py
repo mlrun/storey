@@ -972,6 +972,15 @@ class AggregationValue:
     def aggregate(self, time, value):
         raise NotImplementedError()
 
+    def aggregate_lua_script(self, vl1, vl2):
+        """
+        The aggregate_lua_script() method is used for creating part of a lua script, to be sent
+        to the Redis DB (see _build_feature_store_lua_update_script).
+        The math function (for example Sqr: x*x, increment: x+1) is implemented in the aggregate method.
+        """
+
+        raise NotImplementedError()
+
     @staticmethod
     def new_from_name(aggregation, max_value=None, set_data=None, set_time=None):
         if aggregation == 'min':
@@ -1029,6 +1038,9 @@ class MinValue(AggregationValue):
         else:
             self.value = float(value)
 
+    def aggregate_lua_script(self, vl1, vl2):
+        return f'type({vl1}) == "number" and math.min({vl1},{vl2}) or {vl2}'
+
 
 class MaxValue(AggregationValue):
     name = 'max'
@@ -1044,6 +1056,9 @@ class MaxValue(AggregationValue):
     def get_update_expression(self, old):
         return f'max({old}, {self.value})'
 
+    def aggregate_lua_script(self, vl1, vl2):
+        return f'type({vl1}) == "number" and math.max({vl1},{vl2}) or {vl2}'
+
 
 class SumValue(AggregationValue):
     name = 'sum'
@@ -1054,6 +1069,9 @@ class SumValue(AggregationValue):
 
     def aggregate(self, time, value):
         self._set_value(self.value + value)
+
+    def aggregate_lua_script(self, vl1, vl2):
+        return f'{vl1}+{vl2}'
 
 
 class CountValue(AggregationValue):
@@ -1066,6 +1084,9 @@ class CountValue(AggregationValue):
     def aggregate(self, time, value):
         self._set_value(self.value + 1)
 
+    def aggregate_lua_script(self, vl1, vl2):
+        return f'{vl1}+{vl2}'
+
 
 class SqrValue(AggregationValue):
     name = 'sqr'
@@ -1076,6 +1097,12 @@ class SqrValue(AggregationValue):
 
     def aggregate(self, time, value):
         self._set_value(self.value + value * value)
+
+    def aggregate_argument(self, time, argument):
+        self._set_value(self.value + argument)
+
+    def aggregate_lua_script(self, vl1, vl2):
+        return f'{vl1}+{vl2}'
 
 
 class LastValue(AggregationValue):
@@ -1101,6 +1128,9 @@ class LastValue(AggregationValue):
         else:
             self.value = value
 
+    def aggregate_lua_script(self, vl1, vl2):
+        return f'{vl2}'
+
 
 class FirstValue(AggregationValue):
     name = 'first'
@@ -1125,6 +1155,9 @@ class FirstValue(AggregationValue):
             self.value = self.default_value
         else:
             self.value = value
+
+    def aggregate_lua_script(self, vl1, vl2):
+        return f'{vl1}~={vl1} and {vl2} or {vl1}'
 
 
 class AggregatedStoreElement:

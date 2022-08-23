@@ -3,7 +3,7 @@ import base64
 import json
 import time
 from datetime import datetime, timedelta
-
+import pytest
 import aiohttp
 import pandas as pd
 import v3io
@@ -14,8 +14,7 @@ from storey import Filter, JoinWithV3IOTable, SendToHttp, Map, Reduce, SyncEmitS
     StreamTarget, V3ioDriver, TSDBTarget, Table, JoinWithTable, MapWithState, NoSqlTarget, DataframeSource, \
     CSVSource, AsyncEmitSource
 from .integration_test_utils import V3ioHeaders, append_return, test_base_time, setup_kv_teardown_test, \
-    setup_teardown_test, \
-    assign_stream_teardown_test, create_stream
+    setup_teardown_test, TestContext, assign_stream_teardown_test, create_stream
 
 _prevents_ide_from_optimizing_these_away = [
     setup_kv_teardown_test,
@@ -58,8 +57,29 @@ class GetShardData(V3ioHeaders):
         return data
 
 
+def _get_redis_kv_all_attrs(setup_teardown_test: TestContext, key:str):
+    from .integration_test_utils import get_redis_client
+    from storey.redis_driver import RedisDriver
+    table_name = setup_teardown_test.table_name
+    redis_key = f'storey-test:{table_name}{key}:static'
+    redis_fake_server = setup_teardown_test.redis_fake_server
+    values = get_redis_client(redis_fake_server= redis_fake_server).hgetall(redis_key)    
+    return {RedisDriver.convert_to_str(key): RedisDriver.convert_redis_value_to_python_obj(val) for key, val in values.items()}
+
+def get_key_all_attrs_test_helper(setup_teardown_test: TestContext, key:str):
+    if setup_teardown_test.driver_name == "RedisDriver":
+        result = _get_redis_kv_all_attrs(setup_teardown_test, key)
+    else:
+        response = asyncio.run(get_kv_item(setup_teardown_test.table_name, key))
+        assert response.status_code == 200
+        result = response.output.item
+    return result
+
 def test_join_with_v3io_table(setup_kv_teardown_test):
-    table_path = setup_kv_teardown_test
+    if setup_kv_teardown_test.driver_name == "RedisDriver":
+        pytest.skip(msg = 'test not relevant for Redis')
+
+    table_path = setup_kv_teardown_test.table_name
     controller = build_flow([
         SyncEmitSource(),
         Map(lambda x: x + 1),
@@ -304,13 +324,14 @@ def test_write_to_tsdb_with_metadata_label():
 
 
 def test_join_by_key(setup_kv_teardown_test):
-    table = Table(setup_kv_teardown_test, V3ioDriver())
+    table = Table(setup_kv_teardown_test.table_name, setup_kv_teardown_test.driver())
 
     controller = build_flow([
         SyncEmitSource(),
-        JoinWithTable(table, 'col1'),
+        JoinWithTable(table, 'col1',key='age'),
         Reduce([], lambda acc, x: append_return(acc, x))
     ]).run()
+
     controller.emit({'col1': 9})
 
     expected = [{'col1': 9, 'age': 1, 'color': 'blue9'}]
@@ -320,7 +341,7 @@ def test_join_by_key(setup_kv_teardown_test):
 
 
 def test_join_by_key_specific_attributes(setup_kv_teardown_test):
-    table = Table(setup_kv_teardown_test, V3ioDriver())
+    table = Table(setup_kv_teardown_test.table_name, setup_kv_teardown_test.driver())
 
     controller = build_flow([
         SyncEmitSource(),
@@ -336,7 +357,7 @@ def test_join_by_key_specific_attributes(setup_kv_teardown_test):
 
 
 def test_outer_join_by_key(setup_kv_teardown_test):
-    table = Table(setup_kv_teardown_test, V3ioDriver())
+    table = Table(setup_kv_teardown_test.table_name, setup_kv_teardown_test.driver())
 
     controller = build_flow([
         SyncEmitSource(),
@@ -356,7 +377,7 @@ def test_outer_join_by_key(setup_kv_teardown_test):
 
 
 def test_inner_join_by_key(setup_kv_teardown_test):
-    table = Table(setup_kv_teardown_test, V3ioDriver())
+    table = Table(setup_kv_teardown_test.table_name, setup_kv_teardown_test.driver())
 
     controller = build_flow([
         SyncEmitSource(),
@@ -375,7 +396,7 @@ def test_inner_join_by_key(setup_kv_teardown_test):
 
 
 def test_write_table_specific_columns(setup_teardown_test):
-    table = Table(setup_teardown_test, V3ioDriver())
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
 
     table['tal'] = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': test_base_time, 'min': 1, 'Avg': 3}
 
@@ -419,18 +440,16 @@ def test_write_table_specific_columns(setup_teardown_test):
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
-    response = asyncio.run(get_kv_item(setup_teardown_test, 'tal'))
-
-    assert response.status_code == 200
     expected_cache = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': test_base_time, 'first_activity': test_base_time,
                       'last_event': test_base_time + timedelta(minutes=25 * (items_in_ingest_batch - 1)), 'total_activities': 10,
                       'twice_total_activities': 20, 'min': 1, 'Avg': 3}
 
-    assert expected_cache == response.output.item
+    actual_cache = get_key_all_attrs_test_helper(setup_teardown_test, 'tal')
+    assert expected_cache == actual_cache
 
 
 def test_write_table_metadata_columns(setup_teardown_test):
-    table = Table(setup_teardown_test, V3ioDriver())
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
 
     table['tal'] = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': test_base_time}
 
@@ -474,14 +493,11 @@ def test_write_table_metadata_columns(setup_teardown_test):
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
-    response = asyncio.run(get_kv_item(setup_teardown_test, 'tal'))
-
-    assert response.status_code == 200
     expected_cache = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': test_base_time, 'first_activity': test_base_time,
-                      'last_event': test_base_time + timedelta(minutes=25 * (items_in_ingest_batch - 1)), 'total_activities': 10,
-                      'twice_total_activities': 20, 'my_key': 'tal'}
-
-    assert expected_cache == response.output.item
+                    'last_event': test_base_time + timedelta(minutes=25 * (items_in_ingest_batch - 1)), 'total_activities': 10,
+                    'twice_total_activities': 20, 'my_key': 'tal'}
+    actual_cache = get_key_all_attrs_test_helper(setup_teardown_test, 'tal')
+    assert expected_cache == actual_cache
 
 
 async def get_kv_item(full_path, key):
@@ -498,7 +514,7 @@ async def get_kv_item(full_path, key):
 
 
 def test_writing_int_key(setup_teardown_test):
-    table = Table(setup_teardown_test, V3ioDriver())
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
 
     df = pd.DataFrame({"num": [0, 1, 2], "color": ["green", "blue", "red"]})
 
@@ -511,7 +527,7 @@ def test_writing_int_key(setup_teardown_test):
 
 
 def test_writing_timedelta_key(setup_teardown_test):
-    table = Table(setup_teardown_test, V3ioDriver())
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
 
     df = pd.DataFrame({"key": ['a', 'b'], "timedelta": [pd.Timedelta("-1 days 2 min 3us"), pd.Timedelta("P0DT0H1M0S")]})
 
@@ -524,7 +540,7 @@ def test_writing_timedelta_key(setup_teardown_test):
 
 
 def test_write_two_keys_to_v3io_from_df(setup_teardown_test):
-    table = Table(setup_teardown_test, V3ioDriver())
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     data = pd.DataFrame(
         {
             'first_name': ['moshe', 'yosi'],
@@ -540,15 +556,14 @@ def test_write_two_keys_to_v3io_from_df(setup_teardown_test):
     ]).run()
     controller.await_termination()
 
-    response = asyncio.run(get_kv_item(setup_teardown_test, 'moshe.cohen'))
     expected = {'city': 'tel aviv', 'first_name': 'moshe', 'last_name': 'cohen'}
-    assert response.status_code == 200
-    assert expected == response.output.item
+    actual = get_key_all_attrs_test_helper(setup_teardown_test, 'moshe.cohen')
+    assert expected == actual
 
 
 # ML-775
 def test_write_three_keys_to_v3io_from_df(setup_teardown_test):
-    table = Table(setup_teardown_test, V3ioDriver())
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     data = pd.DataFrame(
         {
             'first_name': ['moshe', 'yosi'],
@@ -565,14 +580,13 @@ def test_write_three_keys_to_v3io_from_df(setup_teardown_test):
     ]).run()
     controller.await_termination()
 
-    response = asyncio.run(get_kv_item(setup_teardown_test, 'moshe.dc1e617eaae40eea3449baf3795bb5b50676c963'))
     expected = {'city': 'tel aviv', 'first_name': 'moshe', 'middle_name': 'tuna', 'last_name': 'cohen'}
-    assert response.status_code == 200
-    assert expected == response.output.item
+    actual = get_key_all_attrs_test_helper(setup_teardown_test, 'moshe.dc1e617eaae40eea3449baf3795bb5b50676c963')
+    assert expected == actual
 
 
 def test_write_string_as_time_via_time_field(setup_teardown_test):
-    table = Table(setup_teardown_test, V3ioDriver())
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     t1 = '2020-03-16T05:00:00+00:00'
     t2 = '2020-03-15T18:00:00+00:00'
     df = pd.DataFrame(
@@ -588,14 +602,13 @@ def test_write_string_as_time_via_time_field(setup_teardown_test):
     ]).run()
     controller.await_termination()
 
-    response = asyncio.run(get_kv_item(setup_teardown_test, 'tuna'))
     expected = {'name': 'tuna', 'time': datetime.fromisoformat(t2)}
-    assert response.status_code == 200
-    assert response.output.item == expected
+    actual = get_key_all_attrs_test_helper(setup_teardown_test, 'tuna')
+    assert expected == actual
 
 
 def test_write_string_as_time_via_schema(setup_teardown_test):
-    table = Table(setup_teardown_test, V3ioDriver())
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     t1 = '2020-03-16T05:00:00+00:00'
     t2 = '2020-03-15T18:00:00+00:00'
     df = pd.DataFrame(
@@ -611,14 +624,13 @@ def test_write_string_as_time_via_schema(setup_teardown_test):
     ]).run()
     controller.await_termination()
 
-    response = asyncio.run(get_kv_item(setup_teardown_test, 'tuna'))
     expected = {'name': 'tuna', 'time': datetime.fromisoformat(t2)}
-    assert response.status_code == 200
-    assert response.output.item == expected
+    actual = get_key_all_attrs_test_helper(setup_teardown_test, 'tuna')
+    assert expected == actual
 
 
 def test_write_multiple_keys_to_v3io_from_csv(setup_teardown_test):
-    table = Table(setup_teardown_test, V3ioDriver())
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
 
     controller = build_flow([
         CSVSource('tests/test.csv', header=True, key_field=['n1', 'n2'], build_dict=True),
@@ -626,19 +638,17 @@ def test_write_multiple_keys_to_v3io_from_csv(setup_teardown_test):
     ]).run()
     controller.await_termination()
 
-    response = asyncio.run(get_kv_item(setup_teardown_test, '1.2'))
     expected = {'n1': 1, 'n2': 2, 'n3': 3}
-    assert response.status_code == 200
-    assert expected == response.output.item
+    actual = get_key_all_attrs_test_helper(setup_teardown_test, '1.2')
+    assert expected == actual
 
-    response = asyncio.run(get_kv_item(setup_teardown_test, '4.5'))
     expected = {'n1': 4, 'n2': 5, 'n3': 6}
-    assert response.status_code == 200
-    assert expected == response.output.item
+    actual = get_key_all_attrs_test_helper(setup_teardown_test, '4.5')
+    assert expected == actual
 
 
 def test_write_multiple_keys_to_v3io(setup_teardown_test):
-    table = Table(setup_teardown_test, V3ioDriver())
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
 
     controller = build_flow([
         SyncEmitSource(key_field=['n1', 'n2']),
@@ -651,19 +661,17 @@ def test_write_multiple_keys_to_v3io(setup_teardown_test):
     controller.terminate()
     controller.await_termination()
 
-    response = asyncio.run(get_kv_item(setup_teardown_test, '1.2'))
     expected = {'n1': 1, 'n2': 2, 'n3': 3}
-    assert response.status_code == 200
-    assert expected == response.output.item
+    actual = get_key_all_attrs_test_helper(setup_teardown_test, '1.2')
+    assert expected == actual
 
-    response = asyncio.run(get_kv_item(setup_teardown_test, '4.5'))
     expected = {'n1': 4, 'n2': 5, 'n3': 6}
-    assert response.status_code == 200
-    assert expected == response.output.item
+    actual = get_key_all_attrs_test_helper(setup_teardown_test, '4.5')
+    assert expected == actual
 
 
 def test_write_none_time(setup_teardown_test):
-    table = Table(setup_teardown_test, V3ioDriver())
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     data = pd.DataFrame(
         {
             'first_name': ['moshe', 'yosi'],
@@ -685,30 +693,38 @@ def test_write_none_time(setup_teardown_test):
     ]).run()
     controller.await_termination()
 
-    response = asyncio.run(get_kv_item(setup_teardown_test, 'yosi'))
     expected = {'first_name': 'yosi', 'color': 'yellow'}
-    assert response.status_code == 200
-    assert expected == response.output.item
+    actual = get_key_all_attrs_test_helper(setup_teardown_test, 'yosi')
+    assert expected == actual
 
-    response = asyncio.run(get_kv_item(setup_teardown_test, 'moshe'))
     expected = {'first_name': 'moshe', 'color': 'blue'}
-    assert response.status_code == 200
-    assert expected == response.output.item
+    actual = get_key_all_attrs_test_helper(setup_teardown_test, 'moshe')
+    assert expected == actual
 
 
 def test_cache_flushing(setup_teardown_test):
-    table = Table(setup_teardown_test, V3ioDriver(), flush_interval_secs=3)
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver(), flush_interval_secs=3)
     controller = build_flow([
         SyncEmitSource(),
         NoSqlTarget(table),
     ]).run()
 
     controller.emit({'col1': 0}, 'dina', test_base_time + timedelta(minutes=25))
-    response = asyncio.run(get_kv_item(setup_teardown_test, 'dina')).output.item
+
+    response = None
+    if setup_teardown_test.driver_name == "RedisDriver":
+        response = _get_redis_kv_all_attrs(setup_teardown_test, 'dina')
+    else:
+        response = asyncio.run(get_kv_item(setup_teardown_test.table_name, 'dina')).output.item
     assert response == {}
+
     time.sleep(4)
 
-    response = asyncio.run(get_kv_item(setup_teardown_test, 'dina')).output.item
+    response = None
+    if setup_teardown_test.driver_name == "RedisDriver":
+        response = _get_redis_kv_all_attrs(setup_teardown_test, 'dina')
+    else:
+        response = asyncio.run(get_kv_item(setup_teardown_test.table_name, 'dina')).output.item
     assert response == {'col1': 0}
 
     controller.terminate()
@@ -716,7 +732,7 @@ def test_cache_flushing(setup_teardown_test):
 
 
 def test_write_empty_df(setup_teardown_test):
-    table = Table(setup_teardown_test, V3ioDriver())
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     df = pd.DataFrame({})
 
     controller = build_flow([

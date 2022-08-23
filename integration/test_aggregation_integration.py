@@ -4,13 +4,13 @@ import pytest
 import math
 import pandas as pd
 
-from storey import build_flow, SyncEmitSource, Reduce, Table, V3ioDriver, MapWithState, AggregateByKey, FieldAggregator, \
-    QueryByKey, NoSqlTarget, Context, DataframeSource, Map, CSVSource
+from storey import build_flow, SyncEmitSource, Reduce, Table, MapWithState, AggregateByKey, FieldAggregator, \
+    QueryByKey, NoSqlTarget, Context, DataframeSource, Map
 
 from storey.dtypes import SlidingWindows, FixedWindows, EmitAfterMaxEvent, FixedWindowType
 from storey.utils import _split_path
 
-from .integration_test_utils import setup_teardown_test, append_return, test_base_time
+from .integration_test_utils import setup_teardown_test,  append_return, test_base_time
 
 
 @pytest.mark.parametrize('fixed_window_type', [FixedWindowType.CurrentOpenWindow, FixedWindowType.LastClosedWindow])
@@ -18,7 +18,7 @@ from .integration_test_utils import setup_teardown_test, append_return, test_bas
 @pytest.mark.parametrize('flush_interval', [None, 1])
 def test_aggregate_with_fixed_windows_and_query_past_and_future_times(setup_teardown_test, partitioned_by_key, flush_interval,
                                                                       fixed_window_type):
-    table = Table(setup_teardown_test, V3ioDriver(), partitioned_by_key=partitioned_by_key, flush_interval_secs=flush_interval)
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver(), partitioned_by_key=partitioned_by_key, flush_interval_secs=flush_interval)
 
     controller = build_flow([
         SyncEmitSource(),
@@ -139,7 +139,7 @@ def test_aggregate_with_fixed_windows_and_query_past_and_future_times(setup_tear
 @pytest.mark.parametrize('partitioned_by_key', [True, False])
 @pytest.mark.parametrize('flush_interval', [None, 1])
 def test_aggregate_and_query_with_different_sliding_windows(setup_teardown_test, partitioned_by_key, flush_interval):
-    table = Table(setup_teardown_test, V3ioDriver(), partitioned_by_key=partitioned_by_key, flush_interval_secs=flush_interval)
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver(), partitioned_by_key=partitioned_by_key, flush_interval_secs=flush_interval)
 
     controller = build_flow([
         SyncEmitSource(),
@@ -203,7 +203,7 @@ def test_aggregate_and_query_with_different_sliding_windows(setup_teardown_test,
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
-    tables = [table, Table(setup_teardown_test, V3ioDriver())]  # test on previous table and on new table
+    tables = [table, Table(setup_teardown_test.table_name, setup_teardown_test.driver())]  # test on previous table and on new table
     expected_results = [
         {'col1': 10, 'number_of_stuff_sum_1h': 17.0, 'number_of_stuff_min_1h': 8.0,
          'number_of_stuff_max_1h': 9.0, 'number_of_stuff_avg_1h': 8.5},
@@ -233,7 +233,7 @@ def test_aggregate_and_query_with_different_sliding_windows(setup_teardown_test,
 @pytest.mark.parametrize('partitioned_by_key', [True, False])
 @pytest.mark.parametrize('flush_interval', [None, 1])
 def test_aggregate_and_query_with_different_fixed_windows(setup_teardown_test, partitioned_by_key, flush_interval):
-    table = Table(setup_teardown_test, V3ioDriver(), partitioned_by_key=partitioned_by_key, flush_interval_secs=flush_interval)
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver(), partitioned_by_key=partitioned_by_key, flush_interval_secs=flush_interval)
 
     controller = build_flow([
         SyncEmitSource(),
@@ -308,8 +308,8 @@ def test_aggregate_and_query_with_different_fixed_windows(setup_teardown_test, p
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
-    table_name = setup_teardown_test
-    tables = [table_name, table, Table(setup_teardown_test, V3ioDriver())]  # test on previous table and on new table
+    table_name = setup_teardown_test.table_name
+    tables = [table_name, table, Table(setup_teardown_test.table_name, setup_teardown_test.driver())]  # test on previous table and on new table
     expected_results = [
         {'col1': 10, 'number_of_stuff_sum_1h': 17.0, 'number_of_stuff_min_1h': 8.0,
          'number_of_stuff_max_1h': 9.0, 'number_of_stuff_avg_1h': 8.5},
@@ -318,7 +318,7 @@ def test_aggregate_and_query_with_different_fixed_windows(setup_teardown_test, p
     ]
     for table in tables:
         if isinstance(table, str):
-            tmp_table = Table(table_name, V3ioDriver())
+            tmp_table = Table(table_name, setup_teardown_test.driver())
             context = Context(initial_tables={table_name: tmp_table})
         else:
             context = None
@@ -343,7 +343,7 @@ def test_aggregate_and_query_with_different_fixed_windows(setup_teardown_test, p
 
 @pytest.mark.parametrize('use_parallel_operations', [True, False])
 def test_query_virtual_aggregations_flow(setup_teardown_test, use_parallel_operations):
-    table = Table(setup_teardown_test, V3ioDriver(use_parallel_operations=use_parallel_operations))
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver(use_parallel_operations=use_parallel_operations))
     controller = build_flow([
         SyncEmitSource(),
         AggregateByKey([FieldAggregator('number_of_stuff', 'col1', ['avg', 'stddev', 'stdvar'],
@@ -379,7 +379,7 @@ def test_query_virtual_aggregations_flow(setup_teardown_test, use_parallel_opera
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
-    other_table = Table(setup_teardown_test, V3ioDriver(use_parallel_operations=use_parallel_operations))
+    other_table = Table(setup_teardown_test.table_name, setup_teardown_test.driver(use_parallel_operations=use_parallel_operations))
     controller = build_flow([
         SyncEmitSource(),
         QueryByKey(['number_of_stuff_avg_1h', 'number_of_stuff_stdvar_2h', 'number_of_stuff_stddev_3h'],
@@ -407,7 +407,7 @@ def test_query_virtual_aggregations_flow(setup_teardown_test, use_parallel_opera
 @pytest.mark.parametrize('partitioned_by_key', [True, False])
 @pytest.mark.parametrize('flush_interval', [None, 1])
 def test_query_aggregate_by_key(setup_teardown_test, partitioned_by_key, flush_interval):
-    table = Table(setup_teardown_test, V3ioDriver(), partitioned_by_key=partitioned_by_key, flush_interval_secs=flush_interval)
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver(), partitioned_by_key=partitioned_by_key, flush_interval_secs=flush_interval)
 
     controller = build_flow([
         SyncEmitSource(),
@@ -471,7 +471,7 @@ def test_query_aggregate_by_key(setup_teardown_test, partitioned_by_key, flush_i
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
-    other_table = Table(setup_teardown_test, V3ioDriver())
+    other_table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     controller = build_flow([
         SyncEmitSource(),
         QueryByKey(['number_of_stuff_sum_1h', 'number_of_stuff_sum_2h', 'number_of_stuff_sum_24h',
@@ -502,7 +502,7 @@ def test_query_aggregate_by_key(setup_teardown_test, partitioned_by_key, flush_i
 @pytest.mark.parametrize('query_aggregations', [['number_of_stuff_sum_1h', 'number_of_stuff_avg_2h'],
                                                 ['number_of_stuff_avg_2h', 'number_of_stuff_sum_1h']])
 def test_aggregate_and_query_with_dependent_aggrs_different_windows(setup_teardown_test, query_aggregations):
-    table = Table(setup_teardown_test, V3ioDriver())
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
 
     controller = build_flow([
         SyncEmitSource(),
@@ -546,7 +546,7 @@ def test_aggregate_and_query_with_dependent_aggrs_different_windows(setup_teardo
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
-    other_table = Table(setup_teardown_test, V3ioDriver())
+    other_table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     controller = build_flow([
         SyncEmitSource(),
         QueryByKey(query_aggregations,
@@ -586,7 +586,7 @@ def test_aggregate_by_key_one_underlying_window(setup_teardown_test, partitioned
 
     for current_expected in expected.values():
 
-        table = Table(setup_teardown_test, V3ioDriver(), partitioned_by_key=partitioned_by_key, flush_interval_secs=flush_interval)
+        table = Table(setup_teardown_test.table_name, setup_teardown_test.driver(), partitioned_by_key=partitioned_by_key, flush_interval_secs=flush_interval)
         controller = build_flow([
             SyncEmitSource(),
             AggregateByKey([FieldAggregator('number_of_stuff', 'col1', ['count'],
@@ -626,7 +626,7 @@ def test_aggregate_by_key_two_underlying_windows(setup_teardown_test, partitione
     current_index = 0
     for current_expected in expected.values():
 
-        table = Table(setup_teardown_test, V3ioDriver(), partitioned_by_key=partitioned_by_key)
+        table = Table(setup_teardown_test.table_name, setup_teardown_test.driver(), partitioned_by_key=partitioned_by_key)
         controller = build_flow([
             SyncEmitSource(),
             AggregateByKey([FieldAggregator('number_of_stuff', 'col1', ['count'],
@@ -651,7 +651,7 @@ def test_aggregate_by_key_two_underlying_windows(setup_teardown_test, partitione
 
 
 def test_aggregate_by_key_with_extra_aliases(setup_teardown_test):
-    table = Table(setup_teardown_test, V3ioDriver())
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
 
     table['tal'] = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': test_base_time}
 
@@ -707,7 +707,7 @@ def test_aggregate_by_key_with_extra_aliases(setup_teardown_test):
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
-    other_table = Table(setup_teardown_test, V3ioDriver())
+    other_table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
 
     controller = build_flow([
         SyncEmitSource(),
@@ -732,7 +732,7 @@ def test_aggregate_by_key_with_extra_aliases(setup_teardown_test):
 
 @pytest.mark.parametrize('flush_interval', [None, 1])
 def test_write_cache_with_aggregations(setup_teardown_test, flush_interval):
-    table = Table(setup_teardown_test, V3ioDriver(), flush_interval_secs=flush_interval)
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver(), flush_interval_secs=flush_interval)
 
     table['tal'] = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': test_base_time}
 
@@ -788,7 +788,7 @@ def test_write_cache_with_aggregations(setup_teardown_test, flush_interval):
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
-    other_table = Table(setup_teardown_test, V3ioDriver(), flush_interval_secs=flush_interval)
+    other_table = Table(setup_teardown_test.table_name, setup_teardown_test.driver(), flush_interval_secs=flush_interval)
 
     controller = build_flow([
         SyncEmitSource(),
@@ -813,7 +813,7 @@ def test_write_cache_with_aggregations(setup_teardown_test, flush_interval):
 
 @pytest.mark.parametrize('flush_interval', [None, 1])
 def test_write_cache(setup_teardown_test, flush_interval):
-    table = Table(setup_teardown_test, V3ioDriver(), flush_interval_secs=flush_interval)
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver(), flush_interval_secs=flush_interval)
 
     table['tal'] = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': test_base_time}
 
@@ -856,7 +856,7 @@ def test_write_cache(setup_teardown_test, flush_interval):
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
-    other_table = Table(setup_teardown_test, V3ioDriver())
+    other_table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
 
     controller = build_flow([
         SyncEmitSource(),
@@ -878,7 +878,7 @@ def test_write_cache(setup_teardown_test, flush_interval):
 
 
 def test_aggregate_with_string_table(setup_teardown_test):
-    table = Table(setup_teardown_test, V3ioDriver())
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     table_name = 'tals-table'
     context = Context(initial_tables={table_name: table})
     controller = build_flow([
@@ -952,8 +952,9 @@ def _assert_schema_equal(actual, expected):
         assert set(item['aggregates']) == set(current_expected['aggregates'])
 
 
-async def load_schema(path):
-    driver = V3ioDriver()
+async def load_schema(setup_teardown_test):
+    driver = setup_teardown_test.driver()
+    path = setup_teardown_test.table_name
     container, table_path = _split_path(path)
     res = await driver._load_schema(container, table_path)
     await driver.close()
@@ -961,7 +962,7 @@ async def load_schema(path):
 
 
 def test_modify_schema(setup_teardown_test):
-    table = Table(setup_teardown_test, V3ioDriver())
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
 
     controller = build_flow([
         SyncEmitSource(),
@@ -1024,7 +1025,8 @@ def test_modify_schema(setup_teardown_test):
     expected_schema = {'number_of_stuff': {'period_millis': 600000, 'aggregates': ['max', 'min', 'sum', 'count']}}
     _assert_schema_equal(schema, expected_schema)
 
-    other_table = Table(setup_teardown_test, V3ioDriver())
+    driver = setup_teardown_test.driver()
+    other_table = Table(setup_teardown_test.table_name, driver)
     controller = build_flow([
         SyncEmitSource(),
         AggregateByKey([FieldAggregator('number_of_stuff', 'col1', ['sum', 'avg', 'min', 'max'],
@@ -1058,7 +1060,7 @@ def test_modify_schema(setup_teardown_test):
 
 
 def test_invalid_modify_schema(setup_teardown_test):
-    table = Table(setup_teardown_test, V3ioDriver())
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
 
     controller = build_flow([
         SyncEmitSource(),
@@ -1121,7 +1123,7 @@ def test_invalid_modify_schema(setup_teardown_test):
     expected_schema = {'number_of_stuff': {'period_millis': 600000, 'aggregates': ['max', 'min', 'sum', 'count']}}
     _assert_schema_equal(schema, expected_schema)
 
-    other_table = Table(setup_teardown_test, V3ioDriver())
+    other_table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
 
     try:
         controller = build_flow([
@@ -1143,7 +1145,7 @@ def test_invalid_modify_schema(setup_teardown_test):
 
 
 def test_query_aggregate_by_key_sliding_window_new_time_exceeds_stored_window(setup_teardown_test):
-    table = Table(setup_teardown_test, V3ioDriver())
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
 
     controller = build_flow([
         SyncEmitSource(),
@@ -1170,7 +1172,7 @@ def test_query_aggregate_by_key_sliding_window_new_time_exceeds_stored_window(se
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
-    other_table = Table(setup_teardown_test, V3ioDriver())
+    other_table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     controller = build_flow([
         SyncEmitSource(),
         QueryByKey(['number_of_stuff_count_30m', 'number_of_stuff_count_2h'],
@@ -1193,7 +1195,7 @@ def test_query_aggregate_by_key_sliding_window_new_time_exceeds_stored_window(se
 
 
 def test_query_aggregate_by_key_fixed_window_new_time_exceeds_stored_window(setup_teardown_test):
-    table = Table(setup_teardown_test, V3ioDriver())
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
 
     controller = build_flow([
         SyncEmitSource(),
@@ -1220,7 +1222,7 @@ def test_query_aggregate_by_key_fixed_window_new_time_exceeds_stored_window(setu
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
-    other_table = Table(setup_teardown_test, V3ioDriver())
+    other_table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     controller = build_flow([
         SyncEmitSource(),
         QueryByKey(['number_of_stuff_count_30m', 'number_of_stuff_count_2h'],
@@ -1243,7 +1245,7 @@ def test_query_aggregate_by_key_fixed_window_new_time_exceeds_stored_window(setu
 
 
 def test_sliding_query_time_exceeds_stored_window_by_more_than_window(setup_teardown_test):
-    table = Table(setup_teardown_test, V3ioDriver())
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
 
     controller = build_flow([
         SyncEmitSource(),
@@ -1270,7 +1272,7 @@ def test_sliding_query_time_exceeds_stored_window_by_more_than_window(setup_tear
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
-    other_table = Table(setup_teardown_test, V3ioDriver())
+    other_table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     controller = build_flow([
         SyncEmitSource(),
         QueryByKey(['number_of_stuff_count_30m', 'number_of_stuff_count_2h'],
@@ -1293,7 +1295,7 @@ def test_sliding_query_time_exceeds_stored_window_by_more_than_window(setup_tear
 
 
 def test_fixed_query_time_exceeds_stored_window_by_more_than_window(setup_teardown_test):
-    table = Table(setup_teardown_test, V3ioDriver())
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
 
     controller = build_flow([
         SyncEmitSource(),
@@ -1320,7 +1322,7 @@ def test_fixed_query_time_exceeds_stored_window_by_more_than_window(setup_teardo
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
-    other_table = Table(setup_teardown_test, V3ioDriver())
+    other_table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     controller = build_flow([
         SyncEmitSource(),
         QueryByKey(['number_of_stuff_count_30m', 'number_of_stuff_count_2h'],
@@ -1343,7 +1345,7 @@ def test_fixed_query_time_exceeds_stored_window_by_more_than_window(setup_teardo
 
 
 def test_write_to_table_reuse(setup_teardown_test):
-    table = Table(setup_teardown_test, V3ioDriver())
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     flow = build_flow([
         SyncEmitSource(),
         AggregateByKey([FieldAggregator('number_of_stuff', 'col1', ['count'], FixedWindows(['30m', '2h']))], table),
@@ -1387,7 +1389,7 @@ def test_aggregate_multiple_keys(setup_teardown_test):
     )
 
     keys = ['first_name', 'last_name']
-    table = Table(setup_teardown_test, V3ioDriver())
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     controller = build_flow([
         DataframeSource(data, key_field=keys, time_field='time'),
         AggregateByKey([FieldAggregator('number_of_stuff', 'some_data', ['sum'],
@@ -1398,7 +1400,7 @@ def test_aggregate_multiple_keys(setup_teardown_test):
 
     actual = controller.await_termination()
 
-    other_table = Table(setup_teardown_test, V3ioDriver())
+    other_table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     controller = build_flow([
         SyncEmitSource(),
         QueryByKey(['number_of_stuff_sum_1h'],
@@ -1422,10 +1424,6 @@ def test_aggregate_multiple_keys(setup_teardown_test):
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
 
-class AggregationlessV3ioDriver(V3ioDriver):
-    def supports_aggregations(self):
-        return False
-
 
 def test_aggregate_multiple_keys_and_aggregationless_query(setup_teardown_test):
     t0 = pd.Timestamp(test_base_time)
@@ -1440,7 +1438,7 @@ def test_aggregate_multiple_keys_and_aggregationless_query(setup_teardown_test):
     )
 
     keys = ['first_name', 'last_name']
-    table = Table(setup_teardown_test, V3ioDriver())
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     controller = build_flow([
         DataframeSource(data, key_field=keys, time_field='time'),
         AggregateByKey([FieldAggregator('number_of_stuff', 'some_data', ['sum'],
@@ -1451,7 +1449,8 @@ def test_aggregate_multiple_keys_and_aggregationless_query(setup_teardown_test):
 
     controller.await_termination()
 
-    other_table = Table(setup_teardown_test, AggregationlessV3ioDriver())
+    other_table = Table(setup_teardown_test.table_name, setup_teardown_test.driver(True))
+
     controller = build_flow([
         SyncEmitSource(),
         QueryByKey(['number_of_stuff_sum_1h'],
@@ -1489,7 +1488,7 @@ def test_read_non_existing_key(setup_teardown_test):
     )
 
     keys = 'first_name'
-    table = Table(setup_teardown_test, V3ioDriver())
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     controller = build_flow([
         DataframeSource(data, key_field=keys),
         AggregateByKey([FieldAggregator('number_of_stuff', 'some_data', ['sum'],
@@ -1500,7 +1499,7 @@ def test_read_non_existing_key(setup_teardown_test):
 
     actual = controller.await_termination()
 
-    other_table = Table(setup_teardown_test, V3ioDriver())
+    other_table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     controller = build_flow([
         SyncEmitSource(),
         QueryByKey(['number_of_stuff_sum_1h'],
@@ -1513,14 +1512,12 @@ def test_read_non_existing_key(setup_teardown_test):
     controller.terminate()
     actual = controller.await_termination()
 
-    print(actual[0])
-
     assert 'number_of_stuff_sum_1h' not in actual[0]
 
 
 def test_concurrent_updates_to_kv_table(setup_teardown_test):
-    table1 = Table(setup_teardown_test, V3ioDriver(), flush_interval_secs=None)
-    table2 = Table(setup_teardown_test, V3ioDriver(), flush_interval_secs=None)
+    table1 = Table(setup_teardown_test.table_name, setup_teardown_test.driver(), flush_interval_secs=None)
+    table2 = Table(setup_teardown_test.table_name, setup_teardown_test.driver(), flush_interval_secs=None)
     controller1 = build_flow([
         SyncEmitSource(),
         AggregateByKey([FieldAggregator('attr1', 'attr1', ['sum'], SlidingWindows(['1h'], '10m'))], table1),
@@ -1542,7 +1539,7 @@ def test_concurrent_updates_to_kv_table(setup_teardown_test):
         controller1.await_termination()
         controller2.await_termination()
 
-    table = Table(setup_teardown_test, V3ioDriver())
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     controller = build_flow([
         SyncEmitSource(),
         QueryByKey(['attr1', 'attr2'], table, key='mykey'),
@@ -1572,7 +1569,7 @@ def test_separate_aggregate_steps(setup_teardown_test):
         }
     )
 
-    table = Table(setup_teardown_test, V3ioDriver())
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
 
     controller = build_flow([
         DataframeSource(data, key_field='first_name', time_field='time'),
@@ -1586,7 +1583,7 @@ def test_separate_aggregate_steps(setup_teardown_test):
 
     controller.await_termination()
 
-    other_table = Table(setup_teardown_test, V3ioDriver())
+    other_table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     controller = build_flow([
         SyncEmitSource(),
         QueryByKey(['number_of_stuff_avg_1h', 'number_of_stuff2_sum_2h'],
@@ -1605,7 +1602,8 @@ def test_separate_aggregate_steps(setup_teardown_test):
 
 
 def test_write_read_first_last(setup_teardown_test):
-    table = Table(setup_teardown_test, V3ioDriver(), flush_interval_secs=None)
+
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver(), flush_interval_secs=None)
     controller = build_flow([
         SyncEmitSource(),
         AggregateByKey([FieldAggregator('attr', 'attr', ['first', 'last'], SlidingWindows(['1h'], '10m'))], table),
@@ -1613,14 +1611,14 @@ def test_write_read_first_last(setup_teardown_test):
     ]).run()
 
     try:
-        for i in range(10):
+        for i in range(1,10):
             controller.emit({'attr': i}, key='onekey', event_time=test_base_time + timedelta(minutes=i))
             controller.emit({'attr': i * 10}, key='onekey', event_time=test_base_time + timedelta(hours=1, minutes=i))
     finally:
         controller.terminate()
         controller.await_termination()
 
-    table = Table(setup_teardown_test, V3ioDriver())
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     controller = build_flow([
         SyncEmitSource(),
         QueryByKey(['attr_first_1h', 'attr_last_1h'], table, key='mykey'),
@@ -1633,12 +1631,12 @@ def test_write_read_first_last(setup_teardown_test):
     controller.terminate()
     result = controller.await_termination()
 
-    assert result == [{'mykey': 'onekey', 'attr_first_1h': 0.0, 'attr_last_1h': 9.0},
-                      {'mykey': 'onekey', 'attr_first_1h': 0.0, 'attr_last_1h': 90.0}]
+    assert result == [{'mykey': 'onekey', 'attr_first_1h': 1.0, 'attr_last_1h': 9.0},
+                      {'mykey': 'onekey', 'attr_first_1h': 10.0, 'attr_last_1h': 90.0}]
 
 
 def test_non_existing_key_query_by_key_from_v3io_key_is_list(setup_teardown_test):
-    table = Table(setup_teardown_test, V3ioDriver())
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     df = pd.DataFrame([['katya', 'green', 'hod hasharon'], ['dina', 'blue', 'ramat gan']], columns=['name', 'color', 'city'])
     controller = build_flow([
         DataframeSource(df, key_field='name'),
@@ -1668,7 +1666,7 @@ def test_multiple_keys_int(setup_teardown_test):
     )
 
     keys = ['key_column1', 'key_column2', 'key_column3', 'key_column4']
-    table = Table(setup_teardown_test, V3ioDriver())
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     controller = build_flow([
         DataframeSource(data, key_field=keys, time_field='time'),
         AggregateByKey([FieldAggregator('number_of_stuff', 'some_data', ['sum'],
@@ -1679,7 +1677,7 @@ def test_multiple_keys_int(setup_teardown_test):
 
     actual = controller.await_termination()
 
-    other_table = Table(setup_teardown_test, V3ioDriver())
+    other_table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     controller = build_flow([
         SyncEmitSource(),
         QueryByKey(['number_of_stuff_sum_1h'],
@@ -1712,7 +1710,7 @@ def test_column_begin_t(setup_teardown_test):
     )
 
     keys = ['key_column']
-    table = Table(setup_teardown_test, V3ioDriver())
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     controller = build_flow([
         DataframeSource(data, key_field=keys, time_field='time'),
         AggregateByKey([FieldAggregator('number_of_stuff', 'some_data', ['sum'],
@@ -1723,7 +1721,7 @@ def test_column_begin_t(setup_teardown_test):
 
     controller.await_termination()
 
-    other_table = Table(setup_teardown_test, V3ioDriver())
+    other_table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     controller = build_flow([
         SyncEmitSource(),
         QueryByKey(['number_of_stuff_sum_1h', 't_col'],
@@ -1755,7 +1753,7 @@ def test_aggregate_float_key(setup_teardown_test):
     )
 
     keys = ['key_column2']
-    table = Table(setup_teardown_test, V3ioDriver())
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     controller = build_flow([
         DataframeSource(data, key_field=keys, time_field='time'),
         AggregateByKey([FieldAggregator('number_of_stuff', 'some_data', ['sum'],
@@ -1766,7 +1764,7 @@ def test_aggregate_float_key(setup_teardown_test):
 
     actual = controller.await_termination()
 
-    other_table = Table(setup_teardown_test, V3ioDriver())
+    other_table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     controller = build_flow([
         SyncEmitSource(),
         QueryByKey(['number_of_stuff_sum_1h'],
@@ -1787,7 +1785,7 @@ def test_aggregate_float_key(setup_teardown_test):
 
 @pytest.mark.parametrize('flush_interval', [None, 1, 300])
 def test_aggregate_and_query_persist_before_advancing_window(setup_teardown_test, flush_interval):
-    table = Table(setup_teardown_test, V3ioDriver(), flush_interval_secs=flush_interval)
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver(), flush_interval_secs=flush_interval)
     controller = build_flow([
         SyncEmitSource(),
         AggregateByKey([FieldAggregator('particles', 'sample',
@@ -1833,7 +1831,7 @@ def test_aggregate_and_query_persist_before_advancing_window(setup_teardown_test
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
-    table = Table(setup_teardown_test, V3ioDriver())
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     controller = build_flow([
         SyncEmitSource(),
         QueryByKey(['particles_count_30m'],
@@ -1851,7 +1849,7 @@ def test_aggregate_and_query_persist_before_advancing_window(setup_teardown_test
 
 
 def test_aggregate_and_query_by_key_with_holes(setup_teardown_test):
-    table = Table(setup_teardown_test, V3ioDriver(), partitioned_by_key=False, flush_interval_secs=None)
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver(), partitioned_by_key=False, flush_interval_secs=None)
 
     controller = build_flow([
         SyncEmitSource(),
@@ -1885,7 +1883,7 @@ def test_aggregate_and_query_by_key_with_holes(setup_teardown_test):
     assert actual == expected_results, \
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
-    other_table = Table(setup_teardown_test, V3ioDriver())
+    other_table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     controller = build_flow([
         SyncEmitSource(),
         QueryByKey(['number_of_stuff_sum_1h'],
