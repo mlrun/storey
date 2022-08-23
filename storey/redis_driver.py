@@ -7,7 +7,6 @@ from enum import Enum
 from typing import List, Union, Optional
 import pandas as pd
 import asyncio
-import concurrent
 from functools import partial
 from .drivers import Driver
 
@@ -43,7 +42,6 @@ class RedisDriver(NeedsRedisAccess, Driver):
     DATETIME_FIELD_PREFIX = "_dt:"
     TIMEDELTA_FIELD_PREFIX = "_td:"
     DEFAULT_KEY_PREFIX = "storey:"
-    _thread_pool = None
 
     def __init__(self,
                  redis_client: Optional[Union[redis.Redis, redis.cluster.RedisCluster]] = None,
@@ -73,8 +71,6 @@ class RedisDriver(NeedsRedisAccess, Driver):
         self._aggregation_time_attribute_prefix = aggregation_time_attribute_prefix
         self._aggregation_prefixes = (self._aggregation_attribute_prefix,
                                       self._aggregation_time_attribute_prefix)
-        if RedisDriver._thread_pool is None:
-            RedisDriver._thread_pool = concurrent.futures.ThreadPoolExecutor()
 
     @staticmethod
     def asyncify(fn):
@@ -82,7 +78,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
         async def inner_fn(*args, **kwargs):
             loop = asyncio.get_event_loop()
             partial_fn = partial(fn, *args, **kwargs)
-            return await loop.run_in_executor(RedisDriver._thread_pool, partial_fn)
+            return await loop.run_in_executor(None, partial_fn)
         return inner_fn
 
     @property
