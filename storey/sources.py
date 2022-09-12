@@ -3,10 +3,12 @@ import copy
 import csv
 import math
 import queue
-import sys
 import threading
+import traceback
 import uuid
 import warnings
+import weakref
+from collections import defaultdict
 from datetime import datetime
 from typing import List, Optional, Union, Callable, Coroutine, Iterable
 
@@ -178,6 +180,15 @@ class FlowAwaiter:
         return self._await_termination_fn()
 
 
+class _EventOffset:
+    def __init__(self, event):
+        self.event_weakref = weakref.ref(event)
+        self.offset = event.offset
+
+    def is_ready_to_commit(self):
+        return self.event_weakref() is None
+
+
 class SyncEmitSource(Flow):
     """Synchronous entry point into a flow. Produces a FlowController when run, for use from inside a synchronous context. See AsyncEmitSource
     for use from inside an async context.
@@ -216,7 +227,7 @@ class SyncEmitSource(Flow):
 
     def _init(self):
         self._is_terminated = False
-        self._outstanding_events = {}
+        self._outstanding_offsets = defaultdict(list)
 
     async def _run_loop(self):
         loop = asyncio.get_running_loop()
@@ -230,27 +241,30 @@ class SyncEmitSource(Flow):
             if num_events_handled_without_commit > 0 and self._q.empty() or \
                     num_events_handled_without_commit >= self._max_events_before_commit:
                 num_events_handled_without_commit = 0
-                can_block = await _commit_handled_events(self._outstanding_events, committer)
+                can_block = await _commit_handled_events(self._outstanding_offsets, committer)
                 # In case we can't block because there are outstanding events
                 while not can_block:
-                    event = self._q.get_nowait()
-                    if event:
-                        break
-                    await asyncio.sleep(2)
-                    can_block = await _commit_handled_events(self._outstanding_events, committer)
+                    if self._q.qsize() > 0:
+                        event = self._q.get_nowait()
+                        if event:
+                            break
+                    await asyncio.sleep(1)
+                    can_block = await _commit_handled_events(self._outstanding_offsets, committer)
             if not event:
                 event = await loop.run_in_executor(None, self._q.get)
             if committer and hasattr(event, 'path') and hasattr(event, 'shard_id') and hasattr(event, 'offset'):
                 qualified_shard = (event.path, event.shard_id)
-                events = self._outstanding_events.get(qualified_shard, [])
-                events.append(event)
+                offsets = self._outstanding_offsets[qualified_shard]
+                offsets.append(_EventOffset(event))
                 num_events_handled_without_commit += 1
             try:
                 termination_result = await self._do_downstream(event)
-                await _commit_handled_events(self._outstanding_events, committer)
                 if event is _termination_obj:
+                    # We can commit all at this point because termination of all downstream steps completed successfully.
+                    await _commit_handled_events(self._outstanding_offsets, committer, commit_all=True)
                     self._termination_future.set_result(termination_result)
             except BaseException as ex:
+                traceback.print_exc()
                 if event is not _termination_obj and event._awaitable_result:
                     event._awaitable_result._set_error(ex)
                 self._ex = ex
@@ -397,23 +411,28 @@ class AsyncFlowController(FlowControllerBase):
         return await self._loop_task
 
 
-async def _commit_handled_events(outstanding_events_by_qualified_shard, committer):
-    for qualified_shard, events in outstanding_events_by_qualified_shard:
-        num_to_clear = 0
-        last_handled_event = None
-        all_events_handled = True
-        # go over events in the qualified shard by arrival order until we reach an unhandled event
-        for event in events:
-            # handled events should have 3 references: self.original_event, the one we're holding, and argument to getrefcount
-            if sys.getrefcount(event) > 3:
-                all_events_handled = False
-                break
-            last_handled_event = event
-            num_to_clear += 1
-        if last_handled_event:
-            await committer(last_handled_event)
-            outstanding_events_by_qualified_shard[qualified_shard] = events[num_to_clear:]
-        return all_events_handled
+async def _commit_handled_events(outstanding_offsets_by_qualified_shard, committer, commit_all=False):
+    all_offsets_handled = True
+    for qualified_shard, offsets in outstanding_offsets_by_qualified_shard.items():
+        if commit_all and offsets:
+            last_handled_offset = offsets[-1].offset
+            num_to_clear = len(offsets)
+        else:
+            num_to_clear = 0
+            last_handled_offset = None
+            # go over offsets in the qualified shard by arrival order until we reach an unhandled offset
+            for offset in offsets:
+                if not offset.is_ready_to_commit():
+                    all_offsets_handled = False
+                    break
+                print(f'Offset {qualified_shard}:{offset.offset} is ready')
+                last_handled_offset = offset.offset
+                num_to_clear += 1
+        if last_handled_offset:
+            path, shard_id = qualified_shard
+            await committer(path, shard_id, last_handled_offset)
+            outstanding_offsets_by_qualified_shard[qualified_shard] = offsets[num_to_clear:]
+    return all_offsets_handled
 
 
 class AsyncEmitSource(Flow):
@@ -450,7 +469,7 @@ class AsyncEmitSource(Flow):
 
     def _init(self):
         self._is_terminated = False
-        self._outstanding_events = {}
+        self._outstanding_offsets = defaultdict(list)
 
     async def _run_loop(self):
         committer = None
@@ -462,25 +481,26 @@ class AsyncEmitSource(Flow):
             if num_events_handled_without_commit > 0 and self._q.empty() or \
                     num_events_handled_without_commit >= self._max_events_before_commit:
                 num_events_handled_without_commit = 0
-                can_block = await _commit_handled_events(self._outstanding_events, committer)
+                can_block = await _commit_handled_events(self._outstanding_offsets, committer)
                 # In case we can't block because there are outstanding events
                 while not can_block:
                     event = await self._q.get_nowait()
                     if event:
                         break
-                    await asyncio.sleep(2)
-                    can_block = await _commit_handled_events(self._outstanding_events, committer)
+                    await asyncio.sleep(1)
+                    can_block = await _commit_handled_events(self._outstanding_offsets, committer)
             if not event:
                 event = await self._q.get()
             if committer and hasattr(event, 'path') and hasattr(event, 'shard_id') and hasattr(event, 'offset'):
                 qualified_shard = (event.path, event.shard_id)
-                events = self._outstanding_events.get(qualified_shard, [])
-                events.append(event)
+                offsets = self._outstanding_offsets[qualified_shard]
+                offsets.append(_EventOffset(event))
                 num_events_handled_without_commit += 1
             try:
                 termination_result = await self._do_downstream(event)
-                await _commit_handled_events(self._outstanding_events, committer)
                 if event is _termination_obj:
+                    # We can commit all at this point because termination of all downstream steps completed successfully.
+                    await _commit_handled_events(self._outstanding_offsets, committer, commit_all=True)
                     return termination_result
             except BaseException as ex:
                 self._ex = ex

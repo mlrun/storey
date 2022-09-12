@@ -890,6 +890,8 @@ class _Batching(Flow):
 
     def _init(self):
         self._batch: Dict[Optional[str], List[Any]] = defaultdict(list)
+        # Keep the original events that make up each batch
+        self._batch_events: Dict[Optional[str], List[Any]] = defaultdict(list)
         self._batch_first_event_time: Dict[Optional[str], datetime.datetime] = {}
         self._batch_last_event_time: Dict[Optional[str], datetime.datetime] = {}
         self._batch_start_time: Dict[Optional[str], float] = {}
@@ -938,6 +940,7 @@ class _Batching(Flow):
             self._timeout_task = asyncio.get_running_loop().create_task(self._sleep_and_emit())
 
         self._batch[key].append(self._event_to_batch_entry(event))
+        self._batch_events[key].append(event)
 
         if len(self._batch[key]) == self._max_events:
             await self._emit_batch(key)
@@ -969,6 +972,7 @@ class _Batching(Flow):
         last_event_time = self._batch_last_event_time.pop(batch_key)
         del self._batch_start_time[batch_key]
         await self._emit(batch_to_emit, batch_key, batch_time, last_event_time)
+        del self._batch_events[batch_key]
 
     async def _emit_all(self):
         for key in list(self._batch.keys()):
