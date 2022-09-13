@@ -634,7 +634,7 @@ class StreamTarget(Flow, _Writer):
 
     def __init__(self, storage: Driver, stream_path: str, sharding_func: Optional[Callable[[Event], int]] = None, batch_size: int = 8,
                  columns: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None,
-                 shard_count: int = 1, retention_period_hours: int = 24, **kwargs):
+                 shard_count: int = 1, retention_period_hours: int = 24, full_event: Optional[bool] = None, **kwargs):
         kwargs['stream_path'] = stream_path
         kwargs['batch_size'] = batch_size
         if columns:
@@ -657,6 +657,8 @@ class StreamTarget(Flow, _Writer):
         self._shard_count = shard_count
         self._retention_period_hours = retention_period_hours
         self._initialized = False
+
+        self._full_event = True if full_event is None else full_event
 
     def _init(self):
         Flow._init(self)
@@ -714,6 +716,8 @@ class StreamTarget(Flow, _Writer):
                         break
                     shard_id = self._sharding_func(event) % self._shard_count
                     record = self._event_to_writer_entry(event)
+                    if self._full_event:
+                        record = Event.wrap_for_serialization(event, record)
                     buffers[shard_id].append(record)
                     if len(buffers[shard_id]) >= self._batch_size:
                         if in_flight_reqs[shard_id]:
@@ -832,6 +836,8 @@ class KafkaTarget(Flow, _Writer):
             if event.key is not None:
                 key = stringify_key(event.key).encode("UTF-8")
             record = self._event_to_writer_entry(event)
+            if self._full_event:
+                record = Event.wrap_for_serialization(event, record)
             record = json.dumps(record).encode("UTF-8")
             partition = None
             if self._sharding_func:
