@@ -169,19 +169,19 @@ async def async_test_write_to_v3io_stream_full_event_readback(setup_stream_teard
     try:
         shard0_data = await GetShardData().get_shard_data(f'{stream_path}/0')
         assert shard0_data == [
-            b'{"full_event_wrapper": true, "body": 0, "time": "2022-08-08 00:00:00", "id": "0"}',
-            b'{"full_event_wrapper": true, "body": 2, "time": "2022-08-08 00:00:00", "id": "2"}',
-            b'{"full_event_wrapper": true, "body": 4, "time": "2022-08-08 00:00:00", "id": "4"}',
-            b'{"full_event_wrapper": true, "body": 6, "time": "2022-08-08 00:00:00", "id": "6"}',
-            b'{"full_event_wrapper": true, "body": 8, "time": "2022-08-08 00:00:00", "id": "8"}'
+            b'{"full_event_wrapper": true, "body": 0, "time": "2022-08-08T00:00:00", "id": "0"}',
+            b'{"full_event_wrapper": true, "body": 2, "time": "2022-08-08T00:00:00", "id": "2"}',
+            b'{"full_event_wrapper": true, "body": 4, "time": "2022-08-08T00:00:00", "id": "4"}',
+            b'{"full_event_wrapper": true, "body": 6, "time": "2022-08-08T00:00:00", "id": "6"}',
+            b'{"full_event_wrapper": true, "body": 8, "time": "2022-08-08T00:00:00", "id": "8"}'
         ]
         shard1_data = await GetShardData().get_shard_data(f'{stream_path}/1')
         assert shard1_data == [
-            b'{"full_event_wrapper": true, "body": 1, "time": "2022-08-08 00:00:00", "id": "1"}',
-            b'{"full_event_wrapper": true, "body": 3, "time": "2022-08-08 00:00:00", "id": "3"}',
-            b'{"full_event_wrapper": true, "body": 5, "time": "2022-08-08 00:00:00", "id": "5"}',
-            b'{"full_event_wrapper": true, "body": 7, "time": "2022-08-08 00:00:00", "id": "7"}',
-            b'{"full_event_wrapper": true, "body": 9, "time": "2022-08-08 00:00:00", "id": "9"}'
+            b'{"full_event_wrapper": true, "body": 1, "time": "2022-08-08T00:00:00", "id": "1"}',
+            b'{"full_event_wrapper": true, "body": 3, "time": "2022-08-08T00:00:00", "id": "3"}',
+            b'{"full_event_wrapper": true, "body": 5, "time": "2022-08-08T00:00:00", "id": "5"}',
+            b'{"full_event_wrapper": true, "body": 7, "time": "2022-08-08T00:00:00", "id": "7"}',
+            b'{"full_event_wrapper": true, "body": 9, "time": "2022-08-08T00:00:00", "id": "9"}'
         ]
     finally:
         await controller.terminate()

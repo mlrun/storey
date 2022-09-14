@@ -791,7 +791,7 @@ class KafkaTarget(Flow, _Writer):
 
     def __init__(self, bootstrap_servers: str, topic: str, producer_options: Optional[dict] = None,
                  sharding_func: Optional[Callable[[Event], int]] = None, columns: Optional[List[str]] = None,
-                 infer_columns_from_data: Optional[bool] = None, **kwargs):
+                 infer_columns_from_data: Optional[bool] = None, full_event: Optional[bool] = None, **kwargs):
         if not bootstrap_servers:
             raise ValueError('bootstrap_servers must be defined')
         if not topic:

@@ -15,6 +15,7 @@
 import asyncio
 import json
 import os
+from datetime import datetime
 from time import sleep
 
 import pytest
@@ -92,7 +93,7 @@ async def async_test_write_to_kafka_full_event_readback(kafka_topic_setup_teardo
 
     controller = build_flow([
         AsyncEmitSource(),
-        KafkaTarget(bootstrap_servers, topic, sharding_func=lambda event: int(event.body), full_event=True)
+        KafkaTarget(bootstrap_servers, topic, sharding_func=lambda _: 0, full_event=True)
     ]).run()
     events = []
     for i in range(10):
@@ -115,23 +116,22 @@ async def async_test_write_to_kafka_full_event_readback(kafka_topic_setup_teardo
 
     controller = build_flow([
         AsyncEmitSource(),
-        Reduce([], lambda acc, x: append_return(acc, x)),
+        Reduce([], lambda acc, x: append_return(acc, x), full_event=True),
     ]).run()
     for record in readback_records:
-        await controller.emit(Event(json.loads(record), id='some-new-id'))
+        await controller.emit(Event(record, id='some-new-id'))
 
     await controller.terminate()
     result = await controller.await_termination()
 
-    expected_bodies = [0, 2, 4, 6, 8, 1, 3, 5, 7, 9]
-    for i, record in enumerate(result):
-        assert record.body == expected_bodies[i]
-        assert record.id == str(expected_bodies[i])
-        assert record.time == event_time
+    assert len(result) == 10
 
-    assert result == [0, 2, 4, 6, 8, 1, 3, 5, 7, 9]
+    for i, record in enumerate(result):
+        assert record.body == i
+        assert record.id == str(i)
+        assert record.time == event_time
 
 
 @pytest.mark.skipif(not bootstrap_servers, reason='KAFKA_BOOTSTRAP_SERVERS must be defined to run kafka tests')
-def test_async_test_write_to_v3io_stream_full_event_readback(assign_stream_teardown_test):
-    asyncio.run(async_test_write_to_v3io_stream_full_event_readback(assign_stream_teardown_test))
+def test_async_test_write_to_kafka_full_event_readback(kafka_topic_setup_teardown):
+    asyncio.run(async_test_write_to_kafka_full_event_readback(kafka_topic_setup_teardown))

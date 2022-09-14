@@ -78,7 +78,9 @@ class Event:
         for field in Event._serialize_fields:
             val = getattr(event, field)
             if val is not None:
-                record[field] = getattr(event, field)
+                if isinstance(val, datetime):
+                    val = datetime.isoformat(val)
+                record[field] = val
         return record
 
 
