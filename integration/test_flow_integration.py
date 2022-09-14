@@ -189,7 +189,7 @@ async def async_test_write_to_v3io_stream_full_event_readback(setup_stream_teard
 
     controller = build_flow([
         AsyncEmitSource(),
-        Reduce([], lambda acc, x: append_return(acc, x)),
+        Reduce([], lambda acc, x: append_return(acc, x), full_event=True),
     ]).run()
     for record in (shard0_data + shard1_data):
         await controller.emit(Event(json.loads(record.decode('utf8')), id='some-new-id'))
@@ -197,7 +197,12 @@ async def async_test_write_to_v3io_stream_full_event_readback(setup_stream_teard
     await controller.terminate()
     result = await controller.await_termination()
 
-    assert result == [0, 2, 4, 6, 8, 1, 3, 5, 7, 9]
+    assert len(result) == 10
+    expected_bodies = [0, 2, 4, 6, 8, 1, 3, 5, 7, 9]
+    for i, record in enumerate(result):
+        assert record.body == expected_bodies[i]
+        assert record.id == str(expected_bodies[i])
+        assert record.time == event_time
 
 
 def test_async_test_write_to_v3io_stream_full_event_readback(assign_stream_teardown_test):

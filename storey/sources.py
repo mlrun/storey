@@ -114,6 +114,8 @@ class FlowControllerBase(WithUUID):
                     if val is not None:
                         val = serialized_event.get(field)
                         if val is not None:
+                            if field == "time":
+                                val = _convert_to_datetime(val)
                             setattr(element, field, val)
             else:
                 body = element.body

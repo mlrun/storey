@@ -815,6 +815,8 @@ class KafkaTarget(Flow, _Writer):
 
         self._initialized = False
 
+        self._full_event = True if full_event is None else full_event
+
     def _init(self):
         _Writer._init(self)
 
