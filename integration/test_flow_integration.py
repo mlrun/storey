@@ -192,7 +192,7 @@ async def async_test_write_to_v3io_stream_full_event_readback(setup_stream_teard
         Reduce([], lambda acc, x: append_return(acc, x), full_event=True),
     ]).run()
     for record in (shard0_data + shard1_data):
-        await controller.emit(Event(json.loads(record.decode('utf8')), id='some-new-id'))
+        await controller.emit(Event(json.loads(record.decode('utf8')), id='this-id-is-overridden-by-the-original-id'))
 
     await controller.terminate()
     result = await controller.await_termination()
