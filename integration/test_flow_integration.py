@@ -26,7 +26,7 @@ import v3io_frames as frames
 
 from storey import Filter, JoinWithV3IOTable, SendToHttp, Map, Reduce, SyncEmitSource, HttpRequest, build_flow, \
     StreamTarget, V3ioDriver, TSDBTarget, Table, JoinWithTable, MapWithState, NoSqlTarget, DataframeSource, \
-    CSVSource, AsyncEmitSource
+    CSVSource, AsyncEmitSource, Event
 from .integration_test_utils import V3ioHeaders, append_return, test_base_time, setup_kv_teardown_test, \
     setup_teardown_test, TestContext, assign_stream_teardown_test, create_stream
 
@@ -71,16 +71,17 @@ class GetShardData(V3ioHeaders):
         return data
 
 
-def _get_redis_kv_all_attrs(setup_teardown_test: TestContext, key:str):
+def _get_redis_kv_all_attrs(setup_teardown_test: TestContext, key: str):
     from .integration_test_utils import get_redis_client
     from storey.redis_driver import RedisDriver
     table_name = setup_teardown_test.table_name
     redis_key = f'storey-test:{table_name}{key}:static'
     redis_fake_server = setup_teardown_test.redis_fake_server
-    values = get_redis_client(redis_fake_server= redis_fake_server).hgetall(redis_key)    
+    values = get_redis_client(redis_fake_server=redis_fake_server).hgetall(redis_key)
     return {RedisDriver.convert_to_str(key): RedisDriver.convert_redis_value_to_python_obj(val) for key, val in values.items()}
 
-def get_key_all_attrs_test_helper(setup_teardown_test: TestContext, key:str):
+
+def get_key_all_attrs_test_helper(setup_teardown_test: TestContext, key: str):
     if setup_teardown_test.driver_name == "RedisDriver":
         result = _get_redis_kv_all_attrs(setup_teardown_test, key)
     else:
@@ -89,9 +90,10 @@ def get_key_all_attrs_test_helper(setup_teardown_test: TestContext, key:str):
         result = response.output.item
     return result
 
+
 def test_join_with_v3io_table(setup_kv_teardown_test):
     if setup_kv_teardown_test.driver_name == "RedisDriver":
-        pytest.skip(msg = 'test not relevant for Redis')
+        pytest.skip(msg='test not relevant for Redis')
 
     table_path = setup_kv_teardown_test.table_name
     controller = build_flow([
@@ -130,7 +132,7 @@ async def async_test_write_to_v3io_stream(setup_stream_teardown_test):
     controller = build_flow([
         AsyncEmitSource(),
         Map(lambda x: str(x)),
-        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: int(event.body), batch_size=8, shard_count=2)
+        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: int(event.body), batch_size=8, shard_count=2, full_event=False)
     ]).run()
     for i in range(10):
         await controller.emit(i)
@@ -151,6 +153,62 @@ def test_write_to_v3io_stream(assign_stream_teardown_test):
     asyncio.run(async_test_write_to_v3io_stream(assign_stream_teardown_test))
 
 
+async def async_test_write_to_v3io_stream_full_event_readback(setup_stream_teardown_test):
+    stream_path = setup_stream_teardown_test
+    event_time = datetime(2022, 8, 8)
+
+    controller = build_flow([
+        AsyncEmitSource(),
+        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: int(event.body), batch_size=8, shard_count=2, full_event=True)
+    ]).run()
+    for i in range(10):
+        await controller.emit(Event(i, time=event_time, id=str(i)))
+
+    await asyncio.sleep(5)
+
+    try:
+        shard0_data = await GetShardData().get_shard_data(f'{stream_path}/0')
+        assert shard0_data == [
+            b'{"full_event_wrapper": true, "body": 0, "time": "2022-08-08T00:00:00", "id": "0"}',
+            b'{"full_event_wrapper": true, "body": 2, "time": "2022-08-08T00:00:00", "id": "2"}',
+            b'{"full_event_wrapper": true, "body": 4, "time": "2022-08-08T00:00:00", "id": "4"}',
+            b'{"full_event_wrapper": true, "body": 6, "time": "2022-08-08T00:00:00", "id": "6"}',
+            b'{"full_event_wrapper": true, "body": 8, "time": "2022-08-08T00:00:00", "id": "8"}'
+        ]
+        shard1_data = await GetShardData().get_shard_data(f'{stream_path}/1')
+        assert shard1_data == [
+            b'{"full_event_wrapper": true, "body": 1, "time": "2022-08-08T00:00:00", "id": "1"}',
+            b'{"full_event_wrapper": true, "body": 3, "time": "2022-08-08T00:00:00", "id": "3"}',
+            b'{"full_event_wrapper": true, "body": 5, "time": "2022-08-08T00:00:00", "id": "5"}',
+            b'{"full_event_wrapper": true, "body": 7, "time": "2022-08-08T00:00:00", "id": "7"}',
+            b'{"full_event_wrapper": true, "body": 9, "time": "2022-08-08T00:00:00", "id": "9"}'
+        ]
+    finally:
+        await controller.terminate()
+        await controller.await_termination()
+
+    controller = build_flow([
+        AsyncEmitSource(),
+        Reduce([], lambda acc, x: append_return(acc, x), full_event=True),
+    ]).run()
+    for record in (shard0_data + shard1_data):
+        await controller.emit(Event(json.loads(record.decode('utf8')), id='this-id-is-overridden-by-the-original-id'))
+
+    await controller.terminate()
+    result = await controller.await_termination()
+
+    assert len(result) == 10
+    expected_bodies = [0, 2, 4, 6, 8, 1, 3, 5, 7, 9]
+    for i, record in enumerate(result):
+        assert record.body == expected_bodies[i]
+        assert record.id == str(expected_bodies[i])
+        assert record.time == event_time
+
+
+def test_async_test_write_to_v3io_stream_full_event_readback(assign_stream_teardown_test):
+    asyncio.run(async_test_write_to_v3io_stream_full_event_readback(assign_stream_teardown_test))
+
+
 # ML-1219
 def test_write_to_v3io_stream_timestamps(assign_stream_teardown_test):
     df = pd.DataFrame([['hello', pd.Timestamp('2018-05-07 13:52:37'), datetime(2012, 8, 8, 21, 46, 24, 862000)]],
@@ -158,7 +216,7 @@ def test_write_to_v3io_stream_timestamps(assign_stream_teardown_test):
     stream_path = assign_stream_teardown_test
     controller = build_flow([
         DataframeSource(df),
-        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: 0, infer_columns_from_data=True)
+        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: 0, infer_columns_from_data=True, full_event=False)
     ]).run()
     controller.await_termination()
     shard0_data = asyncio.run(GetShardData().get_shard_data(f'{stream_path}/0'))
@@ -172,7 +230,8 @@ def test_write_to_v3io_stream_with_column_inference(assign_stream_teardown_test)
     stream_path = assign_stream_teardown_test
     controller = build_flow([
         SyncEmitSource(),
-        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: event.body['x'], infer_columns_from_data=True, shard_count=2)
+        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: event.body['x'], infer_columns_from_data=True, shard_count=2,
+                     full_event=False)
     ]).run()
     for i in range(10):
         controller.emit({'x': i, 'y': f'{i}+{i}={i * 2}'})
@@ -203,7 +262,7 @@ def test_write_to_pre_existing_stream(assign_stream_teardown_test):
     df = pd.DataFrame([['hello', "goodbye"]], columns=['first', 'second'])
     controller = build_flow([
         DataframeSource(df),
-        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: 0, infer_columns_from_data=True)
+        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: 0, infer_columns_from_data=True, full_event=False)
     ]).run()
     controller.await_termination()
     shard0_data = asyncio.run(GetShardData().get_shard_data(f'{stream_path}/0'))
@@ -215,7 +274,7 @@ def test_write_dict_to_v3io_stream(assign_stream_teardown_test):
     controller = build_flow([
         SyncEmitSource(),
         StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: int(event.key), columns=['$key'],
-                     infer_columns_from_data=True, shard_count=2)
+                     infer_columns_from_data=True, shard_count=2, full_event=False)
     ]).run()
     expected_shard0 = []
     expected_shard1 = []
@@ -246,7 +305,7 @@ def test_write_to_v3io_stream_unbalanced(assign_stream_teardown_test):
     controller = build_flow([
         SyncEmitSource(),
         Map(lambda x: str(x)),
-        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: 0, shard_count=2)
+        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: 0, shard_count=2, full_event=False)
     ]).run()
     for i in range(10):
         controller.emit(i)
@@ -271,7 +330,7 @@ def test_push_error_on_write_to_v3io_stream(assign_stream_teardown_test):
     stream_path = assign_stream_teardown_test
     controller = build_flow([
         SyncEmitSource(),
-        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: 0, shard_count=1, context=context)
+        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: 0, shard_count=1, context=context, full_event=False)
     ]).run()
     # Write a 3MB record, which exceeds the 2MB v3io record size limit, then a small record.
     controller.emit('3' * (1024 * 1024 * 3))
@@ -342,7 +401,7 @@ def test_join_by_key(setup_kv_teardown_test):
 
     controller = build_flow([
         SyncEmitSource(),
-        JoinWithTable(table, 'col1',key='age'),
+        JoinWithTable(table, 'col1', key='age'),
         Reduce([], lambda acc, x: append_return(acc, x))
     ]).run()
 
@@ -508,8 +567,8 @@ def test_write_table_metadata_columns(setup_teardown_test):
         f'actual did not match expected. \n actual: {actual} \n expected: {expected_results}'
 
     expected_cache = {'color': 'blue', 'age': 41, 'iss': True, 'sometime': test_base_time, 'first_activity': test_base_time,
-                    'last_event': test_base_time + timedelta(minutes=25 * (items_in_ingest_batch - 1)), 'total_activities': 10,
-                    'twice_total_activities': 20, 'my_key': 'tal'}
+                      'last_event': test_base_time + timedelta(minutes=25 * (items_in_ingest_batch - 1)), 'total_activities': 10,
+                      'twice_total_activities': 20, 'my_key': 'tal'}
     actual_cache = get_key_all_attrs_test_helper(setup_teardown_test, 'tal')
     assert expected_cache == actual_cache
 

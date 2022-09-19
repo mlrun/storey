@@ -103,12 +103,26 @@ class FlowControllerBase(WithUUID):
         self._id_field = id_field
 
     def _build_event(self, element, key, event_time):
-        body = element
         element_is_event = hasattr(element, 'id')
         if element_is_event:
-            body = element.body
+            if isinstance(element.body, dict) and element.body.get(Event._serialize_event_marker):
+                serialized_event = element.body
+                body = serialized_event.get('body')
+                element.body = body
+                for field in Event._serialize_fields:
+                    val = serialized_event.get(field)
+                    if val is not None:
+                        val = serialized_event.get(field)
+                        if val is not None:
+                            if field == "time":
+                                val = _convert_to_datetime(val)
+                            setattr(element, field, val)
+            else:
+                body = element.body
             if not hasattr(element, 'time') and hasattr(element, 'timestamp'):
                 element.time = element.timestamp
+        else:
+            body = element
 
         if not key and self._key_field:
             if isinstance(self._key_field, str) or isinstance(self._key_field, int):
