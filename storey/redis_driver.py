@@ -33,6 +33,7 @@ from .utils import schema_file_name
 class RedisType(Enum):
     STANDALONE = 1
     CLUSTER = 2
+    UNKNOWN = 3
 
 
 class NeedsRedisAccess:
@@ -59,7 +60,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
 
     def __init__(self,
                  redis_client: Optional[Union[redis.Redis, redis.cluster.RedisCluster]] = None,
-                 redis_type: RedisType = RedisType.STANDALONE,
+                 redis_type: RedisType = RedisType.UNKNOWN,
                  key_prefix: str = None,
                  redis_url: Optional[str] = None,
                  aggregation_attribute_prefix: str = 'aggr_',
@@ -98,7 +99,14 @@ class RedisDriver(NeedsRedisAccess, Driver):
     @property
     def redis(self):
         if self._redis is None:
-            if self._type is RedisType.STANDALONE:
+            if self._type is RedisType.UNKNOWN:
+                try:
+                    self._redis = redis.cluster.RedisCluster.from_url(self._redis_url, decode_response=True)
+                except redis.exceptions.RedisClusterException as e:
+                    if not e.args[0].endswith('Cluster mode is not enabled on this node'):
+                        raise e
+                self._redis = redis.Redis.from_url(self._redis_url, decode_responses=True)
+            elif self._type is RedisType.STANDALONE:
                 self._redis = redis.Redis.from_url(self._redis_url, decode_responses=True)
             else:
                 self._redis = redis.cluster.RedisCluster.from_url(self._redis_url, decode_response=True)
