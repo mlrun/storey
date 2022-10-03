@@ -22,15 +22,13 @@ import string
 from datetime import datetime
 
 import aiohttp
-import pytest
-
-import redis as r
 import fakeredis
-
+import pytest
+import redis as r
 from storey import V3ioDriver
-from storey.redis_driver import RedisDriver
 from storey.drivers import NeedsV3ioAccess
 from storey.flow import V3ioError
+from storey.redis_driver import RedisDriver
 
 _non_int_char_pattern = re.compile(r"[^-0-9]")
 test_base_time = datetime.fromisoformat("2020-07-21T21:40:00+00:00")
@@ -97,6 +95,9 @@ def _generate_table_name(prefix='bigdata/storey_ci/Aggr_test'):
     return f'{prefix}/{random_table}/'
 
 def get_redis_client(redis_fake_server=None):
+    redis_cluster_url = os.environ.get('MLRUN_REDIS_CLUSTER_URL')
+    if redis_cluster_url:
+        return r.cluster.RedisCluster.from_url(redis_cluster_url)
     redis_url = os.environ.get('MLRUN_REDIS_URL')
     if redis_url:
         return r.Redis.from_url(redis_url)
@@ -106,10 +107,10 @@ def get_redis_client(redis_fake_server=None):
 def remove_redis_table(table_name):
     redis_client = get_redis_client()
     count = 0
-    ns_keys = "storey-test:" + table_name + "*"
-    for key in redis_client.scan_iter(ns_keys):
+    for key in redis_client.scan_iter(f'*storey-test:{table_name}*'):
         redis_client.delete(key)
         count += 1
+
 
 class TestContext:
     def __init__(self, driver_name: str, table_name:str):
@@ -225,7 +226,9 @@ def create_temp_redis_kv(setup_teardown_test):
     redis_client = get_redis_client(redis_fake_server=redis_fake_server)
 
     for i in range(1, 10):
-        redis_client.hmset(f'storey-test:{table_path}{i}:static', mapping={'age': f'{10 - i}', 'color': f'blue{i}'})
+        key = RedisDriver.make_key('storey-test:', table_path, i)
+        static_key= RedisDriver._static_data_key(key)
+        redis_client.hmset(static_key, mapping={'age': f'{10 - i}', 'color': f'blue{i}'})
 
 async def create_temp_kv(table_path):
     connector = aiohttp.TCPConnector()

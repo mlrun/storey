@@ -205,7 +205,7 @@ class FlowAwaiter:
 
 
 class SyncEmitSource(Flow):
-    """Synchronous entry point into a flow. Produces a FlowController when run, for use from inside a synchronous context. See AsyncEmitSource
+    """Synchronous entry point into a flow.Produces a FlowController when run,for use from inside a synchronous context.See AsyncEmitSource
     for use from inside an async context.
 
     :param buffer_size: size of the incoming event buffer. Defaults to 8.

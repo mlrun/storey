@@ -13,6 +13,8 @@
 # limitations under the License.
 #
 import pytest
+import random
+import string
 
 from storey import build_flow, SyncEmitSource,  Reduce, Complete, \
     NoSqlTarget, Table,JoinWithTable
@@ -25,17 +27,24 @@ def redis():
     return get_redis_client()
 
 def test_redis_driver_write(redis):
+    random_name = ''.join(random.choice(string.ascii_lowercase) for i in range(5))
+    table_name = f'test_{random_name}'
+
     driver = RedisDriver(redis)
     controller = build_flow([
         SyncEmitSource(),
-        NoSqlTarget(Table('test', driver)),
+        NoSqlTarget(Table(table_name, driver)),
         Complete()
     ]).run()
     controller.emit({'col1': 0}, 'key').await_result()
     controller.terminate()
     controller.await_termination()
+    
+    table_name = f'{table_name}/'
+    hash_key = RedisDriver.make_key('storey:', table_name, 'key')
+    redis_key= RedisDriver._static_data_key(hash_key)
 
-    data = driver.redis.hgetall("storey:test/key:static")
+    data = driver.redis.hgetall(redis_key)
     data_strings = {}
     for key, val in data.items():
         if isinstance(key,bytes):
@@ -45,13 +54,22 @@ def test_redis_driver_write(redis):
 
     assert data_strings == {"col1": '0'}
 
+    for key in driver.redis.scan_iter(f'*storey:{table_name}*'):
+        driver.redis.delete(key)
 
 def test_redis_driver_join(redis):
+    random_name = ''.join(random.choice(string.ascii_lowercase) for i in range(5))
+    table_name = f'test_{random_name}'
+
     driver = RedisDriver(redis)
-    table = Table('test', driver)
+    table = Table(table_name, driver)
+    table_name = f'{table_name}/'
 
     # Create the data we'll join with in Redis.
-    driver.redis.hset("storey:test/2:static", mapping={"name": "1234"})
+    hash_key = RedisDriver.make_key('storey:', table_name, '2')
+    redis_key= RedisDriver._static_data_key(hash_key)
+
+    driver.redis.hset(redis_key, mapping={"name": "1234"})
     controller = build_flow([
         SyncEmitSource(),
         JoinWithTable(table, lambda x: x['col2']),
@@ -68,3 +86,6 @@ def test_redis_driver_join(redis):
         {'col1': 1, 'col2': '2', 'name': 1234}]
 
     assert termination_result == expected_result
+
+    for key in driver.redis.scan_iter(f'*storey:{table_name}*'):
+        driver.redis.delete(key)

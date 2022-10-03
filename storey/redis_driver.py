@@ -70,10 +70,13 @@ class RedisDriver(NeedsRedisAccess, Driver):
         # upon demand (any access to self.redis)
         if redis_client is not None:
             self._redis = redis_client
+            if isinstance(redis_client, redis.cluster.RedisCluster):
+                redis_type = RedisType.CLUSTER
+            if isinstance(redis_client, redis.Redis):
+                redis_type = RedisType.STANDALONE
         else:
             NeedsRedisAccess.__init__(self, redis_url)
             self._redis = None
-
         if not isinstance(redis_type, RedisType):
             raise ValueError(f'unsupported RedisType value provided  ("{redis_type}"), aborting')
 
@@ -104,13 +107,9 @@ class RedisDriver(NeedsRedisAccess, Driver):
                 self._redis = redis.cluster.RedisCluster.from_url(self._redis_url, decode_response=True)
         return self._redis
 
-    async def close(self):
-        if self._redis:
-            self._redis.close()
-
     @staticmethod
     def make_key(key_prefix, *parts):
-        return f"{key_prefix}{''.join([str(p) for p in parts])}"
+        return f"{{{key_prefix}{''.join([str(p) for p in parts])}}}"
 
     def _make_key(self, *parts):
         return RedisDriver.make_key(self._key_prefix, *parts)
