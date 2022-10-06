@@ -23,12 +23,13 @@ import queue
 import random
 import traceback
 import uuid
-from typing import Optional, Union, List, Callable, Tuple
+from typing import Optional, Union, List, Callable, Tuple, Any
 from urllib.parse import urlparse
 
 import pandas as pd
 import pyarrow
 import v3io_frames as frames
+import xxhash as xxhash
 
 from . import Driver
 from .dtypes import V3ioError, Event
@@ -616,7 +617,8 @@ class StreamTarget(Flow, _Writer):
 
     :param storage: Database driver.
     :param stream_path: Path to the V3IO stream.
-    :param sharding_func: Function for determining the shard ID to which to write each event. Optional. Default is None
+    :param sharding_func: Partition, sharding key field, or function from event to partition or sharding key. Optional.
+        If not set, event key will be used as the sharding key.
     :param batch_size: Batch size for each write request.
     :param columns: Fields to be written to stream. Will be extracted from events when an event is a dictionary (other types will be written
         as is). Use = notation for renaming fields (e.g. write_this=event_field). Use $ notation to refer to metadata
@@ -632,9 +634,16 @@ class StreamTarget(Flow, _Writer):
     :type storage_options: dict
     """
 
-    def __init__(self, storage: Driver, stream_path: str, sharding_func: Optional[Callable[[Event], int]] = None, batch_size: int = 8,
-                 columns: Optional[List[str]] = None, infer_columns_from_data: Optional[bool] = None,
-                 shard_count: int = 1, retention_period_hours: int = 24, full_event: Optional[bool] = None, **kwargs):
+    def __init__(self,
+                 storage: Driver, stream_path: str,
+                 sharding_func: Union[None, int, str, Callable[[Event], Any]] = None,
+                 batch_size: int = 8,
+                 columns: Optional[List[str]] = None,
+                 infer_columns_from_data: Optional[bool] = None,
+                 shard_count: int = 1,
+                 retention_period_hours: int = 24,
+                 full_event: Optional[bool] = None,
+                 **kwargs):
         kwargs['stream_path'] = stream_path
         kwargs['batch_size'] = batch_size
         if columns:
@@ -646,10 +655,17 @@ class StreamTarget(Flow, _Writer):
 
         self._storage = storage
 
-        if sharding_func is not None and not callable(sharding_func):
-            raise TypeError(f'Expected a callable, got {type(sharding_func)}')
-
         self._container, self._stream_path = _split_path(stream_path)
+
+        self._sharding_func = None
+        if isinstance(sharding_func, int):
+            self._sharding_func = lambda _: sharding_func
+        elif isinstance(sharding_func, str):
+            self._sharding_func = lambda event: event.body.get(sharding_func, None)
+        elif callable(sharding_func):
+            self._sharding_func = sharding_func
+        else:
+            raise TypeError(f'Expected an int, string, or callable, got {type(sharding_func)}')
 
         self._sharding_func = sharding_func
         self._batch_size = batch_size
@@ -714,7 +730,12 @@ class StreamTarget(Flow, _Writer):
                         for req in in_flight_reqs:
                             await self._handle_response(req)
                         break
-                    shard_id = self._sharding_func(event) % self._shard_count
+                    shard_id = self._sharding_func(event)
+                    if not isinstance(shard_id, int):
+                        h = xxhash.xxh32()
+                        h.update(shard_id)
+                        shard_id = h.intdigest()
+                    shard_id %= self._shard_count
                     record = self._event_to_writer_entry(event)
                     if self._full_event:
                         record = Event.wrap_for_serialization(event, record)
@@ -779,7 +800,8 @@ class KafkaTarget(Flow, _Writer):
     :param topic: Kafka topic.
     :param bootstrap_servers: Kafka bootstrap servers (brokers).
     :param producer_options: Extra options to be passed as kwargs to kafka.KafkaProducer.
-    :param sharding_func: Function for determining the partition ID to which to write each event. Optional. Default is None
+    :param sharding_func: Partition, sharding key field, or function from event to partition or sharding key. Optional.
+        If not set, event key will be used as the sharding key.
     :param columns: Fields to be written to topic. Will be extracted from events when an event is a dictionary (other types will be written
         as is). Use = notation for renaming fields (e.g. write_this=event_field). Use $ notation to refer to metadata
         ($key, event_time=$time). Optional. Defaults to None (will be inferred if event is dictionary).
@@ -789,9 +811,15 @@ class KafkaTarget(Flow, _Writer):
         True otherwise.
     """
 
-    def __init__(self, bootstrap_servers: str, topic: str, producer_options: Optional[dict] = None,
-                 sharding_func: Optional[Callable[[Event], int]] = None, columns: Optional[List[str]] = None,
-                 infer_columns_from_data: Optional[bool] = None, full_event: Optional[bool] = None, **kwargs):
+    def __init__(self,
+                 bootstrap_servers: str,
+                 topic: str,
+                 producer_options: Optional[dict] = None,
+                 sharding_func: Union[None, int, str, Callable[[Event], Any]] = None,
+                 columns: Optional[List[str]] = None,
+                 infer_columns_from_data: Optional[bool] = None,
+                 full_event: Optional[bool] = None,
+                 **kwargs):
         if not bootstrap_servers:
             raise ValueError('bootstrap_servers must be defined')
         if not topic:
@@ -801,10 +829,15 @@ class KafkaTarget(Flow, _Writer):
         self._topic = topic
         self._producer_options = producer_options
 
-        if sharding_func is not None and not callable(sharding_func):
-            raise TypeError(f'Expected a callable, got {type(sharding_func)}')
-
-        self._sharding_func = sharding_func
+        self._sharding_func = None
+        if isinstance(sharding_func, int):
+            self._sharding_func = lambda _: sharding_func
+        elif isinstance(sharding_func, str):
+            self._sharding_func = lambda event: event.body.get(sharding_func, None)
+        elif callable(sharding_func):
+            self._sharding_func = sharding_func
+        else:
+            raise TypeError(f'Expected an int, string, or callable, got {type(sharding_func)}')
 
         if columns:
             kwargs['columns'] = columns
@@ -843,7 +876,12 @@ class KafkaTarget(Flow, _Writer):
             record = json.dumps(record).encode("UTF-8")
             partition = None
             if self._sharding_func:
-                partition = self._sharding_func(event)
+                sharding_func_result = self._sharding_func(event)
+                partition = None
+                if isinstance(sharding_func_result, int):
+                    partition = sharding_func_result
+                else:
+                    key = sharding_func_result
             self._producer.send(self._topic, record, key, partition=partition)
 
 
