@@ -667,7 +667,6 @@ class StreamTarget(Flow, _Writer):
         else:
             raise TypeError(f'Expected an int, string, or callable, got {type(sharding_func)}')
 
-        self._sharding_func = sharding_func
         self._batch_size = batch_size
 
         self._shard_count = shard_count
