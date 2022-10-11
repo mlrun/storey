@@ -627,7 +627,7 @@ class StreamTarget(Flow, _Writer):
         inferred from data and used in place of explicit columns list if none was provided, or appended to the provided list. If header is
         True and columns is not provided, infer_columns_from_data=True is implied. Optional. Default to False if columns is provided,
         True otherwise.
-    :param shard_count: If stream doesn't exist, it will be created with this number of shards. Defaults to 1.
+    :param shards: If stream doesn't exist, it will be created with this number of shards. Defaults to 1.
     :param retention_period_hours: If stream doesn't exist, it will be created with this retention time in hours. Defaults to 24.
     :param storage_options: Extra options that make sense for a particular storage connection, e.g. host, port, username, password, etc.,
         if using a URL that will be parsed by fsspec, e.g., starting “s3://”, “gcs://”. Optional
@@ -640,7 +640,7 @@ class StreamTarget(Flow, _Writer):
                  batch_size: int = 8,
                  columns: Optional[List[str]] = None,
                  infer_columns_from_data: Optional[bool] = None,
-                 shard_count: int = 1,
+                 shards: int = 1,
                  retention_period_hours: int = 24,
                  full_event: Optional[bool] = None,
                  **kwargs):
@@ -669,7 +669,7 @@ class StreamTarget(Flow, _Writer):
 
         self._batch_size = batch_size
 
-        self._shard_count = shard_count
+        self._shards = shards
         self._retention_period_hours = retention_period_hours
         self._initialized = False
 
@@ -708,12 +708,12 @@ class StreamTarget(Flow, _Writer):
         try:
             buffers = []
             in_flight_reqs = []
-            for _ in range(self._shard_count):
+            for _ in range(self._shards):
                 buffers.append([])
                 in_flight_reqs.append(None)
             while True:
                 try:
-                    for shard_id in range(self._shard_count):
+                    for shard_id in range(self._shards):
                         if self._q.empty():
                             req = in_flight_reqs[shard_id]
                             in_flight_reqs[shard_id] = None
@@ -723,7 +723,7 @@ class StreamTarget(Flow, _Writer):
                     if event is _termination_obj:  # handle outstanding batches and in flight requests on termination
                         for req in in_flight_reqs:
                             await self._handle_response(req)
-                        for shard_id in range(self._shard_count):
+                        for shard_id in range(self._shards):
                             if buffers[shard_id]:
                                 self._send_batch(buffers, in_flight_reqs, shard_id)
                         for req in in_flight_reqs:
@@ -734,7 +734,7 @@ class StreamTarget(Flow, _Writer):
                         h = xxhash.xxh32()
                         h.update(shard_id)
                         shard_id = h.intdigest()
-                    shard_id %= self._shard_count
+                    shard_id %= self._shards
                     record = self._event_to_writer_entry(event)
                     if self._full_event:
                         record = Event.wrap_for_serialization(event, record)
@@ -760,21 +760,21 @@ class StreamTarget(Flow, _Writer):
 
     async def _lazy_init(self):
         if not self._initialized:
-            status_code = await self._storage._create_stream(self._container, self._stream_path, self._shard_count,
+            status_code = await self._storage._create_stream(self._container, self._stream_path, self._shards,
                                                              self._retention_period_hours)
             if status_code == 409:
                 # get actual number of shards (for pre existing stream)
                 response = await self._storage._describe(self._container, self._stream_path)
-                self._shard_count = response.shard_count
+                self._shards = response.shard_count
             elif status_code >= 400:
                 raise ValueError(f"Failed to create stream due to {status_code}: {response.body}")
             if self._sharding_func is None:
                 def f(_):
-                    return random.randint(0, self._shard_count - 1)
+                    return random.randint(0, self._shards - 1)
 
                 self._sharding_func = f
 
-            self._q = asyncio.queues.Queue(self._batch_size * self._shard_count)
+            self._q = asyncio.queues.Queue(self._batch_size * self._shards)
             self._worker_awaitable = asyncio.get_running_loop().create_task(self._worker())
             self._initialized = True
 
