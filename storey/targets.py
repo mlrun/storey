@@ -766,6 +766,8 @@ class StreamTarget(Flow, _Writer):
                 # get actual number of shards (for pre existing stream)
                 response = await self._storage._describe(self._container, self._stream_path)
                 self._shard_count = response.shard_count
+            elif status_code >= 400:
+                raise ValueError(f"Failed to create stream due to {status_code}: {response.body}")
             if self._sharding_func is None:
                 def f(_):
                     return random.randint(0, self._shard_count - 1)
