@@ -62,7 +62,7 @@ def test_kafka_target(kafka_topic_setup_teardown):
 
     controller = build_flow([
         SyncEmitSource(),
-        KafkaTarget(bootstrap_servers, topic, sharding_func=lambda event: 0)
+        KafkaTarget(bootstrap_servers, topic, sharding_func=0, full_event=False)
     ]).run()
     events = []
     for i in range(100):
