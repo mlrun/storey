@@ -17,7 +17,7 @@ import json
 import os
 from datetime import datetime, timedelta
 from collections import OrderedDict
-from typing import Optional
+from typing import Optional, List
 import pandas as pd
 
 import v3io
