@@ -24,7 +24,7 @@ from .dataframe import (  # noqa: F401
     ToDataFrame, ReduceToDataFrame
 )
 from .drivers import (  # noqa: F401
-    Driver, NoopDriver, V3ioDriver
+    Driver, NoopDriver, V3ioDriver, SqlDBDriver
 )
 from .dtypes import (  # noqa: F401
     Event, FieldAggregator, SlidingWindows, FixedWindows, EmissionType, EmitPolicy, EmitAfterPeriod, EmitAfterWindow, EmitAfterMaxEvent,
@@ -35,7 +35,7 @@ from .flow import (  # noqa: F401
     MapWithState, MapClass, Complete, Choice, Recover, HttpRequest, HttpResponse, build_flow, Context
 )
 from .sources import (  # noqa: F401
-    SyncEmitSource, AsyncEmitSource, DataframeSource, CSVSource, ParquetSource
+    SyncEmitSource, AsyncEmitSource, DataframeSource, CSVSource, ParquetSource, SqlDBSource
 )
 from .table import (  # noqa: F401
     Table
