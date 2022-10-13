@@ -611,9 +611,9 @@ class SqlDBDriver(Driver):
         pass
 
     async def _get_all_fields(self, key, table):
-
+        where_statement = self._get_where_statement(key)
         try:
-            my_query = f"SELECT * FROM {table} where {self._primary_key}={key}"
+            my_query = f"SELECT * FROM {table} where {where_statement}"
             results = self._sql_connection.execute(my_query).fetchall()
         except Exception as e:
             raise RuntimeError(f"Failed to get key {key}. Response error was: {e}")
@@ -623,8 +623,9 @@ class SqlDBDriver(Driver):
         }
 
     async def _get_specific_fields(self, key: str, table, attributes: List[str]):
+        where_statement = self._get_where_statement(key)
         try:
-            my_query = f"SELECT {','.join(attributes)} FROM {table} where {self._primary_key}={key}"
+            my_query = f"SELECT {','.join(attributes)} FROM {table} where {where_statement}"
             results = self._sql_connection.execute(my_query).fetchall()
         except Exception as e:
             raise RuntimeError(f"Failed to get key {key}. Response error was: {e}")
@@ -635,3 +636,14 @@ class SqlDBDriver(Driver):
 
     def supports_aggregations(self):
         return False
+
+    def _get_where_statement(self, key):
+        where_statement = ""
+        if isinstance(self._primary_key, List):
+            for i in range(self._primary_key):
+                if i != 0:
+                    where_statement += " and "
+                where_statement += f'{self._primary_key[i]}={key[i]}'
+        else:
+            where_statement += f'{self._primary_key}={key}'
+        return where_statement
