@@ -908,6 +908,7 @@ class ParquetSource(DataframeSource):
 class SqlDBSource(_IterableSource, WithUUID):
     """Use dql table as input source for a flow.
 
+
     :parameter key_field: the primary key of the table.
     :parameter time_field: column to be used as time for events.
     :parameter id_field: column to be used as ID for events.
