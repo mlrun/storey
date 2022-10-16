@@ -29,7 +29,7 @@ from urllib.parse import urlparse
 import pandas as pd
 import pyarrow
 import v3io_frames as frames
-import xxhash as xxhash
+import xxhash
 
 from . import Driver
 from .dtypes import V3ioError, Event
@@ -664,8 +664,8 @@ class StreamTarget(Flow, _Writer):
             self._sharding_func = lambda event: event.body.get(sharding_func, None)
         elif callable(sharding_func):
             self._sharding_func = sharding_func
-        else:
-            raise TypeError(f'Expected an int, string, or callable, got {type(sharding_func)}')
+        elif sharding_func:
+            raise TypeError(f'Expected an int, string, or callable, got {sharding_func} of type {type(sharding_func)}')
 
         self._batch_size = batch_size
 
@@ -729,10 +729,12 @@ class StreamTarget(Flow, _Writer):
                         for req in in_flight_reqs:
                             await self._handle_response(req)
                         break
-                    shard_id = self._sharding_func(event)
-                    if not isinstance(shard_id, int):
+                    sharding_func_result = self._sharding_func(event)
+                    if isinstance(sharding_func_result, int):
+                        shard_id = sharding_func_result
+                    else:
                         h = xxhash.xxh32()
-                        h.update(shard_id)
+                        h.update(sharding_func_result)
                         shard_id = h.intdigest()
                     shard_id %= self._shards
                     record = self._event_to_writer_entry(event)
@@ -837,8 +839,8 @@ class KafkaTarget(Flow, _Writer):
             self._sharding_func = lambda event: event.body.get(sharding_func, None)
         elif callable(sharding_func):
             self._sharding_func = sharding_func
-        else:
-            raise TypeError(f'Expected an int, string, or callable, got {type(sharding_func)}')
+        elif sharding_func:
+            raise TypeError(f'Expected an int, string, or callable, got {sharding_func} of type {type(sharding_func)}')
 
         if columns:
             kwargs['columns'] = columns
