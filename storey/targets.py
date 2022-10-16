@@ -627,6 +627,7 @@ class StreamTarget(Flow, _Writer):
         True otherwise.
     :param shard_count: If stream doesn't exist, it will be created with this number of shards. Defaults to 1.
     :param retention_period_hours: If stream doesn't exist, it will be created with this retention time in hours. Defaults to 24.
+    :param full_event: Enable metadata wrapper for serialized event. Defaults to False.
     :param storage_options: Extra options that make sense for a particular storage connection, e.g. host, port, username, password, etc.,
         if using a URL that will be parsed by fsspec, e.g., starting “s3://”, “gcs://”. Optional
     :type storage_options: dict
@@ -658,7 +659,7 @@ class StreamTarget(Flow, _Writer):
         self._retention_period_hours = retention_period_hours
         self._initialized = False
 
-        self._full_event = True if full_event is None else full_event
+        self._full_event = full_event
 
     def _init(self):
         Flow._init(self)
@@ -787,6 +788,7 @@ class KafkaTarget(Flow, _Writer):
         inferred from data and used in place of explicit columns list if none was provided, or appended to the provided list. If header is
         True and columns is not provided, infer_columns_from_data=True is implied. Optional. Default to False if columns is provided,
         True otherwise.
+    :param full_event: Enable metadata wrapper for serialized event. Defaults to False.
     """
 
     def __init__(self, bootstrap_servers: str, topic: str, producer_options: Optional[dict] = None,
@@ -815,7 +817,7 @@ class KafkaTarget(Flow, _Writer):
 
         self._initialized = False
 
-        self._full_event = True if full_event is None else full_event
+        self._full_event = full_event
 
     def _init(self):
         _Writer._init(self)
