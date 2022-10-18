@@ -163,7 +163,7 @@ async def async_test_write_to_v3io_stream(setup_stream_teardown_test):
     controller = build_flow([
         AsyncEmitSource(),
         Map(lambda x: str(x)),
-        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: int(event.body), batch_size=8, shard_count=2, full_event=False)
+        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: int(event.body), batch_size=8, shards=2, full_event=False)
     ]).run()
     for i in range(10):
         await controller.emit(i)
@@ -190,7 +190,7 @@ async def async_test_write_to_v3io_stream_full_event_readback(setup_stream_teard
 
     controller = build_flow([
         AsyncEmitSource(),
-        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: int(event.body), batch_size=8, shard_count=2, full_event=True)
+        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: int(event.body), batch_size=8, shards=2, full_event=True)
     ]).run()
     for i in range(10):
         await controller.emit(Event(i, time=event_time, id=str(i)))
@@ -261,7 +261,7 @@ def test_write_to_v3io_stream_with_column_inference(assign_stream_teardown_test)
     stream_path = assign_stream_teardown_test
     controller = build_flow([
         SyncEmitSource(),
-        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: event.body['x'], infer_columns_from_data=True, shard_count=2,
+        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: event.body['x'], infer_columns_from_data=True, shards=2,
                      full_event=False)
     ]).run()
     for i in range(10):
@@ -305,7 +305,7 @@ def test_write_dict_to_v3io_stream(assign_stream_teardown_test):
     controller = build_flow([
         SyncEmitSource(),
         StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: int(event.key), columns=['$key'],
-                     infer_columns_from_data=True, shard_count=2, full_event=False)
+                     infer_columns_from_data=True, shards=2, full_event=False)
     ]).run()
     expected_shard0 = []
     expected_shard1 = []
@@ -336,7 +336,7 @@ def test_write_to_v3io_stream_unbalanced(assign_stream_teardown_test):
     controller = build_flow([
         SyncEmitSource(),
         Map(lambda x: str(x)),
-        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: 0, shard_count=2, full_event=False)
+        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: 0, shards=2, full_event=False)
     ]).run()
     for i in range(10):
         controller.emit(i)
@@ -345,6 +345,38 @@ def test_write_to_v3io_stream_unbalanced(assign_stream_teardown_test):
     controller.await_termination()
     shard0_data = asyncio.run(GetShardData().get_shard_data(f'{stream_path}/0'))
     assert shard0_data == [b'0', b'1', b'2', b'3', b'4', b'5', b'6', b'7', b'8', b'9']
+    shard1_data = asyncio.run(GetShardData().get_shard_data(f'{stream_path}/1'))
+    assert shard1_data == []
+
+
+@pytest.mark.parametrize('sharding_func_type', ['func', 'partition_num', 'field'])
+def test_write_to_v3io_stream_unbalanced(assign_stream_teardown_test, sharding_func_type):
+    if sharding_func_type == 'func':
+        sharding_func = lambda event: 0
+    elif sharding_func_type == 'partition_num':
+        sharding_func = 0
+    elif sharding_func_type == 'field':
+        sharding_func = 'n'
+    else:
+        raise ValueError(f"Bad sharding_func_type: {sharding_func_type}")
+
+    stream_path = assign_stream_teardown_test
+    controller = build_flow([
+        SyncEmitSource(),
+        Map((lambda x: {'n': x}) if sharding_func_type == 'field' else (lambda x: str(x))),
+        StreamTarget(V3ioDriver(), stream_path, sharding_func=sharding_func, shards=2, full_event=False)
+    ]).run()
+    for i in range(5):
+        controller.emit(i * 2)
+
+    controller.terminate()
+    controller.await_termination()
+    shard0_data = asyncio.run(GetShardData().get_shard_data(f'{stream_path}/0'))
+    expected_data = [b'0', b'2', b'4', b'6', b'8']
+    if sharding_func_type == 'field':
+        for i, element in enumerate(expected_data):
+            expected_data[i] = json.dumps({'n': int(element)}).encode('utf8')
+    assert shard0_data == expected_data
     shard1_data = asyncio.run(GetShardData().get_shard_data(f'{stream_path}/1'))
     assert shard1_data == []
 
@@ -361,7 +393,7 @@ def test_push_error_on_write_to_v3io_stream(assign_stream_teardown_test):
     stream_path = assign_stream_teardown_test
     controller = build_flow([
         SyncEmitSource(),
-        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: 0, shard_count=1, context=context, full_event=False)
+        StreamTarget(V3ioDriver(), stream_path, sharding_func=lambda event: 0, shards=1, context=context, full_event=False)
     ]).run()
     # Write a 3MB record, which exceeds the 2MB v3io record size limit, then a small record.
     controller.emit('3' * (1024 * 1024 * 3))
