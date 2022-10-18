@@ -882,7 +882,6 @@ class KafkaTarget(Flow, _Writer):
             partition = None
             if self._sharding_func:
                 sharding_func_result = self._sharding_func(event)
-                partition = None
                 if isinstance(sharding_func_result, int):
                     partition = sharding_func_result
                 else:
