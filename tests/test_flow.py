@@ -35,7 +35,8 @@ from storey import build_flow, SyncEmitSource, Map, Filter, FlatMap, Reduce, Map
     AsyncEmitSource, Choice, \
     Event, Batch, Table, CSVTarget, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, \
     ParquetTarget, QueryByKey, \
-    TSDBTarget, Extend, SendToHttp, HttpRequest, NoSqlTarget, NoopDriver, Driver, Recover, V3ioDriver, ParquetSource
+    TSDBTarget, Extend, SendToHttp, HttpRequest, NoSqlTarget, NoopDriver, Driver, Recover, V3ioDriver, ParquetSource, \
+    SqlDBSource
 from storey.flow import _ConcurrentJobExecution, Context, ReifyMetadata, Rename
 
 
@@ -3450,3 +3451,22 @@ def test_rename():
     controller.terminate()
     termination_result = controller.await_termination()
     assert termination_result == [{'b': 1, 'c': 3, 'e': 5}]
+
+
+def test_read_sql_db():
+    import sqlalchemy as db
+    engine = db.create_engine('sqlite:///test.db', echo=True)
+    with engine.connect() as conn:
+        origin_df = pd.DataFrame({'string': ['hello', 'world'], 'int': [1, 2], 'float': [1.5, 2.5]})
+        origin_df.to_sql('table_1', conn, if_exists="replace")
+        conn.close()
+    controller = build_flow([
+        SqlDBSource('sqlite:///test.db', 'table_1', 'string'),
+        Reduce([], append_and_return),
+    ]).run()
+
+    termination_result = controller.await_termination()
+    expected = [
+        {'string': 'hello', 'int': 1, 'float': 1.5}, {'string': 'world', 'int': 2, 'float': 2.5},
+    ]
+    assert termination_result == expected

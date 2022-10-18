@@ -27,6 +27,7 @@ import pytest
 import redis as r
 import fakeredis
 
+import storey.drivers
 from storey import V3ioDriver
 from storey.redis_driver import RedisDriver
 from storey.drivers import NeedsV3ioAccess
@@ -34,6 +35,7 @@ from storey.flow import V3ioError
 
 _non_int_char_pattern = re.compile(r"[^-0-9]")
 test_base_time = datetime.fromisoformat("2020-07-21T21:40:00+00:00")
+SQL_DB = 'sqlite:///test.db'
 
 
 class V3ioHeaders(NeedsV3ioAccess):
@@ -111,6 +113,19 @@ def remove_redis_table(table_name):
         redis_client.delete(key)
         count += 1
 
+
+def remove_sql_tables():
+    import sqlalchemy as db
+    engine = db.create_engine(SQL_DB)
+    with engine.connect() as conn:
+        metadata = db.MetaData()
+        metadata.reflect(bind=engine)
+        # and drop them, if they exist
+        metadata.drop_all(bind=engine, checkfirst=True)
+        engine.dispose()
+        conn.close()
+
+
 class TestContext:
     def __init__(self, driver_name: str, table_name:str):
         self._driver_name = driver_name
@@ -122,6 +137,10 @@ class TestContext:
             if not redis_url:
                 # if we are using fakeredis, create fake-server to support tests involving multiple clients
                 self._redis_fake_server = fakeredis.FakeServer()
+        if driver_name == "SqlDBDriver":
+            self._sql_db_path = SQL_DB
+            self._sql_table_name = table_name.split("/")[-2]
+            self._table_name = f'{SQL_DB}/{self._sql_table_name}'
 
     @property
     def table_name(self):
@@ -135,6 +154,10 @@ class TestContext:
     def driver_name(self):
         return self._driver_name
 
+    @property
+    def sql_db_path(self):
+        return self._sql_db_path
+
     class AggregationlessV3ioDriver(V3ioDriver):
         def supports_aggregations(self):
             return False
@@ -143,19 +166,22 @@ class TestContext:
         def supports_aggregations(self):
             return False
 
-    def driver(self, IsAggregationlessDriver = False,  *args, **kwargs):
+    def driver(self, IsAggregationlessDriver = False, primary_key=None, *args, **kwargs):
         if self.driver_name == "V3ioDriver":
             v3io_driver_class =  TestContext.AggregationlessV3ioDriver if IsAggregationlessDriver else V3ioDriver
             return v3io_driver_class(*args, **kwargs)
         elif self.driver_name == "RedisDriver":
             redis_driver_class =  TestContext.AggregationlessRedisDriver if IsAggregationlessDriver else RedisDriver
             return redis_driver_class(redis_client = get_redis_client(self.redis_fake_server), key_prefix="storey-test:", *args, **kwargs)
+        elif self.driver_name == "SqlDBDriver" and IsAggregationlessDriver:
+            sql_driver_class = storey.drivers.SqlDBDriver
+            return sql_driver_class(db_path=SQL_DB, primary_key=primary_key, *args, **kwargs)
         else:
             driver_name = self.driver_name
-            raise ValueError(f'Unsupported driver name "{driver_name}"')
+            raise ValueError(f'Unsupported driver name "{driver_name}" with IsAggregationlessDriver = {IsAggregationlessDriver}')
 
 
-drivers_list = ["V3ioDriver", "RedisDriver"]
+drivers_list = ["V3ioDriver", "RedisDriver", 'SqlDBDriver']
 @pytest.fixture(params=drivers_list)
 def setup_teardown_test(request):
     # Setup
@@ -169,6 +195,9 @@ def setup_teardown_test(request):
         asyncio.run(recursive_delete(test_context.table_name, V3ioHeaders()))
     elif test_context.driver_name == "RedisDriver":
         remove_redis_table(test_context.table_name)
+    elif test_context.driver_name == "SqlDBDriver":
+        # remove_sql_tables()
+        pass
     else:
         raise ValueError(f'Unsupported driver name "{test_context.driver_name}"')
 
@@ -176,14 +205,16 @@ def setup_teardown_test(request):
 @pytest.fixture(params=drivers_list)
 def setup_kv_teardown_test(request):
     # Setup
-    test_context = TestContext(request.param, table_name = _generate_table_name())
+    test_context = TestContext(request.param, table_name=_generate_table_name())
 
     if test_context.driver_name == "V3ioDriver":
         asyncio.run(create_temp_kv(test_context.table_name))
     elif test_context.driver_name == "RedisDriver":
         create_temp_redis_kv(test_context)
+    elif test_context.driver_name == "SqlDBDriver":
+        pytest.skip(msg='test not relevant for SqlDBDriver')
     else:
-        raise ValueError(f'Unsupported driver name "{driver_name}"')
+        raise ValueError(f'Unsupported driver name "{test_context.driver_name}"')
 
     # Test runs
     yield test_context
@@ -317,3 +348,32 @@ def _convert_nginx_to_python_type(typ, value):
         return datetime.utcfromtimestamp(secs + nanosecs / 1000000000)
     else:
         raise V3ioError(f'Type {typ} in get item response is not supported')
+
+
+def create_sql_table(schema, table_name, sql_db_path, key):
+    import sqlalchemy as db
+    import pandas as pd
+    import datetime
+
+    engine = db.create_engine(sql_db_path, echo=True)
+    with engine.connect() as conn:
+        metadata = db.MetaData()
+        columns = []
+        for col, col_type in schema.items():
+            if col_type == int:
+                col_type = db.Integer
+            elif col_type == str:
+                col_type = db.String
+            elif col_type == datetime.datetime or col_type == pd.Timestamp or col_type == pd.Timedelta:
+                col_type = db.DateTime
+            elif col_type == bool:
+                col_type = db.Boolean
+            elif col_type == float:
+                col_type = db.Float
+            else:
+                raise TypeError(f"{col_type} unsupported type")
+            columns.append(db.Column(col, col_type, primary_key=(col in key)))
+
+        db.Table(table_name, metadata, *columns)
+        metadata.create_all(engine)
+        conn.close()

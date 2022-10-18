@@ -546,7 +546,6 @@ class SqlDBDriver(Driver):
     def _lazy_init(self):
         import sqlalchemy as db
 
-        self._closed = False
         if not self._sql_connection:
             self._engine = db.create_engine(self._db_path)
             self._sql_connection = self._engine.connect()
@@ -580,9 +579,11 @@ class SqlDBDriver(Driver):
         table = self.table(table_path)
         return_val = None
         try:
-            return_val = self._sql_connection.execute(table.insert(), [additional_data])
+            return_val = self._sql_connection.execute(table.insert(), [additional_data], autocommit=True)
+
         except db.exc.IntegrityError:
             pass
+        await self.close()
         return return_val
 
     async def _load_aggregates_by_key(self, container, table_path, key):
@@ -608,7 +609,9 @@ class SqlDBDriver(Driver):
         return values
 
     async def close(self):
-        pass
+        if self._sql_connection:
+            self._sql_connection.close()
+            self._sql_connection = None
 
     async def _get_all_fields(self, key, table):
         where_statement = self._get_where_statement(key)
@@ -639,11 +642,13 @@ class SqlDBDriver(Driver):
 
     def _get_where_statement(self, key):
         where_statement = ""
-        if isinstance(self._primary_key, List):
-            for i in range(self._primary_key):
+        if isinstance(key, str) and '.' in key:
+            key = key.split('.')
+        if isinstance(key, List):
+            for i in range(len(self._primary_key)):
                 if i != 0:
                     where_statement += " and "
-                where_statement += f'{self._primary_key[i]}={key[i]}'
+                where_statement += f'{self._primary_key[i]}="{key[i]}"'
         else:
-            where_statement += f'{self._primary_key}={key}'
+            where_statement += f'{self._primary_key}="{key}"'
         return where_statement
