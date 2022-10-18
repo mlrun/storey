@@ -962,6 +962,7 @@ class SqlDBSource(_IterableSource, WithUUID):
     async def _run_loop(self):
         import sqlalchemy as db
 
+
         engine = db.create_engine(self.db_path)
         metadata = db.MetaData()
         connection = engine.connect()
