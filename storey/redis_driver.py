@@ -72,11 +72,12 @@ class RedisDriver(NeedsRedisAccess, Driver):
             self._redis = redis_client
             if isinstance(redis_client, redis.cluster.RedisCluster):
                 redis_type = RedisType.CLUSTER
-            if isinstance(redis_client, redis.Redis):
+            elif isinstance(redis_client, redis.Redis):
                 redis_type = RedisType.STANDALONE
         else:
             NeedsRedisAccess.__init__(self, redis_url)
             self._redis = None
+
         if not isinstance(redis_type, RedisType):
             raise ValueError(f'unsupported RedisType value provided  ("{redis_type}"), aborting')
 

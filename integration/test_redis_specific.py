@@ -27,65 +27,69 @@ def redis():
     return get_redis_client()
 
 def test_redis_driver_write(redis):
-    random_name = ''.join(random.choice(string.ascii_lowercase) for i in range(5))
-    table_name = f'test_{random_name}'
+    try:
+        table_name = 'test_redis_driver_write'
 
-    driver = RedisDriver(redis)
-    controller = build_flow([
-        SyncEmitSource(),
-        NoSqlTarget(Table(table_name, driver)),
-        Complete()
-    ]).run()
-    controller.emit({'col1': 0}, 'key').await_result()
-    controller.terminate()
-    controller.await_termination()
-    
-    table_name = f'{table_name}/'
-    hash_key = RedisDriver.make_key('storey:', table_name, 'key')
-    redis_key= RedisDriver._static_data_key(hash_key)
+        driver = RedisDriver(redis)
+        controller = build_flow([
+            SyncEmitSource(),
+            NoSqlTarget(Table(table_name, driver)),
+            Complete()
+        ]).run()
+        controller.emit({'col1': 0}, 'key').await_result()
+        controller.terminate()
+        controller.await_termination()
+        
+        table_name = f'{table_name}/'
+        hash_key = RedisDriver.make_key('storey:', table_name, 'key')
+        redis_key= RedisDriver._static_data_key(hash_key)
 
-    data = driver.redis.hgetall(redis_key)
-    data_strings = {}
-    for key, val in data.items():
-        if isinstance(key,bytes):
-            data_strings[key.decode('utf-8')] = val.decode('utf-8')
-        else:
-            data_strings[key] = val
+        data = driver.redis.hgetall(redis_key)
+        data_strings = {}
+        for key, val in data.items():
+            if isinstance(key,bytes):
+                data_strings[key.decode('utf-8')] = val.decode('utf-8')
+            else:
+                data_strings[key] = val
 
-    assert data_strings == {"col1": '0'}
-
-    for key in driver.redis.scan_iter(f'*storey:{table_name}*'):
-        driver.redis.delete(key)
+        assert data_strings == {"col1": '0'}
+    except:
+            pass
+    finally:
+        for key in driver.redis.scan_iter(f'*storey:{table_name}*'):
+            driver.redis.delete(key)
 
 def test_redis_driver_join(redis):
-    random_name = ''.join(random.choice(string.ascii_lowercase) for i in range(5))
-    table_name = f'test_{random_name}'
+    try:
+        table_name = 'test_redis_driver_join'
 
-    driver = RedisDriver(redis)
-    table = Table(table_name, driver)
-    table_name = f'{table_name}/'
+        driver = RedisDriver(redis)
+        table = Table(table_name, driver)
+        table_name = f'{table_name}/'
 
-    # Create the data we'll join with in Redis.
-    hash_key = RedisDriver.make_key('storey:', table_name, '2')
-    redis_key= RedisDriver._static_data_key(hash_key)
+        # Create the data we'll join with in Redis.
+        hash_key = RedisDriver.make_key('storey:', table_name, '2')
+        redis_key = RedisDriver._static_data_key(hash_key)
 
-    driver.redis.hset(redis_key, mapping={"name": "1234"})
-    controller = build_flow([
-        SyncEmitSource(),
-        JoinWithTable(table, lambda x: x['col2']),
-        Reduce([], lambda acc, x: append_return(acc, x))
-    ]).run()
+        driver.redis.hset(redis_key, mapping={"name": "1234"})
+        controller = build_flow([
+            SyncEmitSource(),
+            JoinWithTable(table, lambda x: x['col2']),
+            Reduce([], lambda acc, x: append_return(acc, x))
+        ]).run()
 
-    controller.emit({'col1': 1, 'col2': '2'}, 'key')
-    controller.emit({'col1': 1, 'col2': '2'}, 'key')
-    controller.terminate()
-    termination_result = controller.await_termination()
+        controller.emit({'col1': 1, 'col2': '2'}, 'key')
+        controller.emit({'col1': 1, 'col2': '2'}, 'key')
+        controller.terminate()
+        termination_result = controller.await_termination()
 
-    expected_result = [
-        {'col1': 1, 'col2': '2', 'name': 1234},
-        {'col1': 1, 'col2': '2', 'name': 1234}]
+        expected_result = [
+            {'col1': 1, 'col2': '2', 'name': 1234},
+            {'col1': 1, 'col2': '2', 'name': 1234}]
 
-    assert termination_result == expected_result
-
-    for key in driver.redis.scan_iter(f'*storey:{table_name}*'):
-        driver.redis.delete(key)
+        assert termination_result == expected_result
+    except:
+        pass
+    finally:
+        for key in driver.redis.scan_iter(f'*storey:{table_name}*'):
+            driver.redis.delete(key)
