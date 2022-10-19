@@ -13,8 +13,6 @@
 # limitations under the License.
 #
 import pytest
-import random
-import string
 
 from storey import build_flow, SyncEmitSource,  Reduce, Complete, \
     NoSqlTarget, Table,JoinWithTable
@@ -36,25 +34,25 @@ def test_redis_driver_write(redis):
             NoSqlTarget(Table(table_name, driver)),
             Complete()
         ]).run()
-        controller.emit({'col1': 0}, 'key').await_result()
+        controller.emit({'col1': 0}, 'key')
         controller.terminate()
         controller.await_termination()
         
         table_name = f'{table_name}/'
         hash_key = RedisDriver.make_key('storey:', table_name, 'key')
-        redis_key= RedisDriver._static_data_key(hash_key)
+        redis_key = RedisDriver._static_data_key(hash_key)
 
         data = driver.redis.hgetall(redis_key)
         data_strings = {}
         for key, val in data.items():
-            if isinstance(key,bytes):
+            if isinstance(key, bytes):
                 data_strings[key.decode('utf-8')] = val.decode('utf-8')
             else:
                 data_strings[key] = val
 
         assert data_strings == {"col1": '0'}
     except:
-            pass
+            raise
     finally:
         for key in driver.redis.scan_iter(f'*storey:{table_name}*'):
             driver.redis.delete(key)
@@ -89,7 +87,7 @@ def test_redis_driver_join(redis):
 
         assert termination_result == expected_result
     except:
-        pass
+        raise
     finally:
         for key in driver.redis.scan_iter(f'*storey:{table_name}*'):
             driver.redis.delete(key)

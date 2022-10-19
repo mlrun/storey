@@ -227,7 +227,7 @@ def create_temp_redis_kv(setup_teardown_test):
 
     for i in range(1, 10):
         key = RedisDriver.make_key('storey-test:', table_path, i)
-        static_key= RedisDriver._static_data_key(key)
+        static_key = RedisDriver._static_data_key(key)
         redis_client.hmset(static_key, mapping={'age': f'{10 - i}', 'color': f'blue{i}'})
 
 async def create_temp_kv(table_path):
