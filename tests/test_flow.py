@@ -36,7 +36,7 @@ from storey import build_flow, SyncEmitSource, Map, Filter, FlatMap, Reduce, Map
     Event, Batch, Table, CSVTarget, DataframeSource, MapClass, JoinWithTable, ReduceToDataFrame, ToDataFrame, \
     ParquetTarget, QueryByKey, \
     TSDBTarget, Extend, SendToHttp, HttpRequest, NoSqlTarget, NoopDriver, Driver, Recover, V3ioDriver, ParquetSource, \
-    SqlDBSource
+    SQLSource
 from storey.flow import _ConcurrentJobExecution, Context, ReifyMetadata, Rename
 
 
@@ -3462,7 +3462,7 @@ def test_read_sql_db():
         origin_df.to_sql('table_1', conn, if_exists="replace")
         conn.close()
     controller = build_flow([
-        SqlDBSource('sqlite:///test.db', 'table_1', 'string'),
+        SQLSource('sqlite:///test.db', 'table_1', 'string'),
         Reduce([], append_and_return),
     ]).run()
 

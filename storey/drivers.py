@@ -520,7 +520,7 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
                                               raise_for_status=v3io.aio.dataplane.RaiseForStatus.never)
 
 
-class SqlDBDriver(Driver):
+class SQLDriver(Driver):
     """
     Database connection to Sql data basw.
     :param db_path: url string connection to sql database.

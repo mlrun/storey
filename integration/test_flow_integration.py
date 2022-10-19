@@ -113,7 +113,7 @@ def _get_sql_by_key_all_attrs(setup_teardown_test: TestContext, key: str, key_na
 def get_key_all_attrs_test_helper(setup_teardown_test: TestContext, key: str, key_name: Union[str,List[str]] = None):
     if setup_teardown_test.driver_name == "RedisDriver":
         result = _get_redis_kv_all_attrs(setup_teardown_test, key)
-    elif setup_teardown_test.driver_name == "SqlDBDriver":
+    elif setup_teardown_test.driver_name == "SQLDriver":
         result = _get_sql_by_key_all_attrs(setup_teardown_test, key, key_name)
     else:
         response = asyncio.run(get_kv_item(setup_teardown_test.table_name, key))
@@ -532,8 +532,8 @@ def test_inner_join_by_key(setup_kv_teardown_test):
 
 
 def test_write_table_specific_columns(setup_teardown_test):
-    if setup_teardown_test.driver_name == 'SqlDBDriver':
-        pytest.skip(f'test_write_table_specific_columns not testing over SqlDBDriver')
+    if setup_teardown_test.driver_name == 'SQLDriver':
+        pytest.skip(f'test_write_table_specific_columns not testing over SQLDriver')
     else:
         table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
 
@@ -588,8 +588,8 @@ def test_write_table_specific_columns(setup_teardown_test):
 
 
 def test_write_table_metadata_columns(setup_teardown_test):
-    if setup_teardown_test.driver_name == 'SqlDBDriver':
-        pytest.skip(f'test_write_table_metadata_columns not testing over SqlDBDriver')
+    if setup_teardown_test.driver_name == 'SQLDriver':
+        pytest.skip(f'test_write_table_metadata_columns not testing over SQLDriver')
     else:
         table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
 
@@ -656,7 +656,7 @@ async def get_kv_item(full_path, key):
 
 
 def test_writing_int_key(setup_teardown_test):
-    if setup_teardown_test.driver_name == 'SqlDBDriver':
+    if setup_teardown_test.driver_name == 'SQLDriver':
         create_sql_table({'num': int, 'color': str}, setup_teardown_test._sql_table_name,
                          setup_teardown_test.sql_db_path, 'num')
         table = Table(setup_teardown_test.table_name,
@@ -675,8 +675,8 @@ def test_writing_int_key(setup_teardown_test):
 
 
 def test_writing_timedelta_key(setup_teardown_test):
-    if setup_teardown_test.driver_name == 'SqlDBDriver':
-        pytest.skip(f'test_writing_timedelta_key not testing over SqlDBDriver')
+    if setup_teardown_test.driver_name == 'SQLDriver':
+        pytest.skip(f'test_writing_timedelta_key not testing over SQLDriver')
     else:
         table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
 
@@ -691,7 +691,7 @@ def test_writing_timedelta_key(setup_teardown_test):
 
 
 def test_write_two_keys_to_v3io_from_df(setup_teardown_test):
-    if setup_teardown_test.driver_name == 'SqlDBDriver':
+    if setup_teardown_test.driver_name == 'SQLDriver':
         create_sql_table({'first_name': str, 'last_name': str, 'city': str}, setup_teardown_test._sql_table_name,
                          setup_teardown_test.sql_db_path, ['first_name', 'last_name'])
         table = Table(setup_teardown_test.table_name,
@@ -720,8 +720,8 @@ def test_write_two_keys_to_v3io_from_df(setup_teardown_test):
 
 # ML-775
 def test_write_three_keys_to_v3io_from_df(setup_teardown_test):
-    if setup_teardown_test.driver_name == 'SqlDBDriver':
-        pytest.skip(f'test_write_three_keys_to_v3io_from_df not testing over SqlDBDriver')
+    if setup_teardown_test.driver_name == 'SQLDriver':
+        pytest.skip(f'test_write_three_keys_to_v3io_from_df not testing over SQLDriver')
     else:
         table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
 
@@ -747,8 +747,8 @@ def test_write_three_keys_to_v3io_from_df(setup_teardown_test):
 
 
 def test_write_string_as_time_via_time_field(setup_teardown_test):
-    if setup_teardown_test.driver_name == 'SqlDBDriver':
-        pytest.skip(f'test_write_string_as_time_via_time_field not testing over SqlDBDriver')
+    if setup_teardown_test.driver_name == 'SQLDriver':
+        pytest.skip(f'test_write_string_as_time_via_time_field not testing over SQLDriver')
     else:
         table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
 
@@ -773,8 +773,8 @@ def test_write_string_as_time_via_time_field(setup_teardown_test):
 
 
 def test_write_string_as_time_via_schema(setup_teardown_test):
-    if setup_teardown_test.driver_name == 'SqlDBDriver':
-        pytest.skip(f'test_write_string_as_time_via_schema not testing over SqlDBDriver')
+    if setup_teardown_test.driver_name == 'SQLDriver':
+        pytest.skip(f'test_write_string_as_time_via_schema not testing over SQLDriver')
     else:
         table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     t1 = '2020-03-16T05:00:00+00:00'
@@ -798,7 +798,7 @@ def test_write_string_as_time_via_schema(setup_teardown_test):
 
 
 def test_write_multiple_keys_to_v3io_from_csv(setup_teardown_test):
-    if setup_teardown_test.driver_name == 'SqlDBDriver':
+    if setup_teardown_test.driver_name == 'SQLDriver':
         create_sql_table({'n1': int, 'n2': int, 'n3': int}, setup_teardown_test._sql_table_name,
                          setup_teardown_test.sql_db_path, ['n1', 'n2'])
         table = Table(setup_teardown_test.table_name,
@@ -822,7 +822,7 @@ def test_write_multiple_keys_to_v3io_from_csv(setup_teardown_test):
 
 
 def test_write_multiple_keys_to_v3io(setup_teardown_test):
-    if setup_teardown_test.driver_name == 'SqlDBDriver':
+    if setup_teardown_test.driver_name == 'SQLDriver':
         create_sql_table({'n1': int, 'n2': int, 'n3': int}, setup_teardown_test._sql_table_name,
                          setup_teardown_test.sql_db_path, ['n1', 'n2'])
         table = Table(setup_teardown_test.table_name,
@@ -851,8 +851,8 @@ def test_write_multiple_keys_to_v3io(setup_teardown_test):
 
 
 def test_write_none_time(setup_teardown_test):
-    if setup_teardown_test.driver_name == 'SqlDBDriver':
-        pytest.skip(f'test_write_none_time not testing over SqlDBDriver')
+    if setup_teardown_test.driver_name == 'SQLDriver':
+        pytest.skip(f'test_write_none_time not testing over SQLDriver')
     else:
         table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
 
@@ -887,8 +887,8 @@ def test_write_none_time(setup_teardown_test):
 
 
 def test_cache_flushing(setup_teardown_test):
-    if setup_teardown_test.driver_name == 'SqlDBDriver':
-        pytest.skip(f'test_cache_flushing not testing over SqlDBDriver')
+    if setup_teardown_test.driver_name == 'SQLDriver':
+        pytest.skip(f'test_cache_flushing not testing over SQLDriver')
     else:
         table = Table(setup_teardown_test.table_name, setup_teardown_test.driver(), flush_interval_secs=3)
     controller = build_flow([
@@ -920,7 +920,7 @@ def test_cache_flushing(setup_teardown_test):
 
 def test_write_empty_df(setup_teardown_test):
     table = Table(setup_teardown_test.table_name, setup_teardown_test.driver(
-        IsAggregationlessDriver=setup_teardown_test.driver_name == "SqlDBDriver"))
+        IsAggregationlessDriver=setup_teardown_test.driver_name == "SQLDriver"))
     df = pd.DataFrame({})
 
     controller = build_flow([

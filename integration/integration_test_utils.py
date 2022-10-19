@@ -137,7 +137,7 @@ class TestContext:
             if not redis_url:
                 # if we are using fakeredis, create fake-server to support tests involving multiple clients
                 self._redis_fake_server = fakeredis.FakeServer()
-        if driver_name == "SqlDBDriver":
+        if driver_name == "SQLDriver":
             self._sql_db_path = SQL_DB
             self._sql_table_name = table_name.split("/")[-2]
             self._table_name = f'{SQL_DB}/{self._sql_table_name}'
@@ -173,22 +173,22 @@ class TestContext:
         elif self.driver_name == "RedisDriver":
             redis_driver_class =  TestContext.AggregationlessRedisDriver if IsAggregationlessDriver else RedisDriver
             return redis_driver_class(redis_client = get_redis_client(self.redis_fake_server), key_prefix="storey-test:", *args, **kwargs)
-        elif self.driver_name == "SqlDBDriver" and IsAggregationlessDriver:
-            sql_driver_class = storey.drivers.SqlDBDriver
+        elif self.driver_name == "SQLDriver" and IsAggregationlessDriver:
+            sql_driver_class = storey.drivers.SQLDriver
             return sql_driver_class(db_path=SQL_DB, primary_key=primary_key, *args, **kwargs)
-        elif self.driver_name == "SqlDBDriver" and not IsAggregationlessDriver:
-            pytest.skip('SqlDBDriver doesnt support aggregation')
+        elif self.driver_name == "SQLDriver" and not IsAggregationlessDriver:
+            pytest.skip('SQLDriver doesnt support aggregation')
         else:
             driver_name = self.driver_name
             raise ValueError(f'Unsupported driver name "{driver_name}" with IsAggregationlessDriver = {IsAggregationlessDriver}')
 
 
-drivers_list = ["V3ioDriver", "RedisDriver", 'SqlDBDriver']
+drivers_list = ["V3ioDriver", "RedisDriver", 'SQLDriver']
 @pytest.fixture(params=drivers_list)
 def setup_teardown_test(request):
     # Setup
-    if request.param == 'SqlDBDriver' and request.fspath.basename != 'test_flow_integration.py':
-        pytest.skip("SqlDBDriver test only in test_flow_integration")
+    if request.param == 'SQLDriver' and request.fspath.basename != 'test_flow_integration.py':
+        pytest.skip("SQLDriver test only in test_flow_integration")
     test_context = TestContext(request.param, table_name = _generate_table_name())
 
     # Test runs
@@ -199,7 +199,7 @@ def setup_teardown_test(request):
         asyncio.run(recursive_delete(test_context.table_name, V3ioHeaders()))
     elif test_context.driver_name == "RedisDriver":
         remove_redis_table(test_context.table_name)
-    elif test_context.driver_name == "SqlDBDriver":
+    elif test_context.driver_name == "SQLDriver":
         # remove_sql_tables()
         pass
     else:
@@ -215,8 +215,8 @@ def setup_kv_teardown_test(request):
         asyncio.run(create_temp_kv(test_context.table_name))
     elif test_context.driver_name == "RedisDriver":
         create_temp_redis_kv(test_context)
-    elif test_context.driver_name == "SqlDBDriver":
-        pytest.skip(msg='test not relevant for SqlDBDriver')
+    elif test_context.driver_name == "SQLDriver":
+        pytest.skip(msg='test not relevant for SQLDriver')
     else:
         raise ValueError(f'Unsupported driver name "{test_context.driver_name}"')
 

@@ -905,7 +905,7 @@ class ParquetSource(DataframeSource):
             self._dfs.append(df)
 
 
-class SqlDBSource(_IterableSource, WithUUID):
+class SQLSource(_IterableSource, WithUUID):
     """Use dql table as input source for a flow.
 
 
