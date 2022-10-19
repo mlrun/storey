@@ -95,12 +95,13 @@ def _generate_table_name(prefix='bigdata/storey_ci/Aggr_test'):
     return f'{prefix}/{random_table}/'
 
 def get_redis_client(redis_fake_server=None):
-    redis_cluster_url = os.environ.get('MLRUN_REDIS_CLUSTER_URL')
-    if redis_cluster_url:
-        return r.cluster.RedisCluster.from_url(redis_cluster_url)
     redis_url = os.environ.get('MLRUN_REDIS_URL')
     if redis_url:
-        return r.Redis.from_url(redis_url)
+        try:
+            res = r.cluster.RedisCluster.from_url(redis_url)
+            return res
+        except r.cluster.RedisClusterException as exception:
+            return r.Redis.from_url(redis_url)
     else:
         return fakeredis.FakeRedis(decode_responses=True, server = redis_fake_server)
 
