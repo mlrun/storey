@@ -187,6 +187,8 @@ drivers_list = ["V3ioDriver", "RedisDriver", 'SqlDBDriver']
 @pytest.fixture(params=drivers_list)
 def setup_teardown_test(request):
     # Setup
+    if request.param == 'SqlDBDriver' and request.path.name != 'test_flow_integration.py':
+        pytest.skip("SqlDBDriver test only in test_flow_integration")
     test_context = TestContext(request.param, table_name = _generate_table_name())
 
     # Test runs
