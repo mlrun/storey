@@ -51,8 +51,6 @@ def test_redis_driver_write(redis):
                 data_strings[key] = val
 
         assert data_strings == {"col1": '0'}
-    except:
-            raise
     finally:
         for key in driver.redis.scan_iter(f'*storey:{table_name}*'):
             driver.redis.delete(key)
@@ -86,8 +84,6 @@ def test_redis_driver_join(redis):
             {'col1': 1, 'col2': '2', 'name': 1234}]
 
         assert termination_result == expected_result
-    except:
-        raise
     finally:
         for key in driver.redis.scan_iter(f'*storey:{table_name}*'):
             driver.redis.delete(key)

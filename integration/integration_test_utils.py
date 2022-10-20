@@ -100,7 +100,7 @@ def get_redis_client(redis_fake_server=None):
         try:
             res = r.cluster.RedisCluster.from_url(redis_url)
             return res
-        except r.cluster.RedisClusterException as exception:
+        except r.cluster.RedisClusterException:
             return r.Redis.from_url(redis_url)
     else:
         return fakeredis.FakeRedis(decode_responses=True, server = redis_fake_server)

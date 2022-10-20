@@ -95,7 +95,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
         if self._redis is None:
             try:
                 self._redis = redis.cluster.RedisCluster.from_url(self._redis_url, decode_responses=True)
-            except redis.cluster.RedisClusterException as exception:
+            except redis.cluster.RedisClusterException:
                 self._redis = redis.Redis.from_url(self._redis_url, decode_responses=True)
         return self._redis
 
