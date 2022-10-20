@@ -16,9 +16,25 @@
 all:
 	$(error please pick a target)
 
+.PHONY: fmt
+fmt:
+	@echo "Running black fmt..."
+	python -m black .
+	python -m isort .
+
 .PHONY: lint
-lint:
-	pipenv run python -m flake8 storey
+lint: flake8 fmt-check
+
+.PHONY: fmt-check
+fmt-check:
+	@echo "Running black+isort fmt check..."
+	python -m black --check --diff .
+	python -m isort --check --diff .
+
+.PHONY: flake8
+flake8:
+	@echo "Running flake8 lint..."
+	python -m flake8 .
 
 .PHONY: test
 test:
