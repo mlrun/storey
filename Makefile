@@ -16,11 +16,14 @@
 all:
 	$(error please pick a target)
 
+# We only want to format and lint checked in python files
+CHECKED_IN_PYTHING_FILES := $(shell git ls-files | grep '\.py$$')
+
 .PHONY: fmt
 fmt:
 	@echo "Running black fmt..."
-	python -m black .
-	python -m isort .
+	python -m black $(CHECKED_IN_PYTHING_FILES)
+	python -m isort $(CHECKED_IN_PYTHING_FILES)
 
 .PHONY: lint
 lint: flake8 fmt-check
@@ -28,13 +31,13 @@ lint: flake8 fmt-check
 .PHONY: fmt-check
 fmt-check:
 	@echo "Running black+isort fmt check..."
-	python -m black --check --diff .
-	python -m isort --check --diff .
+	python -m black --check --diff $(CHECKED_IN_PYTHING_FILES)
+	python -m isort --check --diff $(CHECKED_IN_PYTHING_FILES)
 
 .PHONY: flake8
 flake8:
 	@echo "Running flake8 lint..."
-	python -m flake8 .
+	python -m flake8 $(CHECKED_IN_PYTHING_FILES)
 
 .PHONY: test
 test:
