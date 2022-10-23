@@ -12,16 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-from typing import List, Optional
-import copy
-from asyncio import Lock
 import asyncio
+import copy
 import math
-from .drivers import Driver
-from .dtypes import FieldAggregator, SlidingWindows, FixedWindows, FlowError, _termination_obj, FixedWindowType
+from asyncio import Lock
+from typing import List, Optional
 
-from .aggregation_utils import is_raw_aggregate, get_virtual_aggregation_func, get_implied_aggregates, get_all_raw_aggregates, \
-    get_all_raw_aggregates_with_hidden
+from .aggregation_utils import (
+    get_all_raw_aggregates,
+    get_all_raw_aggregates_with_hidden,
+    get_implied_aggregates,
+    get_virtual_aggregation_func,
+    is_raw_aggregate,
+)
+from .drivers import Driver
+from .dtypes import (
+    FieldAggregator,
+    FixedWindows,
+    FixedWindowType,
+    FlowError,
+    SlidingWindows,
+    _termination_obj,
+)
 from .utils import _split_path
 
 
@@ -30,14 +42,21 @@ class Table:
 
     :param table_path: Path to the table in the storage.
     :param storage: Storage driver
-    :param partitioned_by_key: Whether that data is partitioned by the key or not, based on this indication storage drivers
-     can optimize writes. Defaults to True.
-    :param flush_interval_secs: How often the cache will be flushed in seconds. None for flush every event. Default is 300 (5 minutes)
+    :param partitioned_by_key: Whether that data is partitioned by the key or not, based on this indication storage
+        drivers can optimize writes. Defaults to True.
+    :param flush_interval_secs: How often the cache will be flushed in seconds. None for flush every event.
+        Default is 300 (5 minutes)
     :param max_updates_in_flight: Maximum number of concurrent updates.
-     """
+    """
 
-    def __init__(self, table_path: str, storage: Driver, partitioned_by_key: bool = True,
-                 flush_interval_secs: Optional[int] = 300, max_updates_in_flight: int = 8):
+    def __init__(
+        self,
+        table_path: str,
+        storage: Driver,
+        partitioned_by_key: bool = True,
+        flush_interval_secs: Optional[int] = 300,
+        max_updates_in_flight: int = 8,
+    ):
         self._container, self._table_path = _split_path(table_path)
         self._storage = storage
         self._partitioned_by_key = partitioned_by_key
@@ -58,14 +77,19 @@ class Table:
         self.fixed_window_type = None
 
     def __str__(self):
-        return f'{self._container}/{self._table_path}'
+        return f"{self._container}/{self._table_path}"
 
     def supports_aggregations(self):
         return self._storage.supports_aggregations()
 
     def _clone(self):
-        new_table = Table(self._table_path, self._storage, self._partitioned_by_key,
-                          self._flush_interval_secs, self._max_updates_in_flight)
+        new_table = Table(
+            self._table_path,
+            self._storage,
+            self._partitioned_by_key,
+            self._flush_interval_secs,
+            self._max_updates_in_flight,
+        )
         new_table._container = self._container
         new_table._table_path = self._table_path
         return new_table
@@ -99,8 +123,10 @@ class Table:
         async with self._get_lock(key):
             if self._aggregations_read_only or not self._get_aggregations_attrs(key):
                 # Try load from the store, and create a new one only if the key really is new
-                aggregate_initial_data, additional_data = \
-                    await self._storage._load_aggregates_by_key(self._container, self._table_path, key)
+                (
+                    aggregate_initial_data,
+                    additional_data,
+                ) = await self._storage._load_aggregates_by_key(self._container, self._table_path, key)
 
                 # Create new aggregation element
                 await self._add_aggregation_by_key(key, timestamp, aggregate_initial_data)
@@ -109,7 +135,7 @@ class Table:
                     # Add additional data to simple cache
                     self._update_static_attrs(key, additional_data)
 
-    async def _get_or_load_static_attributes_by_key(self, key, attributes='*'):
+    async def _get_or_load_static_attributes_by_key(self, key, attributes="*"):
         if self._flush_exception is not None:
             raise self._flush_exception
         self._init_flush_task()
@@ -130,8 +156,14 @@ class Table:
                     additional_data_persist = event_data_to_persist
                 else:
                     additional_data_persist.update(event_data_to_persist)
-            await self._storage._save_key(self._container, self._table_path, key, aggr_by_key,
-                                          self._partitioned_by_key, additional_data_persist)
+            await self._storage._save_key(
+                self._container,
+                self._table_path,
+                key,
+                aggr_by_key,
+                self._partitioned_by_key,
+                additional_data_persist,
+            )
 
     def _set_aggregation_metadata(self, aggregates: List[FieldAggregator], use_windows_from_schema: bool = False):
         self._use_windows_from_schema = use_windows_from_schema
@@ -181,10 +213,17 @@ class Table:
         if self._aggregations_read_only and initial_data is None:
             self._set_aggregations_attrs(key, None)
         else:
-            self._set_aggregations_attrs(key, self._new_aggregated_store_element()(key, self._aggregates,
-                                                                                   base_timestamp, initial_data,
-                                                                                   self.fixed_window_type,
-                                                                                   self._persist))
+            self._set_aggregations_attrs(
+                key,
+                self._new_aggregated_store_element()(
+                    key,
+                    self._aggregates,
+                    base_timestamp,
+                    initial_data,
+                    self.fixed_window_type,
+                    self._persist,
+                ),
+            )
 
     async def _load_and_update_schema(self):
         async with self._get_schema_lock():
@@ -195,14 +234,16 @@ class Table:
                 if self._use_windows_from_schema:
                     for aggr in self._aggregates:
                         schema_aggr = self._schema[aggr.name]
-                        window_type = schema_aggr['window_type']
-                        period_secs = str(int(schema_aggr['period_millis'] / 1000)) + 's'
+                        window_type = schema_aggr["window_type"]
+                        period_secs = str(int(schema_aggr["period_millis"] / 1000)) + "s"
                         if window_type == "SlidingWindow":
                             aggr.windows = SlidingWindows(aggr.windows.windows, period_secs)
                         elif window_type == "FixedWindow":
                             aggr.windows = FixedWindows(aggr.windows.windows)
-                            aggr.windows.period_millis = schema_aggr['period_millis']
-                            aggr.windows.total_number_of_buckets = int(aggr.windows.max_window_millis / aggr.windows.period_millis)
+                            aggr.windows.period_millis = schema_aggr["period_millis"]
+                            aggr.windows.total_number_of_buckets = int(
+                                aggr.windows.max_window_millis / aggr.windows.period_millis
+                            )
                         else:
                             raise TypeError(f'"{window_type}" unknown window type')
                 should_update = self._validate_schema_fit_aggregations(self._schema)
@@ -223,9 +264,12 @@ class Table:
             if name not in old:
                 old[name] = schema_aggr
             else:
-                new_aggregates = get_all_raw_aggregates(schema_aggr['aggregates'])
-                old_aggregates = get_all_raw_aggregates(old[name]['aggregates'])
-                old[name] = {'period_millis': schema_aggr['period_millis'], 'aggregates': list(new_aggregates.union(old_aggregates))}
+                new_aggregates = get_all_raw_aggregates(schema_aggr["aggregates"])
+                old_aggregates = get_all_raw_aggregates(old[name]["aggregates"])
+                old[name] = {
+                    "period_millis": schema_aggr["period_millis"],
+                    "aggregates": list(new_aggregates.union(old_aggregates)),
+                }
 
         return old
 
@@ -235,21 +279,27 @@ class Table:
         for aggr in self._aggregates:
             if aggr.name not in schema:
                 if self._aggregations_read_only:
-                    raise ValueError(f'Requested aggregate {aggr.name}, does not exist in existing feature store at {self._table_path}')
+                    raise ValueError(
+                        f"Requested aggregate {aggr.name}, does not exist in existing feature store "
+                        f"at {self._table_path}"
+                    )
                 else:
                     should_update = True
                     continue
             schema_aggr = schema[aggr.name]
-            if not aggr.windows.period_millis == schema_aggr['period_millis']:
-                raise ValueError(f'Requested period for aggregate {aggr.name} does not match existing period at {self._table_path}. '
-                                 f"Requested: {aggr.windows.period_millis}, existing: {schema_aggr['period_millis']}")
+            if not aggr.windows.period_millis == schema_aggr["period_millis"]:
+                raise ValueError(
+                    f"Requested period for aggregate {aggr.name} does not match existing period at {self._table_path}. "
+                    f"Requested: {aggr.windows.period_millis}, existing: {schema_aggr['period_millis']}"
+                )
             requested_raw_aggregates = aggr.get_all_raw_aggregates()
-            existing_raw_aggregates = get_all_raw_aggregates(schema_aggr['aggregates'])
+            existing_raw_aggregates = get_all_raw_aggregates(schema_aggr["aggregates"])
             # validate if current feature store contains all aggregates needed for the requested calculations
             if self._aggregations_read_only and not requested_raw_aggregates.issubset(existing_raw_aggregates):
                 raise ValueError(
-                    f'Requested aggregates for feature {aggr.name} do not match with existing aggregates at {self._table_path}. '
-                    f"Requested: {aggr.aggregations}, existing: {schema_aggr['aggregates']}")
+                    f"Requested aggregates for feature {aggr.name} do not match with existing aggregates"
+                    f"at {self._table_path}. Requested: {aggr.aggregations}, existing: {schema_aggr['aggregates']}"
+                )
             # Check if more raw aggregates are requested, in which case a schema update is required
             if not self._aggregations_read_only and requested_raw_aggregates != existing_raw_aggregates:
                 should_update = True
@@ -263,9 +313,12 @@ class Table:
                 window_type = "SlidingWindow"
             else:
                 window_type = "FixedWindow"
-            schema[aggr.name] = {'period_millis': aggr.windows.period_millis,
-                                 'aggregates': list(get_all_raw_aggregates(aggr.aggregations)),
-                                 'window_type': window_type, 'max_window_millis': aggr.windows.max_window_millis}
+            schema[aggr.name] = {
+                "period_millis": aggr.windows.period_millis,
+                "aggregates": list(get_all_raw_aggregates(aggr.aggregations)),
+                "window_type": window_type,
+                "max_window_millis": aggr.windows.max_window_millis,
+            }
 
         return schema
 
@@ -313,14 +366,14 @@ class Table:
 
         :param key: attribute name
         :param value: attribute value
-         """
+        """
         self._set_static_attrs(key, value)
 
     def __getitem__(self, key):
         """Gets attribute from table.
 
         :param key: attribute to get
-         """
+        """
         return self._get_static_attrs(key)
 
     async def _flush_worker(self):
@@ -357,9 +410,12 @@ class Table:
                         for _, pending_event in self._pending_by_key.items():
                             if pending_event.pending and not pending_event.in_flight:
                                 for job in pending_event.pending:
-                                    resp = await self._internal_persist_key(job.key, job.data,
-                                                                            job.aggr_by_key,
-                                                                            job.additional_data_persist)
+                                    resp = await self._internal_persist_key(
+                                        job.key,
+                                        job.data,
+                                        job.aggr_by_key,
+                                        job.additional_data_persist,
+                                    )
                                     if job.callback:
                                         await job.callback(job.extra_data, resp)
                         break
@@ -433,11 +489,13 @@ class Table:
             await self._worker_awaitable
             raise FlowError("Persist worker has already terminated")
         else:
-            # Initializing the key with 2 lists. One for pending requests and one for requests that an update request has been issued for.
+            # Initializing the key with 2 lists. One for pending requests and one for
+            # requests that an update request has been issued for.
             if job.key not in self._pending_by_key:
                 self._pending_by_key[job.key] = _PendingEvent()
 
-            # If there is a current update in flight for the key, add the event to the pending list. Otherwise update the key.
+            # If there is a current update in flight for the key, add the event to
+            # the pending list. Otherwise update the key.
             self._pending_by_key[job.key].pending.append(job)
             if len(self._pending_by_key[job.key].in_flight) == 0:
                 self._pending_by_key[job.key].in_flight = self._pending_by_key[job.key].pending
@@ -470,7 +528,15 @@ class _CacheElement:
 
 
 class ReadOnlyAggregatedStoreElement:
-    def __init__(self, key, aggregates, base_time, initial_data=None, options=None, persist_func=None):
+    def __init__(
+        self,
+        key,
+        aggregates,
+        base_time,
+        initial_data=None,
+        options=None,
+        persist_func=None,
+    ):
         self.aggregation_buckets = {}
         self.key = key
         self.aggregates = aggregates
@@ -482,18 +548,33 @@ class ReadOnlyAggregatedStoreElement:
         for aggregation_metadata in aggregates:
             for meta in aggregation_metadata.aggregations:
                 for aggr, is_hidden in get_all_raw_aggregates_with_hidden([meta]).items():
-                    if (aggregation_metadata.name, aggr, aggregation_metadata.max_value) in windows:
-                        aggr_windows = windows[(aggregation_metadata.name, aggr, aggregation_metadata.max_value)]
+                    if (
+                        aggregation_metadata.name,
+                        aggr,
+                        aggregation_metadata.max_value,
+                    ) in windows:
+                        aggr_windows = windows[
+                            (
+                                aggregation_metadata.name,
+                                aggr,
+                                aggregation_metadata.max_value,
+                            )
+                        ]
                         if is_hidden in aggr_windows:
                             aggr_windows[is_hidden].merge(aggregation_metadata.windows)
                         else:
                             aggr_windows[is_hidden] = copy.deepcopy(aggregation_metadata.windows)
                     else:
-                        windows[(aggregation_metadata.name, aggr, aggregation_metadata.max_value)] = \
-                            {is_hidden: copy.deepcopy(aggregation_metadata.windows)}
+                        windows[
+                            (
+                                aggregation_metadata.name,
+                                aggr,
+                                aggregation_metadata.max_value,
+                            )
+                        ] = {is_hidden: copy.deepcopy(aggregation_metadata.windows)}
 
         for (name, aggr, max_value), calculated_windows in windows.items():
-            column_name = f'{name}_{aggr}'
+            column_name = f"{name}_{aggr}"
             initial_column_data = None
             if initial_data and column_name in initial_data:
                 initial_column_data = initial_data[column_name]
@@ -503,9 +584,16 @@ class ReadOnlyAggregatedStoreElement:
                 explicit_windows = calculated_windows[False]
             if True in calculated_windows:
                 hidden_windows = calculated_windows[True]
-            self.aggregation_buckets[column_name] = \
-                ReadOnlyAggregationBuckets(name, aggr, explicit_windows, hidden_windows,
-                                           base_time, max_value, initial_column_data, self.options)
+            self.aggregation_buckets[column_name] = ReadOnlyAggregationBuckets(
+                name,
+                aggr,
+                explicit_windows,
+                hidden_windows,
+                base_time,
+                max_value,
+                initial_column_data,
+                self.options,
+            )
 
         # Add all virtual aggregates
         for aggregation_metadata in aggregates:
@@ -514,10 +602,14 @@ class ReadOnlyAggregatedStoreElement:
                     dependant_aggregate_names = get_implied_aggregates(aggr)
                     dependant_buckets = []
                     for dep in dependant_aggregate_names:
-                        dependant_buckets.append(self.aggregation_buckets[f'{aggregation_metadata.name}_{dep}'])
-                    self.aggregation_buckets[f'{aggregation_metadata.name}_{aggr}'] = \
-                        VirtualAggregationBuckets(aggregation_metadata.name, aggr, aggregation_metadata.windows,
-                                                  base_time, dependant_buckets)
+                        dependant_buckets.append(self.aggregation_buckets[f"{aggregation_metadata.name}_{dep}"])
+                    self.aggregation_buckets[f"{aggregation_metadata.name}_{aggr}"] = VirtualAggregationBuckets(
+                        aggregation_metadata.name,
+                        aggr,
+                        aggregation_metadata.windows,
+                        base_time,
+                        dependant_buckets,
+                    )
 
     def aggregate(self, data, timestamp):
         # add a new point and aggregate
@@ -527,7 +619,7 @@ class ReadOnlyAggregatedStoreElement:
                 if curr_value is None:
                     continue
                 for aggr in aggregation_metadata.get_all_raw_aggregates():
-                    self.aggregation_buckets[f'{aggregation_metadata.name}_{aggr}'].aggregate(timestamp, curr_value)
+                    self.aggregation_buckets[f"{aggregation_metadata.name}_{aggr}"].aggregate(timestamp, curr_value)
 
     def get_features(self, timestamp):
         result = {}
@@ -539,8 +631,17 @@ class ReadOnlyAggregatedStoreElement:
 
 
 class ReadOnlyAggregationBuckets:
-    def __init__(self, name, aggregation, explicit_windows, hidden_windows, base_time, max_value, initial_data=None,
-                 fixed_window_type=None):
+    def __init__(
+        self,
+        name,
+        aggregation,
+        explicit_windows,
+        hidden_windows,
+        base_time,
+        max_value,
+        initial_data=None,
+        fixed_window_type=None,
+    ):
         self.name = name
         self.aggregation = aggregation
         self.explicit_windows = explicit_windows
@@ -584,7 +685,9 @@ class ReadOnlyAggregationBuckets:
             if self._precalculated_aggregations:
                 for win in hidden_windows.windows:
                     if win not in self._current_aggregate_values:
-                        self._current_aggregate_values[win] = AggregationValue.new_from_name(aggregation, self.max_value)
+                        self._current_aggregate_values[win] = AggregationValue.new_from_name(
+                            aggregation, self.max_value
+                        )
 
         if initial_data:
             self.last_bucket_start_time = None
@@ -602,8 +705,9 @@ class ReadOnlyAggregationBuckets:
             self.calculate_features(base_time, all_windows)
         else:
             self.first_bucket_start_time = self._window_start_time
-            self.last_bucket_start_time = \
+            self.last_bucket_start_time = (
                 self.first_bucket_start_time + (self.total_number_of_buckets - 1) * self.period_millis
+            )
 
             self.initialize_column()
 
@@ -649,8 +753,12 @@ class ReadOnlyAggregationBuckets:
                 for bucket_id in range(previous_window_start, current_window_start):
                     current_pre_aggregated_value = aggr.value
                     bucket_aggregated_value = self.buckets[bucket_id].value
-                    if self.aggregation == "min" or self.aggregation == "max" \
-                            or self.aggregation == "first" or self.aggregation == "last":
+                    if (
+                        self.aggregation == "min"
+                        or self.aggregation == "max"
+                        or self.aggregation == "first"
+                        or self.aggregation == "last"
+                    ):
                         if current_pre_aggregated_value == bucket_aggregated_value:
                             self._need_to_recalculate_pre_aggregates = True
                             return
@@ -674,10 +782,8 @@ class ReadOnlyAggregationBuckets:
                     bucket_to_reuse.reset()
                     self.buckets.append(buckets_to_reuse)
 
-            self.first_bucket_start_time = \
-                self.first_bucket_start_time + buckets_to_advance * self.period_millis
-            self.last_bucket_start_time = \
-                self.last_bucket_start_time + buckets_to_advance * self.period_millis
+            self.first_bucket_start_time = self.first_bucket_start_time + buckets_to_advance * self.period_millis
+            self.last_bucket_start_time = self.last_bucket_start_time + buckets_to_advance * self.period_millis
 
     def get_window_range(self, timestamp, windows_millis):
         if self.is_fixed_window:
@@ -717,8 +823,8 @@ class ReadOnlyAggregationBuckets:
         return AggregationValue.new_from_name(self.aggregation, self.max_value)
 
     def get_aggregation_for_aggregation(self):
-        if self.aggregation == 'count' or self.aggregation == "sqr":
-            return 'sum'
+        if self.aggregation == "count" or self.aggregation == "sqr":
+            return "sum"
         return self.aggregation
 
     def get_features(self, timestamp, windows=None):
@@ -730,14 +836,17 @@ class ReadOnlyAggregationBuckets:
                 return result
         # In case we need to completely recalculate the aggregations
         # Either a) we were signaled b) the requested timestamp is prior to our pre aggregates
-        if self._need_to_recalculate_pre_aggregates or \
-                self.get_bucket_index_by_timestamp(timestamp) < self.get_bucket_index_by_timestamp(self._last_data_point_timestamp) or \
-                not self._precalculated_aggregations:
+        if (
+            self._need_to_recalculate_pre_aggregates
+            or self.get_bucket_index_by_timestamp(timestamp)
+            < self.get_bucket_index_by_timestamp(self._last_data_point_timestamp)
+            or not self._precalculated_aggregations
+        ):
             return self.calculate_features(timestamp, windows)
 
         # In case our pre aggregates already have the answer
         for win in windows:
-            result[f'{self.name}_{self.aggregation}_{win[1]}'] = self._current_aggregate_values[win].value
+            result[f"{self.name}_{self.aggregation}_{win[1]}"] = self._current_aggregate_values[win].value
 
         return result
 
@@ -773,7 +882,7 @@ class ReadOnlyAggregationBuckets:
                 # In case the current bucket is outside our time range just create a feature with the current aggregated
                 # value
                 if current_time_bucket_index < 0:
-                    result[f'{self.name}_{self.aggregation}_{window_string}'] = aggregated_value.value
+                    result[f"{self.name}_{self.aggregation}_{window_string}"] = aggregated_value.value
 
                 number_of_buckets_backwards = int((window_millis - prev_windows_millis) / self.period_millis)
                 last_bucket_to_aggregate = current_time_bucket_index - number_of_buckets_backwards + 1
@@ -792,31 +901,38 @@ class ReadOnlyAggregationBuckets:
             current_aggregations_value = aggregated_value.value
 
             # create a feature for the current time window
-            result[f'{self.name}_{self.aggregation}_{window_string}'] = current_aggregations_value
+            result[f"{self.name}_{self.aggregation}_{window_string}"] = current_aggregations_value
             prev_windows_millis = window_millis
 
             # Update the corresponding pre aggregate
             if self._precalculated_aggregations and self._need_to_recalculate_pre_aggregates:
-                new_aggr = AggregationValue.new_from_name(self.aggregation, self.max_value, set_data=current_aggregations_value)
+                new_aggr = AggregationValue.new_from_name(
+                    self.aggregation,
+                    self.max_value,
+                    set_data=current_aggregations_value,
+                )
                 new_aggr.time = aggregated_value.time
                 self._current_aggregate_values[win] = new_aggr
         self._need_to_recalculate_pre_aggregates = False
         return result
 
-    def _initialize_from_data_for_sliding_window(self, base_time, aggregation_bucket_initial_data, first_time, last_time):
+    def _initialize_from_data_for_sliding_window(
+        self, base_time, aggregation_bucket_initial_data, first_time, last_time
+    ):
         period = self.period_millis
         self.buckets = [None] * self.total_number_of_buckets
 
         self.last_bucket_start_time = self._window_start_time
-        self.first_bucket_start_time = \
-            self.last_bucket_start_time - (self.total_number_of_buckets - 1) * period
+        self.first_bucket_start_time = self.last_bucket_start_time - (self.total_number_of_buckets - 1) * period
 
         bucket_index = self.total_number_of_buckets - 1
         start_index = int((base_time - last_time) / period)
 
-        # In case base_time is newer than what is stored in the storage initialize the buckets until reaching the stored data
+        # In case base_time is newer than what is stored in the storage initialize
+        # the buckets until reaching the stored data
         if start_index >= len(aggregation_bucket_initial_data[last_time]):
-            # If the requested data is so new that the stored data is obsolete just initialize the buckets regardless of the stored data.
+            # If the requested data is so new that the stored data is obsolete just
+            # initialize the buckets regardless of the stored data.
             if start_index >= len(aggregation_bucket_initial_data[last_time]) + self.total_number_of_buckets:
                 self.initialize_column()
                 return
@@ -833,15 +949,20 @@ class ReadOnlyAggregationBuckets:
                 return
             curr_value = aggregation_bucket_initial_data[last_time][i]
             curr_time = last_time + period * i
-            self.buckets[bucket_index] = AggregationValue.new_from_name(self.aggregation, self.max_value, curr_value, curr_time)
+            self.buckets[bucket_index] = AggregationValue.new_from_name(
+                self.aggregation, self.max_value, curr_value, curr_time
+            )
             bucket_index = bucket_index - 1
 
-        # In case we still haven't finished initializing all buckets and there is another stored bucket, initialize from there
+        # In case we still haven't finished initializing all buckets and there is
+        # another stored bucket, initialize from there
         if first_time and bucket_index >= 0 and base_time > first_time:
             for i in range(len(aggregation_bucket_initial_data[first_time]) - 1, -1, -1):
                 curr_value = aggregation_bucket_initial_data[first_time][i]
                 curr_time = first_time + period * i
-                self.buckets[bucket_index] = AggregationValue.new_from_name(self.aggregation, self.max_value, curr_value, curr_time)
+                self.buckets[bucket_index] = AggregationValue.new_from_name(
+                    self.aggregation, self.max_value, curr_value, curr_time
+                )
                 bucket_index = bucket_index - 1
 
                 if bucket_index < 0:
@@ -877,21 +998,25 @@ class ReadOnlyAggregationBuckets:
         for bucket_index in range(buckets):
             if first_time <= curr_time < last_time:
                 if fix_first_time:
-                    self.buckets[bucket_index] = AggregationValue.new_from_name(self.aggregation, self.max_value,
-                                                                                set_time=curr_time)
+                    self.buckets[bucket_index] = AggregationValue.new_from_name(
+                        self.aggregation, self.max_value, set_time=curr_time
+                    )
                 else:
                     i = int((curr_time - first_time) / period)
                     curr_value = aggregation_bucket_initial_data[first_time][i]
-                    self.buckets[bucket_index] = AggregationValue.new_from_name(self.aggregation, self.max_value,
-                                                                                curr_value, curr_time)
+                    self.buckets[bucket_index] = AggregationValue.new_from_name(
+                        self.aggregation, self.max_value, curr_value, curr_time
+                    )
             elif last_time <= curr_time < next_time:
                 i = int((curr_time - last_time) / period)
                 curr_value = aggregation_bucket_initial_data[last_time][i]
-                self.buckets[bucket_index] = AggregationValue.new_from_name(self.aggregation, self.max_value,
-                                                                            curr_value, curr_time)
+                self.buckets[bucket_index] = AggregationValue.new_from_name(
+                    self.aggregation, self.max_value, curr_value, curr_time
+                )
             else:
-                self.buckets[bucket_index] = AggregationValue.new_from_name(self.aggregation, self.max_value,
-                                                                            set_time=curr_time)
+                self.buckets[bucket_index] = AggregationValue.new_from_name(
+                    self.aggregation, self.max_value, set_time=curr_time
+                )
             curr_time = curr_time + period
 
     def initialize_from_data(self, data, base_time):
@@ -910,11 +1035,13 @@ class ReadOnlyAggregationBuckets:
             first_time, last_time = min(timestamp1, timestamp2), max(timestamp1, timestamp2)
 
         if self.is_fixed_window:
-            return self._initialize_from_data_for_fixed_window(base_time, aggregation_bucket_initial_data,
-                                                               first_time, last_time)
+            return self._initialize_from_data_for_fixed_window(
+                base_time, aggregation_bucket_initial_data, first_time, last_time
+            )
         else:
-            return self._initialize_from_data_for_sliding_window(base_time, aggregation_bucket_initial_data,
-                                                                 first_time, last_time)
+            return self._initialize_from_data_for_sliding_window(
+                base_time, aggregation_bucket_initial_data, first_time, last_time
+            )
 
     def get_and_flush_pending(self):
         pending = self.pending_aggr
@@ -949,8 +1076,9 @@ class VirtualAggregationBuckets:
         self.should_persist = False
 
         self.first_bucket_start_time = self.window.get_window_start_time_by_time(base_time)
-        self.last_bucket_start_time = \
+        self.last_bucket_start_time = (
             self.first_bucket_start_time + (window.total_number_of_buckets - 1) * window.period_millis
+        )
 
     def aggregate(self, timestamp, value):
         pass
@@ -966,7 +1094,7 @@ class VirtualAggregationBuckets:
             for window_result in args_results:
                 current_args.append(window_result[i])
 
-            result[f'{self.name}_{self.aggregation}_{window_string}'] = self.aggregation_func(current_args)
+            result[f"{self.name}_{self.aggregation}_{window_string}"] = self.aggregation_func(current_args)
         return result
 
 
@@ -997,19 +1125,19 @@ class AggregationValue:
 
     @staticmethod
     def new_from_name(aggregation, max_value=None, set_data=None, set_time=None):
-        if aggregation == 'min':
+        if aggregation == "min":
             return MinValue(max_value, set_data, set_time)
-        elif aggregation == 'max':
+        elif aggregation == "max":
             return MaxValue(max_value, set_data, set_time)
-        elif aggregation == 'sum':
+        elif aggregation == "sum":
             return SumValue(max_value, set_data, set_time)
-        elif aggregation == 'count':
+        elif aggregation == "count":
             return CountValue(max_value, set_data, set_time)
-        elif aggregation == 'sqr':
+        elif aggregation == "sqr":
             return SqrValue(max_value, set_data, set_time)
-        elif aggregation == 'last':
+        elif aggregation == "last":
             return LastValue(max_value, set_data, set_time)
-        elif aggregation == 'first':
+        elif aggregation == "first":
             return FirstValue(max_value, set_data, set_time)
 
     def _set_value_with_max(self, value):
@@ -1022,7 +1150,7 @@ class AggregationValue:
         self.value = float(value)
 
     def get_update_expression(self, old):
-        return f'{old}+{self.value}'
+        return f"{old}+{self.value}"
 
     def reset(self, value=None):
         self.time = None
@@ -1033,8 +1161,8 @@ class AggregationValue:
 
 
 class MinValue(AggregationValue):
-    name = 'min'
-    default_value = float('inf')
+    name = "min"
+    default_value = float("inf")
 
     def __init__(self, max_value=None, set_data=None, set_time=None):
         super().__init__(max_value, set_data, set_time)
@@ -1044,7 +1172,7 @@ class MinValue(AggregationValue):
             self.value = float(value)  # bypass _set_value because there's no need to check max_value each time
 
     def get_update_expression(self, old):
-        return f'min({old}, {self.value})'
+        return f"min({old}, {self.value})"
 
     def reset(self, value=None):
         if value is None:
@@ -1057,8 +1185,8 @@ class MinValue(AggregationValue):
 
 
 class MaxValue(AggregationValue):
-    name = 'max'
-    default_value = float('-inf')
+    name = "max"
+    default_value = float("-inf")
 
     def __init__(self, max_value=None, set_data=None, set_time=None):
         super().__init__(max_value, set_data, set_time)
@@ -1068,14 +1196,14 @@ class MaxValue(AggregationValue):
             self._set_value(value)
 
     def get_update_expression(self, old):
-        return f'max({old}, {self.value})'
+        return f"max({old}, {self.value})"
 
     def aggregate_lua_script(self, vl1, vl2):
         return f'type({vl1}) == "number" and math.max({vl1},{vl2}) or {vl2}'
 
 
 class SumValue(AggregationValue):
-    name = 'sum'
+    name = "sum"
     default_value = 0.0
 
     def __init__(self, max_value=None, set_data=None, set_time=None):
@@ -1085,11 +1213,11 @@ class SumValue(AggregationValue):
         self._set_value(self.value + value)
 
     def aggregate_lua_script(self, vl1, vl2):
-        return f'{vl1}+{vl2}'
+        return f"{vl1}+{vl2}"
 
 
 class CountValue(AggregationValue):
-    aggregation = 'count'
+    aggregation = "count"
     default_value = 0.0
 
     def __init__(self, max_value=None, set_data=None, set_time=None):
@@ -1099,11 +1227,11 @@ class CountValue(AggregationValue):
         self._set_value(self.value + 1)
 
     def aggregate_lua_script(self, vl1, vl2):
-        return f'{vl1}+{vl2}'
+        return f"{vl1}+{vl2}"
 
 
 class SqrValue(AggregationValue):
-    name = 'sqr'
+    name = "sqr"
     default_value = 0.0
 
     def __init__(self, max_value=None, set_data=None, set_time=None):
@@ -1116,11 +1244,11 @@ class SqrValue(AggregationValue):
         self._set_value(self.value + argument)
 
     def aggregate_lua_script(self, vl1, vl2):
-        return f'{vl1}+{vl2}'
+        return f"{vl1}+{vl2}"
 
 
 class LastValue(AggregationValue):
-    name = 'last'
+    name = "last"
 
     def __init__(self, max_value=None, set_data=None, set_time=None):
         if set_time is None:
@@ -1133,7 +1261,7 @@ class LastValue(AggregationValue):
             self.time = time
 
     def get_update_expression(self, old):
-        return f'{self.value}'
+        return f"{self.value}"
 
     def reset(self, value=None):
         self.time = -math.inf
@@ -1143,11 +1271,11 @@ class LastValue(AggregationValue):
             self.value = value
 
     def aggregate_lua_script(self, vl1, vl2):
-        return f'{vl2}'
+        return f"{vl2}"
 
 
 class FirstValue(AggregationValue):
-    name = 'first'
+    name = "first"
 
     def __init__(self, max_value=None, set_data=None, set_time=None):
         if set_time is None:
@@ -1161,7 +1289,7 @@ class FirstValue(AggregationValue):
             self.time = time
 
     def get_update_expression(self, old):
-        return f'if_else(isnan({old}), {self.value}, {old})'
+        return f"if_else(isnan({old}), {self.value}, {old})"
 
     def reset(self, value=None):
         self.time = math.inf
@@ -1171,11 +1299,19 @@ class FirstValue(AggregationValue):
             self.value = value
 
     def aggregate_lua_script(self, vl1, vl2):
-        return f'{vl1}~={vl1} and {vl2} or {vl1}'
+        return f"{vl1}~={vl1} and {vl2} or {vl1}"
 
 
 class AggregatedStoreElement:
-    def __init__(self, key, aggregates, base_time, initial_data=None, options=None, persist_func=None):
+    def __init__(
+        self,
+        key,
+        aggregates,
+        base_time,
+        initial_data=None,
+        options=None,
+        persist_func=None,
+    ):
         self.aggregation_buckets = {}
         self.key = key
         self.aggregates = aggregates
@@ -1186,9 +1322,9 @@ class AggregatedStoreElement:
         initial_data_by_feature = {}
         if initial_data:
             for key, value in initial_data.items():
-                separator_index = key.rindex('_')
+                separator_index = key.rindex("_")
                 feature_name = key[:separator_index]
-                aggr = key[separator_index + 1:]
+                aggr = key[separator_index + 1 :]
                 if feature_name not in initial_data_by_feature:
                     initial_data_by_feature[feature_name] = {}
                 initial_data_by_feature[feature_name][aggr] = value
@@ -1207,10 +1343,18 @@ class AggregatedStoreElement:
             initial_column_data = None
             if initial_data_by_feature and aggregation_metadata.name in initial_data_by_feature:
                 initial_column_data = initial_data_by_feature[aggregation_metadata.name]
-            self.aggregation_buckets[aggregation_metadata.name] = \
-                AggregationBuckets(aggregation_metadata.name, explicit_raw_aggregates, hidden_raw_aggregates, virtual_aggregates,
-                                   aggregation_metadata.windows, base_time,
-                                   aggregation_metadata.max_value, key, initial_column_data, persist_func)
+            self.aggregation_buckets[aggregation_metadata.name] = AggregationBuckets(
+                aggregation_metadata.name,
+                explicit_raw_aggregates,
+                hidden_raw_aggregates,
+                virtual_aggregates,
+                aggregation_metadata.windows,
+                base_time,
+                aggregation_metadata.max_value,
+                key,
+                initial_column_data,
+                persist_func,
+            )
 
     def __deepcopy__(self, memo):  # memo is a dict of id's to copies
         cls = self.__class__
@@ -1231,7 +1375,7 @@ class AggregatedStoreElement:
                 if curr_value is None:
                     continue
                 # for aggr in aggregation_metadata.get_all_raw_aggregates():
-                await self.aggregation_buckets[f'{aggregation_metadata.name}'].aggregate(timestamp, curr_value)
+                await self.aggregation_buckets[f"{aggregation_metadata.name}"].aggregate(timestamp, curr_value)
 
     def get_features(self, timestamp):
         result = {}
@@ -1242,9 +1386,19 @@ class AggregatedStoreElement:
 
 
 class AggregationBuckets:
-    def __init__(self, name, explicit_raw_aggregations, hidden_raw_aggregations,
-                 virtual_aggregations, explicit_windows, base_time, max_value,
-                 key, initial_data=None, persist_func=None):
+    def __init__(
+        self,
+        name,
+        explicit_raw_aggregations,
+        hidden_raw_aggregations,
+        virtual_aggregations,
+        explicit_windows,
+        base_time,
+        max_value,
+        key,
+        initial_data=None,
+        persist_func=None,
+    ):
         self.key = key
         self.name = name
         self._explicit_raw_aggregations = explicit_raw_aggregations
@@ -1268,7 +1422,9 @@ class AggregationBuckets:
         self._intermediate_aggregation_values = {}
         self.persist_func = persist_func
         for aggregation_name in self._all_raw_aggregates:
-            aggregation_value = AggregationValue.new_from_name(self.get_aggregation_for_aggregation(aggregation_name), self.max_value)
+            aggregation_value = AggregationValue.new_from_name(
+                self.get_aggregation_for_aggregation(aggregation_name), self.max_value
+            )
             self._intermediate_aggregation_values[aggregation_name] = aggregation_value
 
         # If a user specified a max_value we need to recalculated features on every event
@@ -1282,7 +1438,9 @@ class AggregationBuckets:
         if self._precalculated_aggregations:
             for (window_millis, _) in explicit_windows.windows:
                 for aggr in self._all_raw_aggregates:
-                    self._current_aggregate_values[(aggr, window_millis)] = AggregationValue.new_from_name(aggr, max_value)
+                    self._current_aggregate_values[(aggr, window_millis)] = AggregationValue.new_from_name(
+                        aggr, max_value
+                    )
 
         if initial_data:
             self.last_bucket_start_time = None
@@ -1293,8 +1451,9 @@ class AggregationBuckets:
             self.calculate_features(base_time)
         else:
             self.first_bucket_start_time = self._window_start_time
-            self.last_bucket_start_time = \
+            self.last_bucket_start_time = (
                 self.first_bucket_start_time + (self.total_number_of_buckets - 1) * self.period_millis
+            )
 
             self.initialize_column()
 
@@ -1336,19 +1495,25 @@ class AggregationBuckets:
 
     def remove_old_values_from_pre_aggregations(self, timestamp):
         if self._precalculated_aggregations:
-            for (aggr_name, current_window_millis), aggr in self._current_aggregate_values.items():
+            for (
+                aggr_name,
+                current_window_millis,
+            ), aggr in self._current_aggregate_values.items():
                 if self.is_fixed_window:
-                    previous_window_start_time = \
-                        self.get_window_start_time_from_timestamp(self._last_data_point_timestamp, current_window_millis)
+                    previous_window_start_time = self.get_window_start_time_from_timestamp(
+                        self._last_data_point_timestamp, current_window_millis
+                    )
                     previous_window_start = self.get_bucket_index_by_timestamp(previous_window_start_time)
-                    current_window_start_time = \
-                        self.get_window_start_time_from_timestamp(timestamp, current_window_millis)
+                    current_window_start_time = self.get_window_start_time_from_timestamp(
+                        timestamp, current_window_millis
+                    )
                     current_window_start = self.get_bucket_index_by_timestamp(current_window_start_time)
                 else:
-                    previous_window_start = \
-                        self.get_window_range(self.get_end_bucket(self._last_data_point_timestamp), current_window_millis)
-                    current_window_start = \
-                        self.get_window_range(self.get_end_bucket(timestamp), current_window_millis)
+                    previous_window_start = self.get_window_range(
+                        self.get_end_bucket(self._last_data_point_timestamp),
+                        current_window_millis,
+                    )
+                    current_window_start = self.get_window_range(self.get_end_bucket(timestamp), current_window_millis)
 
                     previous_window_start = max(0, previous_window_start)
                     current_window_start = max(0, current_window_start)
@@ -1393,15 +1558,11 @@ class AggregationBuckets:
             if self.is_fixed_window:
                 window_millis = self.last_bucket_start_time + self.period_millis - self.first_bucket_start_time
                 windows_to_advance = int((advance_to - self.first_bucket_start_time) / window_millis)
-                self.first_bucket_start_time = \
-                    self.first_bucket_start_time + windows_to_advance * window_millis
-                self.last_bucket_start_time = \
-                    self.last_bucket_start_time + windows_to_advance * window_millis
+                self.first_bucket_start_time = self.first_bucket_start_time + windows_to_advance * window_millis
+                self.last_bucket_start_time = self.last_bucket_start_time + windows_to_advance * window_millis
             else:
-                self.first_bucket_start_time = \
-                    self.first_bucket_start_time + buckets_to_advance * self.period_millis
-                self.last_bucket_start_time = \
-                    self.last_bucket_start_time + buckets_to_advance * self.period_millis
+                self.first_bucket_start_time = self.first_bucket_start_time + buckets_to_advance * self.period_millis
+                self.last_bucket_start_time = self.last_bucket_start_time + buckets_to_advance * self.period_millis
 
     def get_end_bucket(self, timestamp):
         if self.is_fixed_window:
@@ -1414,7 +1575,10 @@ class AggregationBuckets:
         return end_bucket - num_of_buckets_in_window + 1
 
     def get_window_start_time_from_timestamp(self, timestamp, window_millis):
-        return int((timestamp - self.first_bucket_start_time) / window_millis) * window_millis + self.first_bucket_start_time
+        return (
+            int((timestamp - self.first_bucket_start_time) / window_millis) * window_millis
+            + self.first_bucket_start_time
+        )
 
     async def aggregate(self, timestamp, value):
         index = await self.get_or_advance_bucket_index_by_timestamp(timestamp)
@@ -1426,15 +1590,21 @@ class AggregationBuckets:
             self.add_to_pending(timestamp, value)
 
             if self._precalculated_aggregations:
-                for (_, current_window_millis), aggr in self._current_aggregate_values.items():
-                    current_window_start_time = self.get_window_start_time_from_timestamp(timestamp, current_window_millis)
+                for (
+                    _,
+                    current_window_millis,
+                ), aggr in self._current_aggregate_values.items():
+                    current_window_start_time = self.get_window_start_time_from_timestamp(
+                        timestamp, current_window_millis
+                    )
                     current_window_start_index = self.get_bucket_index_by_timestamp(current_window_start_time)
 
                     current_window_end_time = current_window_start_time + current_window_millis
                     current_window_end_index = self.get_bucket_index_by_timestamp(current_window_end_time) - 1
 
-                    if timestamp >= self._last_data_point_timestamp \
-                            and index in range(current_window_start_index, current_window_end_index + 1):
+                    if timestamp >= self._last_data_point_timestamp and index in range(
+                        current_window_start_index, current_window_end_index + 1
+                    ):
                         aggr.aggregate(timestamp, value)
                 if timestamp > self._last_data_point_timestamp:
                     self._last_data_point_timestamp = timestamp
@@ -1448,11 +1618,14 @@ class AggregationBuckets:
             aggr.aggregate(timestamp, value)
 
     def new_aggregation_value(self):
-        return {aggr_name: AggregationValue.new_from_name(aggr_name, self.max_value) for aggr_name in self._all_raw_aggregates}
+        return {
+            aggr_name: AggregationValue.new_from_name(aggr_name, self.max_value)
+            for aggr_name in self._all_raw_aggregates
+        }
 
     def get_aggregation_for_aggregation(self, aggregation):
-        if aggregation == 'count' or aggregation == "sqr":
-            return 'sum'
+        if aggregation == "count" or aggregation == "sqr":
+            return "sum"
         return aggregation
 
     def get_features(self, timestamp):
@@ -1465,9 +1638,11 @@ class AggregationBuckets:
             self._need_to_recalculate_pre_aggregates = False
             return result
 
-        if self._need_to_recalculate_pre_aggregates or \
-                current_time_bucket_index < self.get_bucket_index_by_timestamp(self._last_data_point_timestamp) or \
-                not self._precalculated_aggregations:
+        if (
+            self._need_to_recalculate_pre_aggregates
+            or current_time_bucket_index < self.get_bucket_index_by_timestamp(self._last_data_point_timestamp)
+            or not self._precalculated_aggregations
+        ):
             result = self.calculate_features(timestamp)
         else:
             # In case our pre aggregates already have the answer
@@ -1476,7 +1651,7 @@ class AggregationBuckets:
                     value = self._current_aggregate_values[(aggregation_name, window_millis)].value
                     if value == math.inf or value == -math.inf:
                         value = math.nan
-                    result[f'{self.name}_{aggregation_name}_{window_str}'] = value
+                    result[f"{self.name}_{aggregation_name}_{window_str}"] = value
 
         self.augment_virtual_features(result)
         return result
@@ -1490,7 +1665,7 @@ class AggregationBuckets:
             for (window_millis, window_str) in self.explicit_windows.windows:
                 for i, aggr in enumerate(aggregate.dependant_aggregates):
                     args[i] = self._current_aggregate_values[(aggr, window_millis)].value
-                features[f'{self.name}_{aggregate.name}_{window_str}'] = aggregate.aggregation_func(args)
+                features[f"{self.name}_{aggregate.name}_{window_str}"] = aggregate.aggregation_func(args)
 
     def calculate_features(self, timestamp):
         result = {}
@@ -1511,8 +1686,9 @@ class AggregationBuckets:
             # value
             if current_time_bucket_index < 0:
                 for aggregation_name in self._explicit_raw_aggregations:
-                    result[f'{self.name}_{aggregation_name}_{window_string}'] = \
-                        self._intermediate_aggregation_values[aggregation_name].value
+                    result[f"{self.name}_{aggregation_name}_{window_string}"] = self._intermediate_aggregation_values[
+                        aggregation_name
+                    ].value
 
             number_of_buckets_backwards = int((window_millis - prev_windows_millis) / self.period_millis)
             last_bucket_to_aggregate = current_time_bucket_index - number_of_buckets_backwards + 1
@@ -1529,10 +1705,12 @@ class AggregationBuckets:
             # create a feature for the current time window
             for aggregation_name in self._explicit_raw_aggregations:
                 current_aggregation_value = self._intermediate_aggregation_values[aggregation_name].value
-                result[f'{self.name}_{aggregation_name}_{window_string}'] = current_aggregation_value
+                result[f"{self.name}_{aggregation_name}_{window_string}"] = current_aggregation_value
 
                 if self._precalculated_aggregations and self._need_to_recalculate_pre_aggregates:
-                    self._current_aggregate_values[(aggregation_name, window_millis)].reset(value=current_aggregation_value)
+                    self._current_aggregate_values[(aggregation_name, window_millis)].reset(
+                        value=current_aggregation_value
+                    )
 
             # Update the corresponding pre aggregate
             if self._precalculated_aggregations and self._need_to_recalculate_pre_aggregates:
@@ -1568,14 +1746,15 @@ class AggregationBuckets:
 
         bucket_index = self.total_number_of_buckets - 1
         self.last_bucket_start_time = self._window_start_time
-        self.first_bucket_start_time = \
-            self.last_bucket_start_time - (self.total_number_of_buckets - 1) * period
+        self.first_bucket_start_time = self.last_bucket_start_time - (self.total_number_of_buckets - 1) * period
 
         start_index = int((base_time - last_time) / period)
 
-        # In case base_time is newer than what is stored in the storage initialize the buckets until reaching the stored data
+        # In case base_time is newer than what is stored in the storage initialize
+        # the buckets until reaching the stored data
         if start_index >= len(aggregation_bucket_initial_data[last_time]):
-            # If the requested data is so new that the stored data is obsolete just initialize the buckets regardless of the stored data.
+            # If the requested data is so new that the stored data is obsolete just
+            # initialize the buckets regardless of the stored data.
             if start_index >= len(aggregation_bucket_initial_data[last_time]) + self.total_number_of_buckets:
                 self.initialize_column()
                 return
@@ -1593,15 +1772,20 @@ class AggregationBuckets:
                 return
             for aggregation in self._all_raw_aggregates:
                 curr_value = data[aggregation][last_time][i]
-                self.buckets[bucket_index][aggregation] = AggregationValue.new_from_name(aggregation, self.max_value, curr_value)
+                self.buckets[bucket_index][aggregation] = AggregationValue.new_from_name(
+                    aggregation, self.max_value, curr_value
+                )
             bucket_index = bucket_index - 1
 
-        # In case we still haven't finished initializing all buckets and there is another stored bucket, initialize from there
+        # In case we still haven't finished initializing all buckets and there is
+        # another stored bucket, initialize from there
         if first_time and bucket_index >= 0 and base_time > first_time:
             for i in range(len(aggregation_bucket_initial_data[first_time]) - 1, -1, -1):
                 for aggregation in self._all_raw_aggregates:
                     curr_value = data[aggregation][first_time][i]
-                    self.buckets[bucket_index][aggregation] = AggregationValue.new_from_name(aggregation, self.max_value, curr_value)
+                    self.buckets[bucket_index][aggregation] = AggregationValue.new_from_name(
+                        aggregation, self.max_value, curr_value
+                    )
                 bucket_index = bucket_index - 1
 
                 if bucket_index < 0:

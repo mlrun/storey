@@ -16,9 +16,32 @@
 all:
 	$(error please pick a target)
 
+# We only want to format and lint checked in python files
+CHECKED_IN_PYTHING_FILES := $(shell git ls-files | grep '\.py$$')
+
+FLAKE8_OPTIONS := --max-line-length 120 --extend-ignore E203,W503
+BLACK_OPTIONS := --line-length 120
+ISORT_OPTIONS := --profile black
+
+.PHONY: fmt
+fmt:
+	@echo "Running black fmt..."
+	pipenv run python -m black $(BLACK_OPTIONS) $(CHECKED_IN_PYTHING_FILES)
+	pipenv run python -m isort $(ISORT_OPTIONS) $(CHECKED_IN_PYTHING_FILES)
+
 .PHONY: lint
-lint:
-	pipenv run python -m flake8 storey
+lint: flake8 fmt-check
+
+.PHONY: fmt-check
+fmt-check:
+	@echo "Running black+isort fmt check..."
+	pipenv run python -m black $(BLACK_OPTIONS) --check --diff $(CHECKED_IN_PYTHING_FILES)
+	pipenv run python -m isort --check --diff $(ISORT_OPTIONS) $(CHECKED_IN_PYTHING_FILES)
+
+.PHONY: flake8
+flake8:
+	@echo "Running flake8 lint..."
+	pipenv run python -m flake8 $(FLAKE8_OPTIONS) $(CHECKED_IN_PYTHING_FILES)
 
 .PHONY: test
 test:
