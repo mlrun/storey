@@ -180,7 +180,7 @@ class TestContext:
             )
         elif self.driver_name == "SQLDriver" and IsAggregationlessDriver:
             sql_driver_class = storey.drivers.SQLDriver
-            return sql_driver_class(db_path=SQL_DB, primary_key=primary_key, *args, **kwargs)
+            return sql_driver_class(db_path=SQL_DB, primary_key=primary_key)
         elif self.driver_name == "SQLDriver" and not IsAggregationlessDriver:
             pytest.skip("SQLDriver doesnt support aggregation")
         else:
