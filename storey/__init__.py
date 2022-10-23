@@ -59,7 +59,7 @@ from .sources import CSVSource  # noqa: F401
 from .sources import DataframeSource  # noqa: F401
 from .sources import ParquetSource  # noqa: F401
 from .sources import SyncEmitSource  # noqa: F401
-from .source import SQLSource # noqa: F401
+from .sources import SQLSource # noqa: F401
 from .table import Table  # noqa: F401
 from .targets import CSVTarget  # noqa: F401
 from .targets import KafkaTarget  # noqa: F401
