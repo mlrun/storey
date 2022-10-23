@@ -18,7 +18,6 @@ import math
 import os
 import time
 from datetime import datetime, timedelta, timezone
-from enum import Enum
 from functools import partial
 from typing import List, Optional, Union
 
@@ -29,11 +28,6 @@ import redis.cluster
 from .drivers import Driver
 from .dtypes import RedisError
 from .utils import schema_file_name
-
-
-class RedisType(Enum):
-    STANDALONE = 1
-    CLUSTER = 2
 
 
 class NeedsRedisAccess:
