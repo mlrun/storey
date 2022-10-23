@@ -25,7 +25,7 @@ from integration.integration_test_utils import (
     drivers_list,
     recursive_delete,
     remove_redis_table,
-    remove_sql_tables
+    remove_sql_tables,
 )
 
 
@@ -75,6 +75,7 @@ def setup_kv_teardown_test(request):
         remove_redis_table(test_context.table_name)
     else:
         raise ValueError(f'Unsupported driver name "{test_context.driver_name}"')
+
 
 @pytest.fixture()
 def assign_stream_teardown_test():

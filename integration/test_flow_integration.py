@@ -1052,7 +1052,7 @@ def test_write_three_keys_to_v3io_from_df(setup_teardown_test):
 def test_write_string_as_time_via_time_field(setup_teardown_test):
 
     if setup_teardown_test.driver_name == "SQLDriver":
-        pytest.skip(f"test_write_string_as_time_via_time_field not testing over SQLDriver")
+        pytest.skip("test_write_string_as_time_via_time_field not testing over SQLDriver")
     else:
         table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
 
@@ -1081,7 +1081,7 @@ def test_write_string_as_time_via_time_field(setup_teardown_test):
 
 def test_write_string_as_time_via_schema(setup_teardown_test):
     if setup_teardown_test.driver_name == "SQLDriver":
-        pytest.skip(f"test_write_string_as_time_via_schema not testing over SQLDriver")
+        pytest.skip("test_write_string_as_time_via_schema not testing over SQLDriver")
     else:
         table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     t1 = "2020-03-16T05:00:00+00:00"
@@ -1177,7 +1177,7 @@ def test_write_multiple_keys_to_v3io(setup_teardown_test):
 
 def test_write_none_time(setup_teardown_test):
     if setup_teardown_test.driver_name == "SQLDriver":
-        pytest.skip(f"test_write_none_time not testing over SQLDriver")
+        pytest.skip("test_write_none_time not testing over SQLDriver")
     else:
         table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
 
@@ -1215,7 +1215,7 @@ def test_write_none_time(setup_teardown_test):
 
 def test_cache_flushing(setup_teardown_test):
     if setup_teardown_test.driver_name == "SQLDriver":
-        pytest.skip(f"test_cache_flushing not testing over SQLDriver")
+        pytest.skip("test_cache_flushing not testing over SQLDriver")
     else:
         table = Table(setup_teardown_test.table_name, setup_teardown_test.driver(), flush_interval_secs=3)
     controller = build_flow(
