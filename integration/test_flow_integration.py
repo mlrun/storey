@@ -51,18 +51,9 @@ from .integration_test_utils import (
     TestContext,
     V3ioHeaders,
     append_return,
-    assign_stream_teardown_test,
     create_stream,
-    setup_kv_teardown_test,
-    setup_teardown_test,
     test_base_time,
 )
-
-_prevents_ide_from_optimizing_these_away = [
-    setup_kv_teardown_test,
-    setup_teardown_test,
-    assign_stream_teardown_test,
-]
 
 
 class GetShardData(V3ioHeaders):

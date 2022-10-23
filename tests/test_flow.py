@@ -1153,14 +1153,16 @@ def test_error_trace():
 
     awaitable_results = []
     for _ in range(2):
-        with pytest.raises(ValueError):
+        try:
             awaitable_results.append(controller.emit(0))
+        except ValueError:
+            pass
 
     last_trace_size = None
     for awaitable_result in awaitable_results:
         try:
             awaitable_result.await_result()
-            raise AssertionError
+            raise AssertionError()
         except ValueError:
             trace_size = len(traceback.format_exc())
             if last_trace_size is not None:
