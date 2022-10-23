@@ -109,7 +109,7 @@ def get_redis_client(redis_fake_server=None):
 def remove_redis_table(table_name):
     redis_client = get_redis_client()
     count = 0
-    for key in redis_client.scan_iter(f'*storey-test:{table_name}*'):
+    for key in redis_client.scan_iter(f"*storey-test:{table_name}*"):
         redis_client.delete(key)
         count += 1
 
@@ -188,9 +188,10 @@ def create_temp_redis_kv(setup_teardown_test):
     redis_client = get_redis_client(redis_fake_server=redis_fake_server)
 
     for i in range(1, 10):
-        key = RedisDriver.make_key('storey-test:', table_path, i)
+        key = RedisDriver.make_key("storey-test:", table_path, i)
         static_key = RedisDriver._static_data_key(key)
-        redis_client.hmset(static_key, mapping={'age': f'{10 - i}', 'color': f'blue{i}'})
+        redis_client.hmset(static_key, mapping={"age": f"{10 - i}", "color": f"blue{i}"})
+
 
 async def create_temp_kv(table_path):
     connector = aiohttp.TCPConnector()

@@ -106,7 +106,7 @@ def _get_redis_kv_all_attrs(setup_teardown_test: TestContext, key: str):
     from .integration_test_utils import get_redis_client
 
     table_name = setup_teardown_test.table_name
-    hash_key = RedisDriver.make_key(f'storey-test:', table_name, key)
+    hash_key = RedisDriver.make_key("storey-test:", table_name, key)
     redis_key = RedisDriver._static_data_key(hash_key)
     redis_fake_server = setup_teardown_test.redis_fake_server
     values = get_redis_client(redis_fake_server=redis_fake_server).hgetall(redis_key)
