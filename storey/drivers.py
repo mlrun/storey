@@ -17,7 +17,7 @@ import json
 import os
 from collections import OrderedDict
 from datetime import datetime, timedelta
-from typing import Optional, List
+from typing import List, Optional
 
 import pandas as pd
 import v3io
@@ -654,12 +654,12 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
         self._lazy_init()
 
         return await self._v3io_client.kv.get(
-                                            container,
-                                            table_path,
-                                            str(key),
-                                            attribute_names=attributes,
-                                            raise_for_status=v3io.aio.dataplane.RaiseForStatus.never,
-                                        )
+            container,
+            table_path,
+            str(key),
+            attribute_names=attributes,
+            raise_for_status=v3io.aio.dataplane.RaiseForStatus.never,
+        )
 
 
 class SQLDriver(Driver):
@@ -689,7 +689,7 @@ class SQLDriver(Driver):
         import sqlalchemy as db
 
         metadata = db.MetaData()
-        while table_path.startswith('/'):
+        while table_path.startswith("/"):
             table_path = table_path[1:]
 
         return db.Table(
@@ -705,9 +705,7 @@ class SQLDriver(Driver):
     async def _load_schema(self, container, table_path):
         self._lazy_init()
 
-    async def _save_key(
-        self, container, table_path, key, aggr_item, partitioned_by_key, additional_data
-    ):
+    async def _save_key(self, container, table_path, key, aggr_item, partitioned_by_key, additional_data):
         import sqlalchemy as db
 
         self._lazy_init()
@@ -753,9 +751,7 @@ class SQLDriver(Driver):
         except Exception as e:
             raise RuntimeError(f"Failed to get key {key}. Response error was: {e}")
 
-        return None, {
-            results[0]._fields[i]: results[0][i] for i in range(len(results[0]))
-        }
+        return None, {results[0]._fields[i]: results[0][i] for i in range(len(results[0]))}
 
     async def _get_specific_fields(self, key: str, table, attributes: List[str]):
         where_clause = self._get_where_clause(key)
@@ -765,17 +761,15 @@ class SQLDriver(Driver):
         except Exception as e:
             raise RuntimeError(f"Failed to get key {key}. Response error was: {e}")
 
-        return None, {
-            results[0]._fields[i]: results[0][i] for i in range(len(results[0]))
-        }
+        return None, {results[0]._fields[i]: results[0][i] for i in range(len(results[0]))}
 
     def supports_aggregations(self):
         return False
 
     def _get_where_clause(self, key):
         where_clause = ""
-        if isinstance(key, str) and '.' in key:
-            key = key.split('.')
+        if isinstance(key, str) and "." in key:
+            key = key.split(".")
         if isinstance(key, List):
             for i in range(len(self._primary_key)):
                 if i != 0:

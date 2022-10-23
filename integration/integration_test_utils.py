@@ -23,6 +23,7 @@ from datetime import datetime
 
 import aiohttp
 import fakeredis
+import pytest
 import redis as r
 
 import storey.drivers
@@ -30,11 +31,10 @@ from storey import V3ioDriver
 from storey.drivers import NeedsV3ioAccess
 from storey.flow import V3ioError
 from storey.redis_driver import RedisDriver
-import pytest
 
 _non_int_char_pattern = re.compile(r"[^-0-9]")
 test_base_time = datetime.fromisoformat("2020-07-21T21:40:00+00:00")
-SQL_DB = 'sqlite:///test.db'
+SQL_DB = "sqlite:///test.db"
 
 
 class V3ioHeaders(NeedsV3ioAccess):
@@ -117,13 +117,15 @@ def remove_redis_table(table_name):
 
 def remove_sql_tables():
     import sqlalchemy as db
+
     engine = db.create_engine(SQL_DB)
-    with engine.connect() as conn:
+    with engine.connect() as _:
         metadata = db.MetaData()
         metadata.reflect(bind=engine)
-        # and drop them, if they exist
+        # drop them, if they exist
         metadata.drop_all(bind=engine, checkfirst=True)
         engine.dispose()
+
 
 class TestContext:
     def __init__(self, driver_name: str, table_name: str):
@@ -139,7 +141,7 @@ class TestContext:
         if driver_name == "SQLDriver":
             self._sql_db_path = SQL_DB
             self._sql_table_name = table_name.split("/")[-2]
-            self._table_name = f'{SQL_DB}/{self._sql_table_name}'
+            self._table_name = f"{SQL_DB}/{self._sql_table_name}"
 
     @property
     def table_name(self):
@@ -165,8 +167,7 @@ class TestContext:
         def supports_aggregations(self):
             return False
 
-
-    def driver(self, IsAggregationlessDriver = False, primary_key=None, *args, **kwargs):
+    def driver(self, IsAggregationlessDriver=False, primary_key=None, *args, **kwargs):
         if self.driver_name == "V3ioDriver":
             v3io_driver_class = TestContext.AggregationlessV3ioDriver if IsAggregationlessDriver else V3ioDriver
             return v3io_driver_class(*args, **kwargs)
@@ -182,20 +183,23 @@ class TestContext:
             sql_driver_class = storey.drivers.SQLDriver
             return sql_driver_class(db_path=SQL_DB, primary_key=primary_key, *args, **kwargs)
         elif self.driver_name == "SQLDriver" and not IsAggregationlessDriver:
-            pytest.skip('SQLDriver doesnt support aggregation')
+            pytest.skip("SQLDriver doesnt support aggregation")
         else:
             driver_name = self.driver_name
-            raise ValueError(f'Unsupported driver name "{driver_name}" with IsAggregationlessDriver = {IsAggregationlessDriver}')
+            raise ValueError(
+                f'Unsupported driver name "{driver_name}" with IsAggregationlessDriver = {IsAggregationlessDriver}'
+            )
 
 
+drivers_list = ["V3ioDriver", "RedisDriver", "SQLDriver"]
 
-drivers_list = ["V3ioDriver", "RedisDriver", 'SQLDriver']
+
 @pytest.fixture(params=drivers_list)
 def setup_teardown_test(request):
     # Setup
-    if request.param == 'SQLDriver' and request.fspath.basename != 'test_flow_integration.py':
+    if request.param == "SQLDriver" and request.fspath.basename != "test_flow_integration.py":
         pytest.skip("SQLDriver test only in test_flow_integration")
-    test_context = TestContext(request.param, table_name = _generate_table_name())
+    test_context = TestContext(request.param, table_name=_generate_table_name())
 
     # Test runs
     yield test_context
@@ -222,7 +226,7 @@ def setup_kv_teardown_test(request):
     elif test_context.driver_name == "RedisDriver":
         create_temp_redis_kv(test_context)
     elif test_context.driver_name == "SQLDriver":
-        pytest.skip(msg='test not relevant for SQLDriver')
+        pytest.skip(msg="test not relevant for SQLDriver")
     else:
         raise ValueError(f'Unsupported driver name "{test_context.driver_name}"')
 
@@ -241,7 +245,7 @@ def setup_kv_teardown_test(request):
 @pytest.fixture()
 def assign_stream_teardown_test():
     # Setup
-    stream_path = _generate_table_name('bigdata/storey_ci/stream_test')
+    stream_path = _generate_table_name("bigdata/storey_ci/stream_test")
 
     # Test runs
     yield stream_path
@@ -380,16 +384,17 @@ def _convert_nginx_to_python_type(typ, value):
         nanosecs = int(splits[1])
         return datetime.utcfromtimestamp(secs + nanosecs / 1000000000)
     else:
-        raise V3ioError(f'Type {typ} in get item response is not supported')
+        raise V3ioError(f"Type {typ} in get item response is not supported")
 
 
 def create_sql_table(schema, table_name, sql_db_path, key):
-    import sqlalchemy as db
-    import pandas as pd
     import datetime
 
+    import pandas as pd
+    import sqlalchemy as db
+
     engine = db.create_engine(sql_db_path, echo=True)
-    with engine.connect() as conn:
+    with engine.connect() as _:
         metadata = db.MetaData()
         columns = []
         for col, col_type in schema.items():
@@ -409,4 +414,3 @@ def create_sql_table(schema, table_name, sql_db_path, key):
 
         db.Table(table_name, metadata, *columns)
         metadata.create_all(engine)
-

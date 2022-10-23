@@ -31,9 +31,7 @@ import pytz
 from aiohttp import ClientConnectorError, InvalidURL
 from pandas.testing import assert_frame_equal
 
-from storey.flow import _ConcurrentJobExecution, Context, ReifyMetadata, Rename
 import storey
-
 from storey import (
     AsyncEmitSource,
     Batch,
@@ -61,14 +59,15 @@ from storey import (
     Reduce,
     ReduceToDataFrame,
     SendToHttp,
+    SQLSource,
     SyncEmitSource,
     Table,
     ToDataFrame,
     TSDBTarget,
     V3ioDriver,
     build_flow,
-    SQLSource
 )
+from storey.flow import Context, ReifyMetadata, Rename, _ConcurrentJobExecution
 
 
 class ATestException(Exception):
@@ -3916,24 +3915,27 @@ def test_rename():
     controller.emit({"a": 1, "b": 2, "c": 3, "d": 4, "e": 5})
     controller.terminate()
     termination_result = controller.await_termination()
-    assert termination_result == [{'b': 1, 'c': 3, 'e': 5}]
+    assert termination_result == [{"b": 1, "c": 3, "e": 5}]
 
 
 def test_read_sql_db():
     import sqlalchemy as db
-    engine = db.create_engine('sqlite:///test.db', echo=True)
+
+    engine = db.create_engine("sqlite:///test.db", echo=True)
     with engine.connect() as conn:
-        origin_df = pd.DataFrame({'string': ['hello', 'world'], 'int': [1, 2], 'float': [1.5, 2.5]})
-        origin_df.to_sql('table_1', conn, if_exists="replace")
+        origin_df = pd.DataFrame({"string": ["hello", "world"], "int": [1, 2], "float": [1.5, 2.5]})
+        origin_df.to_sql("table_1", conn, if_exists="replace")
         conn.close()
-    controller = build_flow([
-        SQLSource('sqlite:///test.db', 'table_1', 'string'),
-        Reduce([], append_and_return),
-    ]).run()
+    controller = build_flow(
+        [
+            SQLSource("sqlite:///test.db", "table_1", "string"),
+            Reduce([], append_and_return),
+        ]
+    ).run()
 
     termination_result = controller.await_termination()
     expected = [
-        {'string': 'hello', 'int': 1, 'float': 1.5}, {'string': 'world', 'int': 2, 'float': 2.5},
+        {"string": "hello", "int": 1, "float": 1.5},
+        {"string": "world", "int": 2, "float": 2.5},
     ]
     assert termination_result == expected
-

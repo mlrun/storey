@@ -1100,9 +1100,7 @@ class SQLSource(_IterableSource, WithUUID):
                 await self._do_downstream(event)
             else:
                 if self.context:
-                    self.context.logger.error(
-                        f"For {body} value of key {key_field} is None"
-                    )
+                    self.context.logger.error(f"For {body} value of key {key_field} is None")
         return await self._do_downstream(_termination_obj)
 
     def get_val_from_multi_dictionary(self, event, field):
