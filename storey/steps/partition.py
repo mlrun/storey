@@ -13,7 +13,7 @@
 # limitations under the License.
 #
 from collections import namedtuple
-from typing import Callable, Any
+from typing import Any, Callable
 
 from storey import Flow
 from storey.dtypes import _termination_obj
