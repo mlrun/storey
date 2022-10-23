@@ -14,15 +14,24 @@
 #
 import pytest
 
-from storey import build_flow, SyncEmitSource,  Reduce, Complete, \
-    NoSqlTarget, Table,JoinWithTable
+from storey import (
+    Complete,
+    JoinWithTable,
+    NoSqlTarget,
+    Reduce,
+    SyncEmitSource,
+    Table,
+    build_flow,
+)
 from storey.redis_driver import RedisDriver
+
 from .integration_test_utils import append_return, get_redis_client
 
 
 @pytest.fixture()
 def redis():
     return get_redis_client()
+
 
 def test_redis_driver_write(redis):
     try:
