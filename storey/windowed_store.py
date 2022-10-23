@@ -16,9 +16,15 @@ import asyncio
 import copy
 from datetime import datetime
 
-from .dtypes import (EmissionType, EmitAfterDelay, EmitAfterMaxEvent,
-                     EmitAfterPeriod, EmitAfterWindow, EmitEveryEvent,
-                     LateDataHandling)
+from .dtypes import (
+    EmissionType,
+    EmitAfterDelay,
+    EmitAfterMaxEvent,
+    EmitAfterPeriod,
+    EmitAfterWindow,
+    EmitEveryEvent,
+    LateDataHandling,
+)
 from .flow import Event, Flow, _termination_obj
 
 _default_emit_policy = EmitAfterMaxEvent(10)
@@ -61,8 +67,7 @@ class Window(Flow):
             return await self._do_downstream(_termination_obj)
 
         if (not self._emit_worker_running) and (
-            isinstance(self._emit_policy, EmitAfterPeriod)
-            or isinstance(self._emit_policy, EmitAfterWindow)
+            isinstance(self._emit_policy, EmitAfterPeriod) or isinstance(self._emit_policy, EmitAfterWindow)
         ):
             asyncio.get_running_loop().create_task(self._emit_worker())
             self._emit_worker_running = True
@@ -97,10 +102,7 @@ class WindowBucket:
         self.late_data_handling = late_data_handling
 
     def add(self, t, v):
-        if (
-            t < self.max_time
-            and self.late_data_handling == LateDataHandling.Sort_before_emit
-        ):
+        if t < self.max_time and self.late_data_handling == LateDataHandling.Sort_before_emit:
             index = 0
             for data_point in self.data:
                 if t < data_point[0]:
@@ -128,8 +130,7 @@ class WindowedStoreElement:
         self.features = {}
         self.first_bucket_start_time = self.window.get_window_start_time()
         self.last_bucket_start_time = (
-            self.first_bucket_start_time
-            + (window.get_total_number_of_buckets() - 1) * window.period_millis
+            self.first_bucket_start_time + (window.get_total_number_of_buckets() - 1) * window.period_millis
         )
 
     def add(self, data, timestamp):
@@ -150,9 +151,7 @@ class WindowedStoreElement:
 
     def get_or_advance_bucket_index_by_timestamp(self, timestamp):
         if timestamp < self.last_bucket_start_time + self.window.period_millis:
-            bucket_index = int(
-                (timestamp - self.first_bucket_start_time) / self.window.period_millis
-            )
+            bucket_index = int((timestamp - self.first_bucket_start_time) / self.window.period_millis)
             return bucket_index
         else:
             self.advance_window_period(timestamp)
@@ -161,12 +160,8 @@ class WindowedStoreElement:
     def advance_window_period(self, advance_to=None):
         if not advance_to:
             advance_to = datetime.now().timestamp() * 1000
-        desired_bucket_index = int(
-            (advance_to - self.first_bucket_start_time) / self.window.period_millis
-        )
-        buckets_to_advnace = desired_bucket_index - (
-            self.window.get_total_number_of_buckets() - 1
-        )
+        desired_bucket_index = int((advance_to - self.first_bucket_start_time) / self.window.period_millis)
+        buckets_to_advnace = desired_bucket_index - (self.window.get_total_number_of_buckets() - 1)
 
         if buckets_to_advnace > 0:
             if buckets_to_advnace > self.window.get_total_number_of_buckets():
@@ -176,18 +171,10 @@ class WindowedStoreElement:
                 for column in self.features:
                     self.features[column] = self.features[column][buckets_to_advnace:]
                     for _ in range(buckets_to_advnace):
-                        self.features[column].extend(
-                            [WindowBucket(self.late_data_handling)]
-                        )
+                        self.features[column].extend([WindowBucket(self.late_data_handling)])
 
-            self.first_bucket_start_time = (
-                self.first_bucket_start_time
-                + buckets_to_advnace * self.window.period_millis
-            )
-            self.last_bucket_start_time = (
-                self.last_bucket_start_time
-                + buckets_to_advnace * self.window.period_millis
-            )
+            self.first_bucket_start_time = self.first_bucket_start_time + buckets_to_advnace * self.window.period_millis
+            self.last_bucket_start_time = self.last_bucket_start_time + buckets_to_advnace * self.window.period_millis
 
     def flush(self):
         for column in self.features:
@@ -220,9 +207,7 @@ class WindowedStore:
 
     def add(self, key, data, timestamp):
         if key not in self.cache:
-            self.cache[key] = WindowedStoreElement(
-                key, self.window, self.late_data_handling
-            )
+            self.cache[key] = WindowedStoreElement(key, self.window, self.late_data_handling)
 
         if isinstance(timestamp, datetime):
             timestamp = timestamp.timestamp() * 1000

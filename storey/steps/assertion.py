@@ -42,9 +42,7 @@ _IS_INTERSECT = _Operator("any of", lambda col1, col2: any((c in col2 for c in c
 _IS_SUBSET = _Operator("all of", lambda col1, col2: all((c in col2 for c in col1)))
 _IS_IDENTITY = _Operator(
     "exactly",
-    lambda col1, col2: len(col1) == len(col2)
-    and _IS_SUBSET(col1, col2)
-    and _IS_SUBSET(col2, col1),
+    lambda col1, col2: len(col1) == len(col2) and _IS_SUBSET(col1, col2) and _IS_SUBSET(col2, col1),
 )
 _IS_DISJOINT = _Operator("none of", lambda col1, col2: not _IS_INTERSECT(col1, col2))
 
@@ -70,9 +68,7 @@ class _AssertEventCount(_Assertable):
 
     def check(self):
         op = self.operator(self.actual, self.expected)
-        assert (
-            op
-        ), f"Expected event count {self.operator} {self.expected}, got {self.actual} instead"
+        assert op, f"Expected event count {self.operator} {self.expected}, got {self.actual} instead"
 
 
 class _AssertCollection(_Assertable):
@@ -118,9 +114,7 @@ class Assert(Flow):
         return self
 
     def greater_or_equal_to(self, expected: int):
-        self.termination_assertions.append(
-            _AssertEventCount(expected, _GREATER_OR_EQUAL)
-        )
+        self.termination_assertions.append(_AssertEventCount(expected, _GREATER_OR_EQUAL))
         return self
 
     def greater_than(self, expected: int):

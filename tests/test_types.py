@@ -14,14 +14,17 @@
 #
 import pytest
 
-from storey.dtypes import (EmitAfterDelay, EmitAfterMaxEvent, EmitAfterPeriod,
-                           EmitAfterWindow, EmitEveryEvent, Event,
-                           _dict_to_emit_policy)
-
-
-@pytest.mark.parametrize(
-    "emit_policy", [EmitEveryEvent, EmitAfterPeriod, EmitAfterWindow]
+from storey.dtypes import (
+    EmitAfterDelay,
+    EmitAfterMaxEvent,
+    EmitAfterPeriod,
+    EmitAfterWindow,
+    EmitEveryEvent,
+    _dict_to_emit_policy,
 )
+
+
+@pytest.mark.parametrize("emit_policy", [EmitEveryEvent, EmitAfterPeriod, EmitAfterWindow])
 def test_emit_policy_basic(emit_policy):
     policy_dict = {"mode": emit_policy.name()}
     policy = _dict_to_emit_policy(policy_dict)
@@ -31,29 +34,20 @@ def test_emit_policy_basic(emit_policy):
 @pytest.mark.parametrize("emit_policy", [EmitAfterDelay, EmitAfterMaxEvent])
 def test_emit_policy_bad_parameters(emit_policy):
     policy_dict = {"mode": emit_policy.name()}
-    try:
+    with pytest.raises(ValueError):
         _dict_to_emit_policy(policy_dict)
-        assert False
-    except ValueError:
-        pass
 
 
 def test_emit_policy_wrong_type():
     policy_dict = {"mode": "d-o-g-g"}
-    try:
+    with pytest.raises(TypeError):
         _dict_to_emit_policy(policy_dict)
-        assert False
-    except TypeError:
-        pass
 
 
 def test_emit_policy_wrong_args():
     policy_dict = {"mode": EmitAfterWindow.name(), "daily": 8}
-    try:
+    with pytest.raises(ValueError):
         _dict_to_emit_policy(policy_dict)
-        assert False
-    except ValueError:
-        pass
 
 
 def test_emit_policy_delay():

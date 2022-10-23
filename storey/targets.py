@@ -58,9 +58,7 @@ class _Writer:
         self._retain_dict = retain_dict
         self._storage_options = storage_options
 
-        self._field_extractor = lambda event_body, field_name: event_body.get(
-            field_name
-        )
+        self._field_extractor = lambda event_body, field_name: event_body.get(field_name)
         self._write_missing_fields = False
 
         def parse_notation(columns, metadata_columns, rename_columns):
@@ -94,9 +92,7 @@ class _Writer:
         columns_no_types, column_types = unzip_cols(columns)
         index_cols_no_types, index_cols_types = unzip_cols(index_cols)
 
-        self._initial_columns = parse_notation(
-            columns_no_types, self._metadata_columns, self._rename_columns
-        )
+        self._initial_columns = parse_notation(columns_no_types, self._metadata_columns, self._rename_columns)
         self._initial_index_cols = parse_notation(
             index_cols_no_types,
             self._metadata_index_columns,
@@ -130,9 +126,7 @@ class _Writer:
         self._partition_cols = partition_cols
 
         if partition_cols is not None and index_cols is not None:
-            cols_both_partition_and_index = set(partition_cols).intersection(
-                set(index_cols)
-            )
+            cols_both_partition_and_index = set(partition_cols).intersection(set(index_cols))
             if cols_both_partition_and_index:
                 raise ValueError(
                     f"The following columns are used both for partitioning and indexing, which is not allowed: "
@@ -170,9 +164,7 @@ class _Writer:
                 else:
                     self._non_partition_columns.append(col)
                     if self._column_types:
-                        self._non_partition_column_types.append(
-                            self._column_types[index]
-                        )
+                        self._non_partition_column_types.append(self._column_types[index])
 
     def _path_from_event(self, event):
         res = "/"
@@ -220,18 +212,14 @@ class _Writer:
             res += f"{col}={val}/"
         return res
 
-    def _get_column_data_from_dict(
-        self, new_data, event, columns, columns_types, metadata_columns, rename_columns
-    ):
+    def _get_column_data_from_dict(self, new_data, event, columns, columns_types, metadata_columns, rename_columns):
         if columns:
             for index, column in enumerate(columns):
                 if column in metadata_columns:
                     metadata_attr = metadata_columns[column]
                     new_value = getattr(event, metadata_attr)
                 elif column in rename_columns:
-                    new_value = self._field_extractor(
-                        event.body, rename_columns[column]
-                    )
+                    new_value = self._field_extractor(event.body, rename_columns[column])
                 else:
                     new_value = self._field_extractor(event.body, column)
 
@@ -257,9 +245,7 @@ class _Writer:
                 new_data[column] = value
 
     @staticmethod
-    def _get_column_data_from_list(
-        new_data, event, original_data, columns, metadata_columns
-    ):
+    def _get_column_data_from_list(new_data, event, original_data, columns, metadata_columns):
         data_cursor = 0
         for column in columns:
             if column in metadata_columns:
@@ -310,9 +296,7 @@ class _Writer:
                     "Cannot infer_columns_from_data when event type is list. Inference is only possible from dict."
                 )
             sub_metadata = bool(self._columns) and bool(self._metadata_columns)
-            sub_index_metadata = bool(self._index_cols) and bool(
-                self._metadata_index_columns
-            )
+            sub_index_metadata = bool(self._index_cols) and bool(self._metadata_index_columns)
             if sub_metadata or sub_index_metadata:
                 data = []
                 cursor = self._get_column_data_from_list(
@@ -349,29 +333,30 @@ class CSVTarget(_Batching, _Writer):
     """Writes events to a CSV file.
 
     :param path: path where CSV file will be written.
-    :param columns: Fields to be written to CSV. Will be written as the file header if write_header is True. Will be extracted from
-        events when an event is a dictionary (lists will be written as is). Use = notation for renaming fields
-        (e.g. write_this=event_field).
-        Use $ notation to refer to metadata ($key, event_time=$time). Optional. Defaults to None (will be inferred if event is dictionary).
+    :param columns: Fields to be written to CSV. Will be written as the file header if write_header is True. Will be
+        extracted from events when an event is a dictionary (lists will be written as is). Use = notation for renaming
+        fields (e.g. write_this=event_field). Use $ notation to refer to metadata ($key, event_time=$time). Optional.
+        Defaults to None (will be inferred if event is dictionary).
     :param header: Whether to write the columns as a CSV header.
-    :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries. If True, columns will be
-        inferred from data and used in place of explicit columns list if none was provided, or appended to the provided list.
-        If columns is not provided, infer_columns_from_data=True is implied.
-        Optional. Default to False if columns is provided, True otherwise.
+    :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries. If
+        True, columns will be inferred from data and used in place of explicit columns list if none was provided, or
+        appended to the provided list. If columns is not provided, infer_columns_from_data=True is implied. Optional.
+        Default to False if columns is provided, True otherwise.
     :param max_lines_before_flush: Number of lines to write before flushing data to the output file. Defaults to 128.
     :param max_seconds_before_flush: Maximum delay in seconds before flushing lines. Defaults to 3.
     :param name: Name of this step, as it should appear in logs. Defaults to class name (CSVTarget).
     :type name: string
-    :param max_events: Maximum number of events to write at a time. If None (default), all events will be written on flow termination,
-        or after timeout_secs (if timeout_secs is set).
+    :param max_events: Maximum number of events to write at a time. If None (default), all events will be written on
+        flow termination, or after timeout_secs (if timeout_secs is set).
     :type max_events: int
-    :param timeout_secs: Maximum number of seconds to hold events before they are written. If None (default), all events will be written
-        on flow termination, or after max_events are accumulated (if max_events is set).
+    :param timeout_secs: Maximum number of seconds to hold events before they are written. If None (default), all events
+        will be written on flow termination, or after max_events are accumulated (if max_events is set).
     :type timeout_secs: int
     :param key: batching will be done by key
     :type key: str or Event
-    :param storage_options: Extra options that make sense for a particular storage connection, e.g. host, port, username, password, etc.,
-        if using a URL that will be parsed by fsspec, e.g., starting “s3://”, “gcs://”. Optional
+    :param storage_options: Extra options that make sense for a particular storage connection, e.g. host, port,
+        username, password, etc., if using a URL that will be parsed by fsspec, e.g., starting
+        "s3://”, "gcs://”. Optional.
     :type storage_options: dict
     """
 
@@ -404,9 +389,7 @@ class CSVTarget(_Batching, _Writer):
         self._path = path
         self._write_header = header
 
-        self._field_extractor = lambda event_body, field_name: event_body.get(
-            field_name, ""
-        )
+        self._field_extractor = lambda event_body, field_name: event_body.get(field_name, "")
         self._write_missing_fields = True
 
     def _init(self):
@@ -451,60 +434,55 @@ class CSVTarget(_Batching, _Writer):
     def _event_to_batch_entry(self, event):
         writer_entry = self._event_to_writer_entry(event)
         if not isinstance(writer_entry, list):
-            raise TypeError(
-                f"CSV writer does not support event body of type {type(event.body)}."
-            )
+            raise TypeError(f"CSV writer does not support event body of type {type(event.body)}.")
         return writer_entry
 
     async def _terminate(self):
-        asyncio.get_running_loop().run_in_executor(
-            None, lambda: self._data_buffer.put(_termination_obj)
-        )
+        asyncio.get_running_loop().run_in_executor(None, lambda: self._data_buffer.put(_termination_obj))
         await self._blocking_io_loop_future
 
     async def _emit(self, batch, batch_key, batch_time, last_event_time=None):
         if not self._blocking_io_loop_future:
-            self._blocking_io_loop_future = asyncio.get_running_loop().run_in_executor(
-                None, self._blocking_io_loop
-            )
+            self._blocking_io_loop_future = asyncio.get_running_loop().run_in_executor(None, self._blocking_io_loop)
 
         if self._blocking_io_loop_failed:
             await self._blocking_io_loop_future
         else:
-            await asyncio.get_running_loop().run_in_executor(
-                None, lambda: self._data_buffer.put(batch)
-            )
+            await asyncio.get_running_loop().run_in_executor(None, lambda: self._data_buffer.put(batch))
 
 
 class ParquetTarget(_Batching, _Writer):
     """Writes incoming events to parquet files.
 
-    :param path: Output path. Can be either a file or directory. This parameter is forwarded as-is to pandas.DataFrame.to_parquet().
-    :param index_cols: Index columns for writing the data. Use = notation for renaming fields (e.g. write_this=event_field). Use $ notation
-        to refer to metadata ($key, event_time=$time).If None (default), no index is set.
+    :param path: Output path. Can be either a file or directory. This parameter is forwarded as-is to
+        pandas.DataFrame.to_parquet().
+    :param index_cols: Index columns for writing the data. Use = notation for renaming fields (e.g.
+        write_this=event_field). Use $ notation to refer to metadata ($key, event_time=$time).If None (default), no
+        index is set.
     :param columns: Fields to be written to parquet. Will be extracted from events when an event is a dictionary
         (lists will be written as is). Use = notation for renaming fields (e.g. write_this=event_field).
-        Use $ notation to refer to metadata ($key, event_time=$time). Can be a list of (name, type) tuples in order to set the
-        schema explicitly, e.g. ('my_field', 'str'). Supported types: str, int32, int, float32, float, bool, datetime.
-        Optional. Defaults to None (will be inferred if event is dictionary).
+        Use $ notation to refer to metadata ($key, event_time=$time). Can be a list of (name, type) tuples in order to
+        set the schema explicitly, e.g. ('my_field', 'str'). Supported types: str, int32, int, float32, float, bool,
+        datetime. Optional. Defaults to None (will be inferred if event is dictionary).
     :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries.
-        If True, columns will be inferred from data and used in place of explicit columns list if none was provided, or appended to the
-        provided list. If columns were not provided and infer_columns_from_data=False, PyArrow will infer the schema per file written,
-        which may cause the schemas to differ between files (e.g. if a column is all null in one file but not in another).
-        Optional. Defaults to False.
-    :param partition_cols: Columns by which to partition the data into directories. The following metadata columns are also supported:
-        $key, $date (e.g. 2020-02-09), $year, $month, $day, $hour, $minute, $second. A column may be specified as a tuple, such as
-        ('$key', 64), which means partitioning by the event key hashed into 64 partitions.
-        If None (the default), the data will only be partitioned if the path ends in .parquet or .pq. Otherwise, it will be partitioned by
-        key/year/month/day/hour, where the key is hashed into 256 buckets.
-    :param max_events: Maximum number of events to write at a time. If None (default), all events will be written on flow termination,
-        or after timeout_secs (if timeout_secs is set).
+        If True, columns will be inferred from data and used in place of explicit columns list if none was provided, or
+        appended to the provided list. If columns were not provided and infer_columns_from_data=False, PyArrow will
+        infer the schema per file written, which may cause the schemas to differ between files (e.g. if a column is all
+        null in one file but not in another). Optional. Defaults to False.
+    :param partition_cols: Columns by which to partition the data into directories. The following metadata columns are
+        also supported: $key, $date (e.g. 2020-02-09), $year, $month, $day, $hour, $minute, $second. A column may be
+        specified as a tuple, such as ('$key', 64), which means partitioning by the event key hashed into 64 partitions.
+        If None (the default), the data will only be partitioned if the path ends in .parquet or .pq. Otherwise, it will
+        be partitioned by key/year/month/day/hour, where the key is hashed into 256 buckets.
+    :param max_events: Maximum number of events to write at a time. If None (default), all events will be written on
+        flow termination, or after timeout_secs (if timeout_secs is set).
     :type max_events: int
-    :param timeout_secs: Maximum number of seconds to hold events before they are written. If None (default), all events will be written
-        on flow termination, or after max_events are accumulated (if max_events is set).
+    :param timeout_secs: Maximum number of seconds to hold events before they are written. If None (default), all events
+        will be written on flow termination, or after max_events are accumulated (if max_events is set).
     :type timeout_secs: int
-    :param storage_options: Extra options that make sense for a particular storage connection, e.g. host, port, username, password, etc.,
-        if using a URL that will be parsed by fsspec, e.g., starting “s3://”, “gcs://”. Optional
+    :param storage_options: Extra options that make sense for a particular storage connection, e.g. host, port,
+        username, password, etc., if using a URL that will be parsed by fsspec, e.g., starting
+        "s3://”, "gcs://”. Optional.
     :type storage_options: dict
     """
 
@@ -513,9 +491,7 @@ class ParquetTarget(_Batching, _Writer):
         path: str,
         index_cols: Union[str, Union[List[str], List[Tuple[str, str]]], None] = None,
         columns: Union[str, Union[List[str], List[Tuple[str, str]]], None] = None,
-        partition_cols: Union[
-            str, Union[List[str], List[Tuple[str, int]]], None
-        ] = None,
+        partition_cols: Union[str, Union[List[str], List[Tuple[str, int]]], None] = None,
         infer_columns_from_data: Optional[bool] = None,
         max_events: Optional[int] = None,
         flush_after_seconds: Optional[int] = None,
@@ -570,9 +546,7 @@ class ParquetTarget(_Batching, _Writer):
             storage_options=storage_options,
         )
 
-        self._field_extractor = lambda event_body, field_name: event_body.get(
-            field_name
-        )
+        self._field_extractor = lambda event_body, field_name: event_body.get(field_name)
         self._write_missing_fields = True
         self._mlrun_callback = kwargs.get("update_last_written")
         self._last_written_event = None
@@ -602,11 +576,7 @@ class ParquetTarget(_Batching, _Writer):
             dir_path += "/"
         if dir_path and not self._file_system.exists(dir_path):
             self._file_system.makedirs(dir_path, exist_ok=True)
-        file_path = (
-            self._path
-            if self._single_file_mode
-            else f"{dir_path}{uuid.uuid4()}.parquet"
-        )
+        file_path = self._path if self._single_file_mode else f"{dir_path}{uuid.uuid4()}.parquet"
         # Remove nanosecs from timestamp columns & index
         for name, _ in df.items():
             # If column type is a datetime or if it's a string but the column is listed as a datetime in the schema.
@@ -619,19 +589,14 @@ class ParquetTarget(_Batching, _Writer):
                 and isinstance(self._schema.field(name).type, pyarrow.TimestampType)
             ):
                 df[name] = df[name].astype("datetime64[us]")
-        if pd.core.dtypes.common.is_datetime64_dtype(
-            df.index
-        ) or pd.core.dtypes.common.is_datetime64tz_dtype(df.index):
+        if pd.core.dtypes.common.is_datetime64_dtype(df.index) or pd.core.dtypes.common.is_datetime64tz_dtype(df.index):
             df.index = df.index.floor("u")
         with self._file_system.open(file_path, "wb") as file:
             kwargs = {}
             if self._schema is not None:
                 kwargs["schema"] = self._schema
             df.to_parquet(path=file, index=bool(self._index_cols), **kwargs)
-            if (
-                not self._last_written_event
-                or last_event_time > self._last_written_event
-            ):
+            if not self._last_written_event or last_event_time > self._last_written_event:
                 self._last_written_event = last_event_time
 
     async def _terminate(self):
@@ -648,12 +613,12 @@ class TSDBTarget(_Batching, _Writer):
 
     :param path: Path to TSDB table.
     :param time_col: Name of the time column. Optional. Defaults to '$time'.
-    :param columns: List of column names to be passed to the DataFrame constructor. Use = notation for renaming fields (e.g.
-        write_this=event_field). Use $ notation to refer to metadata ($key, event_time=$time).
-    :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries. If True, columns will be
-        inferred from data and used in place of explicit columns list if none was provided, or appended to the provided list. If header is
-        True and columns is not provided, infer_columns_from_data=True is implied. Optional. Default to False if columns is provided,
-        True otherwise.
+    :param columns: List of column names to be passed to the DataFrame constructor. Use = notation for renaming fields
+        (e.g. write_this=event_field). Use $ notation to refer to metadata ($key, event_time=$time).
+    :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries. If
+        True, columns will be inferred from data and used in place of explicit columns list if none was provided, or
+        appended to the provided list. If header is True and columns is not provided, infer_columns_from_data=True is
+        implied. Optional. Default to False if columns is provided, True otherwise.
     :param index_cols: List of column names to be used for metric labels.
     :param v3io_frames: Frames service url.
     :param access_key: Access key to the system.
@@ -662,14 +627,15 @@ class TSDBTarget(_Batching, _Writer):
     :param aggr: Server-side aggregations for this TSDB table (e.g. 'sum,count').
     :param aggr_granularity: Granularity of server-side aggregations for this TSDB table (e.g. '1h').
     :param frames_client: Frames instance. Allows usage of an existing frames client.
-    :param max_events: Maximum number of events to write at a time. If None (default), all events will be written on flow termination,
-        or after timeout_secs (if timeout_secs is set).
+    :param max_events: Maximum number of events to write at a time. If None (default), all events will be written on
+        flow termination, or after timeout_secs (if timeout_secs is set).
     :type max_events: int
-    :param timeout_secs: Maximum number of seconds to hold events before they are written. If None (default), all events will be written
-        on flow termination, or after max_events are accumulated (if max_events is set).
+    :param timeout_secs: Maximum number of seconds to hold events before they are written. If None (default), all
+        events will be written on flow termination, or after max_events are accumulated (if max_events is set).
     :type timeout_secs: int
-    :param storage_options: Extra options that make sense for a particular storage connection, e.g. host, port, username, password, etc.,
-        if using a URL that will be parsed by fsspec, e.g., starting “s3://”, “gcs://”. Optional
+    :param storage_options: Extra options that make sense for a particular storage connection, e.g. host, port,
+        username, password, etc., if using a URL that will be parsed by fsspec, e.g., starting
+        "s3://”, "gcs://”. Optional
     :type storage_options: dict
     """
 
@@ -710,9 +676,7 @@ class TSDBTarget(_Batching, _Writer):
             if isinstance(index_cols, str):
                 index_cols = [index_cols]
             new_index_cols.extend(index_cols)
-        _Writer.__init__(
-            self, columns, infer_columns_from_data, index_cols=new_index_cols
-        )
+        _Writer.__init__(self, columns, infer_columns_from_data, index_cols=new_index_cols)
         parts = urlparse(path)
         self._path = parts.path
         container = parts.netloc
@@ -722,9 +686,7 @@ class TSDBTarget(_Batching, _Writer):
         self._aggr = aggr
         self.aggr_granularity = aggr_granularity
         self._created = False
-        self._frames_client = frames_client or frames.Client(
-            address=v3io_frames, token=access_key, container=container
-        )
+        self._frames_client = frames_client or frames.Client(address=v3io_frames, token=access_key, container=container)
 
     def _init(self):
         _Batching._init(self)
@@ -761,18 +723,21 @@ class StreamTarget(Flow, _Writer):
     :param sharding_func: Partition, sharding key field, or function from event to partition or sharding key. Optional.
         If not set, event key will be used as the sharding key.
     :param batch_size: Batch size for each write request.
-    :param columns: Fields to be written to stream. Will be extracted from events when an event is a dictionary (other types will be written
+    :param columns: Fields to be written to stream. Will be extracted from events when an event is a dictionary (other
+        types will be written
         as is). Use = notation for renaming fields (e.g. write_this=event_field). Use $ notation to refer to metadata
         ($key, event_time=$time). Optional. Defaults to None (will be inferred if event is dictionary).
-    :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries. If True, columns will be
-        inferred from data and used in place of explicit columns list if none was provided, or appended to the provided list. If header is
-        True and columns is not provided, infer_columns_from_data=True is implied. Optional. Default to False if columns is provided,
-        True otherwise.
+    :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries. If
+        True, columns will be inferred from data and used in place of explicit columns list if none was provided, or
+        appended to the provided list. If header is True and columns is not provided, infer_columns_from_data=True is
+        implied. Optional. Default to False if columns is provided, True otherwise.
     :param shards: If stream doesn't exist, it will be created with this number of shards. Defaults to 1.
-    :param retention_period_hours: If stream doesn't exist, it will be created with this retention time in hours. Defaults to 24.
+    :param retention_period_hours: If stream doesn't exist, it will be created with this retention time in hours.
+        Defaults to 24.
     :param full_event: Enable metadata wrapper for serialized event. Defaults to False.
-    :param storage_options: Extra options that make sense for a particular storage connection, e.g. host, port, username, password, etc.,
-        if using a URL that will be parsed by fsspec, e.g., starting “s3://”, “gcs://”. Optional
+    :param storage_options: Extra options that make sense for a particular storage connection, e.g. host, port,
+        username, password, etc., if using a URL that will be parsed by fsspec, e.g., starting
+        "s3://”, "gcs://”. Optional
     :type storage_options: dict
     """
 
@@ -810,9 +775,7 @@ class StreamTarget(Flow, _Writer):
         elif callable(sharding_func):
             self._sharding_func = sharding_func
         elif sharding_func:
-            raise TypeError(
-                f"Expected an int, string, or callable, got {sharding_func} of type {type(sharding_func)}"
-            )
+            raise TypeError(f"Expected an int, string, or callable, got {sharding_func} of type {type(sharding_func)}")
 
         self._batch_size = batch_size
 
@@ -833,9 +796,7 @@ class StreamTarget(Flow, _Writer):
             response = await request
             if response.output.failed_record_count == 0:
                 return
-            raise V3ioError(
-                f"Failed to put records to V3IO. Got {response.status_code} response: {response.body}"
-            )
+            raise V3ioError(f"Failed to put records to V3IO. Got {response.status_code} response: {response.body}")
 
     def _build_request_put_records(self, shard_id, records):
         record_list_for_json = []
@@ -850,9 +811,7 @@ class StreamTarget(Flow, _Writer):
         buffer = buffers[shard_id]
         buffers[shard_id] = []
         request_body = self._build_request_put_records(shard_id, buffer)
-        request = self._storage._put_records(
-            self._container, self._stream_path, request_body
-        )
+        request = self._storage._put_records(self._container, self._stream_path, request_body)
         in_flight_reqs[shard_id] = asyncio.get_running_loop().create_task(request)
 
     async def _worker(self):
@@ -871,9 +830,7 @@ class StreamTarget(Flow, _Writer):
                             await self._handle_response(req)
                             self._send_batch(buffers, in_flight_reqs, shard_id)
                     event = await self._q.get()
-                    if (
-                        event is _termination_obj
-                    ):  # handle outstanding batches and in flight requests on termination
+                    if event is _termination_obj:  # handle outstanding batches and in flight requests on termination
                         for req in in_flight_reqs:
                             await self._handle_response(req)
                         for shard_id in range(self._shards):
@@ -905,12 +862,8 @@ class StreamTarget(Flow, _Writer):
                     if self.context and hasattr(self.context, "push_error"):
                         message = traceback.format_exc()
                         if self.logger:
-                            self.logger.error(
-                                f"Pushing error to error stream: {ex}\n{message}"
-                            )
-                        self.context.push_error(
-                            event, f"{ex}\n{message}", source=self.name
-                        )
+                            self.logger.error(f"Pushing error to error stream: {ex}\n{message}")
+                        self.context.push_error(event, f"{ex}\n{message}", source=self.name)
                     else:
                         raise ex
         finally:
@@ -927,14 +880,10 @@ class StreamTarget(Flow, _Writer):
             )
             if status_code == 409:
                 # get actual number of shards (for pre existing stream)
-                response = await self._storage._describe(
-                    self._container, self._stream_path
-                )
+                response = await self._storage._describe(self._container, self._stream_path)
                 self._shards = response.shard_count
             elif status_code >= 400:
-                raise ValueError(
-                    f"Failed to create stream due to {status_code}: {response.body}"
-                )
+                raise ValueError(f"Failed to create stream due to {status_code}: {response.body}")
             if self._sharding_func is None:
 
                 def f(_):
@@ -943,9 +892,7 @@ class StreamTarget(Flow, _Writer):
                 self._sharding_func = f
 
             self._q = asyncio.queues.Queue(self._batch_size * self._shards)
-            self._worker_awaitable = asyncio.get_running_loop().create_task(
-                self._worker()
-            )
+            self._worker_awaitable = asyncio.get_running_loop().create_task(self._worker())
             self._initialized = True
 
     async def _do(self, event):
@@ -973,13 +920,14 @@ class KafkaTarget(Flow, _Writer):
     :param producer_options: Extra options to be passed as kwargs to kafka.KafkaProducer.
     :param sharding_func: Partition, sharding key field, or function from event to partition or sharding key. Optional.
         If not set, event key will be used as the sharding key.
-    :param columns: Fields to be written to topic. Will be extracted from events when an event is a dictionary (other types will be written
-        as is). Use = notation for renaming fields (e.g. write_this=event_field). Use $ notation to refer to metadata
-        ($key, event_time=$time). Optional. Defaults to None (will be inferred if event is dictionary).
-    :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries. If True, columns will be
-        inferred from data and used in place of explicit columns list if none was provided, or appended to the provided list. If header is
-        True and columns is not provided, infer_columns_from_data=True is implied. Optional. Default to False if columns is provided,
-        True otherwise.
+    :param columns: Fields to be written to topic. Will be extracted from events when an event is a dictionary (other
+        types will be written as is). Use = notation for renaming fields (e.g. write_this=event_field). Use $ notation
+        to refer to metadata ($key, event_time=$time). Optional. Defaults to None (will be inferred if event is
+        dictionary).
+    :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries. If
+        True, columns will be inferred from data and used in place of explicit columns list if none was provided, or
+        appended to the provided list. If header is True and columns is not provided, infer_columns_from_data=True is
+        implied. Optional. Default to False if columns is provided, True otherwise.
     :param full_event: Enable metadata wrapper for serialized event. Defaults to False.
     """
 
@@ -1011,9 +959,7 @@ class KafkaTarget(Flow, _Writer):
         elif callable(sharding_func):
             self._sharding_func = sharding_func
         elif sharding_func:
-            raise TypeError(
-                f"Expected an int, string, or callable, got {sharding_func} of type {type(sharding_func)}"
-            )
+            raise TypeError(f"Expected an int, string, or callable, got {sharding_func} of type {type(sharding_func)}")
 
         if columns:
             kwargs["columns"] = columns
@@ -1034,9 +980,7 @@ class KafkaTarget(Flow, _Writer):
 
         if not self._initialized:
             kwargs = self._producer_options or {}
-            self._producer = KafkaProducer(
-                bootstrap_servers=self._bootstrap_servers, **kwargs
-            )
+            self._producer = KafkaProducer(bootstrap_servers=self._bootstrap_servers, **kwargs)
             self._initialized = True
 
     async def _do(self, event):
@@ -1068,15 +1012,17 @@ class NoSqlTarget(_Writer, Flow):
     Persists the data in `table` to its associated storage by key.
 
     :param table: A Table object or name to persist. If a table name is provided, it will be looked up in the context.
-    :param columns: Fields to be written to the storage. Will be extracted from events when an event is a dictionary (lists will be written
-        as is). Use = notation for renaming fields (e.g. write_this=event_field).
-        Use $ notation to refer to metadata ($key, event_time=$time). Optional. Defaults to None (will be inferred if event is dictionary).
-    :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries. If True, columns will be
-        inferred from data and used in place of explicit columns list if none was provided, or appended to the provided list. If header is
-        True and columns is not provided, infer_columns_from_data=True is implied. Optional. Default to False if columns is provided, True
-        otherwise.
-    :param storage_options: Extra options that make sense for a particular storage connection, e.g. host, port, username, password, etc.,
-        if using a URL that will be parsed by fsspec, e.g., starting “s3://”, “gcs://”. Optional
+    :param columns: Fields to be written to the storage. Will be extracted from events when an event is a dictionary
+        (lists will be written as is). Use = notation for renaming fields (e.g. write_this=event_field).
+        Use $ notation to refer to metadata ($key, event_time=$time). Optional. Defaults to None (will be inferred if
+        event is dictionary).
+    :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries. If
+        True, columns will be inferred from data and used in place of explicit columns list if none was provided, or
+        appended to the provided list. If header is True and columns is not provided, infer_columns_from_data=True is
+        implied. Optional. Default to False if columns is provided, True otherwise.
+    :param storage_options: Extra options that make sense for a particular storage connection, e.g. host, port,
+        username, password, etc., if using a URL that will be parsed by fsspec, e.g., starting "s3://”,
+        "gcs://”. Optional.
     :type storage_options: dict
     """
 
@@ -1097,15 +1043,11 @@ class NoSqlTarget(_Writer, Flow):
         self._table = table
         if isinstance(table, str):
             if not self.context:
-                raise TypeError(
-                    "Table can not be string if no context was provided to the step"
-                )
+                raise TypeError("Table can not be string if no context was provided to the step")
             self._table = self.context.get_table(table)
         self._closeables = [self._table]
 
-        self._field_extractor = lambda event_body, field_name: event_body.get(
-            field_name
-        )
+        self._field_extractor = lambda event_body, field_name: event_body.get(field_name)
         self._write_missing_fields = False
 
     def _init(self):
@@ -1120,16 +1062,12 @@ class NoSqlTarget(_Writer, Flow):
             return await self._do_downstream(_termination_obj)
 
         if event.key is None:
-            raise ValueError(
-                "Event could not be written to table because it has no key"
-            )
+            raise ValueError("Event could not be written to table because it has no key")
 
         key = stringify_key(event.key)
         if not self._table._flush_interval_secs:
             data_to_persist = self._event_to_writer_entry(event)
-            await self._table._persist(
-                _PersistJob(key, data_to_persist, self._handle_completed, event)
-            )
+            await self._table._persist(_PersistJob(key, data_to_persist, self._handle_completed, event))
         else:
             data_to_persist = self._event_to_writer_entry(event)
             async with self._table._get_lock(key):

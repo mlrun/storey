@@ -17,11 +17,24 @@ import queue
 from datetime import datetime, timedelta, timezone
 
 import pandas as pd
+import pytest
 
-from storey import (AggregateByKey, DataframeSource, FieldAggregator,
-                    NoopDriver, Reduce, SyncEmitSource, Table, build_flow)
-from storey.dtypes import (EmitAfterMaxEvent, EmitEveryEvent, FixedWindows,
-                           SlidingWindows)
+from storey import (
+    AggregateByKey,
+    DataframeSource,
+    FieldAggregator,
+    NoopDriver,
+    Reduce,
+    SyncEmitSource,
+    Table,
+    build_flow,
+)
+from storey.dtypes import (
+    EmitAfterMaxEvent,
+    EmitEveryEvent,
+    FixedWindows,
+    SlidingWindows,
+)
 
 test_base_time = datetime.fromisoformat("2020-07-21T21:40:00+00:00")
 
@@ -1635,9 +1648,7 @@ def test_sliding_window_simple_aggregation_flow_multiple_fields():
                         ["count"],
                         SlidingWindows(["1h", "2h"], "15m"),
                     ),
-                    FieldAggregator(
-                        "abc", "col3", ["sum"], SlidingWindows(["24h"], "10m")
-                    ),
+                    FieldAggregator("abc", "col3", ["sum"], SlidingWindows(["24h"], "10m")),
                 ],
                 Table("test", NoopDriver()),
             ),
@@ -1907,121 +1918,87 @@ def test_fixed_window_aggregation_with_uncommon_windows_flow():
     columns = ["sample_time", "signal", "isotope"]
     data = [
         [
-            datetime.strptime("2021-05-30 16:42:15.797000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 16:42:15.797000", time_format).replace(tzinfo=timezone.utc),
             790.235,
             "U235",
         ],
         [
-            datetime.strptime("2021-05-30 16:45:15.798000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 16:45:15.798000", time_format).replace(tzinfo=timezone.utc),
             498.491,
             "U235",
         ],
         [
-            datetime.strptime("2021-05-30 16:48:15.799000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 16:48:15.799000", time_format).replace(tzinfo=timezone.utc),
             34650.00343,
             "U235",
         ],
         [
-            datetime.strptime("2021-05-30 16:51:15.800000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 16:51:15.800000", time_format).replace(tzinfo=timezone.utc),
             189.823,
             "U235",
         ],
         [
-            datetime.strptime("2021-05-30 16:54:15.801000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 16:54:15.801000", time_format).replace(tzinfo=timezone.utc),
             379.524,
             "U235",
         ],
         [
-            datetime.strptime("2021-05-30 16:57:15.802000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 16:57:15.802000", time_format).replace(tzinfo=timezone.utc),
             2225.4952,
             "U235",
         ],
         [
-            datetime.strptime("2021-05-30 17:00:15.803000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 17:00:15.803000", time_format).replace(tzinfo=timezone.utc),
             1049.0903,
             "U235",
         ],
         [
-            datetime.strptime("2021-05-30 17:03:15.804000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 17:03:15.804000", time_format).replace(tzinfo=timezone.utc),
             41905.63447,
             "U235",
         ],
         [
-            datetime.strptime("2021-05-30 17:06:15.805000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 17:06:15.805000", time_format).replace(tzinfo=timezone.utc),
             4987.6764,
             "U235",
         ],
         [
-            datetime.strptime("2021-05-30 17:09:15.806000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 17:09:15.806000", time_format).replace(tzinfo=timezone.utc),
             67657.11975,
             "U235",
         ],
         [
-            datetime.strptime("2021-05-30 17:12:15.807000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 17:12:15.807000", time_format).replace(tzinfo=timezone.utc),
             56173.06327,
             "U235",
         ],
         [
-            datetime.strptime("2021-05-30 17:15:15.808000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 17:15:15.808000", time_format).replace(tzinfo=timezone.utc),
             14249.67394,
             "U235",
         ],
         [
-            datetime.strptime("2021-05-30 17:18:15.809000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 17:18:15.809000", time_format).replace(tzinfo=timezone.utc),
             656.831,
             "U235",
         ],
         [
-            datetime.strptime("2021-05-30 17:21:15.810000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 17:21:15.810000", time_format).replace(tzinfo=timezone.utc),
             5768.4822,
             "U235",
         ],
         [
-            datetime.strptime("2021-05-30 17:24:15.811000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 17:24:15.811000", time_format).replace(tzinfo=timezone.utc),
             929.028,
             "U235",
         ],
         [
-            datetime.strptime("2021-05-30 17:27:15.812000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 17:27:15.812000", time_format).replace(tzinfo=timezone.utc),
             2585.9646,
             "U235",
         ],
         [
-            datetime.strptime("2021-05-30 17:30:15.813000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 17:30:15.813000", time_format).replace(tzinfo=timezone.utc),
             358.918,
             "U235",
         ],
@@ -2214,121 +2191,87 @@ def test_fixed_window_aggregation_with_multiple_keys_flow():
     columns = ["sample_time", "signal", "isotope"]
     data = [
         [
-            datetime.strptime("2021-05-30 16:42:15.797000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 16:42:15.797000", time_format).replace(tzinfo=timezone.utc),
             790.235,
             "U235",
         ],
         [
-            datetime.strptime("2021-05-30 16:45:15.798000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 16:45:15.798000", time_format).replace(tzinfo=timezone.utc),
             498.491,
             "U235",
         ],
         [
-            datetime.strptime("2021-05-30 16:48:15.799000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 16:48:15.799000", time_format).replace(tzinfo=timezone.utc),
             34650.00343,
             "U238",
         ],
         [
-            datetime.strptime("2021-05-30 16:51:15.800000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 16:51:15.800000", time_format).replace(tzinfo=timezone.utc),
             189.823,
             "U238",
         ],
         [
-            datetime.strptime("2021-05-30 16:54:15.801000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 16:54:15.801000", time_format).replace(tzinfo=timezone.utc),
             379.524,
             "U238",
         ],
         [
-            datetime.strptime("2021-05-30 16:57:15.802000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 16:57:15.802000", time_format).replace(tzinfo=timezone.utc),
             2225.4952,
             "U238",
         ],
         [
-            datetime.strptime("2021-05-30 17:00:15.803000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 17:00:15.803000", time_format).replace(tzinfo=timezone.utc),
             1049.0903,
             "U235",
         ],
         [
-            datetime.strptime("2021-05-30 17:03:15.804000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 17:03:15.804000", time_format).replace(tzinfo=timezone.utc),
             41905.63447,
             "U238",
         ],
         [
-            datetime.strptime("2021-05-30 17:06:15.805000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 17:06:15.805000", time_format).replace(tzinfo=timezone.utc),
             4987.6764,
             "U235",
         ],
         [
-            datetime.strptime("2021-05-30 17:09:15.806000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 17:09:15.806000", time_format).replace(tzinfo=timezone.utc),
             67657.11975,
             "U235",
         ],
         [
-            datetime.strptime("2021-05-30 17:12:15.807000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 17:12:15.807000", time_format).replace(tzinfo=timezone.utc),
             56173.06327,
             "U235",
         ],
         [
-            datetime.strptime("2021-05-30 17:15:15.808000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 17:15:15.808000", time_format).replace(tzinfo=timezone.utc),
             14249.67394,
             "U238",
         ],
         [
-            datetime.strptime("2021-05-30 17:18:15.809000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 17:18:15.809000", time_format).replace(tzinfo=timezone.utc),
             656.831,
             "U238",
         ],
         [
-            datetime.strptime("2021-05-30 17:21:15.810000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 17:21:15.810000", time_format).replace(tzinfo=timezone.utc),
             5768.4822,
             "U235",
         ],
         [
-            datetime.strptime("2021-05-30 17:24:15.811000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 17:24:15.811000", time_format).replace(tzinfo=timezone.utc),
             929.028,
             "U235",
         ],
         [
-            datetime.strptime("2021-05-30 17:27:15.812000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 17:27:15.812000", time_format).replace(tzinfo=timezone.utc),
             2585.9646,
             "U238",
         ],
         [
-            datetime.strptime("2021-05-30 17:30:15.813000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 17:30:15.813000", time_format).replace(tzinfo=timezone.utc),
             358.918,
             "U238",
         ],
@@ -2340,11 +2283,7 @@ def test_fixed_window_aggregation_with_multiple_keys_flow():
         [
             DataframeSource(df, time_field="sample_time", key_field="isotope"),
             AggregateByKey(
-                [
-                    FieldAggregator(
-                        "samples", "signal", ["count"], FixedWindows(["10m", "15m"])
-                    )
-                ],
+                [FieldAggregator("samples", "signal", ["count"], FixedWindows(["10m", "15m"]))],
                 Table("U235_test", NoopDriver()),
             ),
             Reduce([], lambda acc, x: append_return(acc, x)),
@@ -2484,121 +2423,87 @@ def test_sliding_window_aggregation_with_uncommon_windows_flow():
     columns = ["sample_time", "signal", "isotope"]
     data = [
         [
-            datetime.strptime("2021-05-30 16:42:15.797000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 16:42:15.797000", time_format).replace(tzinfo=timezone.utc),
             790.235,
             "U235",
         ],
         [
-            datetime.strptime("2021-05-30 16:45:15.798000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 16:45:15.798000", time_format).replace(tzinfo=timezone.utc),
             498.491,
             "U235",
         ],
         [
-            datetime.strptime("2021-05-30 16:48:15.799000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 16:48:15.799000", time_format).replace(tzinfo=timezone.utc),
             34650.00343,
             "U235",
         ],
         [
-            datetime.strptime("2021-05-30 16:51:15.800000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 16:51:15.800000", time_format).replace(tzinfo=timezone.utc),
             189.823,
             "U235",
         ],
         [
-            datetime.strptime("2021-05-30 16:54:15.801000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 16:54:15.801000", time_format).replace(tzinfo=timezone.utc),
             379.524,
             "U235",
         ],
         [
-            datetime.strptime("2021-05-30 16:57:15.802000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 16:57:15.802000", time_format).replace(tzinfo=timezone.utc),
             2225.4952,
             "U235",
         ],
         [
-            datetime.strptime("2021-05-30 17:00:15.803000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 17:00:15.803000", time_format).replace(tzinfo=timezone.utc),
             1049.0903,
             "U235",
         ],
         [
-            datetime.strptime("2021-05-30 17:03:15.804000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 17:03:15.804000", time_format).replace(tzinfo=timezone.utc),
             41905.63447,
             "U235",
         ],
         [
-            datetime.strptime("2021-05-30 17:06:15.805000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 17:06:15.805000", time_format).replace(tzinfo=timezone.utc),
             4987.6764,
             "U235",
         ],
         [
-            datetime.strptime("2021-05-30 17:09:15.806000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 17:09:15.806000", time_format).replace(tzinfo=timezone.utc),
             67657.11975,
             "U235",
         ],
         [
-            datetime.strptime("2021-05-30 17:12:15.807000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 17:12:15.807000", time_format).replace(tzinfo=timezone.utc),
             56173.06327,
             "U235",
         ],
         [
-            datetime.strptime("2021-05-30 17:15:15.808000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 17:15:15.808000", time_format).replace(tzinfo=timezone.utc),
             14249.67394,
             "U235",
         ],
         [
-            datetime.strptime("2021-05-30 17:18:15.809000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 17:18:15.809000", time_format).replace(tzinfo=timezone.utc),
             656.831,
             "U235",
         ],
         [
-            datetime.strptime("2021-05-30 17:21:15.810000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 17:21:15.810000", time_format).replace(tzinfo=timezone.utc),
             5768.4822,
             "U235",
         ],
         [
-            datetime.strptime("2021-05-30 17:24:15.811000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 17:24:15.811000", time_format).replace(tzinfo=timezone.utc),
             929.028,
             "U235",
         ],
         [
-            datetime.strptime("2021-05-30 17:27:15.812000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 17:27:15.812000", time_format).replace(tzinfo=timezone.utc),
             2585.9646,
             "U235",
         ],
         [
-            datetime.strptime("2021-05-30 17:30:15.813000", time_format).replace(
-                tzinfo=timezone.utc
-            ),
+            datetime.strptime("2021-05-30 17:30:15.813000", time_format).replace(tzinfo=timezone.utc),
             358.918,
             "U235",
         ],
@@ -2857,11 +2762,8 @@ def test_emit_max_event_sliding_window_multiple_keys_aggregation_flow():
 
 
 def test_error_on_bad_emit_policy():
-    try:
+    with pytest.raises(TypeError):
         AggregateByKey([], Table("test", NoopDriver()), emit_policy=EmitEveryEvent),
-        assert False
-    except TypeError:
-        pass
 
 
 def test_emit_delay_aggregation_flow():
@@ -3337,11 +3239,7 @@ def test_fixed_window_out_of_order_event():
         [
             SyncEmitSource(),
             AggregateByKey(
-                [
-                    FieldAggregator(
-                        "number_of_stuff", "col1", ["count"], FixedWindows(["1h", "2h"])
-                    )
-                ],
+                [FieldAggregator("number_of_stuff", "col1", ["count"], FixedWindows(["1h", "2h"]))],
                 Table("test", NoopDriver()),
             ),
             Reduce([], lambda acc, x: append_return(acc, x)),
@@ -3607,7 +3505,7 @@ def test_sliding_window_roll_cached_buckets():
 
 
 def test_aggregation_unique_fields():
-    try:
+    with pytest.raises(TypeError):
         build_flow(
             [
                 SyncEmitSource(),
@@ -3631,9 +3529,6 @@ def test_aggregation_unique_fields():
                 Reduce([], lambda acc, x: append_return(acc, x)),
             ]
         ).run()
-        assert False
-    except TypeError:
-        pass
 
 
 def test_fixed_window_aggregation_with_first_and_last_aggregates():

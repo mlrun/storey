@@ -19,16 +19,21 @@ import uuid
 import pandas as pd
 import pytest
 
-from storey import (AsyncEmitSource, CSVSource, CSVTarget, FlatMap, Map,
-                    ParquetTarget, Reduce, SyncEmitSource, build_flow)
+from storey import (
+    AsyncEmitSource,
+    CSVSource,
+    CSVTarget,
+    FlatMap,
+    Map,
+    ParquetTarget,
+    Reduce,
+    SyncEmitSource,
+    build_flow,
+)
 
 from .integration_test_utils import _generate_table_name
 
-has_s3_credentials = (
-    os.getenv("AWS_ACCESS_KEY_ID")
-    and os.getenv("AWS_SECRET_ACCESS_KEY")
-    and os.getenv("AWS_BUCKET")
-)
+has_s3_credentials = os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY") and os.getenv("AWS_BUCKET")
 if has_s3_credentials:
     from s3fs import S3FileSystem
 
@@ -129,11 +134,8 @@ def test_csv_reader_from_s3_error_on_file_not_found():
         ]
     ).run()
 
-    try:
+    with pytest.raises(FileNotFoundError):
         controller.await_termination()
-        assert False
-    except FileNotFoundError:
-        pass
 
 
 async def async_test_write_csv_to_s3(s3_teardown_csv):
@@ -164,9 +166,7 @@ def test_write_csv_to_s3(s3_teardown_file):
 @pytest.mark.skipif(not has_s3_credentials, reason="No s3 credentials found")
 def test_write_csv_with_dict_to_s3(s3_teardown_file):
     file_path = f"s3://{s3_teardown_file}"
-    controller = build_flow(
-        [SyncEmitSource(), CSVTarget(file_path, columns=["n", "n*10"], header=True)]
-    ).run()
+    controller = build_flow([SyncEmitSource(), CSVTarget(file_path, columns=["n", "n*10"], header=True)]).run()
 
     for i in range(10):
         controller.emit({"n": i, "n*10": 10 * i})
@@ -212,7 +212,20 @@ def test_write_csv_from_lists_with_metadata_and_column_pruning_to_s3(s3_teardown
     controller.await_termination()
 
     actual = S3FileSystem().open(s3_teardown_file).read()
-    expected = "event_key,n*10\nkey0,0\nkey1,10\nkey2,20\nkey3,30\nkey4,40\nkey5,50\nkey6,60\nkey7,70\nkey8,80\nkey9,90\n"
+    expected = (
+        "event_key,n*10\n"
+        "key0,0\n"
+        "key1,10\n"
+        "key2,20\n"
+        "key3,30\n"
+        "key4,40\n"
+        "key5,50\n"
+        "key6,60\n"
+        "key7,70\n"
+        "key8,80\n"
+        "key9,90\n"
+    )
+
     assert actual.decode("utf-8") == expected
 
 
@@ -223,9 +236,7 @@ def test_write_to_parquet_to_s3(s3_setup_teardown_test):
     controller = build_flow(
         [
             SyncEmitSource(),
-            ParquetTarget(
-                out_dir, partition_cols="my_int", columns=columns, max_events=1
-            ),
+            ParquetTarget(out_dir, partition_cols="my_int", columns=columns, max_events=1),
         ]
     ).run()
 
@@ -246,9 +257,7 @@ def test_write_to_parquet_to_s3(s3_setup_teardown_test):
 def test_write_to_parquet_to_s3_single_file_on_termination(s3_setup_teardown_test):
     out_file = f"s3://{s3_setup_teardown_test}/myfile.pq"
     columns = ["my_int", "my_string"]
-    controller = build_flow(
-        [SyncEmitSource(), ParquetTarget(out_file, columns=columns)]
-    ).run()
+    controller = build_flow([SyncEmitSource(), ParquetTarget(out_file, columns=columns)]).run()
 
     expected = []
     for i in range(10):
@@ -268,9 +277,7 @@ def test_write_to_parquet_to_s3_with_indices(s3_setup_teardown_test):
     controller = build_flow(
         [
             SyncEmitSource(),
-            ParquetTarget(
-                out_file, index_cols="event_key=$key", columns=["my_int", "my_string"]
-            ),
+            ParquetTarget(out_file, index_cols="event_key=$key", columns=["my_int", "my_string"]),
         ]
     ).run()
 
@@ -294,9 +301,7 @@ def test_write_to_parquet_to_s3_with_indices(s3_setup_teardown_test):
 def test_write_csv_to_s3_bucket_directly(s3_teardown_file_in_bucket):
     file_path = f's3://{s3_teardown_file_in_bucket("csv")}'
 
-    controller = build_flow(
-        [SyncEmitSource(), CSVTarget(file_path, columns=["n", "n*10"], header=True)]
-    ).run()
+    controller = build_flow([SyncEmitSource(), CSVTarget(file_path, columns=["n", "n*10"], header=True)]).run()
 
     for i in range(10):
         controller.emit({"n": i, "n*10": 10 * i})
@@ -315,9 +320,7 @@ def test_write_parquet_to_s3_bucket_directly(s3_teardown_file_in_bucket):
 
     file_path = f's3://{s3_teardown_file_in_bucket("parquet")}'
     #    file_path = f'/tmp/{s3_teardown_file_in_bucket("parquet")}'
-    controller = build_flow(
-        [SyncEmitSource(), ParquetTarget(file_path, columns=columns)]
-    ).run()
+    controller = build_flow([SyncEmitSource(), ParquetTarget(file_path, columns=columns)]).run()
 
     expected = []
     for i in range(10):

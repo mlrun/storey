@@ -62,9 +62,7 @@ class Event:
             elif isinstance(time, int):
                 time = datetime.utcfromtimestamp(time)
             else:
-                raise TypeError(
-                    f"Event time parameter must be a datetime, string, or int. Got {type(time)} instead."
-                )
+                raise TypeError(f"Event time parameter must be a datetime, string, or int. Got {type(time)} instead.")
         self.time = time or datetime.now(timezone.utc)
         self.id = id
         self.headers = headers
@@ -131,9 +129,7 @@ class FixedWindow(WindowBase):
 
     def __init__(self, window: str):
         window_millis = parse_duration(window)
-        WindowBase.__init__(
-            self, window_millis, window_millis / bucketPerWindow, window
-        )
+        WindowBase.__init__(self, window_millis, window_millis / bucketPerWindow, window)
 
     def get_total_number_of_buckets(self):
         return bucketPerWindow * 2
@@ -142,16 +138,10 @@ class FixedWindow(WindowBase):
         return self.get_current_window()
 
     def get_current_window(self):
-        return (
-            int((datetime.now().timestamp() * 1000) / self.window_millis)
-            * self.window_millis
-        )
+        return int((datetime.now().timestamp() * 1000) / self.window_millis) * self.window_millis
 
     def get_current_period(self):
-        return (
-            int((datetime.now().timestamp() * 1000) / self.period_millis)
-            * self.period_millis
-        )
+        return int((datetime.now().timestamp() * 1000) / self.period_millis) * self.period_millis
 
 
 class SlidingWindow(WindowBase):
@@ -243,16 +233,13 @@ class FixedWindows(WindowsBase):
         windows_tuples = sort_windows_and_convert_to_millis(windows)
         # The period should be a divisor of the unit of the smallest window,
         # for example if the smallest request window is 2h, the period will be 1h / `bucketPerWindow`
-        self.smallest_window_unit_millis = get_one_unit_of_duration(
-            windows_tuples[0][1]
-        )
+        self.smallest_window_unit_millis = get_one_unit_of_duration(windows_tuples[0][1])
         period = get_window_optimal_period_millis(windows_tuples) / bucketPerWindow
         WindowsBase.__init__(self, period, windows_tuples)
 
     def round_up_time_to_window(self, timestamp):
         return (
-            int(timestamp / self.smallest_window_unit_millis)
-            * self.smallest_window_unit_millis
+            int(timestamp / self.smallest_window_unit_millis) * self.smallest_window_unit_millis
             + self.smallest_window_unit_millis
         )
 
@@ -319,9 +306,7 @@ class EmitAfterPeriod(EmitPolicy):
     :param delay_in_seconds: Delay event emission by seconds (Optional)
     """
 
-    def __init__(
-        self, delay_in_seconds: Optional[int] = 0, emission_type=EmissionType.All
-    ):
+    def __init__(self, delay_in_seconds: Optional[int] = 0, emission_type=EmissionType.All):
         self.delay_in_seconds = delay_in_seconds
         EmitPolicy.__init__(self, emission_type)
 
@@ -337,9 +322,7 @@ class EmitAfterWindow(EmitPolicy):
     :param delay_in_seconds: Delay event emission by seconds (Optional)
     """
 
-    def __init__(
-        self, delay_in_seconds: Optional[int] = 0, emission_type=EmissionType.All
-    ):
+    def __init__(self, delay_in_seconds: Optional[int] = 0, emission_type=EmissionType.All):
         self.delay_in_seconds = delay_in_seconds
         EmitPolicy.__init__(self, emission_type)
 
@@ -399,15 +382,11 @@ def _dict_to_emit_policy(policy_dict):
         policy = EmitEveryEvent()
     elif mode == EmitAfterMaxEvent.name():
         if "maxEvents" not in policy_dict:
-            raise ValueError(
-                "maxEvents parameter must be specified for maxEvents emit policy"
-            )
+            raise ValueError("maxEvents parameter must be specified for maxEvents emit policy")
         policy = EmitAfterMaxEvent(policy_dict.pop("maxEvents"))
     elif mode == EmitAfterDelay.name():
         if "delay" not in policy_dict:
-            raise ValueError(
-                "delay parameter must be specified for afterDelay emit policy"
-            )
+            raise ValueError("delay parameter must be specified for afterDelay emit policy")
 
         policy = EmitAfterDelay(policy_dict.pop("delay"))
     elif mode == EmitAfterWindow.name():
@@ -434,7 +413,8 @@ class FieldAggregator:
 
     :param name: Name for the feature.
     :param field: Field in the event body to aggregate.
-    :param aggr: List of aggregates to apply. Valid values are: [count, sum, sqr, avg, max, min, last, first, sttdev, stdvar]
+    :param aggr: List of aggregates to apply.
+        Valid values are: [count, sum, sqr, avg, max, min, last, first, sttdev, stdvar]
     :param windows: Time windows to aggregate the data by.
     :param aggr_filter: Filter specifying which events to aggregate. (Optional)
     :param max_value: Maximum value for the aggregation (Optional)
@@ -450,9 +430,7 @@ class FieldAggregator:
         max_value: Optional[float] = None,
     ):
         if aggr_filter is not None and not callable(aggr_filter):
-            raise TypeError(
-                f"aggr_filter expected to be callable, got {type(aggr_filter)}"
-            )
+            raise TypeError(f"aggr_filter expected to be callable, got {type(aggr_filter)}")
 
         if callable(field):
             self.value_extractor = field

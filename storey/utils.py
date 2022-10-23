@@ -60,8 +60,8 @@ def get_one_unit_of_duration(string_time):
 
 
 def convert_array_tlv(a):
-    """
-    get's the array typed array to convert to a blob value of an array, encode it to base64 from base10 with the following format-
+    """Gets the array typed array to convert to a blob value of an array, encode it to base64 from base10 with the
+    following format:
         struct vn_object_item_array_md {
         uint32_t magic_no; #define MAGIC_NO 11223344
         uint16_t version_no; #define ARRAY_VERSION 1
@@ -150,16 +150,12 @@ def load_fs_dependencies(schema):
         try:
             import s3fs  # noqa: F401
         except ImportError:
-            raise StoreyMissingDependencyError(
-                "s3 packages are missing, use pip install storey[s3]"
-            )
+            raise StoreyMissingDependencyError("s3 packages are missing, use pip install storey[s3]")
     if schema == "az":
         try:
             import adlfs  # noqa: F401
         except ImportError:
-            raise StoreyMissingDependencyError(
-                "azure packages are missing, use pip install storey[az]"
-            )
+            raise StoreyMissingDependencyError("azure packages are missing, use pip install storey[az]")
 
 
 class StoreyMissingDependencyError(Exception):
@@ -248,9 +244,7 @@ def _find_filter_helper(
         single_filter.append(tuple_last_range)
     else:
         _create_filter_tuple(dtime, last_partition, sign, single_filter)
-    _find_filter_helper(
-        list_partitions_without_last_element, dtime, sign, None, first_uncommon, filters
-    )
+    _find_filter_helper(list_partitions_without_last_element, dtime, sign, None, first_uncommon, filters)
     filters.append(single_filter)
 
 

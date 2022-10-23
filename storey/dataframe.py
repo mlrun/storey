@@ -86,9 +86,7 @@ class ReduceToDataFrame(Flow):
                 if self._insert_id_column_as:
                     self._id_column.append(event.id)
             else:
-                raise ValueError(
-                    f"ToDataFrame step only supports input of type dictionary or list, not {type(body)}"
-                )
+                raise ValueError(f"ToDataFrame step only supports input of type dictionary or list, not {type(body)}")
 
 
 class ToDataFrame(Flow):
@@ -100,9 +98,7 @@ class ToDataFrame(Flow):
     for additional params, see documentation of  :class:`storey.flow.Flow`
     """
 
-    def __init__(
-        self, index: Optional[str] = None, columns: Optional[List[str]] = None, **kwargs
-    ):
+    def __init__(self, index: Optional[str] = None, columns: Optional[List[str]] = None, **kwargs):
         super().__init__(**kwargs)
         self._index = index
         self._columns = columns

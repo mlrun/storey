@@ -16,15 +16,12 @@ from pytest import fail
 
 from storey import SyncEmitSource, build_flow
 from storey.dtypes import Event
-from storey.steps import (Assert, EmitPeriod, Flatten, ForEach, Partition,
-                          SampleWindow)
+from storey.steps import Assert, EmitPeriod, Flatten, ForEach, Partition, SampleWindow
 
 
 def test_assert_each_event():
     try:
-        controller = build_flow(
-            [SyncEmitSource(), Assert().each_event(lambda event: event > 10)]
-        ).run()
+        controller = build_flow([SyncEmitSource(), Assert().each_event(lambda event: event > 10)]).run()
         controller.emit(1)
         controller.terminate()
         controller.await_termination()
@@ -35,9 +32,7 @@ def test_assert_each_event():
 
 def test_assert_greater_or_equal_to():
     try:
-        controller = build_flow(
-            [SyncEmitSource(), Assert().greater_or_equal_to(2)]
-        ).run()
+        controller = build_flow([SyncEmitSource(), Assert().greater_or_equal_to(2)]).run()
         controller.emit(1)
         controller.terminate()
         controller.await_termination()
@@ -46,9 +41,7 @@ def test_assert_greater_or_equal_to():
         pass
 
     try:
-        controller = build_flow(
-            [SyncEmitSource(), Assert().greater_or_equal_to(2)]
-        ).run()
+        controller = build_flow([SyncEmitSource(), Assert().greater_or_equal_to(2)]).run()
         controller.emit(1)
         controller.emit(1)
         controller.terminate()
@@ -132,9 +125,7 @@ def test_assert_exactly():
 
 def test_assert_match_exactly():
     try:
-        controller = build_flow(
-            [SyncEmitSource(), Assert(full_event=False).match_exactly([1, 1, 1])]
-        ).run()
+        controller = build_flow([SyncEmitSource(), Assert(full_event=False).match_exactly([1, 1, 1])]).run()
         controller.emit(1)
         controller.emit(1)
         controller.terminate()
@@ -144,9 +135,7 @@ def test_assert_match_exactly():
         pass
 
     try:
-        controller = build_flow(
-            [SyncEmitSource(), Assert().match_exactly([1, 1, 1])]
-        ).run()
+        controller = build_flow([SyncEmitSource(), Assert().match_exactly([1, 1, 1])]).run()
         controller.emit(1)
         controller.emit(1)
         controller.emit(1)
@@ -328,9 +317,7 @@ def test_sample_emit_event_per_key():
 
 
 def test_flatten():
-    controller = build_flow(
-        [SyncEmitSource(), Flatten(), Assert().contains_all_of([1, 2, 3, 4, 5, 6])]
-    ).run()
+    controller = build_flow([SyncEmitSource(), Flatten(), Assert().contains_all_of([1, 2, 3, 4, 5, 6])]).run()
 
     controller.emit([1, 2, 3, 4, 5, 6])
     controller.terminate()
@@ -377,11 +364,7 @@ def test_partition():
         second = event.body.right
 
         if first is not None:
-            return (
-                first in divisible_by_two
-                and first not in not_divisible_by_two
-                and second is None
-            )
+            return first in divisible_by_two and first not in not_divisible_by_two and second is None
         else:
             return second in not_divisible_by_two and second not in divisible_by_two
 

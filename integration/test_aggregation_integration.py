@@ -19,15 +19,29 @@ from datetime import timedelta
 import pandas as pd
 import pytest
 
-from storey import (AggregateByKey, Context, DataframeSource, FieldAggregator,
-                    Map, MapWithState, NoSqlTarget, QueryByKey, Reduce,
-                    SyncEmitSource, Table, build_flow)
-from storey.dtypes import (EmitAfterMaxEvent, FixedWindows, FixedWindowType,
-                           SlidingWindows)
+from storey import (
+    AggregateByKey,
+    Context,
+    DataframeSource,
+    FieldAggregator,
+    Map,
+    MapWithState,
+    NoSqlTarget,
+    QueryByKey,
+    Reduce,
+    SyncEmitSource,
+    Table,
+    build_flow,
+)
+from storey.dtypes import (
+    EmitAfterMaxEvent,
+    FixedWindows,
+    FixedWindowType,
+    SlidingWindows,
+)
 from storey.utils import _split_path
 
-from .integration_test_utils import (append_return, setup_teardown_test,
-                                     test_base_time)
+from .integration_test_utils import append_return, test_base_time
 
 
 @pytest.mark.parametrize(
@@ -536,9 +550,7 @@ def test_aggregate_with_fixed_windows_and_query_past_and_future_times(
 
 @pytest.mark.parametrize("partitioned_by_key", [True, False])
 @pytest.mark.parametrize("flush_interval", [None, 1])
-def test_aggregate_and_query_with_different_sliding_windows(
-    setup_teardown_test, partitioned_by_key, flush_interval
-):
+def test_aggregate_and_query_with_different_sliding_windows(setup_teardown_test, partitioned_by_key, flush_interval):
     table = Table(
         setup_teardown_test.table_name,
         setup_teardown_test.driver(),
@@ -811,9 +823,7 @@ def test_aggregate_and_query_with_different_sliding_windows(
 
 @pytest.mark.parametrize("partitioned_by_key", [True, False])
 @pytest.mark.parametrize("flush_interval", [None, 1])
-def test_aggregate_and_query_with_different_fixed_windows(
-    setup_teardown_test, partitioned_by_key, flush_interval
-):
+def test_aggregate_and_query_with_different_fixed_windows(setup_teardown_test, partitioned_by_key, flush_interval):
     table = Table(
         setup_teardown_test.table_name,
         setup_teardown_test.driver(),
@@ -1239,9 +1249,7 @@ def test_query_virtual_aggregations_flow(setup_teardown_test, use_parallel_opera
 
 @pytest.mark.parametrize("partitioned_by_key", [True, False])
 @pytest.mark.parametrize("flush_interval", [None, 1])
-def test_query_aggregate_by_key(
-    setup_teardown_test, partitioned_by_key, flush_interval
-):
+def test_query_aggregate_by_key(setup_teardown_test, partitioned_by_key, flush_interval):
     table = Table(
         setup_teardown_test.table_name,
         setup_teardown_test.driver(),
@@ -1523,9 +1531,7 @@ def test_query_aggregate_by_key(
         ["number_of_stuff_avg_2h", "number_of_stuff_sum_1h"],
     ],
 )
-def test_aggregate_and_query_with_dependent_aggrs_different_windows(
-    setup_teardown_test, query_aggregations
-):
+def test_aggregate_and_query_with_dependent_aggrs_different_windows(setup_teardown_test, query_aggregations):
     table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
 
     controller = build_flow(
@@ -1646,9 +1652,7 @@ def test_aggregate_and_query_with_dependent_aggrs_different_windows(
 
     controller.terminate()
     actual = controller.await_termination()
-    expected_results = [
-        {"col1": 10, "number_of_stuff_sum_1h": 17, "number_of_stuff_avg_2h": 7.5}
-    ]
+    expected_results = [{"col1": 10, "number_of_stuff_sum_1h": 17, "number_of_stuff_avg_2h": 7.5}]
 
     assert (
         actual == expected_results
@@ -1657,9 +1661,7 @@ def test_aggregate_and_query_with_dependent_aggrs_different_windows(
 
 @pytest.mark.parametrize("partitioned_by_key", [True, False])
 @pytest.mark.parametrize("flush_interval", [None, 1])
-def test_aggregate_by_key_one_underlying_window(
-    setup_teardown_test, partitioned_by_key, flush_interval
-):
+def test_aggregate_by_key_one_underlying_window(setup_teardown_test, partitioned_by_key, flush_interval):
     expected = {
         1: [
             {"number_of_stuff_count_1h": 1, "other_stuff_sum_1h": 0.0, "col1": 0},
@@ -1714,11 +1716,9 @@ def test_aggregate_by_key_one_underlying_window(
             ]
         ).run()
 
-        for i in range(items_in_ingest_batch):
+        for _ in range(items_in_ingest_batch):
             data = {"col1": current_index}
-            controller.emit(
-                data, "tal", test_base_time + timedelta(minutes=1 * current_index)
-            )
+            controller.emit(data, "tal", test_base_time + timedelta(minutes=1 * current_index))
             current_index = current_index + 1
 
         controller.terminate()
@@ -1730,9 +1730,7 @@ def test_aggregate_by_key_one_underlying_window(
 
 
 @pytest.mark.parametrize("partitioned_by_key", [True, False])
-def test_aggregate_by_key_two_underlying_windows(
-    setup_teardown_test, partitioned_by_key
-):
+def test_aggregate_by_key_two_underlying_windows(setup_teardown_test, partitioned_by_key):
     expected = {
         1: [
             {"number_of_stuff_count_24h": 1, "other_stuff_sum_24h": 0.0, "col1": 0},
@@ -1785,11 +1783,9 @@ def test_aggregate_by_key_two_underlying_windows(
             ]
         ).run()
 
-        for i in range(items_in_ingest_batch):
+        for _ in range(items_in_ingest_batch):
             data = {"col1": current_index}
-            controller.emit(
-                data, "tal", test_base_time + timedelta(minutes=25 * current_index)
-            )
+            controller.emit(data, "tal", test_base_time + timedelta(minutes=25 * current_index))
             current_index = current_index + 1
 
         controller.terminate()
@@ -1809,13 +1805,9 @@ def test_aggregate_by_key_with_extra_aliases(setup_teardown_test):
         if "first_activity" not in state:
             state["first_activity"] = event.time
 
-        event.body["time_since_activity"] = (
-            event.time - state["first_activity"]
-        ).seconds
+        event.body["time_since_activity"] = (event.time - state["first_activity"]).seconds
         state["last_event"] = event.time
-        event.body["total_activities"] = state["total_activities"] = (
-            state.get("total_activities", 0) + 1
-        )
+        event.body["total_activities"] = state["total_activities"] = state.get("total_activities", 0) + 1
         event.body["color"] = state["color"]
         return event, state
 
@@ -1995,13 +1987,9 @@ def test_write_cache_with_aggregations(setup_teardown_test, flush_interval):
         if "first_activity" not in state:
             state["first_activity"] = event.time
 
-        event.body["time_since_activity"] = (
-            event.time - state["first_activity"]
-        ).seconds
+        event.body["time_since_activity"] = (event.time - state["first_activity"]).seconds
         state["last_event"] = event.time
-        event.body["total_activities"] = state["total_activities"] = (
-            state.get("total_activities", 0) + 1
-        )
+        event.body["total_activities"] = state["total_activities"] = state.get("total_activities", 0) + 1
         event.body["color"] = state["color"]
         return event, state
 
@@ -2180,13 +2168,9 @@ def test_write_cache(setup_teardown_test, flush_interval):
         if "first_activity" not in state:
             state["first_activity"] = event.time
 
-        event.body["time_since_activity"] = (
-            event.time - state["first_activity"]
-        ).seconds
+        event.body["time_since_activity"] = (event.time - state["first_activity"]).seconds
         state["last_event"] = event.time
-        event.body["total_activities"] = state["total_activities"] = (
-            state.get("total_activities", 0) + 1
-        )
+        event.body["total_activities"] = state["total_activities"] = state.get("total_activities", 0) + 1
         event.body["color"] = state["color"]
         return event, state
 
@@ -3068,9 +3052,7 @@ def test_query_aggregate_by_key_sliding_window_new_time_exceeds_stored_window(
     controller = build_flow(
         [
             SyncEmitSource(),
-            QueryByKey(
-                ["number_of_stuff_count_30m", "number_of_stuff_count_2h"], other_table
-            ),
+            QueryByKey(["number_of_stuff_count_30m", "number_of_stuff_count_2h"], other_table),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
     ).run()
@@ -3081,9 +3063,7 @@ def test_query_aggregate_by_key_sliding_window_new_time_exceeds_stored_window(
 
     controller.terminate()
     actual = controller.await_termination()
-    expected_results = [
-        {"col1": 3, "number_of_stuff_count_30m": 0, "number_of_stuff_count_2h": 1}
-    ]
+    expected_results = [{"col1": 3, "number_of_stuff_count_30m": 0, "number_of_stuff_count_2h": 1}]
 
     assert (
         actual == expected_results
@@ -3135,9 +3115,7 @@ def test_query_aggregate_by_key_fixed_window_new_time_exceeds_stored_window(
     controller = build_flow(
         [
             SyncEmitSource(),
-            QueryByKey(
-                ["number_of_stuff_count_30m", "number_of_stuff_count_2h"], other_table
-            ),
+            QueryByKey(["number_of_stuff_count_30m", "number_of_stuff_count_2h"], other_table),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
     ).run()
@@ -3148,9 +3126,7 @@ def test_query_aggregate_by_key_fixed_window_new_time_exceeds_stored_window(
 
     controller.terminate()
     actual = controller.await_termination()
-    expected_results = [
-        {"col1": 3, "number_of_stuff_count_30m": 0, "number_of_stuff_count_2h": 0}
-    ]
+    expected_results = [{"col1": 3, "number_of_stuff_count_30m": 0, "number_of_stuff_count_2h": 0}]
 
     assert (
         actual == expected_results
@@ -3202,9 +3178,7 @@ def test_sliding_query_time_exceeds_stored_window_by_more_than_window(
     controller = build_flow(
         [
             SyncEmitSource(),
-            QueryByKey(
-                ["number_of_stuff_count_30m", "number_of_stuff_count_2h"], other_table
-            ),
+            QueryByKey(["number_of_stuff_count_30m", "number_of_stuff_count_2h"], other_table),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
     ).run()
@@ -3215,9 +3189,7 @@ def test_sliding_query_time_exceeds_stored_window_by_more_than_window(
 
     controller.terminate()
     actual = controller.await_termination()
-    expected_results = [
-        {"col1": 3, "number_of_stuff_count_30m": 0, "number_of_stuff_count_2h": 0}
-    ]
+    expected_results = [{"col1": 3, "number_of_stuff_count_30m": 0, "number_of_stuff_count_2h": 0}]
 
     assert (
         actual == expected_results
@@ -3269,9 +3241,7 @@ def test_fixed_query_time_exceeds_stored_window_by_more_than_window(
     controller = build_flow(
         [
             SyncEmitSource(),
-            QueryByKey(
-                ["number_of_stuff_count_30m", "number_of_stuff_count_2h"], other_table
-            ),
+            QueryByKey(["number_of_stuff_count_30m", "number_of_stuff_count_2h"], other_table),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
     ).run()
@@ -3282,9 +3252,7 @@ def test_fixed_query_time_exceeds_stored_window_by_more_than_window(
 
     controller.terminate()
     actual = controller.await_termination()
-    expected_results = [
-        {"col1": 3, "number_of_stuff_count_30m": 0, "number_of_stuff_count_2h": 0}
-    ]
+    expected_results = [{"col1": 3, "number_of_stuff_count_30m": 0, "number_of_stuff_count_2h": 0}]
 
     assert (
         actual == expected_results
@@ -3382,9 +3350,7 @@ def test_aggregate_multiple_keys(setup_teardown_test):
     controller = build_flow(
         [
             SyncEmitSource(),
-            QueryByKey(
-                ["number_of_stuff_sum_1h"], other_table, key=["first_name", "last_name"]
-            ),
+            QueryByKey(["number_of_stuff_sum_1h"], other_table, key=["first_name", "last_name"]),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
     ).run()
@@ -3466,16 +3432,12 @@ def test_aggregate_multiple_keys_and_aggregationless_query(setup_teardown_test):
 
     controller.await_termination()
 
-    other_table = Table(
-        setup_teardown_test.table_name, setup_teardown_test.driver(True)
-    )
+    other_table = Table(setup_teardown_test.table_name, setup_teardown_test.driver(True))
 
     controller = build_flow(
         [
             SyncEmitSource(),
-            QueryByKey(
-                ["number_of_stuff_sum_1h"], other_table, key=["first_name", "last_name"]
-            ),
+            QueryByKey(["number_of_stuff_sum_1h"], other_table, key=["first_name", "last_name"]),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
     ).run()
@@ -3506,8 +3468,8 @@ def test_aggregate_multiple_keys_and_aggregationless_query(setup_teardown_test):
             "some_data": 4,
         },
         {"first_name": "moshe", "last_name": "levi", "some_data": 5},
-        # number_of_stuff_sum_1h is 2 because the events were inserted out of order, and reading back aggregationless takes
-        # the value relative to the event time of the last event that was inserted.
+        # number_of_stuff_sum_1h is 2 because the events were inserted out of order, and reading back
+        # aggregationless takes the value relative to the event time of the last event that was inserted.
         {
             "number_of_stuff_sum_1h": 2.0,
             "first_name": "yosi",
@@ -3589,11 +3551,7 @@ def test_concurrent_updates_to_kv_table(setup_teardown_test):
         [
             SyncEmitSource(),
             AggregateByKey(
-                [
-                    FieldAggregator(
-                        "attr1", "attr1", ["sum"], SlidingWindows(["1h"], "10m")
-                    )
-                ],
+                [FieldAggregator("attr1", "attr1", ["sum"], SlidingWindows(["1h"], "10m"))],
                 table1,
             ),
             NoSqlTarget(table1),
@@ -3603,11 +3561,7 @@ def test_concurrent_updates_to_kv_table(setup_teardown_test):
         [
             SyncEmitSource(),
             AggregateByKey(
-                [
-                    FieldAggregator(
-                        "attr2", "attr2", ["sum"], SlidingWindows(["1h"], "10m")
-                    )
-                ],
+                [FieldAggregator("attr2", "attr2", ["sum"], SlidingWindows(["1h"], "10m"))],
                 table2,
             ),
             NoSqlTarget(table2),
@@ -3734,11 +3688,7 @@ def test_write_read_first_last(setup_teardown_test):
         [
             SyncEmitSource(),
             AggregateByKey(
-                [
-                    FieldAggregator(
-                        "attr", "attr", ["first", "last"], SlidingWindows(["1h"], "10m")
-                    )
-                ],
+                [FieldAggregator("attr", "attr", ["first", "last"], SlidingWindows(["1h"], "10m"))],
                 table,
             ),
             NoSqlTarget(table),
@@ -3770,12 +3720,8 @@ def test_write_read_first_last(setup_teardown_test):
         ]
     ).run()
 
-    controller.emit(
-        {"mykey": "onekey"}, event_time=test_base_time + timedelta(minutes=10)
-    )
-    controller.emit(
-        {"mykey": "onekey"}, event_time=test_base_time + timedelta(hours=1, minutes=10)
-    )
+    controller.emit({"mykey": "onekey"}, event_time=test_base_time + timedelta(minutes=10))
+    controller.emit({"mykey": "onekey"}, event_time=test_base_time + timedelta(hours=1, minutes=10))
 
     controller.terminate()
     result = controller.await_termination()
@@ -3928,9 +3874,7 @@ def test_column_begin_t(setup_teardown_test):
 
     controller.terminate()
     actual = controller.await_termination()
-    expected_results = [
-        {"number_of_stuff_sum_1h": 1.0, "key_column": "a", "t_col": "storey"}
-    ]
+    expected_results = [{"number_of_stuff_sum_1h": 1.0, "key_column": "a", "t_col": "storey"}]
 
     assert (
         actual == expected_results
@@ -3991,9 +3935,7 @@ def test_aggregate_float_key(setup_teardown_test):
 
 
 @pytest.mark.parametrize("flush_interval", [None, 1, 300])
-def test_aggregate_and_query_persist_before_advancing_window(
-    setup_teardown_test, flush_interval
-):
+def test_aggregate_and_query_persist_before_advancing_window(setup_teardown_test, flush_interval):
     table = Table(
         setup_teardown_test.table_name,
         setup_teardown_test.driver(),
@@ -4003,11 +3945,7 @@ def test_aggregate_and_query_persist_before_advancing_window(
         [
             SyncEmitSource(),
             AggregateByKey(
-                [
-                    FieldAggregator(
-                        "particles", "sample", ["count"], FixedWindows(["30m"])
-                    )
-                ],
+                [FieldAggregator("particles", "sample", ["count"], FixedWindows(["30m"]))],
                 table,
                 key="sample",
             ),

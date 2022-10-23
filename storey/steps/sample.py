@@ -26,7 +26,8 @@ class EmitPeriod(Enum):
 
 class SampleWindow(Flow):
     """
-    Emits a single event in a window of `window_size` events, in accordance with `emit_period` and `emit_before_termination`.
+    Emits a single event in a window of `window_size` events, in accordance with `emit_period` and
+    `emit_before_termination`.
 
     :param window_size: The size of the window we want to sample a single event from.
     :param emit_period: What event should this step emit for each `window_size` (default: EmitPeriod.First).
@@ -59,9 +60,7 @@ class SampleWindow(Flow):
             raise ValueError(f"Expected window_size > 1, found {window_size}")
 
         if not isinstance(emit_period, EmitPeriod):
-            raise ValueError(
-                f"Expected emit_period of type `EmitPeriod`, got {type(emit_period)}"
-            )
+            raise ValueError(f"Expected emit_period of type `EmitPeriod`, got {type(emit_period)}")
 
         self._window_size = window_size
         self._emit_period = emit_period

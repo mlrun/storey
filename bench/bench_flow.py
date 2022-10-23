@@ -18,9 +18,20 @@ from datetime import datetime, timedelta
 import pandas as pd
 import pytest
 
-from storey import (AggregateByKey, AsyncEmitSource, Batch, Complete,
-                    DataframeSource, Driver, FieldAggregator, Map, Reduce,
-                    SyncEmitSource, Table, build_flow)
+from storey import (
+    AggregateByKey,
+    AsyncEmitSource,
+    Batch,
+    Complete,
+    DataframeSource,
+    Driver,
+    FieldAggregator,
+    Map,
+    Reduce,
+    SyncEmitSource,
+    Table,
+    build_flow,
+)
 from storey.dtypes import SlidingWindows
 
 test_base_time = datetime.fromisoformat("2020-07-21T21:40:00+00:00")
@@ -70,9 +81,7 @@ def test_simple_async_flow_n_events(benchmark, n):
 @pytest.mark.parametrize("n", [0, 1, 1000, 5000])
 def test_complete_flow_n_events(benchmark, n):
     def inner():
-        controller = build_flow(
-            [SyncEmitSource(), Map(lambda x: x + 1), Complete()]
-        ).run()
+        controller = build_flow([SyncEmitSource(), Map(lambda x: x + 1), Complete()]).run()
 
         for i in range(n):
             result = controller.emit(i, return_awaitable_result=True).await_result()
@@ -137,7 +146,7 @@ def test_aggregate_df_86420_events(benchmark):
 
     def inner():
         driver = Driver()
-        table = Table(f"test", driver)
+        table = Table("test", driver)
 
         controller = build_flow(
             [
@@ -178,7 +187,7 @@ def test_aggregate_df_86420_events_basic(benchmark):
 
     def inner():
         driver = Driver()
-        table = Table(f"test", driver)
+        table = Table("test", driver)
 
         controller = build_flow(
             [

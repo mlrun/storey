@@ -14,8 +14,15 @@
 #
 import pytest
 
-from storey import (Complete, JoinWithTable, NoSqlTarget, Reduce,
-                    SyncEmitSource, Table, build_flow)
+from storey import (
+    Complete,
+    JoinWithTable,
+    NoSqlTarget,
+    Reduce,
+    SyncEmitSource,
+    Table,
+    build_flow,
+)
 from storey.redis_driver import RedisDriver
 
 from .integration_test_utils import append_return, get_redis_client
@@ -28,9 +35,7 @@ def redis():
 
 def test_redis_driver_write(redis):
     driver = RedisDriver(redis)
-    controller = build_flow(
-        [SyncEmitSource(), NoSqlTarget(Table("test", driver)), Complete()]
-    ).run()
+    controller = build_flow([SyncEmitSource(), NoSqlTarget(Table("test", driver)), Complete()]).run()
     controller.emit({"col1": 0}, "key").await_result()
     controller.terminate()
     controller.await_termination()

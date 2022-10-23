@@ -24,13 +24,23 @@ import pandas as pd
 import pytest
 import v3io
 
-from storey import (AsyncEmitSource, CSVSource, CSVTarget, DataframeSource,
-                    FlatMap, Map, ParquetSource, ParquetTarget, Reduce,
-                    ReduceToDataFrame, SyncEmitSource, build_flow)
+from integration.integration_test_utils import V3ioHeaders, _generate_table_name
+from storey import (
+    AsyncEmitSource,
+    CSVSource,
+    CSVTarget,
+    DataframeSource,
+    FlatMap,
+    Map,
+    ParquetSource,
+    ParquetTarget,
+    Reduce,
+    ReduceToDataFrame,
+    SyncEmitSource,
+    build_flow,
+)
+from storey.dtypes import V3ioError
 from storey.utils import get_remaining_path
-
-from .integration_test_utils import (V3ioError, V3ioHeaders,
-                                     _generate_table_name, setup_teardown_test)
 
 
 @pytest.fixture()
@@ -87,9 +97,7 @@ async def _delete_file(path):
         )
         if response.status >= 300 and response.status != 404 and response.status != 409:
             body = await response.text()
-            raise V3ioError(
-                f"Failed to delete item at {path}. Response status code was {response.status}: {body}"
-            )
+            raise V3ioError(f"Failed to delete item at {path}. Response status code was {response.status}: {body}")
     finally:
         await client_session.close()
 
@@ -115,20 +123,15 @@ def test_csv_reader_from_v3io_error_on_file_not_found():
         ]
     ).run()
 
-    try:
+    with pytest.raises(FileNotFoundError):
         controller.await_termination()
-        assert False
-    except FileNotFoundError:
-        pass
 
 
 async def async_test_write_csv_to_v3io(v3io_teardown_csv):
     controller = build_flow(
         [
             AsyncEmitSource(),
-            CSVTarget(
-                f"v3io:///{v3io_teardown_csv}", columns=["n", "n*10"], header=True
-            ),
+            CSVTarget(f"v3io:///{v3io_teardown_csv}", columns=["n", "n*10"], header=True),
         ]
     ).run()
 
@@ -139,9 +142,7 @@ async def async_test_write_csv_to_v3io(v3io_teardown_csv):
     await controller.await_termination()
 
     v3io_access = V3ioHeaders()
-    v3io_client = v3io.aio.dataplane.Client(
-        endpoint=v3io_access._webapi_url, access_key=v3io_access._access_key
-    )
+    v3io_client = v3io.aio.dataplane.Client(endpoint=v3io_access._webapi_url, access_key=v3io_access._access_key)
     try:
         container, path = v3io_teardown_csv.split("/", 1)
         result = await v3io_client.object.get(container, path)
@@ -158,9 +159,7 @@ def test_write_csv_to_v3io(v3io_teardown_file):
 
 def test_write_csv_with_dict_to_v3io(v3io_teardown_file):
     file_path = f"v3io:///{v3io_teardown_file}"
-    controller = build_flow(
-        [SyncEmitSource(), CSVTarget(file_path, columns=["n", "n*10"], header=True)]
-    ).run()
+    controller = build_flow([SyncEmitSource(), CSVTarget(file_path, columns=["n", "n*10"], header=True)]).run()
 
     for i in range(10):
         controller.emit({"n": i, "n*10": 10 * i})
@@ -169,9 +168,7 @@ def test_write_csv_with_dict_to_v3io(v3io_teardown_file):
     controller.await_termination()
 
     v3io_access = V3ioHeaders()
-    v3io_client = v3io.dataplane.Client(
-        endpoint=v3io_access._webapi_url, access_key=v3io_access._access_key
-    )
+    v3io_client = v3io.dataplane.Client(endpoint=v3io_access._webapi_url, access_key=v3io_access._access_key)
     try:
         container, path = v3io_teardown_file.split("/", 1)
         result = v3io_client.object.get(container, path)
@@ -193,9 +190,7 @@ def test_write_csv_infer_columns_without_header_to_v3io(v3io_teardown_file):
     controller.await_termination()
 
     v3io_access = V3ioHeaders()
-    v3io_client = v3io.dataplane.Client(
-        endpoint=v3io_access._webapi_url, access_key=v3io_access._access_key
-    )
+    v3io_client = v3io.dataplane.Client(endpoint=v3io_access._webapi_url, access_key=v3io_access._access_key)
     try:
         container, path = v3io_teardown_file.split("/", 1)
         result = v3io_client.object.get(container, path)
@@ -224,16 +219,27 @@ def test_write_csv_from_lists_with_metadata_and_column_pruning_to_v3io(
     controller.await_termination()
 
     v3io_access = V3ioHeaders()
-    v3io_client = v3io.dataplane.Client(
-        endpoint=v3io_access._webapi_url, access_key=v3io_access._access_key
-    )
+    v3io_client = v3io.dataplane.Client(endpoint=v3io_access._webapi_url, access_key=v3io_access._access_key)
     try:
         container, path = v3io_teardown_file.split("/", 1)
         result = v3io_client.object.get(container, path)
     finally:
         v3io_client.close()
 
-    expected = "event_key,n*10\nkey0,0\nkey1,10\nkey2,20\nkey3,30\nkey4,40\nkey5,50\nkey6,60\nkey7,70\nkey8,80\nkey9,90\n"
+    expected = (
+        "event_key,n*10\n"
+        "key0,0\n"
+        "key1,10\n"
+        "key2,20\n"
+        "key3,30\n"
+        "key4,40\n"
+        "key5,50\n"
+        "key6,60\n"
+        "key7,70\n"
+        "key8,80\n"
+        "key9,90\n"
+    )
+
     assert result.body.decode("utf-8") == expected
 
 
@@ -243,9 +249,7 @@ def test_write_to_parquet_to_v3io(setup_teardown_test):
     controller = build_flow(
         [
             SyncEmitSource(),
-            ParquetTarget(
-                out_dir, partition_cols="my_int", columns=columns, max_events=1
-            ),
+            ParquetTarget(out_dir, partition_cols="my_int", columns=columns, max_events=1),
         ]
     ).run()
 
@@ -262,17 +266,13 @@ def test_write_to_parquet_to_v3io(setup_teardown_test):
     controller.await_termination()
 
     read_back_df = pd.read_parquet(out_dir, columns=columns)
-    assert read_back_df.equals(expected_in_pyarrow1) or read_back_df.equals(
-        expected_in_pyarrow3
-    )
+    assert read_back_df.equals(expected_in_pyarrow1) or read_back_df.equals(expected_in_pyarrow3)
 
 
 def test_write_to_parquet_to_v3io_single_file_on_termination(setup_teardown_test):
     out_file = f"v3io:///{setup_teardown_test.table_name}/out.parquet"
     columns = ["my_int", "my_string"]
-    controller = build_flow(
-        [SyncEmitSource(), ParquetTarget(out_file, columns=columns)]
-    ).run()
+    controller = build_flow([SyncEmitSource(), ParquetTarget(out_file, columns=columns)]).run()
 
     expected = []
     for i in range(10):
@@ -292,9 +292,7 @@ def test_write_to_parquet_key_hash_partitioning(setup_teardown_test):
     controller = build_flow(
         [
             SyncEmitSource(key_field=1),
-            ParquetTarget(
-                out_dir, columns=["my_int", "my_string"], partition_cols=[("$key", 4)]
-            ),
+            ParquetTarget(out_dir, columns=["my_int", "my_string"], partition_cols=[("$key", 4)]),
         ]
     ).run()
 
@@ -318,12 +316,10 @@ def test_write_to_parquet_key_hash_partitioning(setup_teardown_test):
 def test_write_to_parquet_to_v3io_force_string_to_timestamp(setup_teardown_test):
     out_file = f"v3io:///{setup_teardown_test.table_name}/out.parquet"
     columns = ["time"]
-    controller = build_flow(
-        [SyncEmitSource(), ParquetTarget(out_file, columns=[("time", "datetime")])]
-    ).run()
+    controller = build_flow([SyncEmitSource(), ParquetTarget(out_file, columns=[("time", "datetime")])]).run()
 
     expected = []
-    for i in range(10):
+    for _ in range(10):
         t = "2021-03-02T19:45:00"
         controller.emit([t])
         expected.append([datetime.datetime.fromisoformat(t)])
@@ -340,9 +336,7 @@ def test_write_to_parquet_to_v3io_with_indices(setup_teardown_test):
     controller = build_flow(
         [
             SyncEmitSource(),
-            ParquetTarget(
-                out_file, index_cols="event_key=$key", columns=["my_int", "my_string"]
-            ),
+            ParquetTarget(out_file, index_cols="event_key=$key", columns=["my_int", "my_string"]),
         ]
     ).run()
 
@@ -381,30 +375,24 @@ def test_write_to_parquet_to_v3io_with_nulls(setup_teardown_test):
     )
 
     expected = []
-    my_time = datetime.datetime(
-        2021, 1, 1, tzinfo=datetime.timezone(datetime.timedelta(hours=5))
-    )
+    my_time = datetime.datetime(2021, 1, 1, tzinfo=datetime.timezone(datetime.timedelta(hours=5)))
 
     controller = flow.run()
-    controller.emit(
-        {"my_int": 0, "my_string": "hello", "my_datetime": my_time}, key=f"key1"
-    )
+    controller.emit({"my_int": 0, "my_string": "hello", "my_datetime": my_time}, key="key1")
     # TODO: Expect correct time zone. Can be done in _Writer, but requires fix for ARROW-10511, which is pyarrow>=3.
     expected.append(
         [
             "key1",
             0,
             "hello",
-            my_time.astimezone(datetime.timezone(datetime.timedelta())).replace(
-                tzinfo=None
-            ),
+            my_time.astimezone(datetime.timezone(datetime.timedelta())).replace(tzinfo=None),
         ]
     )
     controller.terminate()
     controller.await_termination()
 
     controller = flow.run()
-    controller.emit({}, key=f"key2")
+    controller.emit({}, key="key2")
     expected.append(["key2", None, None, None])
     controller.terminate()
     controller.await_termination()
@@ -412,9 +400,7 @@ def test_write_to_parquet_to_v3io_with_nulls(setup_teardown_test):
     read_back_df = pd.read_parquet(out_dir)
     read_back_df.sort_values("key", inplace=True)
     read_back_df.reset_index(inplace=True, drop=True)
-    expected = pd.DataFrame(
-        expected, columns=["key", "my_int", "my_string", "my_datetime"]
-    )
+    expected = pd.DataFrame(expected, columns=["key", "my_int", "my_string", "my_datetime"])
     assert read_back_df.compare(expected).empty
 
 
@@ -450,9 +436,7 @@ def test_filter_before_after_non_partitioned(setup_teardown_test):
 
     controller = build_flow(
         [
-            ParquetSource(
-                out_file, end_filter=before, start_filter=after, filter_column="my_time"
-            ),
+            ParquetSource(out_file, end_filter=before, start_filter=after, filter_column="my_time"),
             Reduce([], append_and_return),
         ]
     ).run()
@@ -493,12 +477,8 @@ def test_filter_before_after_partitioned_random(setup_teardown_test):
             data.append(element)
         return data
 
-    list1 = create_rand_data(
-        number_below_middle_limit, low_limit, middle_limit, "lower"
-    )
-    list2 = create_rand_data(
-        10 - number_below_middle_limit, middle_limit, high_limit, "higher"
-    )
+    list1 = create_rand_data(number_below_middle_limit, low_limit, middle_limit, "lower")
+    list2 = create_rand_data(10 - number_below_middle_limit, middle_limit, high_limit, "higher")
     combined_list = list1 + list2
 
     df = pd.DataFrame(combined_list)
@@ -535,9 +515,7 @@ def test_filter_before_after_partitioned_random(setup_teardown_test):
         ]
     ).run()
     read_back_result = controller.await_termination()
-    print(
-        "expecting " + str(10 - number_below_middle_limit) + " to be above middle limit"
-    )
+    print("expecting " + str(10 - number_below_middle_limit) + " to be above middle limit")
     assert (len(read_back_result)) == 10 - number_below_middle_limit
 
     controller = build_flow(
@@ -707,9 +685,7 @@ def test_filter_by_time_non_partioned(setup_teardown_test):
 
     controller = build_flow(
         [
-            ParquetSource(
-                path, end_filter=end, start_filter=start, filter_column="my_time"
-            ),
+            ParquetSource(path, end_filter=end, start_filter=start, filter_column="my_time"),
             Reduce([], append_and_return),
         ]
     ).run()
@@ -749,9 +725,7 @@ def test_empty_filter_result(setup_teardown_test):
 
     controller = build_flow(
         [
-            ParquetSource(
-                path, end_filter=end, start_filter=start, filter_column="my_time"
-            ),
+            ParquetSource(path, end_filter=end, start_filter=start, filter_column="my_time"),
             ReduceToDataFrame(index=["my_string"], insert_key_column_as=["my_string"]),
         ]
     ).run()

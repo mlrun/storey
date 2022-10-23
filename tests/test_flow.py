@@ -22,6 +22,7 @@ import traceback
 import uuid
 from datetime import datetime
 from random import choice
+from unittest.mock import MagicMock
 
 import pandas as pd
 import pyarrow.parquet as pq
@@ -31,13 +32,40 @@ from aiohttp import ClientConnectorError, InvalidURL
 from pandas.testing import assert_frame_equal
 
 import storey
-from storey import (AsyncEmitSource, Batch, Choice, Complete, CSVSource,
-                    CSVTarget, DataframeSource, Driver, Event, Extend, Filter,
-                    FlatMap, HttpRequest, JoinWithTable, Map, MapClass,
-                    MapWithState, NoopDriver, NoSqlTarget, ParquetSource,
-                    ParquetTarget, QueryByKey, Recover, Reduce,
-                    ReduceToDataFrame, SendToHttp, SyncEmitSource, Table,
-                    ToDataFrame, TSDBTarget, V3ioDriver, build_flow)
+from storey import (
+    AsyncEmitSource,
+    Batch,
+    Choice,
+    Complete,
+    CSVSource,
+    CSVTarget,
+    DataframeSource,
+    Driver,
+    Event,
+    Extend,
+    Filter,
+    FlatMap,
+    HttpRequest,
+    JoinWithTable,
+    Map,
+    MapClass,
+    MapWithState,
+    NoopDriver,
+    NoSqlTarget,
+    ParquetSource,
+    ParquetTarget,
+    QueryByKey,
+    Recover,
+    Reduce,
+    ReduceToDataFrame,
+    SendToHttp,
+    SyncEmitSource,
+    Table,
+    ToDataFrame,
+    TSDBTarget,
+    V3ioDriver,
+    build_flow,
+)
 from storey.flow import Context, ReifyMetadata, Rename, _ConcurrentJobExecution
 
 
@@ -146,9 +174,7 @@ def test_emit_timeless_event():
     class TimelessEvent:
         pass
 
-    controller = build_flow(
-        [SyncEmitSource(), ReduceToDataFrame(insert_time_column_as="mytime")]
-    ).run()
+    controller = build_flow([SyncEmitSource(), ReduceToDataFrame(insert_time_column_as="mytime")]).run()
 
     event = TimelessEvent()
     event.id = "myevent"
@@ -184,11 +210,8 @@ def test_csv_reader_error_on_file_not_found():
         ]
     ).run()
 
-    try:
+    with pytest.raises(FileNotFoundError):
         controller.await_termination()
-        assert False
-    except FileNotFoundError:
-        pass
 
 
 def test_csv_reader_as_dict():
@@ -321,9 +344,7 @@ def test_csv_reader_as_dict_no_header():
 
 
 def test_dataframe_source():
-    df = pd.DataFrame(
-        [["hello", 1, 1.5], ["world", 2, 2.5]], columns=["string", "int", "float"]
-    )
+    df = pd.DataFrame([["hello", 1, 1.5], ["world", 2, 2.5]], columns=["string", "int", "float"])
     controller = build_flow(
         [
             DataframeSource(df),
@@ -340,9 +361,7 @@ def test_dataframe_source():
 
 
 def test_indexed_dataframe_source():
-    df = pd.DataFrame(
-        [["hello", 1, 1.5], ["world", 2, 2.5]], columns=["string", "int", "float"]
-    )
+    df = pd.DataFrame([["hello", 1, 1.5], ["world", 2, 2.5]], columns=["string", "int", "float"])
     df.set_index(["string", "int"], inplace=True)
     controller = build_flow(
         [
@@ -368,9 +387,7 @@ def test_dataframe_source_with_metadata():
     )
     controller = build_flow(
         [
-            DataframeSource(
-                df, key_field="my_key", time_field="my_time", id_field="my_id"
-            ),
+            DataframeSource(df, key_field="my_key", time_field="my_time", id_field="my_id"),
             Reduce([], append_and_return, full_event=True),
         ]
     ).run()
@@ -394,9 +411,7 @@ def test_dataframe_source_with_metadata():
 
 
 async def async_dataframe_source():
-    df = pd.DataFrame(
-        [["hello", 1, 1.5], ["world", 2, 2.5]], columns=["string", "int", "float"]
-    )
+    df = pd.DataFrame([["hello", 1, 1.5], ["world", 2, 2.5]], columns=["string", "int", "float"])
     controller = await build_flow(
         [
             DataframeSource(df),
@@ -508,9 +523,7 @@ def test_read_parquet_files():
 def test_write_parquet_read_parquet(tmpdir):
     out_dir = f"{tmpdir}/test_write_parquet_read_parquet/{uuid.uuid4().hex}/"
     columns = ["my_int", "my_string"]
-    controller = build_flow(
-        [SyncEmitSource(), ParquetTarget(out_dir, columns=columns, partition_cols=[])]
-    ).run()
+    controller = build_flow([SyncEmitSource(), ParquetTarget(out_dir, columns=columns, partition_cols=[])]).run()
 
     expected = []
     for i in range(10):
@@ -531,9 +544,7 @@ def test_write_parquet_read_parquet(tmpdir):
 
 
 def test_write_parquet_read_parquet_partitioned(tmpdir):
-    out_dir = (
-        f"{tmpdir}/test_write_parquet_read_parquet_partitioned/{uuid.uuid4().hex}/"
-    )
+    out_dir = f"{tmpdir}/test_write_parquet_read_parquet_partitioned/{uuid.uuid4().hex}/"
     columns = ["my_int", "my_string"]
     controller = build_flow(
         [
@@ -560,19 +571,10 @@ def test_write_parquet_read_parquet_partitioned(tmpdir):
     assert read_back_result == expected
 
 
-from unittest.mock import MagicMock
-
-from storey.redis_driver import RedisDriver
-
-
 async def async_test_write_parquet_flush(tmpdir):
-    out_dir = (
-        f"{tmpdir}/test_write_parquet_read_parquet_partitioned/{uuid.uuid4().hex}/"
-    )
+    out_dir = f"{tmpdir}/test_write_parquet_read_parquet_partitioned/{uuid.uuid4().hex}/"
     columns = ["my_int", "my_string"]
-    target = ParquetTarget(
-        out_dir, partition_cols="my_int", columns=columns, flush_after_seconds=2
-    )
+    target = ParquetTarget(out_dir, partition_cols="my_int", columns=columns, flush_after_seconds=2)
 
     async def f():
         pass
@@ -613,14 +615,11 @@ def test_error_flow():
         ]
     ).run()
 
-    try:
+    with pytest.raises(ATestException):
         for i in range(1000):
             controller.emit(i)
         controller.terminate()
         controller.await_termination()
-        assert False
-    except ATestException:
-        pass
 
 
 def test_error_recovery():
@@ -713,14 +712,11 @@ def test_error_nonrecovery():
         ]
     ).run()
 
-    try:
+    with pytest.raises(ATestException):
         for i in range(10):
             controller.emit(i)
         controller.terminate()
         controller.await_termination()
-        assert False
-    except ATestException:
-        pass
 
 
 def test_error_recovery_containment():
@@ -734,14 +730,11 @@ def test_error_recovery_containment():
         ]
     ).run()
 
-    try:
+    with pytest.raises(ATestException):
         for i in range(10):
             controller.emit(i)
         controller.terminate()
         controller.await_termination()
-        assert False
-    except ATestException:
-        pass
 
 
 def test_broadcast():
@@ -923,9 +916,7 @@ def test_map_with_empty_table_state_flow():
     controller = build_flow(
         [
             SyncEmitSource(),
-            MapWithState(
-                table_object, lambda x, state: enrich(x, state), group_by_key=True
-            ),
+            MapWithState(table_object, lambda x, state: enrich(x, state), group_by_key=True),
             Reduce([], append_and_return),
         ]
     ).run()
@@ -950,6 +941,7 @@ def test_map_with_empty_table_state_flow():
         {"col1": 8, "diff_from_first": 7},
         {"col1": 9, "diff_from_first": 9},
     ]
+    assert termination_result == expected
     expected_cache = {
         "dina": {"first_value": 0, "counter": 4},
         "tal": {"first_value": 1, "counter": 6},
@@ -978,9 +970,7 @@ def test_awaitable_result():
 
 
 def test_double_completion():
-    controller = build_flow(
-        [SyncEmitSource(), Complete(), Complete(), Reduce(0, lambda acc, x: acc + x)]
-    ).run()
+    controller = build_flow([SyncEmitSource(), Complete(), Complete(), Reduce(0, lambda acc, x: acc + x)]).run()
 
     for i in range(10):
         awaitable_result = controller.emit(i)
@@ -991,9 +981,7 @@ def test_double_completion():
 
 
 async def async_test_async_double_completion():
-    controller = build_flow(
-        [AsyncEmitSource(), Complete(), Complete(), Reduce(0, lambda acc, x: acc + x)]
-    ).run()
+    controller = build_flow([AsyncEmitSource(), Complete(), Complete(), Reduce(0, lambda acc, x: acc + x)]).run()
 
     for i in range(10):
         result = await controller.emit(i)
@@ -1015,10 +1003,8 @@ def test_awaitable_result_error():
 
     awaitable_result = controller.emit(0)
     try:
-        awaitable_result.await_result()
-        assert False
-    except ValueError:
-        pass
+        with pytest.raises(ValueError):
+            awaitable_result.await_result()
     finally:
         controller.terminate()
 
@@ -1031,10 +1017,8 @@ async def async_test_async_awaitable_result_error():
 
     awaitable_result = controller.emit(0)
     try:
-        await awaitable_result
-        assert False
-    except ValueError:
-        pass
+        with pytest.raises(ValueError):
+            await awaitable_result
     finally:
         await controller.terminate()
 
@@ -1048,9 +1032,7 @@ def test_complete_without_awaitable_result():
         event._awaitable_result = None
         return event
 
-    controller = build_flow(
-        [SyncEmitSource(), Map(delete_awaitable, full_event=True), Complete()]
-    ).run()
+    controller = build_flow([SyncEmitSource(), Map(delete_awaitable, full_event=True), Complete()]).run()
     for i in range(3):
         controller.emit(i)
     controller.terminate()
@@ -1109,10 +1091,8 @@ def test_awaitable_result_error_in_async_downstream():
         ]
     ).run()
     try:
-        controller.emit(1).await_result()
-        assert False
-    except InvalidURL:
-        pass
+        with pytest.raises(InvalidURL):
+            controller.emit(1).await_result()
     finally:
         controller.terminate()
 
@@ -1128,11 +1108,8 @@ async def async_test_async_awaitable_result_error_in_async_downstream():
             Complete(),
         ]
     ).run()
-    try:
+    with pytest.raises(InvalidURL):
         await controller.emit(1)
-        assert False
-    except InvalidURL:
-        pass
 
 
 def test_async_awaitable_result_error_in_async_downstream():
@@ -1152,16 +1129,12 @@ def test_awaitable_result_error_in_by_key_async_downstream():
         ):
             raise ValueError("boom")
 
-    controller = build_flow(
-        [SyncEmitSource(), NoSqlTarget(Table("test", DriverBoom())), Complete()]
-    ).run()
+    controller = build_flow([SyncEmitSource(), NoSqlTarget(Table("test", DriverBoom())), Complete()]).run()
     try:
-        controller.emit({"col1": 0}, "key").await_result()
-        controller.terminate()
-        controller.await_termination()
-        assert False
-    except ValueError:
-        pass
+        with pytest.raises(ValueError):
+            controller.emit({"col1": 0}, "key").await_result()
+            controller.terminate()
+            controller.await_termination()
     finally:
         controller.terminate()
 
@@ -1179,17 +1152,15 @@ def test_error_trace():
     controller = build_flow([SyncEmitSource(), Map(boom), Complete()]).run()
 
     awaitable_results = []
-    for i in range(2):
-        try:
+    for _ in range(2):
+        with pytest.raises(ValueError):
             awaitable_results.append(controller.emit(0))
-        except ValueError:
-            pass
 
     last_trace_size = None
     for awaitable_result in awaitable_results:
         try:
             awaitable_result.await_result()
-            assert False
+            raise AssertionError
         except ValueError:
             trace_size = len(traceback.format_exc())
             if last_trace_size is not None:
@@ -1541,9 +1512,7 @@ def test_batch_with_timeout():
 
 async def async_test_write_csv(tmpdir):
     file_path = f"{tmpdir}/test_write_csv/out.csv"
-    controller = build_flow(
-        [AsyncEmitSource(), CSVTarget(file_path, columns=["n", "n*10"], header=True)]
-    ).run()
+    controller = build_flow([AsyncEmitSource(), CSVTarget(file_path, columns=["n", "n*10"], header=True)]).run()
 
     for i in range(10):
         await controller.emit([i, 10 * i])
@@ -1568,14 +1537,11 @@ async def async_test_write_csv_error(tmpdir):
     write_csv = CSVTarget(file_path)
     controller = build_flow([AsyncEmitSource(), write_csv]).run()
 
-    try:
+    with pytest.raises(TypeError):
         for i in range(10):
             await controller.emit(i)
         await controller.terminate()
         await controller.await_termination()
-        assert False
-    except TypeError:
-        pass
 
 
 def test_write_csv_error(tmpdir):
@@ -1584,9 +1550,7 @@ def test_write_csv_error(tmpdir):
 
 def test_write_csv_with_dict(tmpdir):
     file_path = f"{tmpdir}/test_write_csv_with_dict.csv"
-    controller = build_flow(
-        [SyncEmitSource(), CSVTarget(file_path, columns=["n", "n*10"], header=True)]
-    ).run()
+    controller = build_flow([SyncEmitSource(), CSVTarget(file_path, columns=["n", "n*10"], header=True)]).run()
 
     for i in range(10):
         controller.emit({"n": i, "n*10": 10 * i})
@@ -1653,7 +1617,20 @@ def test_write_csv_with_metadata(tmpdir):
     with open(file_path) as file:
         result = file.read()
 
-    expected = "event_key,n,n*10\nkey0,0,0\nkey1,1,10\nkey2,2,20\nkey3,3,30\nkey4,4,40\nkey5,5,50\nkey6,6,60\nkey7,7,70\nkey8,8,80\nkey9,9,90\n"
+    expected = (
+        "event_key,n,n*10\n"
+        "key0,0,0\n"
+        "key1,1,10\n"
+        "key2,2,20\n"
+        "key3,3,30\n"
+        "key4,4,40\n"
+        "key5,5,50\n"
+        "key6,6,60\n"
+        "key7,7,70\n"
+        "key8,8,80\n"
+        "key9,9,90\n"
+    )
+
     assert result == expected
 
 
@@ -1675,7 +1652,20 @@ def test_write_csv_with_metadata_no_rename(tmpdir):
     with open(file_path) as file:
         result = file.read()
 
-    expected = "key,n,n*10\nkey0,0,0\nkey1,1,10\nkey2,2,20\nkey3,3,30\nkey4,4,40\nkey5,5,50\nkey6,6,60\nkey7,7,70\nkey8,8,80\nkey9,9,90\n"
+    expected = (
+        "key,n,n*10\n"
+        "key0,0,0\n"
+        "key1,1,10\n"
+        "key2,2,20\n"
+        "key3,3,30\n"
+        "key4,4,40\n"
+        "key5,5,50\n"
+        "key6,6,60\n"
+        "key7,7,70\n"
+        "key8,8,80\n"
+        "key9,9,90\n"
+    )
+
     assert result == expected
 
 
@@ -1719,14 +1709,25 @@ def test_write_csv_from_lists_with_metadata(tmpdir):
     with open(file_path) as file:
         result = file.read()
 
-    expected = "event_key,n,n*10\nkey0,0,0\nkey1,1,10\nkey2,2,20\nkey3,3,30\nkey4,4,40\nkey5,5,50\nkey6,6,60\nkey7,7,70\nkey8,8,80\nkey9,9,90\n"
+    expected = (
+        "event_key,n,n*10\n"
+        "key0,0,0\n"
+        "key1,1,10\n"
+        "key2,2,20\n"
+        "key3,3,30\n"
+        "key4,4,40\n"
+        "key5,5,50\n"
+        "key6,6,60\n"
+        "key7,7,70\n"
+        "key8,8,80\n"
+        "key9,9,90\n"
+    )
+
     assert result == expected
 
 
 def test_write_csv_from_lists_with_metadata_and_column_pruning(tmpdir):
-    file_path = (
-        f"{tmpdir}/test_write_csv_from_lists_with_metadata_and_column_pruning.csv"
-    )
+    file_path = f"{tmpdir}/test_write_csv_from_lists_with_metadata_and_column_pruning.csv"
     controller = build_flow(
         [
             SyncEmitSource(),
@@ -1743,7 +1744,9 @@ def test_write_csv_from_lists_with_metadata_and_column_pruning(tmpdir):
     with open(file_path) as file:
         result = file.read()
 
-    expected = "event_key,n*10\nkey0,0\nkey1,10\nkey2,20\nkey3,30\nkey4,40\nkey5,50\nkey6,60\nkey7,70\nkey8,80\nkey9,90\n"
+    expected = (
+        "event_key,n*10\nkey0,0\nkey1,10\nkey2,20\nkey3,30\nkey4,40\nkey5,50\nkey6,60\nkey7,70\nkey8,80\nkey9,90\n"
+    )
     assert result == expected
 
 
@@ -1770,7 +1773,20 @@ def test_write_csv_infer_with_metadata_columns(tmpdir):
     with open(file_path) as file:
         result = file.read()
 
-    expected = "event_key,n,n*10\nkey0,0,0\nkey1,1,10\nkey2,2,20\nkey3,3,30\nkey4,4,40\nkey5,5,50\nkey6,6,60\nkey7,7,70\nkey8,8,80\nkey9,9,90\n"
+    expected = (
+        "event_key,n,n*10\n"
+        "key0,0,0\n"
+        "key1,1,10\n"
+        "key2,2,20\n"
+        "key3,3,30\n"
+        "key4,4,40\n"
+        "key5,5,50\n"
+        "key6,6,60\n"
+        "key7,7,70\n"
+        "key8,8,80\n"
+        "key9,9,90\n"
+    )
+
     assert result == expected
 
 
@@ -1778,13 +1794,10 @@ def test_write_csv_fail_to_infer_columns(tmpdir):
     file_path = f"{tmpdir}/test_write_csv_fail_to_infer_columns.csv"
     controller = build_flow([SyncEmitSource(), CSVTarget(file_path, header=True)]).run()
 
-    try:
+    with pytest.raises(TypeError):
         controller.emit([0])
         controller.terminate()
         controller.await_termination()
-        assert False
-    except BaseException:
-        pass
 
 
 def test_reduce_to_dataframe():
@@ -1837,9 +1850,7 @@ def test_reduce_to_dataframe_with_index_from_lists():
 
 def test_reduce_to_dataframe_indexed_by_key():
     index = "my_key"
-    controller = build_flow(
-        [SyncEmitSource(), ReduceToDataFrame(index=index, insert_key_column_as=index)]
-    ).run()
+    controller = build_flow([SyncEmitSource(), ReduceToDataFrame(index=index, insert_key_column_as=index)]).run()
 
     expected = []
     for i in range(10):
@@ -1884,12 +1895,8 @@ def test_to_dataframe_with_index():
     termination_result = controller.await_termination()
 
     assert len(termination_result) == 2
-    assert termination_result[0].body.equals(
-        expected1
-    ), f"{termination_result[0]}\n!=\n{expected1}"
-    assert termination_result[1].body.equals(
-        expected2
-    ), f"{termination_result[1]}\n!=\n{expected2}"
+    assert termination_result[0].body.equals(expected1), f"{termination_result[0]}\n!=\n{expected1}"
+    assert termination_result[1].body.equals(expected2), f"{termination_result[1]}\n!=\n{expected2}"
 
 
 def test_map_class():
@@ -1947,9 +1954,7 @@ def test_write_to_parquet(tmpdir):
     controller = build_flow(
         [
             SyncEmitSource(),
-            ParquetTarget(
-                out_dir, partition_cols="my_int", columns=columns, max_events=1
-            ),
+            ParquetTarget(out_dir, partition_cols="my_int", columns=columns, max_events=1),
         ]
     ).run()
 
@@ -1965,24 +1970,18 @@ def test_write_to_parquet(tmpdir):
     controller.await_termination()
 
     read_back_df = pd.read_parquet(out_dir, columns=columns)
-    assert read_back_df.equals(expected_in_pyarrow1) or read_back_df.equals(
-        expected_in_pyarrow3
-    )
+    assert read_back_df.equals(expected_in_pyarrow1) or read_back_df.equals(expected_in_pyarrow3)
 
 
 # Regression test for ML-2510.
 # Partitioning by datetime is not something you would normally want to do.
 def test_write_to_parquet_partition_by_datetime(tmpdir):
-    out_dir = (
-        f"{tmpdir}/test_write_to_parquet_partition_by_datetime/{uuid.uuid4().hex}/"
-    )
+    out_dir = f"{tmpdir}/test_write_to_parquet_partition_by_datetime/{uuid.uuid4().hex}/"
     columns = ["my_int", "my_string", "my_datetime"]
     controller = build_flow(
         [
             SyncEmitSource(),
-            ParquetTarget(
-                out_dir, partition_cols="my_datetime", columns=columns, max_events=1
-            ),
+            ParquetTarget(out_dir, partition_cols="my_datetime", columns=columns, max_events=1),
         ]
     ).run()
 
@@ -2014,9 +2013,7 @@ def test_write_to_parquet_string_as_datetime(tmpdir):
     controller = build_flow(
         [
             SyncEmitSource(),
-            ParquetTarget(
-                out_dir, partition_cols=[], columns=columns_with_type, max_events=1
-            ),
+            ParquetTarget(out_dir, partition_cols=[], columns=columns_with_type, max_events=1),
         ]
     ).run()
 
@@ -2040,9 +2037,7 @@ def test_write_to_parquet_string_as_datetime(tmpdir):
 def test_write_sparse_data_to_parquet(tmpdir):
     out_dir = f"{tmpdir}/test_write_sparse_data_to_parquet/{uuid.uuid4().hex}"
     columns = ["my_int", "my_string"]
-    controller = build_flow(
-        [SyncEmitSource(), ParquetTarget(out_dir, columns=columns)]
-    ).run()
+    controller = build_flow([SyncEmitSource(), ParquetTarget(out_dir, columns=columns)]).run()
 
     expected = []
     for i in range(10):
@@ -2061,9 +2056,7 @@ def test_write_sparse_data_to_parquet(tmpdir):
 def test_write_to_parquet_single_file_on_termination(tmpdir):
     out_file = f"{tmpdir}/test_write_to_parquet_single_file_on_termination_{uuid.uuid4().hex}/out.parquet"
     columns = ["my_int", "my_string"]
-    controller = build_flow(
-        [SyncEmitSource(), ParquetTarget(out_file, columns=columns)]
-    ).run()
+    controller = build_flow([SyncEmitSource(), ParquetTarget(out_file, columns=columns)]).run()
 
     expected = []
     for i in range(10):
@@ -2084,9 +2077,7 @@ def test_write_to_parquet_single_file_pandas_metadata(tmpdir):
     controller = build_flow(
         [
             SyncEmitSource(),
-            ParquetTarget(
-                out_file, index_cols=[("my_int", "int")], columns=[("my_string", "str")]
-            ),
+            ParquetTarget(out_file, index_cols=[("my_int", "int")], columns=[("my_string", "str")]),
         ]
     ).run()
 
@@ -2176,9 +2167,7 @@ def test_write_to_parquet_partition_by_date(tmpdir):
     controller = build_flow(
         [
             SyncEmitSource(),
-            ParquetTarget(
-                out_file, partition_cols=["$date"], columns=["my_int", "my_string"]
-            ),
+            ParquetTarget(out_file, partition_cols=["$date"], columns=["my_int", "my_string"]),
         ]
     ).run()
 
@@ -2200,9 +2189,7 @@ def test_write_to_parquet_partition_by_date(tmpdir):
 
 def test_write_to_parquet_partition_by_hash(tmpdir):
     out_file = f"{tmpdir}/test_write_to_parquet_partition_by_hash{uuid.uuid4().hex}"
-    controller = build_flow(
-        [SyncEmitSource(), ParquetTarget(out_file, columns=["my_int", "my_string"])]
-    ).run()
+    controller = build_flow([SyncEmitSource(), ParquetTarget(out_file, columns=["my_int", "my_string"])]).run()
 
     my_time = datetime(2020, 2, 15)
 
@@ -2255,18 +2242,16 @@ def test_write_to_parquet_partition_by_column(tmpdir):
 
 def test_write_to_parquet_with_inference(tmpdir):
     out_dir = f"{tmpdir}/test_write_to_parquet_with_inference{uuid.uuid4().hex}/"
-    controller = build_flow(
-        [SyncEmitSource(), ParquetTarget(out_dir, index_cols="$key", partition_cols=[])]
-    ).run()
+    controller = build_flow([SyncEmitSource(), ParquetTarget(out_dir, index_cols="$key", partition_cols=[])]).run()
 
     expected = []
-    controller.emit({"only_first_event": "first", "my_int": -1}, key=f"first_key!")
-    expected.append([f"first_key!", "first", -1, None, None])
+    controller.emit({"only_first_event": "first", "my_int": -1}, key="first_key!")
+    expected.append(["first_key!", "first", -1, None, None])
     for i in range(10):
         controller.emit({"my_int": i, "my_string": f"this is {i}"}, key=f"key{i}")
         expected.append([f"key{i}", None, i, f"this is {i}", None])
-    controller.emit({"only_last_event": "last", "my_int": 1000}, key=f"last_key!")
-    expected.append([f"last_key!", None, 1000, None, "last"])
+    controller.emit({"only_last_event": "last", "my_int": 1000}, key="last_key!")
+    expected.append(["last_key!", None, 1000, None, "last"])
     expected = pd.DataFrame(
         expected,
         columns=["key", "only_first_event", "my_int", "my_string", "only_last_event"],
@@ -2281,11 +2266,8 @@ def test_write_to_parquet_with_inference(tmpdir):
 
 
 def test_write_to_parquet_with_inference_error_on_partition_index_collision(tmpdir):
-    try:
+    with pytest.raises(ValueError):
         ParquetTarget("out/", index_cols="$key", partition_cols=["$key"])
-        assert False
-    except ValueError:
-        pass
 
 
 def test_join_by_key():
@@ -2478,9 +2460,7 @@ def test_write_to_tsdb():
     expected_data = []
     date_time_str = "18/09/19 01:55:1"
     for i in range(9):
-        now = datetime.strptime(
-            date_time_str + str(i) + " UTC-0000", "%d/%m/%y %H:%M:%S UTC%z"
-        )
+        now = datetime.strptime(date_time_str + str(i) + " UTC-0000", "%d/%m/%y %H:%M:%S UTC%z")
         controller.emit([now, i, i + 1, i + 2])
         expected_data.append([now, i, i + 1, i + 2])
 
@@ -2502,9 +2482,7 @@ def test_write_to_tsdb():
     i = 0
     for write_call in mock_frames_client.call_log[1:]:
         assert write_call[0] == "write"
-        expected = pd.DataFrame(
-            [expected_data[i]], columns=["time", "node", "cpu", "disk"]
-        )
+        expected = pd.DataFrame([expected_data[i]], columns=["time", "node", "cpu", "disk"])
         expected.set_index(keys=["time", "node"], inplace=True)
         res = write_call[1]["dfs"]
         assert expected.equals(res), f"result{res}\n!=\nexpected{expected}"
@@ -2534,9 +2512,7 @@ def test_write_dict_to_tsdb():
     expected_data = []
     date_time_str = "18/09/19 01:55:1"
     for i in range(9):
-        now = datetime.strptime(
-            date_time_str + str(i) + " UTC-0000", "%d/%m/%y %H:%M:%S UTC%z"
-        )
+        now = datetime.strptime(date_time_str + str(i) + " UTC-0000", "%d/%m/%y %H:%M:%S UTC%z")
         controller.emit({"time": now, "node": i, "cpu": i + 1, "disk": i + 2})
         expected_data.append([now, i, i + 1, i + 2])
 
@@ -2558,9 +2534,7 @@ def test_write_dict_to_tsdb():
     i = 0
     for write_call in mock_frames_client.call_log[1:]:
         assert write_call[0] == "write"
-        expected = pd.DataFrame(
-            [expected_data[i]], columns=["time", "node", "cpu", "disk"]
-        )
+        expected = pd.DataFrame([expected_data[i]], columns=["time", "node", "cpu", "disk"])
         expected.set_index(keys=["time", "node"], inplace=True)
         res = write_call[1]["dfs"]
         assert expected.equals(res), f"result{res}\n!=\nexpected{expected}"
@@ -2590,9 +2564,7 @@ def test_write_dict_to_tsdb_error():
     date_time_str = "18/09/19 01:55:1"
     with pytest.raises(ValueError):
         for i in range(9):
-            now = datetime.strptime(
-                date_time_str + str(i) + " UTC-0000", "%d/%m/%y %H:%M:%S UTC%z"
-            )
+            now = datetime.strptime(date_time_str + str(i) + " UTC-0000", "%d/%m/%y %H:%M:%S UTC%z")
             controller.emit({"time": now, "node": i, "cpu": i + 1, "disk": i + 2})
             expected_data.append([now, i, i + 1, i + 2])
 
@@ -2621,9 +2593,7 @@ def test_write_to_tsdb_with_key_index():
     expected_data = []
     date_time_str = "18/09/19 01:55:1"
     for i in range(9):
-        now = datetime.strptime(
-            date_time_str + str(i) + " UTC-0000", "%d/%m/%y %H:%M:%S UTC%z"
-        )
+        now = datetime.strptime(date_time_str + str(i) + " UTC-0000", "%d/%m/%y %H:%M:%S UTC%z")
         controller.emit([now, i + 1, i + 2], key=i)
         expected_data.append([now, i, i + 1, i + 2])
 
@@ -2645,9 +2615,7 @@ def test_write_to_tsdb_with_key_index():
     i = 0
     for write_call in mock_frames_client.call_log[1:]:
         assert write_call[0] == "write"
-        expected = pd.DataFrame(
-            [expected_data[i]], columns=["time", "node", "cpu", "disk"]
-        )
+        expected = pd.DataFrame([expected_data[i]], columns=["time", "node", "cpu", "disk"])
         expected.set_index(keys=["time", "node"], inplace=True)
         res = write_call[1]["dfs"]
         assert expected.equals(res), f"result{res}\n!=\nexpected{expected}"
@@ -2676,9 +2644,7 @@ def test_write_to_tsdb_with_key_index_and_default_time():
     expected_data = []
     date_time_str = "18/09/19 01:55:1"
     for i in range(9):
-        now = datetime.strptime(
-            date_time_str + str(i) + " UTC-0000", "%d/%m/%y %H:%M:%S UTC%z"
-        )
+        now = datetime.strptime(date_time_str + str(i) + " UTC-0000", "%d/%m/%y %H:%M:%S UTC%z")
         controller.emit([i + 1, i + 2], key=i, event_time=now)
         expected_data.append([now, i, i + 1, i + 2])
 
@@ -2700,9 +2666,7 @@ def test_write_to_tsdb_with_key_index_and_default_time():
     i = 0
     for write_call in mock_frames_client.call_log[1:]:
         assert write_call[0] == "write"
-        expected = pd.DataFrame(
-            [expected_data[i]], columns=["time", "node", "cpu", "disk"]
-        )
+        expected = pd.DataFrame([expected_data[i]], columns=["time", "node", "cpu", "disk"])
         expected.set_index(keys=["time", "node"], inplace=True)
         res = write_call[1]["dfs"]
         assert expected.equals(res), f"result{res}\n!=\nexpected{expected}"
@@ -2810,48 +2774,33 @@ def test_error_in_table_persist():
 def test_async_task_error_and_complete():
     table = Table("table", NoopDriver())
 
-    controller = build_flow(
-        [SyncEmitSource(), NoSqlTarget(table), Map(RaiseEx(1).raise_ex), Complete()]
-    ).run()
+    controller = build_flow([SyncEmitSource(), NoSqlTarget(table), Map(RaiseEx(1).raise_ex), Complete()]).run()
 
     awaitable_result = controller.emit({"col1": 0}, "tal")
     try:
-        awaitable_result.await_result()
-        assert False
-    except ATestException:
-        pass
+        with pytest.raises(ATestException):
+            awaitable_result.await_result()
     finally:
         controller.terminate()
 
-    try:
+    with pytest.raises(ATestException):
         controller.await_termination()
-        assert False
-    except ATestException:
-        pass
 
 
 def test_async_task_error_and_complete_repeated_emits():
     table = Table("table", NoopDriver())
 
-    controller = build_flow(
-        [SyncEmitSource(), NoSqlTarget(table), Map(RaiseEx(1).raise_ex), Complete()]
-    ).run()
-    for i in range(3):
+    controller = build_flow([SyncEmitSource(), NoSqlTarget(table), Map(RaiseEx(1).raise_ex), Complete()]).run()
+    for _ in range(3):
         try:
             awaitable_result = controller.emit({"col1": 0}, "tal")
         except ATestException:
             continue
-        try:
+        with pytest.raises(ATestException):
             awaitable_result.await_result()
-            assert False
-        except ATestException:
-            pass
     controller.terminate()
-    try:
+    with pytest.raises(ATestException):
         controller.await_termination()
-        assert False
-    except ATestException:
-        pass
 
 
 def test_push_error():
@@ -2998,9 +2947,7 @@ def test_input_path():
     controller = build_flow(
         [
             SyncEmitSource(),
-            Filter(
-                lambda x: x < 5, input_path="col2.col3"
-            ),  # filter emits the full event
+            Filter(lambda x: x < 5, input_path="col2.col3"),  # filter emits the full event
             Map(lambda x: x + 1, input_path="col2.col3"),
             Reduce(0, lambda acc, x: acc + x),
         ]
@@ -3046,9 +2993,7 @@ def test_to_dict():
 
 
 def test_flow_reuse():
-    flow = build_flow(
-        [SyncEmitSource(), Map(lambda x: x + 1), Reduce(0, lambda acc, x: acc + x)]
-    )
+    flow = build_flow([SyncEmitSource(), Map(lambda x: x + 1), Reduce(0, lambda acc, x: acc + x)])
 
     for _ in range(3):
         controller = flow.run()
@@ -3126,9 +3071,7 @@ def test_flow_to_dict_dataframe_source():
         [["key1", datetime(2020, 2, 15), "id1", 1.1]],
         columns=["my_key", "my_time", "my_id", "my_value"],
     )
-    step = DataframeSource(
-        df, key_field="my_key", time_field="my_time", id_field="my_id"
-    )
+    step = DataframeSource(df, key_field="my_key", time_field="my_time", id_field="my_id")
 
     assert step.to_dict() == {
         "class_name": "storey.sources.DataframeSource",
@@ -3217,15 +3160,13 @@ c_s_v_source0.to(parquet_target0)
 def test_illegal_step_no_source():
     try:
         Reduce([], append_and_return, full_event=True).run()
-        assert False
+        raise AssertionError()
     except ValueError as ex:
         assert str(ex) == "Flow must start with a source"
 
 
 def test_illegal_step_source_not_first_step():
-    df = pd.DataFrame(
-        [["hello", 1, 1.5], ["world", 2, 2.5]], columns=["string", "int", "float"]
-    )
+    df = pd.DataFrame([["hello", 1, 1.5], ["world", 2, 2.5]], columns=["string", "int", "float"])
     try:
         build_flow(
             [
@@ -3234,7 +3175,7 @@ def test_illegal_step_source_not_first_step():
                 Reduce([], append_and_return),
             ]
         ).run()
-        assert False
+        raise AssertionError()
     except ValueError as ex:
         assert str(ex) == "DataframeSource can only appear as the first step of a flow"
 
@@ -3316,9 +3257,7 @@ def test_query_by_key_edge_case_field_name():
 def test_csv_source_with_none_values():
     controller = build_flow(
         [
-            CSVSource(
-                "tests/test-with-none-values.csv", header=True, key_field="string"
-            ),
+            CSVSource("tests/test-with-none-values.csv", header=True, key_field="string"),
             Reduce([], append_and_return, full_event=True),
         ]
     ).run()
@@ -3411,9 +3350,7 @@ def test_bad_time_input():
 
 
 def test_epoch_time_input():
-    controller = build_flow(
-        [SyncEmitSource(time_field="time"), Complete(full_event=True)]
-    ).run()
+    controller = build_flow([SyncEmitSource(time_field="time"), Complete(full_event=True)]).run()
 
     awaitable_result = controller.emit({"time": 1620569127})
     result = awaitable_result.await_result()
@@ -3422,9 +3359,7 @@ def test_epoch_time_input():
 
 
 def test_iso_string_time_input():
-    controller = build_flow(
-        [SyncEmitSource(time_field="time"), Complete(full_event=True)]
-    ).run()
+    controller = build_flow([SyncEmitSource(time_field="time"), Complete(full_event=True)]).run()
 
     awaitable_result = controller.emit({"time": "2021-05-09T14:05:27+00:00"})
     result = awaitable_result.await_result()
@@ -3447,9 +3382,7 @@ def test_custom_string_time_input():
 
 
 def test_none_key_is_not_written():
-    data = pd.DataFrame(
-        {"first_name": ["moshe", None, "katya"], "some_data": [1, 2, 3]}
-    )
+    data = pd.DataFrame({"first_name": ["moshe", None, "katya"], "some_data": [1, 2, 3]})
     data.set_index(keys=["first_name"], inplace=True)
 
     controller = build_flow(
@@ -3527,9 +3460,7 @@ def test_csv_none_value_first_row(tmpdir):
 
     controller = build_flow(
         [
-            CSVSource(
-                out_file_csv, header=True, key_field="first_name", build_dict=True
-            ),
+            CSVSource(out_file_csv, header=True, key_field="first_name", build_dict=True),
             ParquetTarget(out_file_par),
         ]
     ).run()
@@ -3555,9 +3486,7 @@ def test_csv_none_value_string(tmpdir):
 
     controller = build_flow(
         [
-            CSVSource(
-                out_file_csv, header=True, key_field="first_name", build_dict=True
-            ),
+            CSVSource(out_file_csv, header=True, key_field="first_name", build_dict=True),
             ParquetTarget(out_file_par),
         ]
     ).run()
@@ -3573,7 +3502,7 @@ def test_csv_none_value_string(tmpdir):
 
 
 def test_csv_multiple_time_columns(tmpdir):
-    try:
+    with pytest.raises(ValueError):
         controller = build_flow(
             [
                 CSVSource(
@@ -3585,9 +3514,6 @@ def test_csv_multiple_time_columns(tmpdir):
                 Reduce([], append_and_return),
             ]
         ).run()
-        assert False
-    except ValueError:
-        pass
 
     # now do it correctly
     controller = build_flow(
@@ -3675,9 +3601,7 @@ def test_func_parquet_target_terminate(tmpdir):
     df = pd.DataFrame(data, columns=["my_string", "my_time", "my_city"])
     df.set_index("my_string")
 
-    controller = build_flow(
-        [DataframeSource(df), ParquetTarget(path=out_file, update_last_written=my_func)]
-    ).run()
+    controller = build_flow([DataframeSource(df), ParquetTarget(path=out_file, update_last_written=my_func)]).run()
 
     controller.await_termination()
 
@@ -3692,9 +3616,7 @@ def test_completion_on_error_in_concurrent_execution_step():
         async def _handle_completed(self, event, response):
             raise ATestException()
 
-    controller = build_flow(
-        [SyncEmitSource(), _ErrorInConcurrentExecution(), Complete()]
-    ).run()
+    controller = build_flow([SyncEmitSource(), _ErrorInConcurrentExecution(), Complete()]).run()
 
     awaitable_result = controller.emit(1)
     try:
@@ -3875,11 +3797,7 @@ def test_verbose_logs():
         ]
     ).run()
 
-    controller.emit(
-        Event(
-            id="myid", time=datetime.fromisoformat("2020-07-21T21:40:00+00:00"), body={}
-        )
-    )
+    controller.emit(Event(id="myid", time=datetime.fromisoformat("2020-07-21T21:40:00+00:00"), body={}))
     controller.terminate()
     controller.await_termination()
 
@@ -3887,16 +3805,12 @@ def test_verbose_logs():
 
     level, args, kwargs = logger.logs[0]
     assert level == "debug"
-    assert args == (
-        "SyncEmitSource -> Map1 | Event(id=myid, time=2020-07-21 21:40:00+00:00, path=/, body={})",
-    )
+    assert args == ("SyncEmitSource -> Map1 | Event(id=myid, time=2020-07-21 21:40:00+00:00, path=/, body={})",)
     assert kwargs == {}
 
     level, args, kwargs = logger.logs[1]
     assert level == "debug"
-    assert args == (
-        "Map1 -> Map2 | Event(id=myid, time=2020-07-21 21:40:00+00:00, path=/, body={})",
-    )
+    assert args == ("Map1 -> Map2 | Event(id=myid, time=2020-07-21 21:40:00+00:00, path=/, body={})",)
     assert kwargs == {}
 
 
@@ -3915,9 +3829,7 @@ def test_init_of_recovery_step():
 
     was_init_called_step = WasInitCalled()
 
-    controller = build_flow(
-        [SyncEmitSource(), Map(lambda x: x, recovery_step=was_init_called_step)]
-    ).run()
+    controller = build_flow([SyncEmitSource(), Map(lambda x: x, recovery_step=was_init_called_step)]).run()
 
     controller.terminate()
     controller.await_termination()

@@ -39,9 +39,7 @@ def append_return(lst, x):
 def kafka_topic_setup_teardown():
     # Setup
     kafka_admin_client = kafka.KafkaAdminClient(bootstrap_servers=bootstrap_servers)
-    kafka_consumer = kafka.KafkaConsumer(
-        topic, bootstrap_servers=bootstrap_servers, auto_offset_reset="earliest"
-    )
+    kafka_consumer = kafka.KafkaConsumer(topic, bootstrap_servers=bootstrap_servers, auto_offset_reset="earliest")
     try:
         kafka_admin_client.delete_topics([topic])
         sleep(1)
@@ -101,9 +99,7 @@ async def async_test_write_to_kafka_full_event_readback(kafka_topic_setup_teardo
     controller = build_flow(
         [
             AsyncEmitSource(),
-            KafkaTarget(
-                bootstrap_servers, topic, sharding_func=lambda _: 0, full_event=True
-            ),
+            KafkaTarget(bootstrap_servers, topic, sharding_func=lambda _: 0, full_event=True),
         ]
     ).run()
     events = []
@@ -150,6 +146,4 @@ async def async_test_write_to_kafka_full_event_readback(kafka_topic_setup_teardo
     reason="KAFKA_BOOTSTRAP_SERVERS must be defined to run kafka tests",
 )
 def test_async_test_write_to_kafka_full_event_readback(kafka_topic_setup_teardown):
-    asyncio.run(
-        async_test_write_to_kafka_full_event_readback(kafka_topic_setup_teardown)
-    )
+    asyncio.run(async_test_write_to_kafka_full_event_readback(kafka_topic_setup_teardown))

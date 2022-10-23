@@ -25,16 +25,38 @@ import v3io
 import v3io.aio.dataplane
 import v3io_frames as frames
 
-from storey import (AsyncEmitSource, CSVSource, DataframeSource, Event, Filter,
-                    HttpRequest, JoinWithTable, JoinWithV3IOTable, Map,
-                    MapWithState, NoSqlTarget, Reduce, SendToHttp,
-                    StreamTarget, SyncEmitSource, Table, TSDBTarget,
-                    V3ioDriver, build_flow)
+from storey import (
+    AsyncEmitSource,
+    CSVSource,
+    DataframeSource,
+    Event,
+    Filter,
+    HttpRequest,
+    JoinWithTable,
+    JoinWithV3IOTable,
+    Map,
+    MapWithState,
+    NoSqlTarget,
+    Reduce,
+    SendToHttp,
+    StreamTarget,
+    SyncEmitSource,
+    Table,
+    TSDBTarget,
+    V3ioDriver,
+    build_flow,
+)
 
-from .integration_test_utils import (TestContext, V3ioHeaders, append_return,
-                                     assign_stream_teardown_test,
-                                     create_stream, setup_kv_teardown_test,
-                                     setup_teardown_test, test_base_time)
+from .integration_test_utils import (
+    TestContext,
+    V3ioHeaders,
+    append_return,
+    assign_stream_teardown_test,
+    create_stream,
+    setup_kv_teardown_test,
+    setup_teardown_test,
+    test_base_time,
+)
 
 _prevents_ide_from_optimizing_these_away = [
     setup_kv_teardown_test,
@@ -63,7 +85,7 @@ class GetShardData(V3ioHeaders):
                 body_obj = json.loads(body)
                 if body_obj["ErrorMessage"] == "ResourceNotFoundException":
                     return []
-            except:
+            except Exception:
                 raise AssertionError(f"Got response status code 400: {body}")
         assert response.status == 200, await response.text()
         location = json.loads(await response.text())["Location"]
@@ -97,9 +119,7 @@ def _get_redis_kv_all_attrs(setup_teardown_test: TestContext, key: str):
     redis_fake_server = setup_teardown_test.redis_fake_server
     values = get_redis_client(redis_fake_server=redis_fake_server).hgetall(redis_key)
     return {
-        RedisDriver.convert_to_str(key): RedisDriver.convert_redis_value_to_python_obj(
-            val
-        )
+        RedisDriver.convert_to_str(key): RedisDriver.convert_redis_value_to_python_obj(val)
         for key, val in values.items()
     }
 
@@ -124,9 +144,7 @@ def test_join_with_v3io_table(setup_kv_teardown_test):
             SyncEmitSource(),
             Map(lambda x: x + 1),
             Filter(lambda x: x < 8),
-            JoinWithV3IOTable(
-                V3ioDriver(), lambda x: x, lambda x, y: y["age"], table_path
-            ),
+            JoinWithV3IOTable(V3ioDriver(), lambda x: x, lambda x, y: y["age"], table_path),
             Reduce(0, lambda x, y: x + y),
         ]
     ).run()
@@ -267,9 +285,7 @@ async def async_test_write_to_v3io_stream_full_event_readback(
 def test_async_test_write_to_v3io_stream_full_event_readback(
     assign_stream_teardown_test,
 ):
-    asyncio.run(
-        async_test_write_to_v3io_stream_full_event_readback(assign_stream_teardown_test)
-    )
+    asyncio.run(async_test_write_to_v3io_stream_full_event_readback(assign_stream_teardown_test))
 
 
 # ML-1219
@@ -406,38 +422,13 @@ def test_write_dict_to_v3io_stream(assign_stream_teardown_test):
     assert shard1_data == expected_shard1
 
 
-def test_write_to_v3io_stream_unbalanced(assign_stream_teardown_test):
-    stream_path = assign_stream_teardown_test
-    controller = build_flow(
-        [
-            SyncEmitSource(),
-            Map(lambda x: str(x)),
-            StreamTarget(
-                V3ioDriver(),
-                stream_path,
-                sharding_func=lambda event: 0,
-                shards=2,
-                full_event=False,
-            ),
-        ]
-    ).run()
-    for i in range(10):
-        controller.emit(i)
-
-    controller.terminate()
-    controller.await_termination()
-    shard0_data = asyncio.run(GetShardData().get_shard_data(f"{stream_path}/0"))
-    assert shard0_data == [b"0", b"1", b"2", b"3", b"4", b"5", b"6", b"7", b"8", b"9"]
-    shard1_data = asyncio.run(GetShardData().get_shard_data(f"{stream_path}/1"))
-    assert shard1_data == []
-
-
 @pytest.mark.parametrize("sharding_func_type", ["func", "partition_num", "field"])
-def test_write_to_v3io_stream_unbalanced(
-    assign_stream_teardown_test, sharding_func_type
-):
+def test_write_to_v3io_stream_unbalanced(assign_stream_teardown_test, sharding_func_type):
     if sharding_func_type == "func":
-        sharding_func = lambda event: 0
+
+        def sharding_func(event):
+            return 0
+
     elif sharding_func_type == "partition_num":
         sharding_func = 0
     elif sharding_func_type == "field":
@@ -449,11 +440,7 @@ def test_write_to_v3io_stream_unbalanced(
     controller = build_flow(
         [
             SyncEmitSource(),
-            Map(
-                (lambda x: {"n": x})
-                if sharding_func_type == "field"
-                else (lambda x: str(x))
-            ),
+            Map((lambda x: {"n": x}) if sharding_func_type == "field" else (lambda x: str(x))),
             StreamTarget(
                 V3ioDriver(),
                 stream_path,
@@ -532,9 +519,7 @@ def test_write_to_tsdb():
     expected = []
     date_time_str = "18/09/19 01:55:1"
     for i in range(9):
-        now = datetime.strptime(
-            date_time_str + str(i) + " UTC-0000", "%d/%m/%y %H:%M:%S UTC%z"
-        )
+        now = datetime.strptime(date_time_str + str(i) + " UTC-0000", "%d/%m/%y %H:%M:%S UTC%z")
         controller.emit([now, i, i + 1, i + 2])
         expected.append([now, f"{i}", float(i + 1), float(i + 2)])
 
@@ -568,9 +553,7 @@ def test_write_to_tsdb_with_metadata_label():
     expected = []
     date_time_str = "18/09/19 01:55:1"
     for i in range(9):
-        now = datetime.strptime(
-            date_time_str + str(i) + " UTC-0000", "%d/%m/%y %H:%M:%S UTC%z"
-        )
+        now = datetime.strptime(date_time_str + str(i) + " UTC-0000", "%d/%m/%y %H:%M:%S UTC%z")
         controller.emit([i, i + 1, i + 2], event_time=now)
         expected.append([now, f"{i}", float(i + 1), float(i + 2)])
 
@@ -676,9 +659,7 @@ def test_write_table_specific_columns(setup_teardown_test):
         if "first_activity" not in state:
             state["first_activity"] = event.time
 
-        event.body["time_since_activity"] = (
-            event.time - state["first_activity"]
-        ).seconds
+        event.body["time_since_activity"] = (event.time - state["first_activity"]).seconds
         state["last_event"] = event.time
         state["total_activities"] = state.get("total_activities", 0) + 1
         event.body["color"] = state["color"]
@@ -774,8 +755,7 @@ def test_write_table_specific_columns(setup_teardown_test):
         "iss": True,
         "sometime": test_base_time,
         "first_activity": test_base_time,
-        "last_event": test_base_time
-        + timedelta(minutes=25 * (items_in_ingest_batch - 1)),
+        "last_event": test_base_time + timedelta(minutes=25 * (items_in_ingest_batch - 1)),
         "total_activities": 10,
         "twice_total_activities": 20,
         "min": 1,
@@ -795,9 +775,7 @@ def test_write_table_metadata_columns(setup_teardown_test):
         if "first_activity" not in state:
             state["first_activity"] = event.time
 
-        event.body["time_since_activity"] = (
-            event.time - state["first_activity"]
-        ).seconds
+        event.body["time_since_activity"] = (event.time - state["first_activity"]).seconds
         state["last_event"] = event.time
         state["total_activities"] = state.get("total_activities", 0) + 1
         event.body["color"] = state["color"]
@@ -893,8 +871,7 @@ def test_write_table_metadata_columns(setup_teardown_test):
         "iss": True,
         "sometime": test_base_time,
         "first_activity": test_base_time,
-        "last_event": test_base_time
-        + timedelta(minutes=25 * (items_in_ingest_batch - 1)),
+        "last_event": test_base_time + timedelta(minutes=25 * (items_in_ingest_batch - 1)),
         "total_activities": 10,
         "twice_total_activities": 20,
         "my_key": "tal",
@@ -908,9 +885,7 @@ async def get_kv_item(full_path, key):
         headers = V3ioHeaders()
         container, path = full_path.split("/", 1)
 
-        _v3io_client = v3io.aio.dataplane.Client(
-            endpoint=headers._webapi_url, access_key=headers._access_key
-        )
+        _v3io_client = v3io.aio.dataplane.Client(endpoint=headers._webapi_url, access_key=headers._access_key)
         response = await _v3io_client.kv.get(
             container,
             path,
@@ -1009,9 +984,7 @@ def test_write_three_keys_to_v3io_from_df(setup_teardown_test):
         "middle_name": "tuna",
         "last_name": "cohen",
     }
-    actual = get_key_all_attrs_test_helper(
-        setup_teardown_test, "moshe.dc1e617eaae40eea3449baf3795bb5b50676c963"
-    )
+    actual = get_key_all_attrs_test_helper(setup_teardown_test, "moshe.dc1e617eaae40eea3449baf3795bb5b50676c963")
     assert expected == actual
 
 
@@ -1068,9 +1041,7 @@ def test_write_multiple_keys_to_v3io_from_csv(setup_teardown_test):
 
     controller = build_flow(
         [
-            CSVSource(
-                "tests/test.csv", header=True, key_field=["n1", "n2"], build_dict=True
-            ),
+            CSVSource("tests/test.csv", header=True, key_field=["n1", "n2"], build_dict=True),
             NoSqlTarget(table),
         ]
     ).run()
@@ -1163,9 +1134,7 @@ def test_cache_flushing(setup_teardown_test):
     if setup_teardown_test.driver_name == "RedisDriver":
         response = _get_redis_kv_all_attrs(setup_teardown_test, "dina")
     else:
-        response = asyncio.run(
-            get_kv_item(setup_teardown_test.table_name, "dina")
-        ).output.item
+        response = asyncio.run(get_kv_item(setup_teardown_test.table_name, "dina")).output.item
     assert response == {}
 
     time.sleep(4)
@@ -1174,9 +1143,7 @@ def test_cache_flushing(setup_teardown_test):
     if setup_teardown_test.driver_name == "RedisDriver":
         response = _get_redis_kv_all_attrs(setup_teardown_test, "dina")
     else:
-        response = asyncio.run(
-            get_kv_item(setup_teardown_test.table_name, "dina")
-        ).output.item
+        response = asyncio.run(get_kv_item(setup_teardown_test.table_name, "dina")).output.item
     assert response == {"col1": 0}
 
     controller.terminate()

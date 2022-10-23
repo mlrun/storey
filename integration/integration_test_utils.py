@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-import asyncio
 import base64
 import json
 import os
@@ -23,7 +22,6 @@ from datetime import datetime
 
 import aiohttp
 import fakeredis
-import pytest
 import redis as r
 
 from storey import V3ioDriver
@@ -147,22 +145,14 @@ class TestContext:
 
     def driver(self, IsAggregationlessDriver=False, *args, **kwargs):
         if self.driver_name == "V3ioDriver":
-            v3io_driver_class = (
-                TestContext.AggregationlessV3ioDriver
-                if IsAggregationlessDriver
-                else V3ioDriver
-            )
+            v3io_driver_class = TestContext.AggregationlessV3ioDriver if IsAggregationlessDriver else V3ioDriver
             return v3io_driver_class(*args, **kwargs)
         elif self.driver_name == "RedisDriver":
-            redis_driver_class = (
-                TestContext.AggregationlessRedisDriver
-                if IsAggregationlessDriver
-                else RedisDriver
-            )
+            redis_driver_class = TestContext.AggregationlessRedisDriver if IsAggregationlessDriver else RedisDriver
             return redis_driver_class(
+                *args,
                 redis_client=get_redis_client(self.redis_fake_server),
                 key_prefix="storey-test:",
-                *args,
                 **kwargs,
             )
         else:
@@ -171,59 +161,6 @@ class TestContext:
 
 
 drivers_list = ["V3ioDriver", "RedisDriver"]
-
-
-@pytest.fixture(params=drivers_list)
-def setup_teardown_test(request):
-    # Setup
-    test_context = TestContext(request.param, table_name=_generate_table_name())
-
-    # Test runs
-    yield test_context
-
-    # Teardown
-    if test_context.driver_name == "V3ioDriver":
-        asyncio.run(recursive_delete(test_context.table_name, V3ioHeaders()))
-    elif test_context.driver_name == "RedisDriver":
-        remove_redis_table(test_context.table_name)
-    else:
-        raise ValueError(f'Unsupported driver name "{test_context.driver_name}"')
-
-
-@pytest.fixture(params=drivers_list)
-def setup_kv_teardown_test(request):
-    # Setup
-    test_context = TestContext(request.param, table_name=_generate_table_name())
-
-    if test_context.driver_name == "V3ioDriver":
-        asyncio.run(create_temp_kv(test_context.table_name))
-    elif test_context.driver_name == "RedisDriver":
-        create_temp_redis_kv(test_context)
-    else:
-        raise ValueError(f'Unsupported driver name "{driver_name}"')
-
-    # Test runs
-    yield test_context
-
-    # Teardown
-    if test_context.driver_name == "V3ioDriver":
-        asyncio.run(recursive_delete(test_context.table_name, V3ioHeaders()))
-    elif test_context.driver_name == "RedisDriver":
-        remove_redis_table(test_context.table_name)
-    else:
-        raise ValueError(f'Unsupported driver name "{test_context.driver_name}"')
-
-
-@pytest.fixture()
-def assign_stream_teardown_test():
-    # Setup
-    stream_path = _generate_table_name("bigdata/storey_ci/stream_test")
-
-    # Test runs
-    yield stream_path
-
-    # Teardown
-    asyncio.run(recursive_delete(stream_path, V3ioHeaders()))
 
 
 async def create_stream(stream_path):
@@ -238,9 +175,7 @@ async def create_stream(stream_path):
         data=request_body,
         ssl=False,
     )
-    assert (
-        response.status == 204
-    ), f"Bad response {await response.text()} to request {request_body}"
+    assert response.status == 204, f"Bad response {await response.text()} to request {request_body}"
 
 
 def create_temp_redis_kv(setup_teardown_test):
@@ -261,9 +196,7 @@ async def create_temp_kv(table_path):
     v3io_access = V3ioHeaders()
     client_session = aiohttp.ClientSession(connector=connector)
     for i in range(1, 10):
-        request_body = json.dumps(
-            {"Item": {"age": {"N": f"{10 - i}"}, "color": {"S": f"blue{i}"}}}
-        )
+        request_body = json.dumps({"Item": {"age": {"N": f"{10 - i}"}, "color": {"S": f"blue{i}"}}})
         response = await client_session.request(
             "PUT",
             f"{v3io_access._webapi_url}/{table_path}/{i}",
@@ -271,9 +204,7 @@ async def create_temp_kv(table_path):
             data=request_body,
             ssl=False,
         )
-        assert (
-            response.status == 200
-        ), f"Bad response {await response.text()} to request {request_body}"
+        assert response.status == 200, f"Bad response {await response.text()} to request {request_body}"
 
 
 def _v3io_parse_get_items_response(response_body):
@@ -322,26 +253,18 @@ async def recursive_delete(path, v3io_access):
             elif response.status == 404:
                 break
             else:
-                raise V3ioError(
-                    f"Failed to delete table {path}. Response status code was {response.status}: {body}"
-                )
+                raise V3ioError(f"Failed to delete table {path}. Response status code was {response.status}: {body}")
 
-        await _delete_item(
-            f"{v3io_access._webapi_url}/{path}/", v3io_access, client_session
-        )
+        await _delete_item(f"{v3io_access._webapi_url}/{path}/", v3io_access, client_session)
     finally:
         await client_session.close()
 
 
 async def _delete_item(path, v3io_access, client_session):
-    response = await client_session.delete(
-        path, headers=v3io_access._get_put_file_headers, ssl=False
-    )
+    response = await client_session.delete(path, headers=v3io_access._get_put_file_headers, ssl=False)
     if response.status >= 300 and response.status != 404 and response.status != 409:
         body = await response.text()
-        raise V3ioError(
-            f"Failed to delete item at {path}. Response status code was {response.status}: {body}"
-        )
+        raise V3ioError(f"Failed to delete item at {path}. Response status code was {response.status}: {body}")
 
 
 def _v3io_parse_get_item_response(response_body):

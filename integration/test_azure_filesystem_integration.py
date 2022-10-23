@@ -19,15 +19,22 @@ import uuid
 import pandas as pd
 import pytest
 
-from storey import (AsyncEmitSource, CSVSource, CSVTarget, FlatMap, Map,
-                    ParquetTarget, Reduce, SyncEmitSource, build_flow)
+from storey import (
+    AsyncEmitSource,
+    CSVSource,
+    CSVTarget,
+    FlatMap,
+    Map,
+    ParquetTarget,
+    Reduce,
+    SyncEmitSource,
+    build_flow,
+)
 
 from .integration_test_utils import _generate_table_name
 
 has_azure_credentials = (
-    os.getenv("AZURE_ACCOUNT_NAME")
-    and os.getenv("AZURE_ACCOUNT_KEY")
-    and os.getenv("AZURE_BLOB_STORE")
+    os.getenv("AZURE_ACCOUNT_NAME") and os.getenv("AZURE_ACCOUNT_KEY") and os.getenv("AZURE_BLOB_STORE")
 )
 if has_azure_credentials:
     storage_options = {
@@ -125,11 +132,8 @@ def test_csv_reader_from_azure_error_on_file_not_found():
         ]
     ).run()
 
-    try:
+    with pytest.raises(FileNotFoundError):
         controller.await_termination()
-        assert False
-    except FileNotFoundError:
-        pass
 
 
 async def async_test_write_csv_to_azure(azure_teardown_csv):
@@ -191,9 +195,7 @@ def test_write_csv_with_dict_to_azure(azure_teardown_file):
 @pytest.mark.skipif(not has_azure_credentials, reason="No azure credentials found")
 def test_write_csv_infer_columns_without_header_to_azure(azure_teardown_file):
     file_path = f"az:///{azure_teardown_file}"
-    controller = build_flow(
-        [SyncEmitSource(), CSVTarget(file_path, storage_options=storage_options)]
-    ).run()
+    controller = build_flow([SyncEmitSource(), CSVTarget(file_path, storage_options=storage_options)]).run()
 
     for i in range(10):
         controller.emit({"n": i, "n*10": 10 * i})
@@ -230,7 +232,19 @@ def test_write_csv_from_lists_with_metadata_and_column_pruning_to_azure(
     controller.await_termination()
 
     actual = AzureBlobFileSystem(**storage_options).open(azure_teardown_file).read()
-    expected = "event_key,n*10\nkey0,0\nkey1,10\nkey2,20\nkey3,30\nkey4,40\nkey5,50\nkey6,60\nkey7,70\nkey8,80\nkey9,90\n"
+    expected = (
+        "event_key,n*10\n"
+        "key0,0\n"
+        "key1,10\n"
+        "key2,20\n"
+        "key3,30\n"
+        "key4,40\n"
+        "key5,50\n"
+        "key6,60\n"
+        "key7,70\n"
+        "key8,80\n"
+        "key9,90\n"
+    )
     assert actual.decode("utf-8") == expected
 
 
@@ -259,9 +273,7 @@ def test_write_to_parquet_to_azure(azure_setup_teardown_test):
     controller.terminate()
     controller.await_termination()
 
-    read_back_df = pd.read_parquet(
-        out_dir, columns=columns, storage_options=storage_options
-    )
+    read_back_df = pd.read_parquet(out_dir, columns=columns, storage_options=storage_options)
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
 
 
@@ -286,9 +298,7 @@ def test_write_to_parquet_to_azure_single_file_on_termination(
     controller.terminate()
     controller.await_termination()
 
-    read_back_df = pd.read_parquet(
-        out_file, columns=columns, storage_options=storage_options
-    )
+    read_back_df = pd.read_parquet(out_file, columns=columns, storage_options=storage_options)
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
 
 
@@ -317,7 +327,5 @@ def test_write_to_parquet_to_azure_with_indices(azure_setup_teardown_test):
     controller.terminate()
     controller.await_termination()
 
-    read_back_df = pd.read_parquet(
-        out_file, columns=columns, storage_options=storage_options
-    )
+    read_back_df = pd.read_parquet(out_file, columns=columns, storage_options=storage_options)
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
