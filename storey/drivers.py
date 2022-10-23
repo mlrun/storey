@@ -536,7 +536,6 @@ class SQLDriver(Driver):
         self._sql_connection = None
         self._primary_key = primary_key
 
-
     def _lazy_init(self):
         import sqlalchemy as db
 

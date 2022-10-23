@@ -536,6 +536,7 @@ class _IterableSource(Flow):
         self._closeables = super().run()
         return await self._run_loop()
 
+
 class CSVSource(_IterableSource, WithUUID):
     """
     Reads CSV files as input source for a flow.
