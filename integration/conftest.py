@@ -25,6 +25,7 @@ from integration.integration_test_utils import (
     drivers_list,
     recursive_delete,
     remove_redis_table,
+    remove_sql_tables
 )
 
 
