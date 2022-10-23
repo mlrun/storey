@@ -12,10 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-import pandas as pd
-from typing import Optional, List
+from typing import List, Optional
 
-from .flow import _termination_obj, Flow
+import pandas as pd
+
+from .flow import Flow, _termination_obj
 
 
 class ReduceToDataFrame(Flow):
@@ -34,8 +35,15 @@ class ReduceToDataFrame(Flow):
 
     """
 
-    def __init__(self, index: Optional[str] = None, columns: Optional[List[str]] = None, insert_key_column_as: Optional[str] = None,
-                 insert_time_column_as: Optional[str] = None, insert_id_column_as: Optional[str] = None, **kwargs):
+    def __init__(
+        self,
+        index: Optional[str] = None,
+        columns: Optional[List[str]] = None,
+        insert_key_column_as: Optional[str] = None,
+        insert_time_column_as: Optional[str] = None,
+        insert_id_column_as: Optional[str] = None,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         self._index = index
         self._columns = columns
@@ -78,7 +86,9 @@ class ReduceToDataFrame(Flow):
                 if self._insert_id_column_as:
                     self._id_column.append(event.id)
             else:
-                raise ValueError(f'ToDataFrame step only supports input of type dictionary or list, not {type(body)}')
+                raise ValueError(
+                    f"ToDataFrame step only supports input of type dictionary or list, not {type(body)}"
+                )
 
 
 class ToDataFrame(Flow):
@@ -89,7 +99,10 @@ class ToDataFrame(Flow):
 
     for additional params, see documentation of  :class:`storey.flow.Flow`
     """
-    def __init__(self, index: Optional[str] = None, columns: Optional[List[str]] = None, **kwargs):
+
+    def __init__(
+        self, index: Optional[str] = None, columns: Optional[List[str]] = None, **kwargs
+    ):
         super().__init__(**kwargs)
         self._index = index
         self._columns = columns

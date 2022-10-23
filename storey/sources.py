@@ -21,20 +21,24 @@ import threading
 import uuid
 import warnings
 from datetime import datetime
-from typing import List, Optional, Union, Callable, Coroutine, Iterable
+from typing import Callable, Coroutine, Iterable, List, Optional, Union
 
 import pandas
 import pytz
 
-from .dtypes import _termination_obj, Event
-from .flow import Flow, Complete
-from .utils import url_to_file_system, find_filters, find_partitions
+from .dtypes import Event, _termination_obj
+from .flow import Complete, Flow
+from .utils import find_filters, find_partitions, url_to_file_system
 
 
 class AwaitableResult:
     """Future result of a computation. Calling await_result() will return with the result once the computation is completed."""
 
-    def __init__(self, on_error: Optional[Callable[[], None]] = None, expected_number_of_results: int = 1):
+    def __init__(
+        self,
+        on_error: Optional[Callable[[], None]] = None,
+        expected_number_of_results: int = 1,
+    ):
         self._on_error = on_error
         self._expected_number_of_results = expected_number_of_results
         self._number_of_results = 0
@@ -88,14 +92,19 @@ class WithUUID:
         if not self._current_uuid_base or self._current_uuid_count == 1024:
             self._current_uuid_base = uuid.uuid4().hex
             self._current_uuid_count = 0
-        result = f'{self._current_uuid_base}-{self._current_uuid_count:04}'
+        result = f"{self._current_uuid_base}-{self._current_uuid_count:04}"
         self._current_uuid_count += 1
         return result
 
 
 class FlowControllerBase(WithUUID):
-    def __init__(self, key_field: Optional[Union[str, List[str]]], time_field: Optional[str], time_format: Optional[str],
-                 id_field: Optional[str]):
+    def __init__(
+        self,
+        key_field: Optional[Union[str, List[str]]],
+        time_field: Optional[str],
+        time_format: Optional[str],
+        id_field: Optional[str],
+    ):
         super().__init__()
         self._key_field = key_field
         self._time_field = time_field
@@ -103,11 +112,13 @@ class FlowControllerBase(WithUUID):
         self._id_field = id_field
 
     def _build_event(self, element, key, event_time):
-        element_is_event = hasattr(element, 'id')
+        element_is_event = hasattr(element, "id")
         if element_is_event:
-            if isinstance(element.body, dict) and element.body.get(Event._serialize_event_marker):
+            if isinstance(element.body, dict) and element.body.get(
+                Event._serialize_event_marker
+            ):
                 serialized_event = element.body
-                body = serialized_event.get('body')
+                body = serialized_event.get("body")
                 element.body = body
                 for field in Event._serialize_fields:
                     val = serialized_event.get(field)
@@ -119,7 +130,7 @@ class FlowControllerBase(WithUUID):
                             setattr(element, field, val)
             else:
                 body = element.body
-            if not hasattr(element, 'time') and hasattr(element, 'timestamp'):
+            if not hasattr(element, "time") and hasattr(element, "timestamp"):
                 element.time = element.timestamp
         else:
             body = element
@@ -136,7 +147,7 @@ class FlowControllerBase(WithUUID):
             body[self._time_field] = event_time
 
         if element_is_event:
-            if key or not hasattr(element, 'key'):
+            if key or not hasattr(element, "key"):
                 element.key = key
             if event_time:
                 element.time = event_time
@@ -150,15 +161,29 @@ class FlowController(FlowControllerBase):
     To be used from a synchronous context.
     """
 
-    def __init__(self, emit_fn, await_termination_fn, return_awaitable_result, key_field: Optional[str] = None,
-                 time_field: Optional[str] = None, time_format: Optional[str] = None, id_field: Optional[str] = None):
+    def __init__(
+        self,
+        emit_fn,
+        await_termination_fn,
+        return_awaitable_result,
+        key_field: Optional[str] = None,
+        time_field: Optional[str] = None,
+        time_format: Optional[str] = None,
+        id_field: Optional[str] = None,
+    ):
         super().__init__(key_field, time_field, time_format, id_field)
         self._emit_fn = emit_fn
         self._await_termination_fn = await_termination_fn
         self._return_awaitable_result = return_awaitable_result
 
-    def emit(self, element: object, key: Optional[Union[str, List[str]]] = None, event_time: Optional[datetime] = None,
-             return_awaitable_result: Optional[bool] = None, expected_number_of_results: Optional[int] = None):
+    def emit(
+        self,
+        element: object,
+        key: Optional[Union[str, List[str]]] = None,
+        event_time: Optional[datetime] = None,
+        return_awaitable_result: Optional[bool] = None,
+        expected_number_of_results: Optional[int] = None,
+    ):
         """Emits an event into the associated flow.
 
         :param element: The event data, or payload. To set metadata as well, pass an Event object.
@@ -171,14 +196,18 @@ class FlowController(FlowControllerBase):
         :returns: AsyncAwaitableResult if a Complete appears in the flow. None otherwise.
         """
         if return_awaitable_result is not None:
-            warnings.warn('return_awaitable_result is deprecated. An awaitable result object will be returned if a Complete step appears '
-                          'in the flow.',
-                          DeprecationWarning)
+            warnings.warn(
+                "return_awaitable_result is deprecated. An awaitable result object will be returned if a Complete step appears "
+                "in the flow.",
+                DeprecationWarning,
+            )
 
         event = self._build_event(element, key, event_time)
         awaitable_result = None
         if self._return_awaitable_result:
-            awaitable_result = AwaitableResult(expected_number_of_results=expected_number_of_results or 1)
+            awaitable_result = AwaitableResult(
+                expected_number_of_results=expected_number_of_results or 1
+            )
         event._awaitable_result = awaitable_result
         self._emit_fn(event)
         return awaitable_result
@@ -200,7 +229,7 @@ class FlowAwaiter:
         self._await_termination_fn = await_termination_fn
 
     def await_termination(self):
-        """"waits for the flow to terminate and returns the result"""
+        """ "waits for the flow to terminate and returns the result"""
         return self._await_termination_fn()
 
 
@@ -217,19 +246,26 @@ class SyncEmitSource(Flow):
 
     for additional params, see documentation of  :class:`storey.flow.Flow`
     """
+
     _legal_first_step = True
 
-    def __init__(self, buffer_size: Optional[int] = None, key_field: Union[list, str, int, None] = None,
-                 time_field: Union[str, int, None] = None, time_format: Optional[str] = None, **kwargs):
+    def __init__(
+        self,
+        buffer_size: Optional[int] = None,
+        key_field: Union[list, str, int, None] = None,
+        time_field: Union[str, int, None] = None,
+        time_format: Optional[str] = None,
+        **kwargs,
+    ):
         if buffer_size is None:
             buffer_size = 8
         else:
-            kwargs['buffer_size'] = buffer_size
+            kwargs["buffer_size"] = buffer_size
         if key_field is not None:
-            kwargs['key_field'] = key_field
+            kwargs["key_field"] = key_field
         super().__init__(**kwargs)
         if buffer_size <= 0:
-            raise ValueError('Buffer size must be positive')
+            raise ValueError("Buffer size must be positive")
         self._q = queue.Queue(buffer_size)
         self._key_field = key_field
         self._time_field = time_field
@@ -277,14 +313,14 @@ class SyncEmitSource(Flow):
             # it before raising to prevent it from growing each time
             ex_copy = copy.copy(self._ex)
             if self.verbose:
-                raise type(ex_copy)('Flow execution terminated') from ex_copy
+                raise type(ex_copy)("Flow execution terminated") from ex_copy
             raise ex_copy
 
     def _emit(self, event):
         if event is not _termination_obj:
             self._raise_on_error(self._ex)
             if self._is_terminated:
-                raise ValueError('Cannot emit to a terminated flow')
+                raise ValueError("Cannot emit to a terminated flow")
         else:
             self._is_terminated = True
         self._q.put(event)
@@ -304,15 +340,25 @@ class SyncEmitSource(Flow):
 
         has_complete = self._check_step_in_flow(Complete)
 
-        return FlowController(self._emit, raise_error_or_return_termination_result, has_complete, self._key_field, self._time_field,
-                              self._time_format)
+        return FlowController(
+            self._emit,
+            raise_error_or_return_termination_result,
+            has_complete,
+            self._key_field,
+            self._time_field,
+            self._time_format,
+        )
 
 
 class AsyncAwaitableResult:
     """Future result of a computation. Calling await_result() will return with the result once the computation is completed.
     Same as AwaitableResult but for an async context."""
 
-    def __init__(self, on_error: Optional[Callable[[BaseException], Coroutine]] = None, expected_number_of_results: int = 1):
+    def __init__(
+        self,
+        on_error: Optional[Callable[[BaseException], Coroutine]] = None,
+        expected_number_of_results: int = 1,
+    ):
         self._on_error = on_error
         self._expected_number_of_results = expected_number_of_results
         self._number_of_results = 0
@@ -348,8 +394,16 @@ class AsyncFlowController(FlowControllerBase):
     Used to emit events into the associated flow, terminate the flow, and await the flow's termination. To be used from inside an async def.
     """
 
-    def __init__(self, emit_fn, loop_task, await_result, key_field: Optional[str] = None, time_field: Optional[str] = None,
-                 time_format: Optional[str] = None, id_field: Optional[str] = None):
+    def __init__(
+        self,
+        emit_fn,
+        loop_task,
+        await_result,
+        key_field: Optional[str] = None,
+        time_field: Optional[str] = None,
+        time_format: Optional[str] = None,
+        id_field: Optional[str] = None,
+    ):
         super().__init__(key_field, time_field, time_format, id_field)
         self._emit_fn = emit_fn
         self._loop_task = loop_task
@@ -358,8 +412,14 @@ class AsyncFlowController(FlowControllerBase):
         self._time_format = time_format
         self._await_result = await_result
 
-    async def emit(self, element: object, key: Optional[Union[str, List[str]]] = None, event_time: Optional[datetime] = None,
-                   await_result: Optional[bool] = None, expected_number_of_results: Optional[int] = None) -> object:
+    async def emit(
+        self,
+        element: object,
+        key: Optional[Union[str, List[str]]] = None,
+        event_time: Optional[datetime] = None,
+        await_result: Optional[bool] = None,
+        expected_number_of_results: Optional[int] = None,
+    ) -> object:
         """Emits an event into the associated flow.
 
         :param element: The event data, or payload. To set metadata as well, pass an Event object.
@@ -372,9 +432,11 @@ class AsyncFlowController(FlowControllerBase):
         :returns: The result received from the flow if a Complete step appears in the flow. None otherwise.
         """
         if await_result is not None:
-            warnings.warn('await_result is deprecated. An awaitable result object will be returned if a Complete step appears '
-                          'in the flow.',
-                          DeprecationWarning)
+            warnings.warn(
+                "await_result is deprecated. An awaitable result object will be returned if a Complete step appears "
+                "in the flow.",
+                DeprecationWarning,
+            )
 
         event = self._build_event(element, key, event_time)
         awaitable = None
@@ -410,17 +472,24 @@ class AsyncEmitSource(Flow):
 
     for additional params, see documentation of  :class:`~storey.flow.Flow`
     """
+
     _legal_first_step = True
 
-    def __init__(self, buffer_size: int = None, key_field: Union[list, str, None] = None, time_field: Optional[str] = None,
-                 time_format: Optional[str] = None, **kwargs):
+    def __init__(
+        self,
+        buffer_size: int = None,
+        key_field: Union[list, str, None] = None,
+        time_field: Optional[str] = None,
+        time_format: Optional[str] = None,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         if buffer_size is None:
             buffer_size = 8
         elif buffer_size <= 0:
-            raise ValueError('Buffer size must be positive')
+            raise ValueError("Buffer size must be positive")
         else:
-            kwargs['buffer_size'] = buffer_size
+            kwargs["buffer_size"] = buffer_size
         self._q = asyncio.Queue(buffer_size)
         self._key_field = key_field
         self._time_field = time_field
@@ -458,14 +527,14 @@ class AsyncEmitSource(Flow):
             # it before raising to prevent it from growing each time
             ex_copy = copy.copy(self._ex)
             if self.verbose:
-                raise type(ex_copy)('Flow execution terminated') from ex_copy
+                raise type(ex_copy)("Flow execution terminated") from ex_copy
             raise ex_copy
 
     async def _emit(self, event):
         if event is not _termination_obj:
             self._raise_on_error()
             if self._is_terminated:
-                raise ValueError('Cannot emit to a terminated flow')
+                raise ValueError("Cannot emit to a terminated flow")
         else:
             self._is_terminated = True
         await self._q.put(event)
@@ -477,7 +546,9 @@ class AsyncEmitSource(Flow):
         self._closeables = super().run()
         loop_task = asyncio.get_running_loop().create_task(self._run_loop())
         has_complete = self._check_step_in_flow(Complete)
-        return AsyncFlowController(self._emit, loop_task, has_complete, self._key_field, self._time_field)
+        return AsyncFlowController(
+            self._emit, loop_task, has_complete, self._key_field, self._time_field
+        )
 
 
 class _IterableSource(Flow):
@@ -515,7 +586,7 @@ class _IterableSource(Flow):
     def _raise_on_error(self, ex):
         if ex:
             if self.verbose:
-                raise type(self._ex)('Flow execution terminated') from self._ex
+                raise type(self._ex)("Flow execution terminated") from self._ex
             raise self._ex
 
     def run(self):
@@ -560,22 +631,31 @@ class CSVSource(_IterableSource, WithUUID):
     for additional params, see documentation of  :class:`~storey.flow.Flow`
     """
 
-    def __init__(self, paths: Union[List[str], str], header: bool = False, build_dict: bool = False,
-                 key_field: Union[int, str, List[int], List[str], None] = None, time_field: Union[int, str, None] = None,
-                 timestamp_format: Optional[str] = None, id_field: Union[str, int, None] = None, type_inference: bool = True,
-                 parse_dates: Optional[Union[List[int], List[str]]] = None, **kwargs):
-        kwargs['paths'] = paths
-        kwargs['header'] = header
-        kwargs['build_dict'] = build_dict
+    def __init__(
+        self,
+        paths: Union[List[str], str],
+        header: bool = False,
+        build_dict: bool = False,
+        key_field: Union[int, str, List[int], List[str], None] = None,
+        time_field: Union[int, str, None] = None,
+        timestamp_format: Optional[str] = None,
+        id_field: Union[str, int, None] = None,
+        type_inference: bool = True,
+        parse_dates: Optional[Union[List[int], List[str]]] = None,
+        **kwargs,
+    ):
+        kwargs["paths"] = paths
+        kwargs["header"] = header
+        kwargs["build_dict"] = build_dict
         if key_field is not None:
-            kwargs['key_field'] = key_field
+            kwargs["key_field"] = key_field
         if time_field is not None:
-            kwargs['time_field'] = time_field
+            kwargs["time_field"] = time_field
         if id_field is not None:
-            kwargs['id_field'] = id_field
+            kwargs["id_field"] = id_field
         if timestamp_format is not None:
-            kwargs['timestamp_format'] = timestamp_format
-        kwargs['type_inference'] = type_inference
+            kwargs["timestamp_format"] = timestamp_format
+        kwargs["type_inference"] = type_inference
         _IterableSource.__init__(self, **kwargs)
         WithUUID.__init__(self)
         if isinstance(paths, str):
@@ -588,23 +668,33 @@ class CSVSource(_IterableSource, WithUUID):
         self._timestamp_format = timestamp_format
         self._id_field = id_field
         self._type_inference = type_inference
-        self._storage_options = kwargs.get('storage_options')
+        self._storage_options = kwargs.get("storage_options")
         self._parse_dates = parse_dates
         self._dates_indices = []
         if isinstance(parse_dates, List):
-            if self._with_header and any([isinstance(f, int) for f in self._parse_dates]):
-                raise ValueError('parse_dates can be list of int only when there is no header')
-            if not self._with_header and all([isinstance(f, int) for f in self._parse_dates]):
+            if self._with_header and any(
+                [isinstance(f, int) for f in self._parse_dates]
+            ):
+                raise ValueError(
+                    "parse_dates can be list of int only when there is no header"
+                )
+            if not self._with_header and all(
+                [isinstance(f, int) for f in self._parse_dates]
+            ):
                 self._dates_indices = parse_dates
         if isinstance(self._time_field, int):
             if self._with_header:
-                raise ValueError('time field can be int only when there is no header')
+                raise ValueError("time field can be int only when there is no header")
             self._dates_indices.append(self._time_field)
 
         if not header and isinstance(key_field, str):
-            raise ValueError('key_field can only be set to an integer when with_header is false')
+            raise ValueError(
+                "key_field can only be set to an integer when with_header is false"
+            )
         if not header and isinstance(time_field, str):
-            raise ValueError('time_field can only be set to an integer when with_header is false')
+            raise ValueError(
+                "time_field can only be set to an integer when with_header is false"
+            )
 
     def _init(self):
         self._event_buffer = queue.Queue(1024)
@@ -613,56 +703,60 @@ class CSVSource(_IterableSource, WithUUID):
 
     def _infer_type(self, value):
         lowercase = value.lower()
-        if lowercase == 'true' or lowercase == 'false':
-            return 'b'
+        if lowercase == "true" or lowercase == "false":
+            return "b"
 
         try:
             int(value)
-            return 'i'
+            return "i"
         except ValueError:
             pass
 
         try:
             float(value)
-            return 'f'
+            return "f"
         except ValueError:
             pass
 
-        if value == '':
-            return 'n'
+        if value == "":
+            return "n"
 
-        return 's'
+        return "s"
 
     def _parse_field(self, field, index):
         typ = self._types[index]
-        if typ == 's':
-            if field == '':
+        if typ == "s":
+            if field == "":
                 return None
             return field
-        if typ == 'f':
-            return float(field) if field != '' else math.nan
-        if typ == 'i':
-            return int(field) if field != '' else math.nan
-        if typ == 'b':
+        if typ == "f":
+            return float(field) if field != "" else math.nan
+        if typ == "i":
+            return int(field) if field != "" else math.nan
+        if typ == "b":
             lowercase = field.lower()
-            if lowercase == 'true':
+            if lowercase == "true":
                 return True
-            if lowercase == 'false':
+            if lowercase == "false":
                 return False
-            if lowercase == '':
+            if lowercase == "":
                 return None
-            raise TypeError(f'Expected boolean, got {field}')
-        if typ == 't':
-            if field == '':
+            raise TypeError(f"Expected boolean, got {field}")
+        if typ == "t":
+            if field == "":
                 return None
             return self._datetime_from_timestamp(field)
-        if typ == 'n':
+        if typ == "n":
             return None
-        raise TypeError(f'Unknown type: {typ}')
+        raise TypeError(f"Unknown type: {typ}")
 
     def _datetime_from_timestamp(self, timestamp):
         if self._timestamp_format:
-            return pandas.to_datetime(timestamp, format=self._timestamp_format).floor('u').to_pydatetime()
+            return (
+                pandas.to_datetime(timestamp, format=self._timestamp_format)
+                .floor("u")
+                .to_pydatetime()
+            )
         else:
             return datetime.fromisoformat(timestamp)
 
@@ -671,7 +765,7 @@ class CSVSource(_IterableSource, WithUUID):
 
             for path in self._paths:
                 fs, file_path = url_to_file_system(path, self._storage_options)
-                with fs.open(file_path, mode='r') as f:
+                with fs.open(file_path, mode="r") as f:
                     header = None
                     field_name_to_index = None
                     if self._with_header:
@@ -680,7 +774,9 @@ class CSVSource(_IterableSource, WithUUID):
                         field_name_to_index = {}
                         for i in range(len(header)):
                             field_name_to_index[header[i]] = i
-                            if header[i] == self._time_field or (self._parse_dates and header[i] in self._parse_dates):
+                            if header[i] == self._time_field or (
+                                self._parse_dates and header[i] in self._parse_dates
+                            ):
                                 self._dates_indices.append(i)
                     for line in f:
                         create_event = True
@@ -689,16 +785,16 @@ class CSVSource(_IterableSource, WithUUID):
                             if not self._types:
                                 for index, field in enumerate(parsed_line):
                                     if index in self._dates_indices:
-                                        self._types.append('t')
+                                        self._types.append("t")
                                     else:
                                         type_field = self._infer_type(field)
                                         self._types.append(type_field)
-                                        if type_field == 'n':
+                                        if type_field == "n":
                                             self._none_columns.add(index)
                             else:
                                 for index in copy.copy(self._none_columns):
                                     type_field = self._infer_type(parsed_line[index])
-                                    if type_field != 'n':
+                                    if type_field != "n":
                                         self._types[index] = type_field
                                         self._none_columns.remove(index)
                             for i in range(len(parsed_line)):
@@ -708,7 +804,8 @@ class CSVSource(_IterableSource, WithUUID):
                         if header:
                             if len(parsed_line) != len(header):
                                 raise ValueError(
-                                    f'CSV line with {len(parsed_line)} fields did not match header with {len(header)} fields')
+                                    f"CSV line with {len(parsed_line)} fields did not match header with {len(header)} fields"
+                                )
                             if self._build_dict:
                                 element = {}
                                 for i in range(len(parsed_line)):
@@ -717,8 +814,12 @@ class CSVSource(_IterableSource, WithUUID):
                             if isinstance(self._key_field, list):
                                 key = []
                                 for single_key_field in self._key_field:
-                                    if self._with_header and isinstance(single_key_field, str):
-                                        single_key_field = field_name_to_index[single_key_field]
+                                    if self._with_header and isinstance(
+                                        single_key_field, str
+                                    ):
+                                        single_key_field = field_name_to_index[
+                                            single_key_field
+                                        ]
                                     if parsed_line[single_key_field] is None:
                                         create_event = False
                                         break
@@ -745,7 +846,9 @@ class CSVSource(_IterableSource, WithUUID):
                                 id = parsed_line[id_field]
                             else:
                                 id = self._get_uuid()
-                            event = Event(element, key=key, time=time_as_datetime, id=id)
+                            event = Event(
+                                element, key=key, time=time_as_datetime, id=id
+                            )
                             self._event_buffer.put(event)
                         else:
                             if self.context:
@@ -775,7 +878,9 @@ class CSVSource(_IterableSource, WithUUID):
             return events
 
         while True:
-            events = await asyncio.get_running_loop().run_in_executor(None, get_multiple)
+            events = await asyncio.get_running_loop().run_in_executor(
+                None, get_multiple
+            )
             for event in events:
                 res = await self._do_downstream(event)
                 if event is _termination_obj:
@@ -793,14 +898,20 @@ class DataframeSource(_IterableSource, WithUUID):
     for additional params, see documentation of  :class:`~storey.flow.Flow`
     """
 
-    def __init__(self, dfs: Union[pandas.DataFrame, Iterable[pandas.DataFrame]], key_field: Optional[Union[str, List[str]]] = None,
-                 time_field: Optional[str] = None, id_field: Optional[str] = None, **kwargs):
+    def __init__(
+        self,
+        dfs: Union[pandas.DataFrame, Iterable[pandas.DataFrame]],
+        key_field: Optional[Union[str, List[str]]] = None,
+        time_field: Optional[str] = None,
+        id_field: Optional[str] = None,
+        **kwargs,
+    ):
         if key_field is not None:
-            kwargs['key_field'] = key_field
+            kwargs["key_field"] = key_field
         if time_field is not None:
-            kwargs['time_field'] = time_field
+            kwargs["time_field"] = time_field
         if id_field is not None:
-            kwargs['id_field'] = id_field
+            kwargs["id_field"] = id_field
         _IterableSource.__init__(self, **kwargs)
         WithUUID.__init__(self)
         if isinstance(dfs, pandas.DataFrame):
@@ -815,7 +926,7 @@ class DataframeSource(_IterableSource, WithUUID):
             for namedtuple in df.itertuples():
                 create_event = True
                 body = namedtuple._asdict()
-                index = body.pop('Index')
+                index = body.pop("Index")
                 if len(df.index.names) > 1:
                     for i, index_column in enumerate(df.index.names):
                         body[index_column] = index[i]
@@ -868,13 +979,22 @@ class ParquetSource(DataframeSource):
     :param id_field: column to be used as ID for events.
     """
 
-    def __init__(self, paths: Union[str, Iterable[str]], columns=None, start_filter: Optional[datetime] = None,
-                 end_filter: Optional[datetime] = None, filter_column: Optional[str] = None, **kwargs):
+    def __init__(
+        self,
+        paths: Union[str, Iterable[str]],
+        columns=None,
+        start_filter: Optional[datetime] = None,
+        end_filter: Optional[datetime] = None,
+        filter_column: Optional[str] = None,
+        **kwargs,
+    ):
         if end_filter or start_filter:
             start_filter = datetime.min if start_filter is None else start_filter
             end_filter = datetime.max if end_filter is None else end_filter
             if filter_column is None:
-                raise TypeError('Filter column is required when passing start/end filters')
+                raise TypeError(
+                    "Filter column is required when passing start/end filters"
+                )
 
         self._paths = paths
         if isinstance(paths, str):
@@ -883,7 +1003,7 @@ class ParquetSource(DataframeSource):
         self._start_filter = start_filter
         self._end_filter = end_filter
         self._filter_column = filter_column
-        self._storage_options = kwargs.get('storage_options')
+        self._storage_options = kwargs.get("storage_options")
         super().__init__([], **kwargs)
 
     def _read_filtered_parquet(self, path):
@@ -891,9 +1011,19 @@ class ParquetSource(DataframeSource):
 
         partitions_time_attributes = find_partitions(path, fs)
         filters = []
-        find_filters(partitions_time_attributes, self._start_filter, self._end_filter, filters, self._filter_column)
-        return pandas.read_parquet(path, columns=self._columns, filters=filters,
-                                   storage_options=self._storage_options)
+        find_filters(
+            partitions_time_attributes,
+            self._start_filter,
+            self._end_filter,
+            filters,
+            self._filter_column,
+        )
+        return pandas.read_parquet(
+            path,
+            columns=self._columns,
+            filters=filters,
+            storage_options=self._storage_options,
+        )
 
     def _init(self):
         self._dfs = []
@@ -901,5 +1031,7 @@ class ParquetSource(DataframeSource):
             if self._start_filter or self._end_filter:
                 df = self._read_filtered_parquet(path)
             else:
-                df = pandas.read_parquet(path, columns=self._columns, storage_options=self._storage_options)
+                df = pandas.read_parquet(
+                    path, columns=self._columns, storage_options=self._storage_options
+                )
             self._dfs.append(df)

@@ -16,13 +16,14 @@ import asyncio
 import re
 import time
 from datetime import datetime
-from typing import Optional, Union, Callable, List, Dict
+from typing import Callable, Dict, List, Optional, Union
 
 import pandas as pd
 
-from .dtypes import EmitEveryEvent, FixedWindows, SlidingWindows, EmitAfterPeriod, EmitAfterWindow, EmitAfterMaxEvent, \
-    _dict_to_emit_policy, FieldAggregator, EmitPolicy, FixedWindowType
-from .flow import Flow, _termination_obj, Event
+from .dtypes import (EmitAfterMaxEvent, EmitAfterPeriod, EmitAfterWindow,
+                     EmitEveryEvent, EmitPolicy, FieldAggregator, FixedWindows,
+                     FixedWindowType, SlidingWindows, _dict_to_emit_policy)
+from .flow import Event, Flow, _termination_obj
 from .table import Table
 from .utils import stringify_key
 
@@ -48,11 +49,18 @@ class AggregateByKey(Flow):
      format `{'col_name': 'new_col_name'}`. (Optional)
     """
 
-    def __init__(self, aggregates: Union[List[FieldAggregator], List[Dict[str, object]]], table: Union[Table, str],
-                 key: Union[str, Callable[[Event], object], None] = None,
-                 emit_policy: Union[EmitPolicy, Dict[str, object]] = _default_emit_policy,
-                 augmentation_fn: Optional[Callable[[Event, Dict[str, object]], Event]] = None, enrich_with: Optional[List[str]] = None,
-                 aliases: Optional[Dict[str, str]] = None, use_windows_from_schema: bool = False, **kwargs):
+    def __init__(
+        self,
+        aggregates: Union[List[FieldAggregator], List[Dict[str, object]]],
+        table: Union[Table, str],
+        key: Union[str, Callable[[Event], object], None] = None,
+        emit_policy: Union[EmitPolicy, Dict[str, object]] = _default_emit_policy,
+        augmentation_fn: Optional[Callable[[Event, Dict[str, object]], Event]] = None,
+        enrich_with: Optional[List[str]] = None,
+        aliases: Optional[Dict[str, str]] = None,
+        use_windows_from_schema: bool = False,
+        **kwargs,
+    ):
         Flow.__init__(self, **kwargs)
         aggregates = self._parse_aggregates(aggregates)
         self._check_unique_names(aggregates)
@@ -60,9 +68,13 @@ class AggregateByKey(Flow):
         self._table = table
         if isinstance(table, str):
             if not self.context:
-                raise TypeError("Table can not be string if no context was provided to the step")
+                raise TypeError(
+                    "Table can not be string if no context was provided to the step"
+                )
             self._table = self.context.get_table(table)
-        self._table._set_aggregation_metadata(aggregates, use_windows_from_schema=use_windows_from_schema)
+        self._table._set_aggregation_metadata(
+            aggregates, use_windows_from_schema=use_windows_from_schema
+        )
         self._closeables = [self._table]
 
         self._aggregates_metadata = aggregates
@@ -70,8 +82,12 @@ class AggregateByKey(Flow):
         self._enrich_with = enrich_with or []
         self._aliases = aliases or {}
 
-        if not isinstance(emit_policy, EmitPolicy) and not isinstance(emit_policy, Dict):
-            raise TypeError(f'emit_policy parameter must be of type EmitPolicy, or dict. Found {type(emit_policy)} instead.')
+        if not isinstance(emit_policy, EmitPolicy) and not isinstance(
+            emit_policy, Dict
+        ):
+            raise TypeError(
+                f"emit_policy parameter must be of type EmitPolicy, or dict. Found {type(emit_policy)} instead."
+            )
 
         self._emit_policy = emit_policy
         if isinstance(self._emit_policy, dict):
@@ -79,6 +95,7 @@ class AggregateByKey(Flow):
 
         self._augmentation_fn = augmentation_fn
         if not augmentation_fn:
+
             def f(element, features):
                 features.update(element)
                 return features
@@ -92,9 +109,13 @@ class AggregateByKey(Flow):
             elif isinstance(key, str):
                 self.key_extractor = lambda element: element.get(key)
             elif isinstance(key, list):
-                self.key_extractor = lambda element: [element.get(single_key) for single_key in key]
+                self.key_extractor = lambda element: [
+                    element.get(single_key) for single_key in key
+                ]
             else:
-                raise TypeError(f'key is expected to be either a callable or string but got {type(key)}')
+                raise TypeError(
+                    f"key is expected to be either a callable or string but got {type(key)}"
+                )
 
     def _init(self):
         super()._init()
@@ -107,13 +128,17 @@ class AggregateByKey(Flow):
         unique_aggr_names = set()
         for aggr in aggregates:
             if aggr.name in unique_aggr_names:
-                raise TypeError(f'Aggregates should have unique names. {aggr.name} already exists')
+                raise TypeError(
+                    f"Aggregates should have unique names. {aggr.name} already exists"
+                )
             unique_aggr_names.add(aggr.name)
 
     @staticmethod
     def _parse_aggregates(aggregates):
         if not isinstance(aggregates, list):
-            raise TypeError('aggregates should be a list of FieldAggregator/dictionaries')
+            raise TypeError(
+                "aggregates should be a list of FieldAggregator/dictionaries"
+            )
 
         if not aggregates or isinstance(aggregates[0], FieldAggregator):
             return aggregates
@@ -121,21 +146,33 @@ class AggregateByKey(Flow):
         if isinstance(aggregates[0], dict):
             new_aggregates = []
             for aggregate_dict in aggregates:
-                if 'period' in aggregate_dict:
-                    window = SlidingWindows(aggregate_dict['windows'], aggregate_dict['period'])
+                if "period" in aggregate_dict:
+                    window = SlidingWindows(
+                        aggregate_dict["windows"], aggregate_dict["period"]
+                    )
                 else:
-                    window = FixedWindows(aggregate_dict['windows'])
-                new_aggregates.append(FieldAggregator(aggregate_dict['name'], aggregate_dict['column'], aggregate_dict['operations'],
-                                                      window, aggregate_dict.get('aggregation_filter', None),
-                                                      aggregate_dict.get('max_value', None)))
+                    window = FixedWindows(aggregate_dict["windows"])
+                new_aggregates.append(
+                    FieldAggregator(
+                        aggregate_dict["name"],
+                        aggregate_dict["column"],
+                        aggregate_dict["operations"],
+                        window,
+                        aggregate_dict.get("aggregation_filter", None),
+                        aggregate_dict.get("max_value", None),
+                    )
+                )
             return new_aggregates
 
-        raise TypeError('aggregates should be a list of FieldAggregator/dictionaries')
+        raise TypeError("aggregates should be a list of FieldAggregator/dictionaries")
 
     def _get_timestamp(self, event):
         event_timestamp = event.time
         if isinstance(event_timestamp, datetime):
-            if isinstance(event_timestamp, pd.Timestamp) and event_timestamp.tzinfo is None:
+            if (
+                isinstance(event_timestamp, pd.Timestamp)
+                and event_timestamp.tzinfo is None
+            ):
                 # timestamp for pandas timestamp gives the wrong result in case there is no timezone (ML-313)
                 local_time_zone = datetime.now().astimezone().tzinfo
                 event_timestamp = event_timestamp.replace(tzinfo=local_time_zone)
@@ -149,8 +186,10 @@ class AggregateByKey(Flow):
 
         try:
             # check whether a background loop is needed, if so create start one
-            if (not self._emit_worker_running) and \
-                    (isinstance(self._emit_policy, EmitAfterPeriod) or isinstance(self._emit_policy, EmitAfterWindow)):
+            if (not self._emit_worker_running) and (
+                isinstance(self._emit_policy, EmitAfterPeriod)
+                or isinstance(self._emit_policy, EmitAfterWindow)
+            ):
                 asyncio.get_running_loop().create_task(self._emit_worker())
                 self._emit_worker_running = True
 
@@ -169,29 +208,34 @@ class AggregateByKey(Flow):
                 await self._emit_event(key, event)
             elif isinstance(self._emit_policy, EmitAfterMaxEvent):
                 if safe_key in self._events_in_batch:
-                    self._events_in_batch[safe_key]['counter'] += 1
+                    self._events_in_batch[safe_key]["counter"] += 1
                 else:
-                    event_dict = {'counter': 1, 'time': time.monotonic()}
+                    event_dict = {"counter": 1, "time": time.monotonic()}
                     self._events_in_batch[safe_key] = event_dict
-                self._events_in_batch[safe_key]['event'] = event
+                self._events_in_batch[safe_key]["event"] = event
                 if self._emit_policy.timeout_secs and self._timeout_task is None:
-                    self._timeout_task = asyncio.get_running_loop().create_task(self._sleep_and_emit())
-                if self._events_in_batch[safe_key]['counter'] == self._emit_policy.max_events:
+                    self._timeout_task = asyncio.get_running_loop().create_task(
+                        self._sleep_and_emit()
+                    )
+                if (
+                    self._events_in_batch[safe_key]["counter"]
+                    == self._emit_policy.max_events
+                ):
                     event_from_batch = self._events_in_batch.pop(safe_key, None)
                     if event_from_batch is not None:
-                        await self._emit_event(key, event_from_batch['event'])
+                        await self._emit_event(key, event_from_batch["event"])
         except Exception as ex:
             raise ex
 
     async def _sleep_and_emit(self):
         while self._events_in_batch:
             key = next(iter(self._events_in_batch.keys()))
-            delta_seconds = time.monotonic() - self._events_in_batch[key]['time']
+            delta_seconds = time.monotonic() - self._events_in_batch[key]["time"]
             if delta_seconds < self._emit_policy.timeout_secs:
                 await asyncio.sleep(self._emit_policy.timeout_secs - delta_seconds)
             event = self._events_in_batch.pop(key, None)
             if event is not None:
-                await self._emit_event(key, event['event'])
+                await self._emit_event(key, event["event"])
 
         self._timeout_task = None
 
@@ -213,7 +257,9 @@ class AggregateByKey(Flow):
         for col in self._enrich_with:
             emitted_attr_name = self._aliases.get(col, None) or col
             if col in self._table._get_static_attrs(safe_key):
-                features[emitted_attr_name] = self._table._get_static_attrs(safe_key)[col]
+                features[emitted_attr_name] = self._table._get_static_attrs(safe_key)[
+                    col
+                ]
         event.key = key
         event.body = features
         await self._do_downstream(event)
@@ -221,23 +267,34 @@ class AggregateByKey(Flow):
     # Emit multiple events for every key in the store with the current time
     async def _emit_all_events(self, timestamp):
         for key in self._table._get_keys():
-            await self._emit_event(key, Event({'key': key, 'time': timestamp}, key, timestamp, None))
+            await self._emit_event(
+                key, Event({"key": key, "time": timestamp}, key, timestamp, None)
+            )
 
     async def _emit_worker(self):
         if isinstance(self._emit_policy, EmitAfterPeriod):
-            seconds_to_sleep_between_emits = self._aggregates_metadata[0].windows.period_millis / 1000
+            seconds_to_sleep_between_emits = (
+                self._aggregates_metadata[0].windows.period_millis / 1000
+            )
         elif isinstance(self._emit_policy, EmitAfterWindow):
-            seconds_to_sleep_between_emits = self._aggregates_metadata[0].windows.windows[0][0] / 1000
+            seconds_to_sleep_between_emits = (
+                self._aggregates_metadata[0].windows.windows[0][0] / 1000
+            )
         else:
             raise TypeError(f'Emit policy "{type(self._emit_policy)}" is not supported')
 
         current_time = datetime.now().timestamp()
-        next_emit_time = int(
-            current_time / seconds_to_sleep_between_emits) * seconds_to_sleep_between_emits + seconds_to_sleep_between_emits
+        next_emit_time = (
+            int(current_time / seconds_to_sleep_between_emits)
+            * seconds_to_sleep_between_emits
+            + seconds_to_sleep_between_emits
+        )
 
         while not self._terminate_worker:
             current_time = datetime.now().timestamp()
-            next_sleep_interval = next_emit_time - current_time + self._emit_policy.delay_in_seconds
+            next_sleep_interval = (
+                next_emit_time - current_time + self._emit_policy.delay_in_seconds
+            )
             if next_sleep_interval > 0:
                 await asyncio.sleep(next_sleep_interval)
             await self._emit_all_events(next_emit_time * 1000)
@@ -259,20 +316,32 @@ class QueryByKey(AggregateByKey):
     :param options: Enum flags specifying query options. (Optional)
     """
 
-    def __init__(self, features: List[str], table: Union[Table, str], key: Union[str, List[str], Callable[[Event], object], None] = None,
-                 augmentation_fn: Optional[Callable[[Event, Dict[str, object]], Event]] = None,
-                 aliases: Optional[Dict[str, str]] = None,
-                 fixed_window_type: Optional[FixedWindowType] = FixedWindowType.CurrentOpenWindow, **kwargs):
+    def __init__(
+        self,
+        features: List[str],
+        table: Union[Table, str],
+        key: Union[str, List[str], Callable[[Event], object], None] = None,
+        augmentation_fn: Optional[Callable[[Event, Dict[str, object]], Event]] = None,
+        aliases: Optional[Dict[str, str]] = None,
+        fixed_window_type: Optional[
+            FixedWindowType
+        ] = FixedWindowType.CurrentOpenWindow,
+        **kwargs,
+    ):
         self._aggrs = []
         self._enrich_cols = []
         resolved_aggrs = {}
         if isinstance(table, str):
-            if 'context' not in kwargs:
-                raise TypeError("Table can not be string if no context was provided to the step")
-            table = kwargs['context'].get_table(table)
+            if "context" not in kwargs:
+                raise TypeError(
+                    "Table can not be string if no context was provided to the step"
+                )
+            table = kwargs["context"].get_table(table)
         for feature in features:
-            if table.supports_aggregations() and re.match(r'.*_[a-z]+_[0-9]+[smhd]$', feature):
-                name, window = feature.rsplit('_', 1)
+            if table.supports_aggregations() and re.match(
+                r".*_[a-z]+_[0-9]+[smhd]$", feature
+            ):
+                name, window = feature.rsplit("_", 1)
                 if name in resolved_aggrs:
                     resolved_aggrs[name].append(window)
                 else:
@@ -280,12 +349,28 @@ class QueryByKey(AggregateByKey):
             else:
                 self._enrich_cols.append(feature)
         for name, windows in resolved_aggrs.items():
-            feature, aggr = name.rsplit('_', 1)
+            feature, aggr = name.rsplit("_", 1)
             # setting as SlidingWindow temporarily until actual window type will be read from schema
-            self._aggrs.append(FieldAggregator(name=feature, field=None, aggr=[aggr], windows=SlidingWindows(windows)))
+            self._aggrs.append(
+                FieldAggregator(
+                    name=feature,
+                    field=None,
+                    aggr=[aggr],
+                    windows=SlidingWindows(windows),
+                )
+            )
         other_table = table._clone() if table._aggregates is not None else table
-        AggregateByKey.__init__(self, self._aggrs, other_table, key, augmentation_fn=augmentation_fn,
-                                enrich_with=self._enrich_cols, aliases=aliases, use_windows_from_schema=True, **kwargs)
+        AggregateByKey.__init__(
+            self,
+            self._aggrs,
+            other_table,
+            key,
+            augmentation_fn=augmentation_fn,
+            enrich_with=self._enrich_cols,
+            aliases=aliases,
+            use_windows_from_schema=True,
+            **kwargs,
+        )
         self._table._aggregations_read_only = True
         self._table.fixed_window_type = fixed_window_type
 

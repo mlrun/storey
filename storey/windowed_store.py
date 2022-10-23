@@ -16,14 +16,22 @@ import asyncio
 import copy
 from datetime import datetime
 
-from .dtypes import EmitAfterMaxEvent, LateDataHandling, EmitAfterPeriod, EmitAfterWindow, EmitAfterDelay, EmitEveryEvent, EmissionType
-from .flow import Flow, _termination_obj, Event
+from .dtypes import (EmissionType, EmitAfterDelay, EmitAfterMaxEvent,
+                     EmitAfterPeriod, EmitAfterWindow, EmitEveryEvent,
+                     LateDataHandling)
+from .flow import Event, Flow, _termination_obj
 
 _default_emit_policy = EmitAfterMaxEvent(10)
 
 
 class Window(Flow):
-    def __init__(self, window, emit_policy=_default_emit_policy, late_data_handling=LateDataHandling.Nothing, **kwargs):
+    def __init__(
+        self,
+        window,
+        emit_policy=_default_emit_policy,
+        late_data_handling=LateDataHandling.Nothing,
+        **kwargs,
+    ):
         Flow.__init__(self, **kwargs)
         self._windowed_store = WindowedStore(window, late_data_handling)
         self._window = window
@@ -52,8 +60,10 @@ class Window(Flow):
             self._terminate_worker = True
             return await self._do_downstream(_termination_obj)
 
-        if (not self._emit_worker_running) and \
-                (isinstance(self._emit_policy, EmitAfterPeriod) or isinstance(self._emit_policy, EmitAfterWindow)):
+        if (not self._emit_worker_running) and (
+            isinstance(self._emit_policy, EmitAfterPeriod)
+            or isinstance(self._emit_policy, EmitAfterWindow)
+        ):
             asyncio.get_running_loop().create_task(self._emit_worker())
             self._emit_worker_running = True
 
@@ -63,9 +73,11 @@ class Window(Flow):
         self._windowed_store.add(key, element, event_time)
         self._events_in_batch = self._events_in_batch + 1
 
-        if isinstance(self._emit_policy, EmitEveryEvent) or \
-                isinstance(self._emit_policy,
-                           EmitAfterMaxEvent) and self._events_in_batch == self._emit_policy.max_events:
+        if (
+            isinstance(self._emit_policy, EmitEveryEvent)
+            or isinstance(self._emit_policy, EmitAfterMaxEvent)
+            and self._events_in_batch == self._emit_policy.max_events
+        ):
             await self.emit_window()
             self._events_in_batch = 0
 
@@ -85,7 +97,10 @@ class WindowBucket:
         self.late_data_handling = late_data_handling
 
     def add(self, t, v):
-        if t < self.max_time and self.late_data_handling == LateDataHandling.Sort_before_emit:
+        if (
+            t < self.max_time
+            and self.late_data_handling == LateDataHandling.Sort_before_emit
+        ):
             index = 0
             for data_point in self.data:
                 if t < data_point[0]:
@@ -101,7 +116,7 @@ class WindowBucket:
         return str(self)
 
     def __str__(self):
-        return f'{self.data} - {self.max_time}'
+        return f"{self.data} - {self.max_time}"
 
 
 # a class that accepts - window, (data, key, timestamp)
@@ -112,8 +127,10 @@ class WindowedStoreElement:
         self.window = window
         self.features = {}
         self.first_bucket_start_time = self.window.get_window_start_time()
-        self.last_bucket_start_time = \
-            self.first_bucket_start_time + (window.get_total_number_of_buckets() - 1) * window.period_millis
+        self.last_bucket_start_time = (
+            self.first_bucket_start_time
+            + (window.get_total_number_of_buckets() - 1) * window.period_millis
+        )
 
     def add(self, data, timestamp):
         # add a new point and aggregate
@@ -124,7 +141,7 @@ class WindowedStoreElement:
             self.features[column_name][index].add(timestamp, data[column_name])
 
     def get_column_name(self, column, aggregation):
-        return f'{column}_{aggregation}_{self.window.window_str}'
+        return f"{column}_{aggregation}_{self.window.window_str}"
 
     def initialize_column(self, column):
         self.features[column] = []
@@ -133,7 +150,9 @@ class WindowedStoreElement:
 
     def get_or_advance_bucket_index_by_timestamp(self, timestamp):
         if timestamp < self.last_bucket_start_time + self.window.period_millis:
-            bucket_index = int((timestamp - self.first_bucket_start_time) / self.window.period_millis)
+            bucket_index = int(
+                (timestamp - self.first_bucket_start_time) / self.window.period_millis
+            )
             return bucket_index
         else:
             self.advance_window_period(timestamp)
@@ -142,8 +161,12 @@ class WindowedStoreElement:
     def advance_window_period(self, advance_to=None):
         if not advance_to:
             advance_to = datetime.now().timestamp() * 1000
-        desired_bucket_index = int((advance_to - self.first_bucket_start_time) / self.window.period_millis)
-        buckets_to_advnace = desired_bucket_index - (self.window.get_total_number_of_buckets() - 1)
+        desired_bucket_index = int(
+            (advance_to - self.first_bucket_start_time) / self.window.period_millis
+        )
+        buckets_to_advnace = desired_bucket_index - (
+            self.window.get_total_number_of_buckets() - 1
+        )
 
         if buckets_to_advnace > 0:
             if buckets_to_advnace > self.window.get_total_number_of_buckets():
@@ -153,12 +176,18 @@ class WindowedStoreElement:
                 for column in self.features:
                     self.features[column] = self.features[column][buckets_to_advnace:]
                     for _ in range(buckets_to_advnace):
-                        self.features[column].extend([WindowBucket(self.late_data_handling)])
+                        self.features[column].extend(
+                            [WindowBucket(self.late_data_handling)]
+                        )
 
-            self.first_bucket_start_time = \
-                self.first_bucket_start_time + buckets_to_advnace * self.window.period_millis
-            self.last_bucket_start_time = \
-                self.last_bucket_start_time + buckets_to_advnace * self.window.period_millis
+            self.first_bucket_start_time = (
+                self.first_bucket_start_time
+                + buckets_to_advnace * self.window.period_millis
+            )
+            self.last_bucket_start_time = (
+                self.last_bucket_start_time
+                + buckets_to_advnace * self.window.period_millis
+            )
 
     def flush(self):
         for column in self.features:
@@ -166,17 +195,17 @@ class WindowedStoreElement:
 
 
 def aggregate(self, aggregation, old_value, new_value):
-    if aggregation == 'min':
+    if aggregation == "min":
         return min(old_value, new_value)
-    elif aggregation == 'max':
+    elif aggregation == "max":
         return max(old_value, new_value)
-    elif aggregation == 'sum':
+    elif aggregation == "sum":
         return old_value + new_value
-    elif aggregation == 'count':
+    elif aggregation == "count":
         return old_value + 1
-    elif aggregation == 'last':
+    elif aggregation == "last":
         return new_value
-    elif aggregation == 'first':
+    elif aggregation == "first":
         return old_value
 
 
@@ -191,7 +220,9 @@ class WindowedStore:
 
     def add(self, key, data, timestamp):
         if key not in self.cache:
-            self.cache[key] = WindowedStoreElement(key, self.window, self.late_data_handling)
+            self.cache[key] = WindowedStoreElement(
+                key, self.window, self.late_data_handling
+            )
 
         if isinstance(timestamp, datetime):
             timestamp = timestamp.timestamp() * 1000

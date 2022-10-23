@@ -13,10 +13,10 @@
 # limitations under the License.
 #
 from enum import Enum
+from typing import Callable, Optional, Union
 
 from storey import Flow
 from storey.dtypes import Event, _termination_obj
-from typing import Optional, Union, Callable
 
 
 class EmitPeriod(Enum):
@@ -59,7 +59,9 @@ class SampleWindow(Flow):
             raise ValueError(f"Expected window_size > 1, found {window_size}")
 
         if not isinstance(emit_period, EmitPeriod):
-            raise ValueError(f"Expected emit_period of type `EmitPeriod`, got {type(emit_period)}")
+            raise ValueError(
+                f"Expected emit_period of type `EmitPeriod`, got {type(emit_period)}"
+            )
 
         self._window_size = window_size
         self._emit_period = emit_period
@@ -76,12 +78,12 @@ class SampleWindow(Flow):
         elif callable(key):
             return key
         elif isinstance(key, str):
-            if key == '$key':
+            if key == "$key":
                 return lambda event: event.key
             else:
                 return lambda event: event.body[key]
         else:
-            raise ValueError(f'Unsupported key type {type(key)}')
+            raise ValueError(f"Unsupported key type {type(key)}")
 
     async def _do(self, event):
         if event is _termination_obj:

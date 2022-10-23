@@ -12,37 +12,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-__version__ = '0.0.0+unstable'
+__version__ = "0.0.0+unstable"
 
 # Importing supported filesystems explicitly so that they will get registered as an fsspec filesystem
 import v3iofs  # noqa: F401
 
-from .aggregations import (  # noqa: F401
-    AggregateByKey, QueryByKey
-)
-from .dataframe import (  # noqa: F401
-    ToDataFrame, ReduceToDataFrame
-)
-from .drivers import (  # noqa: F401
-    Driver, NoopDriver, V3ioDriver
-)
-from .dtypes import (  # noqa: F401
-    Event, FieldAggregator, SlidingWindows, FixedWindows, EmissionType, EmitPolicy, EmitAfterPeriod, EmitAfterWindow, EmitAfterMaxEvent,
-    EmitAfterDelay, EmitEveryEvent, LateDataHandling, FixedWindowType
-)
-from .flow import (  # noqa: F401
-    Filter, FlatMap, Flow, FlowError, JoinWithV3IOTable, SendToHttp, JoinWithTable, Map, Extend, Rename, Reduce, Batch,
-    MapWithState, MapClass, Complete, Choice, Recover, HttpRequest, HttpResponse, build_flow, Context
-)
-from .sources import (  # noqa: F401
-    SyncEmitSource, AsyncEmitSource, DataframeSource, CSVSource, ParquetSource
-)
-from .table import (  # noqa: F401
-    Table
-)
-from .targets import (  # noqa: F401
-    StreamTarget, CSVTarget, ParquetTarget, TSDBTarget, NoSqlTarget, KafkaTarget
-)
+from .aggregations import AggregateByKey, QueryByKey  # noqa: F401
+from .dataframe import ReduceToDataFrame, ToDataFrame  # noqa: F401
+from .drivers import Driver, NoopDriver, V3ioDriver  # noqa: F401
+from .dtypes import (EmissionType, EmitAfterDelay,  # noqa: F401
+                     EmitAfterMaxEvent, EmitAfterPeriod, EmitAfterWindow,
+                     EmitEveryEvent, EmitPolicy, Event, FieldAggregator,
+                     FixedWindows, FixedWindowType, LateDataHandling,
+                     SlidingWindows)
+from .flow import (Batch, Choice, Complete, Context, Extend,  # noqa: F401
+                   Filter, FlatMap, Flow, FlowError, HttpRequest, HttpResponse,
+                   JoinWithTable, JoinWithV3IOTable, Map, MapClass,
+                   MapWithState, Recover, Reduce, Rename, SendToHttp,
+                   build_flow)
+from .sources import (AsyncEmitSource, CSVSource,  # noqa: F401
+                      DataframeSource, ParquetSource, SyncEmitSource)
+from .table import Table  # noqa: F401
+from .targets import (CSVTarget, KafkaTarget, NoSqlTarget,  # noqa: F401
+                      ParquetTarget, StreamTarget, TSDBTarget)
 
 # clear module namespace
 del v3iofs

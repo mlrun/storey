@@ -18,22 +18,23 @@ import os
 import struct
 from array import array
 from urllib.parse import urlparse
+
 import fsspec
 
 bucketPerWindow = 2
-schema_file_name = '.schema'
+schema_file_name = ".schema"
 
 
 def parse_duration(string_time):
     unit = string_time[-1]
 
-    if unit == 's':
+    if unit == "s":
         multiplier = 1000
-    elif unit == 'm':
+    elif unit == "m":
         multiplier = 60 * 1000
-    elif unit == 'h':
+    elif unit == "h":
         multiplier = 60 * 60 * 1000
-    elif unit == 'd':
+    elif unit == "d":
         multiplier = 24 * 60 * 60 * 1000
     else:
         raise ValueError(f'Failed to parse time "{string_time}"')
@@ -44,13 +45,13 @@ def parse_duration(string_time):
 def get_one_unit_of_duration(string_time):
     unit = string_time[-1]
 
-    if unit == 's':
+    if unit == "s":
         multiplier = 1000
-    elif unit == 'm':
+    elif unit == "m":
         multiplier = 60 * 1000
-    elif unit == 'h':
+    elif unit == "h":
         multiplier = 60 * 60 * 1000
-    elif unit == 'd':
+    elif unit == "d":
         multiplier = 24 * 60 * 60 * 1000
     else:
         raise ValueError(f'Failed to parse time "{string_time}"')
@@ -70,9 +71,9 @@ def convert_array_tlv(a):
     :param a: array type (e.g -  array('i', [1, 2, 3, 4, 5])
     :return: blob value of an array
     """
-    array_type = 259 if a.typecode == 'l' else 261
+    array_type = 259 if a.typecode == "l" else 261
     size = len(a)
-    if a.typecode == 'l':
+    if a.typecode == "l":
         values = struct.pack("l" * size, *a)
     else:
         values = struct.pack("d" * size, *a)
@@ -99,8 +100,8 @@ def extract_array_tlv(b):
     v = converted_blob[16:]
     structure = struct.unpack("IhII", tl)  # I=unsigned_int, h=short
     size = int(structure[2] / 8)
-    array_type = 'l' if structure[3] == 259 else 'd'
-    if array_type == 'l':
+    array_type = "l" if structure[3] == 259 else "d"
+    if array_type == "l":
         values = [v for v in struct.unpack("{}".format("l" * size), v)]
     else:
         values = [v for v in struct.unpack("{}".format("d" * size), v)]
@@ -108,14 +109,14 @@ def extract_array_tlv(b):
 
 
 def _split_path(path):
-    while path.startswith('/'):
+    while path.startswith("/"):
         path = path[1:]
 
-    parts = path.split('/', 1)
+    parts = path.split("/", 1)
     if len(parts) == 1:
-        return parts[0], '/'
+        return parts[0], "/"
     else:
-        return parts[0], f'/{parts[1]}'
+        return parts[0], f"/{parts[1]}"
 
 
 def get_remaining_path(url):
@@ -124,12 +125,12 @@ def get_remaining_path(url):
     if "://" in url:
         parsed_url = urlparse(url)
         scheme = parsed_url.scheme.lower()
-        if scheme == 'v3io':
+        if scheme == "v3io":
             remaining_path = parsed_url.path
         elif scheme in ["wasb", "wasbs"]:
-            remaining_path = f'{parsed_url.username}{parsed_url.path}'
+            remaining_path = f"{parsed_url.username}{parsed_url.path}"
         else:
-            remaining_path = f'{parsed_url.netloc}{parsed_url.path}'
+            remaining_path = f"{parsed_url.netloc}{parsed_url.path}"
     return scheme, remaining_path
 
 
@@ -194,9 +195,9 @@ def update_in(obj, key, value):
 
 def hash_list(list_to_hash):
     list_to_hash = [str(element) for element in list_to_hash]
-    str_concatted = ''.join(list_to_hash)
+    str_concatted = "".join(list_to_hash)
     sha1 = hashlib.sha1()
-    sha1.update(str_concatted.encode('utf8'))
+    sha1.update(str_concatted.encode("utf8"))
     return sha1.hexdigest()
 
 
@@ -218,7 +219,15 @@ def _create_filter_tuple(dtime, attr, sign, list_tuples):
         list_tuples.append(tuple1)
 
 
-def _find_filter_helper(list_partitions, dtime, sign, first_sign, first_uncommon, filters, filter_column=None):
+def _find_filter_helper(
+    list_partitions,
+    dtime,
+    sign,
+    first_sign,
+    first_uncommon,
+    filters,
+    filter_column=None,
+):
     single_filter = []
     if len(list_partitions) == 0 or first_uncommon is None:
         return
@@ -239,7 +248,9 @@ def _find_filter_helper(list_partitions, dtime, sign, first_sign, first_uncommon
         single_filter.append(tuple_last_range)
     else:
         _create_filter_tuple(dtime, last_partition, sign, single_filter)
-    _find_filter_helper(list_partitions_without_last_element, dtime, sign, None, first_uncommon, filters)
+    _find_filter_helper(
+        list_partitions_without_last_element, dtime, sign, None, first_uncommon, filters
+    )
     filters.append(single_filter)
 
 
@@ -258,7 +269,7 @@ def find_partitions(url, fs):
 
     def _is_private(path):
         _, tail = os.path.split(path)
-        return (tail.startswith('_') or tail.startswith('.')) and '=' not in tail
+        return (tail.startswith("_") or tail.startswith(".")) and "=" not in tail
 
     def find_partition_helper(url, fs, partitions):
         content = fs.ls(url, detail=True)
@@ -280,7 +291,7 @@ def find_partitions(url, fs):
         return partitions
     find_partition_helper(url, fs, partitions)
 
-    legal_time_units = ['year', 'month', 'day', 'hour', 'minute', 'second']
+    legal_time_units = ["year", "month", "day", "hour", "minute", "second"]
 
     partitions_time_attributes = [j for j in legal_time_units if j in partitions]
 
@@ -305,7 +316,15 @@ def find_filters(partitions_time_attributes, start, end, filters, filter_column)
 
     # for start=1.2.2018 08:53:15, end=5.2.2018 16:24:31, this method will append to filters
     # [(year=2018, month=2,day>=1, filter_column>1.2.2018 08:53:15)]
-    _find_filter_helper(partitions_time_attributes, start, ">", ">=", first_uncommon, filters, filter_column)
+    _find_filter_helper(
+        partitions_time_attributes,
+        start,
+        ">",
+        ">=",
+        first_uncommon,
+        filters,
+        filter_column,
+    )
 
     middle_range_filter = []
     for partition in common_partitions:
@@ -325,4 +344,12 @@ def find_filters(partitions_time_attributes, start, end, filters, filter_column)
 
     # for start=1.2.2018 08:53:15, end=5.2.2018 16:24:31, this method will append to filters
     # [(year=2018, month=2,day<=5, filter_column<5.2.2018 16:24:31)]
-    _find_filter_helper(partitions_time_attributes, end, "<", "<=", first_uncommon, filters, filter_column)
+    _find_filter_helper(
+        partitions_time_attributes,
+        end,
+        "<",
+        "<=",
+        first_uncommon,
+        filters,
+        filter_column,
+    )

@@ -28,36 +28,49 @@ _aggrTypeAvg = _aggrTypeCount | _aggrTypeSum
 _aggrTypeRate = _aggrTypeLast | 0x8000
 _aggrTypeStddev = _aggrTypeCount | _aggrTypeSum | _aggrTypeSqr
 _aggrTypeStdvar = _aggrTypeCount | _aggrTypeSum | _aggrTypeSqr | 0x8000
-_aggrTypeAll = 0xffff
+_aggrTypeAll = 0xFFFF
 
-_raw_aggregates = [_aggrTypeCount, _aggrTypeSum, _aggrTypeSqr, _aggrTypeMax, _aggrTypeMin, _aggrTypeLast]
-_raw_aggregates_by_name = {'count': _aggrTypeCount,
-                           'sum': _aggrTypeSum,
-                           'sqr': _aggrTypeSqr,
-                           'max': _aggrTypeMax,
-                           'min': _aggrTypeMin,
-                           'first': _aggrTypeFirst,
-                           'last': _aggrTypeLast}
-_all_aggregates_by_name = {'count': _aggrTypeCount,
-                           'sum': _aggrTypeSum,
-                           'sqr': _aggrTypeSqr,
-                           'max': _aggrTypeMax,
-                           'min': _aggrTypeMin,
-                           'first': _aggrTypeFirst,
-                           'last': _aggrTypeLast,
-                           'avg': _aggrTypeAvg,
-                           'stdvar': _aggrTypeStdvar,
-                           'stddev': _aggrTypeStddev}
-_all_aggregates_to_name = {_aggrTypeCount: 'count',
-                           _aggrTypeSum: 'sum',
-                           _aggrTypeSqr: 'sqr',
-                           _aggrTypeMax: 'max',
-                           _aggrTypeMin: 'min',
-                           _aggrTypeFirst: 'first',
-                           _aggrTypeLast: 'last',
-                           _aggrTypeAvg: 'avg',
-                           _aggrTypeStdvar: 'stdvar',
-                           _aggrTypeStddev: 'stddev'}
+_raw_aggregates = [
+    _aggrTypeCount,
+    _aggrTypeSum,
+    _aggrTypeSqr,
+    _aggrTypeMax,
+    _aggrTypeMin,
+    _aggrTypeLast,
+]
+_raw_aggregates_by_name = {
+    "count": _aggrTypeCount,
+    "sum": _aggrTypeSum,
+    "sqr": _aggrTypeSqr,
+    "max": _aggrTypeMax,
+    "min": _aggrTypeMin,
+    "first": _aggrTypeFirst,
+    "last": _aggrTypeLast,
+}
+_all_aggregates_by_name = {
+    "count": _aggrTypeCount,
+    "sum": _aggrTypeSum,
+    "sqr": _aggrTypeSqr,
+    "max": _aggrTypeMax,
+    "min": _aggrTypeMin,
+    "first": _aggrTypeFirst,
+    "last": _aggrTypeLast,
+    "avg": _aggrTypeAvg,
+    "stdvar": _aggrTypeStdvar,
+    "stddev": _aggrTypeStddev,
+}
+_all_aggregates_to_name = {
+    _aggrTypeCount: "count",
+    _aggrTypeSum: "sum",
+    _aggrTypeSqr: "sqr",
+    _aggrTypeMax: "max",
+    _aggrTypeMin: "min",
+    _aggrTypeFirst: "first",
+    _aggrTypeLast: "last",
+    _aggrTypeAvg: "avg",
+    _aggrTypeStdvar: "stdvar",
+    _aggrTypeStddev: "stddev",
+}
 
 
 def is_raw_aggregate(aggregate):
@@ -92,11 +105,11 @@ def _stdvar(args):
 
 
 def get_virtual_aggregation_func(aggregation):
-    if aggregation == 'avg':
+    if aggregation == "avg":
         return _avg
-    if aggregation == 'stdvar':
+    if aggregation == "stdvar":
         return _stdvar
-    if aggregation == 'stddev':
+    if aggregation == "stddev":
         return _stddev
 
     raise TypeError(f'"{aggregation}" aggregator is not defined')

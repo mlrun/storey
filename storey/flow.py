@@ -20,33 +20,39 @@ import time
 import traceback
 from asyncio import Task
 from collections import defaultdict
-from typing import Optional, Union, Callable, List, Dict, Any, Set, Iterable
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Union
 
 import aiohttp
 
-from .dtypes import _termination_obj, Event, FlowError, V3ioError
+from .dtypes import Event, FlowError, V3ioError, _termination_obj
 from .queue import AsyncQueue
 from .table import Table
-from .utils import _split_path, get_in, update_in, stringify_key
+from .utils import _split_path, get_in, stringify_key, update_in
 
 
 class Flow:
     _legal_first_step = False
 
-    def __init__(self, recovery_step=None, termination_result_fn=lambda x, y: x if x is not None else y, context=None, **kwargs):
+    def __init__(
+        self,
+        recovery_step=None,
+        termination_result_fn=lambda x, y: x if x is not None else y,
+        context=None,
+        **kwargs,
+    ):
         self._outlets = []
         self._recovery_step = recovery_step
         self._termination_result_fn = termination_result_fn
         self.context = context
-        self.verbose = context and getattr(context, 'verbose', False)
-        self.logger = getattr(self.context, 'logger', None) if self.context else None
+        self.verbose = context and getattr(context, "verbose", False)
+        self.logger = getattr(self.context, "logger", None) if self.context else None
 
         self._kwargs = kwargs
-        self._full_event = kwargs.get('full_event')
-        self._input_path = kwargs.get('input_path')
-        self._result_path = kwargs.get('result_path')
+        self._full_event = kwargs.get("full_event")
+        self._input_path = kwargs.get("input_path")
+        self._result_path = kwargs.get("result_path")
         self._runnable = False
-        name = kwargs.get('name', None)
+        name = kwargs.get("name", None)
         if name:
             self.name = name
         else:
@@ -65,7 +71,14 @@ class Flow:
         if exclude:
             fields = [field for field in fields if field not in exclude]
 
-        meta_keys = ["context", "name", "input_path", "result_path", "full_event", "kwargs"]
+        meta_keys = [
+            "context",
+            "name",
+            "input_path",
+            "result_path",
+            "full_event",
+            "kwargs",
+        ]
         args = {
             key: getattr(self, key)
             for key in fields
@@ -88,7 +101,12 @@ class Flow:
             "class_args": args,
         }
 
-        for parameter_name in [("kind", "_STEP_KIND"), "input_path", "result_path", "full_event"]:
+        for parameter_name in [
+            ("kind", "_STEP_KIND"),
+            "input_path",
+            "result_path",
+            "full_event",
+        ]:
             if isinstance(parameter_name, tuple):
                 parameter_name, field_name = parameter_name
             else:
@@ -101,14 +119,14 @@ class Flow:
 
     def _to_code(self, taken: Set[str]):
         class_name = type(self).__name__
-        base_var_name = ''
+        base_var_name = ""
         for c in class_name:
             if c.isupper() and base_var_name:
-                base_var_name += '_'
+                base_var_name += "_"
             base_var_name += c.lower()
         i = 0
         while True:
-            var_name = f'{base_var_name}{i}'
+            var_name = f"{base_var_name}{i}"
             if var_name not in taken:
                 taken.add(var_name)
                 break
@@ -118,15 +136,15 @@ class Flow:
         for key, value in self._kwargs.items():
             if isinstance(value, str):
                 value = f"'{value}'"
-            param_list.append(f'{key}={value}')
-        param_str = ', '.join(param_list)
-        step = f'{var_name} = {class_name}({param_str})'
+            param_list.append(f"{key}={value}")
+        param_str = ", ".join(param_list)
+        step = f"{var_name} = {class_name}({param_str})"
         steps = [step]
         tos = []
         for outlet in self._outlets:
             outlet_var_name, outlet_steps, outlet_tos = outlet._to_code(taken)
             steps.extend(outlet_steps)
-            tos.append(f'{var_name}.to({outlet_var_name})')
+            tos.append(f"{var_name}.to({outlet_var_name})")
             tos.extend(outlet_tos)
         return var_name, steps, tos
 
@@ -140,7 +158,9 @@ class Flow:
 
     def to(self, outlet):
         if outlet._legal_first_step:
-            raise ValueError(f'{outlet.name} can only appear as the first step of a flow')
+            raise ValueError(
+                f"{outlet.name} can only appear as the first step of a flow"
+            )
         self._outlets.append(outlet)
         return outlet
 
@@ -156,7 +176,7 @@ class Flow:
 
     def run(self):
         if not self._legal_first_step and not self._runnable:
-            raise ValueError('Flow must start with a source')
+            raise ValueError("Flow must start with a source")
         self._init()
         outlets = []
         outlets.extend(self._outlets)
@@ -180,19 +200,21 @@ class Flow:
         try:
             return await self._do(event)
         except BaseException as ex:
-            if getattr(ex, '_raised_by_storey_step', None) is not None:
+            if getattr(ex, "_raised_by_storey_step", None) is not None:
                 raise ex
             ex._raised_by_storey_step = self
             recovery_step = self._get_recovery_step(ex)
             if recovery_step is None:
-                if self.context and hasattr(self.context, 'push_error'):
+                if self.context and hasattr(self.context, "push_error"):
                     message = traceback.format_exc()
                     if event._awaitable_result:
                         none_or_coroutine = event._awaitable_result._set_error(ex)
                         if none_or_coroutine:
                             await none_or_coroutine
                     if self.logger:
-                        self.logger.error(f'Pushing error to error stream: {ex}\n{message}')
+                        self.logger.error(
+                            f"Pushing error to error stream: {ex}\n{message}"
+                        )
                     self.context.push_error(event, f"{ex}\n{message}", source=self.name)
                     return
                 else:
@@ -203,16 +225,16 @@ class Flow:
 
     @staticmethod
     def _event_string(event):
-        result = 'Event('
+        result = "Event("
         if event.id:
-            result += f'id={event.id}, '
-        if getattr(event, 'key', None):
-            result += f'key={event.key}, '
-        if getattr(event, 'time', None):
-            result += f'time={event.time}, '
-        if getattr(event, 'path', None):
-            result += f'path={event.path}, '
-        result += f'body={event.body})'
+            result += f"id={event.id}, "
+        if getattr(event, "key", None):
+            result += f"key={event.key}, "
+        if getattr(event, "time", None):
+            result += f"time={event.time}, "
+        if getattr(event, "path", None):
+            result += f"path={event.path}, "
+        result += f"body={event.body})"
         return result
 
     async def _do_downstream(self, event):
@@ -221,8 +243,9 @@ class Flow:
         if event is _termination_obj:
             termination_result = await self._outlets[0]._do(_termination_obj)
             for i in range(1, len(self._outlets)):
-                termination_result = self._termination_result_fn(termination_result,
-                                                                 await self._outlets[i]._do(_termination_obj))
+                termination_result = self._termination_result_fn(
+                    termination_result, await self._outlets[i]._do(_termination_obj)
+                )
             return termination_result
         # If there is more than one outlet, allow concurrent execution.
         tasks = []
@@ -232,24 +255,36 @@ class Flow:
             for i in range(1, len(self._outlets)):
                 event_copy = copy.deepcopy(event)
                 event_copy._awaitable_result = awaitable_result
-                tasks.append(asyncio.get_running_loop().create_task(self._outlets[i]._do_and_recover(event_copy)))
+                tasks.append(
+                    asyncio.get_running_loop().create_task(
+                        self._outlets[i]._do_and_recover(event_copy)
+                    )
+                )
             event._awaitable_result = awaitable_result
         if self.verbose and self.logger:
             step_name = self.name
             event_string = self._event_string(event)
-            self.logger.debug(f'{step_name} -> {self._outlets[0].name} | {event_string}')
-        await self._outlets[0]._do_and_recover(event)  # Optimization - avoids creating a task for the first outlet.
+            self.logger.debug(
+                f"{step_name} -> {self._outlets[0].name} | {event_string}"
+            )
+        await self._outlets[0]._do_and_recover(
+            event
+        )  # Optimization - avoids creating a task for the first outlet.
         for i, task in enumerate(tasks, start=1):
             if self.verbose and self.logger:
-                self.logger.debug(f'{step_name} -> {self._outlets[i].name} | {event_string}')
+                self.logger.debug(
+                    f"{step_name} -> {self._outlets[i].name} | {event_string}"
+                )
             await task
 
     def _get_event_or_body(self, event):
         if self._full_event:
             return event
         elif self._input_path:
-            if not hasattr(event.body, '__getitem__'):
-                raise TypeError("input_path parameter supports only dict-like event bodies")
+            if not hasattr(event.body, "__getitem__"):
+                raise TypeError(
+                    "input_path parameter supports only dict-like event bodies"
+                )
             return get_in(event.body, self._input_path)
         else:
             return event.body
@@ -260,8 +295,10 @@ class Flow:
         else:
             mapped_event = copy.copy(event)
             if self._result_path:
-                if not hasattr(event.body, '__getitem__'):
-                    raise TypeError("result_path parameter supports only dict-like event bodies")
+                if not hasattr(event.body, "__getitem__"):
+                    raise TypeError(
+                        "result_path parameter supports only dict-like event bodies"
+                    )
                 update_in(mapped_event.body, self._result_path, fn_result)
             else:
                 mapped_event.body = fn_result
@@ -350,16 +387,20 @@ class _UnaryFunctionFlow(Flow):
     def __init__(self, fn, long_running=None, **kwargs):
         super().__init__(**kwargs)
         if not callable(fn):
-            raise TypeError(f'Expected a callable, got {type(fn)}')
+            raise TypeError(f"Expected a callable, got {type(fn)}")
         self._is_async = asyncio.iscoroutinefunction(fn)
         if self._is_async and long_running:
-            raise ValueError('long_running=True cannot be used in conjunction with a coroutine')
+            raise ValueError(
+                "long_running=True cannot be used in conjunction with a coroutine"
+            )
         self._long_running = long_running
         self._fn = fn
 
     async def _call(self, element):
         if self._long_running:
-            res = await asyncio.get_running_loop().run_in_executor(None, self._fn, element)
+            res = await asyncio.get_running_loop().run_in_executor(
+                None, self._fn, element
+            )
         else:
             res = self._fn(element)
         if self._is_async:
@@ -464,16 +505,18 @@ class _FunctionWithStateFlow(Flow):
     def __init__(self, initial_state, fn, group_by_key=False, **kwargs):
         super().__init__(**kwargs)
         if not callable(fn):
-            raise TypeError(f'Expected a callable, got {type(fn)}')
+            raise TypeError(f"Expected a callable, got {type(fn)}")
         self._is_async = asyncio.iscoroutinefunction(fn)
         self._state = initial_state
-        if isinstance(self._state, str) and self._state.startswith('v3io://'):
+        if isinstance(self._state, str) and self._state.startswith("v3io://"):
             if not self.context:
-                raise TypeError("Table can not be string if no context was provided to the step")
+                raise TypeError(
+                    "Table can not be string if no context was provided to the step"
+                )
             self._state = self.context.get_table(self._state)
         self._fn = fn
         self._group_by_key = group_by_key
-        if hasattr(initial_state, 'close'):
+        if hasattr(initial_state, "close"):
             self._closeables = [initial_state]
 
     async def _call(self, event):
@@ -481,7 +524,9 @@ class _FunctionWithStateFlow(Flow):
         if self._group_by_key:
             safe_key = stringify_key(event.key)
             if isinstance(self._state, Table):
-                key_data = await self._state._get_or_load_static_attributes_by_key(safe_key)
+                key_data = await self._state._get_or_load_static_attributes_by_key(
+                    safe_key
+                )
             else:
                 key_data = self._state[event.key]
             res, new_state = self._fn(element, key_data)
@@ -531,7 +576,9 @@ class MapClass(Flow):
         super().__init__(**kwargs)
         self._is_async = asyncio.iscoroutinefunction(self.do)
         if self._is_async and long_running:
-            raise ValueError('long_running=True cannot be used in conjunction with a coroutine do()')
+            raise ValueError(
+                "long_running=True cannot be used in conjunction with a coroutine do()"
+            )
         self._long_running = long_running
         self._filter = False
 
@@ -645,10 +692,10 @@ class Reduce(Flow):
     """
 
     def __init__(self, initial_value, fn, **kwargs):
-        kwargs['initial_value'] = initial_value
+        kwargs["initial_value"] = initial_value
         super().__init__(**kwargs)
         if not callable(fn):
-            raise TypeError(f'Expected a callable, got {type(fn)}')
+            raise TypeError(f"Expected a callable, got {type(fn)}")
         self._is_async = asyncio.iscoroutinefunction(fn)
         self._fn = fn
         self._initial_value = initial_value
@@ -715,7 +762,9 @@ class _ConcurrentJobExecution(Flow):
     def __init__(self, max_in_flight=None, retries=None, backoff_factor=None, **kwargs):
         Flow.__init__(self, **kwargs)
         if max_in_flight is not None and max_in_flight < 1:
-            raise ValueError(f'max_in_flight may not be less than 1 (got {max_in_flight})')
+            raise ValueError(
+                f"max_in_flight may not be less than 1 (got {max_in_flight})"
+            )
         self.max_in_flight = max_in_flight
         self.retries = retries
         self.backoff_factor = backoff_factor
@@ -752,14 +801,20 @@ class _ConcurrentJobExecution(Flow):
                             await recovery_step._do(event)
                         else:
                             if event._awaitable_result:
-                                none_or_coroutine = event._awaitable_result._set_error(ex)
+                                none_or_coroutine = event._awaitable_result._set_error(
+                                    ex
+                                )
                                 if none_or_coroutine:
                                     await none_or_coroutine
-                            if self.context and hasattr(self.context, 'push_error'):
+                            if self.context and hasattr(self.context, "push_error"):
                                 message = traceback.format_exc()
                                 if self.logger:
-                                    self.logger.error(f'Pushing error to error stream: {ex}\n{message}')
-                                self.context.push_error(event, f"{ex}\n{message}", source=self.name)
+                                    self.logger.error(
+                                        f"Pushing error to error stream: {ex}\n{message}"
+                                    )
+                                self.context.push_error(
+                                    event, f"{ex}\n{message}", source=self.name
+                                )
                             else:
                                 raise ex
                     except BaseException:
@@ -791,10 +846,14 @@ class _ConcurrentJobExecution(Flow):
                 times_attempted += 1
                 attempts_left = max_attempts - times_attempted
                 if self.logger:
-                    self.logger.warn(f'{self.name} failed to process event ({attempts_left} retries left): {ex}')
+                    self.logger.warn(
+                        f"{self.name} failed to process event ({attempts_left} retries left): {ex}"
+                    )
                 if attempts_left <= 0:
                     raise ex
-                backoff_value = (self.backoff_factor or 1) * (2 ** (times_attempted - 1))
+                backoff_value = (self.backoff_factor or 1) * (
+                    2 ** (times_attempted - 1)
+                )
                 backoff_value = min(self._BACKOFF_MAX, backoff_value)
                 if backoff_value >= 0:
                     await asyncio.sleep(backoff_value)
@@ -806,7 +865,9 @@ class _ConcurrentJobExecution(Flow):
 
         if not self._q and self._queue_size > 0:
             self._q = AsyncQueue(self._queue_size)
-            self._worker_awaitable = asyncio.get_running_loop().create_task(self._worker())
+            self._worker_awaitable = asyncio.get_running_loop().create_task(
+                self._worker()
+            )
 
         if self._queue_size > 0 and self._worker_awaitable.done():
             await self._worker_awaitable
@@ -863,11 +924,15 @@ class SendToHttp(_ConcurrentJobExecution):
 
     async def _process_event(self, event):
         req = self._request_builder(event)
-        return await self._client_session.request(req.method, req.url, headers=req.headers, data=req.body, ssl=False)
+        return await self._client_session.request(
+            req.method, req.url, headers=req.headers, data=req.body, ssl=False
+        )
 
     async def _handle_completed(self, event, response):
         response_body = await response.text()
-        joined_element = self._join_from_response(event.body, HttpResponse(response.status, response_body))
+        joined_element = self._join_from_response(
+            event.body, HttpResponse(response.status, response_body)
+        )
         if joined_element is not None:
             new_event = self._user_fn_output_to_event(event, joined_element)
             await self._do_downstream(new_event)
@@ -877,27 +942,29 @@ class _Batching(Flow):
     _do_downstream_per_event = True
 
     def __init__(
-            self,
-            max_events: Optional[int] = None,
-            flush_after_seconds: Optional[int] = None,
-            key: Optional[Union[str, Callable[[Event], str]]] = None,
-            **kwargs,
+        self,
+        max_events: Optional[int] = None,
+        flush_after_seconds: Optional[int] = None,
+        key: Optional[Union[str, Callable[[Event], str]]] = None,
+        **kwargs,
     ):
         if max_events:
-            kwargs['max_events'] = max_events
+            kwargs["max_events"] = max_events
         if flush_after_seconds is not None:
-            kwargs['flush_after_seconds'] = flush_after_seconds
+            kwargs["flush_after_seconds"] = flush_after_seconds
         if isinstance(key, str):
-            kwargs['key'] = key
+            kwargs["key"] = key
         super().__init__(**kwargs)
 
         self._max_events = max_events
         self._flush_after_seconds = flush_after_seconds
 
         if self._flush_after_seconds is not None and self._flush_after_seconds < 0:
-            raise ValueError('flush_after_seconds cannot be negative')
+            raise ValueError("flush_after_seconds cannot be negative")
 
-        self._extract_key: Optional[Callable[[Event], str]] = self._create_key_extractor(key)
+        self._extract_key: Optional[
+            Callable[[Event], str]
+        ] = self._create_key_extractor(key)
 
     def _init(self):
         self._batch: Dict[Optional[str], List[Any]] = defaultdict(list)
@@ -914,12 +981,12 @@ class _Batching(Flow):
         elif callable(key):
             return key
         elif isinstance(key, str):
-            if key == '$key':
+            if key == "$key":
                 return lambda event: event.key
             else:
                 return lambda event: event.body[key]
         else:
-            raise ValueError(f'Unsupported key type {type(key)}')
+            raise ValueError(f"Unsupported key type {type(key)}")
 
     async def _emit(self, batch, batch_key, batch_time, last_event_time=None):
         raise NotImplementedError
@@ -946,7 +1013,9 @@ class _Batching(Flow):
             raise self._timeout_task_ex
 
         if self._flush_after_seconds is not None and self._timeout_task is None:
-            self._timeout_task = asyncio.get_running_loop().create_task(self._sleep_and_emit())
+            self._timeout_task = asyncio.get_running_loop().create_task(
+                self._sleep_and_emit()
+            )
 
         self._batch[key].append(self._event_to_batch_entry(event))
 
@@ -1000,6 +1069,7 @@ class Batch(_Batching):
         set a 'str' key to group events by Event.body[str].
         set a Callable[Any, Any] to group events by a a custom key extractor.
     """
+
     _do_downstream_per_event = False
 
     async def _emit(self, batch, batch_key, batch_time, last_event_time=None):
@@ -1027,9 +1097,17 @@ class JoinWithV3IOTable(_ConcurrentJobExecution):
     :type full_event: boolean
     """
 
-    def __init__(self, storage, key_extractor, join_function, table_path, attributes='*', **kwargs):
-        kwargs['table_path'] = table_path
-        kwargs['attributes'] = attributes
+    def __init__(
+        self,
+        storage,
+        key_extractor,
+        join_function,
+        table_path,
+        attributes="*",
+        **kwargs,
+    ):
+        kwargs["table_path"] = table_path
+        kwargs["attributes"] = attributes
         super().__init__(**kwargs)
 
         self._storage = storage
@@ -1042,19 +1120,25 @@ class JoinWithV3IOTable(_ConcurrentJobExecution):
 
     async def _process_event(self, event):
         key = str(self._key_extractor(self._get_event_or_body(event)))
-        return await self._storage._get_item(self._container, self._table_path, key, self._attributes)
+        return await self._storage._get_item(
+            self._container, self._table_path, key, self._attributes
+        )
 
     async def _handle_completed(self, event, response):
         if response.status_code == 200:
             response_object = response.output.item
-            joined = self._join_function(self._get_event_or_body(event), response_object)
+            joined = self._join_function(
+                self._get_event_or_body(event), response_object
+            )
             if joined is not None:
                 new_event = self._user_fn_output_to_event(event, joined)
                 await self._do_downstream(new_event)
         elif response.status_code == 404:
             return None
         else:
-            raise V3ioError(f'Failed to get item. Response status code was {response.status_code}: {response.body}')
+            raise V3ioError(
+                f"Failed to get item. Response status code was {response.status_code}: {response.body}"
+            )
 
     async def _cleanup(self):
         await self._storage.close()
@@ -1076,23 +1160,31 @@ class JoinWithTable(_ConcurrentJobExecution):
     :param context: Context object that holds global configurations and secrets.
     """
 
-    def __init__(self, table: Union[Table, str], key_extractor: Union[str, Callable[[Event], str]],
-                 attributes: Optional[List[str]] = None, inner_join: bool = False,
-                 join_function: Optional[Callable[[Any, Dict[str, object]], Any]] = None, **kwargs):
+    def __init__(
+        self,
+        table: Union[Table, str],
+        key_extractor: Union[str, Callable[[Event], str]],
+        attributes: Optional[List[str]] = None,
+        inner_join: bool = False,
+        join_function: Optional[Callable[[Any, Dict[str, object]], Any]] = None,
+        **kwargs,
+    ):
         if isinstance(table, str):
-            kwargs['table'] = table
+            kwargs["table"] = table
         if isinstance(key_extractor, str):
-            kwargs['key_extractor'] = key_extractor
+            kwargs["key_extractor"] = key_extractor
         if attributes:
-            kwargs['attributes'] = attributes
-        kwargs['inner_join'] = inner_join
+            kwargs["attributes"] = attributes
+        kwargs["inner_join"] = inner_join
 
         super().__init__(**kwargs)
 
         self._table = table
         if isinstance(table, str):
             if not self.context:
-                raise TypeError("Table can not be string if no context was provided to the step")
+                raise TypeError(
+                    "Table can not be string if no context was provided to the step"
+                )
             self._table = self.context.get_table(table)
 
         if key_extractor:
@@ -1104,7 +1196,9 @@ class JoinWithTable(_ConcurrentJobExecution):
                 else:
                     self._key_extractor = lambda element: element[key_extractor]
             else:
-                raise TypeError(f'key is expected to be either a callable or string but got {type(key_extractor)}')
+                raise TypeError(
+                    f"key is expected to be either a callable or string but got {type(key_extractor)}"
+                )
 
         def default_join_fn(event, join_res):
             event.update(join_res)
@@ -1115,9 +1209,11 @@ class JoinWithTable(_ConcurrentJobExecution):
             return event
 
         self._inner_join = inner_join
-        self._join_function = join_function or (default_join_fn_full_event if self._full_event else default_join_fn)
+        self._join_function = join_function or (
+            default_join_fn_full_event if self._full_event else default_join_fn
+        )
 
-        self._attributes = attributes or '*'
+        self._attributes = attributes or "*"
 
     def _init(self):
         super()._init()
@@ -1126,7 +1222,9 @@ class JoinWithTable(_ConcurrentJobExecution):
     async def _process_event(self, event):
         key = self._key_extractor(self._get_event_or_body(event))
         safe_key = stringify_key(key)
-        return await self._table._get_or_load_static_attributes_by_key(safe_key, self._attributes)
+        return await self._table._get_or_load_static_attributes_by_key(
+            safe_key, self._attributes
+        )
 
     async def _handle_completed(self, event, response):
         if self._inner_join and not response:
@@ -1157,7 +1255,7 @@ def build_flow(steps):
     :rtype: Flow
     """
     if len(steps) == 0:
-        raise ValueError('Cannot build an empty flow')
+        raise ValueError("Cannot build an empty flow")
     first_step = steps[0]
     if isinstance(first_step, list):
         first_step = build_flow(first_step)
@@ -1180,9 +1278,12 @@ class Context:
     :param initial_tables: Initial dict of tables.
     """
 
-    def __init__(self, initial_secrets: Optional[Dict[str, str]] = None,
-                 initial_parameters: Optional[Dict[str, object]] = None,
-                 initial_tables: Optional[Dict[str, Table]] = None):
+    def __init__(
+        self,
+        initial_secrets: Optional[Dict[str, str]] = None,
+        initial_parameters: Optional[Dict[str, object]] = None,
+        initial_tables: Optional[Dict[str, Table]] = None,
+    ):
         self._secrets = initial_secrets or {}
         self._parameters = initial_parameters or {}
         self._tables = initial_tables or {}
