@@ -54,6 +54,8 @@ from .integration_test_utils import (
     append_return,
     create_stream,
     test_base_time,
+    create_sql_table,
+
 )
 
 

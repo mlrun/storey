@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+import asyncio
 import base64
 import json
 import os
@@ -29,6 +30,7 @@ from storey import V3ioDriver
 from storey.drivers import NeedsV3ioAccess
 from storey.flow import V3ioError
 from storey.redis_driver import RedisDriver
+import pytest
 
 _non_int_char_pattern = re.compile(r"[^-0-9]")
 test_base_time = datetime.fromisoformat("2020-07-21T21:40:00+00:00")
@@ -246,7 +248,6 @@ def assign_stream_teardown_test():
 
     # Teardown
     asyncio.run(recursive_delete(stream_path, V3ioHeaders()))
-t
 
 
 async def create_stream(stream_path):
