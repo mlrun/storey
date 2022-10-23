@@ -31,6 +31,8 @@ from integration.integration_test_utils import (
 @pytest.fixture(params=drivers_list)
 def setup_teardown_test(request):
     # Setup
+    if request.param == "SQLDriver" and request.fspath.basename != "test_flow_integration.py":
+        pytest.skip("SQLDriver test only in test_flow_integration")
     test_context = TestContext(request.param, table_name=_generate_table_name())
 
     # Test runs
@@ -41,6 +43,9 @@ def setup_teardown_test(request):
         asyncio.run(recursive_delete(test_context.table_name, V3ioHeaders()))
     elif test_context.driver_name == "RedisDriver":
         remove_redis_table(test_context.table_name)
+    elif test_context.driver_name == "SQLDriver":
+        remove_sql_tables()
+        pass
     else:
         raise ValueError(f'Unsupported driver name "{test_context.driver_name}"')
 
@@ -54,6 +59,8 @@ def setup_kv_teardown_test(request):
         asyncio.run(create_temp_kv(test_context.table_name))
     elif test_context.driver_name == "RedisDriver":
         create_temp_redis_kv(test_context)
+    elif test_context.driver_name == "SQLDriver":
+        pytest.skip(msg="test not relevant for SQLDriver")
     else:
         raise ValueError(f'Unsupported driver name "{test_context.driver_name}"')
 
@@ -67,7 +74,6 @@ def setup_kv_teardown_test(request):
         remove_redis_table(test_context.table_name)
     else:
         raise ValueError(f'Unsupported driver name "{test_context.driver_name}"')
-
 
 @pytest.fixture()
 def assign_stream_teardown_test():
