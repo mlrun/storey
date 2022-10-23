@@ -531,17 +531,11 @@ class SQLDriver(Driver):
         self,
         primary_key: str,
         db_path: str,
-        aggregation_attribute_prefix: str = "aggr_",
-        aggregation_time_attribute_prefix: str = "_",
     ):
         self._db_path = db_path
         self._sql_connection = None
         self._primary_key = primary_key
-        self._mtime_name = "$_mtime_"
-        self._storey_key = "storey_key"
 
-        self._aggregation_attribute_prefix = aggregation_attribute_prefix
-        self._aggregation_time_attribute_prefix = aggregation_time_attribute_prefix
 
     def _lazy_init(self):
         import sqlalchemy as db
@@ -550,12 +544,15 @@ class SQLDriver(Driver):
             self._engine = db.create_engine(self._db_path)
             self._sql_connection = self._engine.connect()
 
-    def table(self, table_path):
+    def _table(self, table_path):
         import sqlalchemy as db
 
         metadata = db.MetaData()
+        while table_path.startswith('/'):
+            table_path = table_path[1:]
+
         return db.Table(
-            table_path[3:].split("/")[1],
+            table_path.split("/")[1],
             metadata,
             autoload=True,
             autoload_with=self._engine,
@@ -563,11 +560,9 @@ class SQLDriver(Driver):
 
     async def _save_schema(self, container, table_path, schema):
         self._lazy_init()
-        return None
 
     async def _load_schema(self, container, table_path):
         self._lazy_init()
-        return None
 
     async def _save_key(
         self, container, table_path, key, aggr_item, partitioned_by_key, additional_data
@@ -576,36 +571,32 @@ class SQLDriver(Driver):
 
         self._lazy_init()
 
-        table = self.table(table_path)
-        return_val = None
+        table = self._table(table_path)
         try:
-            return_val = self._sql_connection.execute(table.insert(), [additional_data], autocommit=True)
+            self._sql_connection.execute(table.insert(), [additional_data], autocommit=True)
 
         except db.exc.IntegrityError:
-            pass
+            raise RuntimeError(f"Failed to get insert {additional_data} to {table_path} table because IntegrityError")
         await self.close()
-        return return_val
 
     async def _load_aggregates_by_key(self, container, table_path, key):
         self._lazy_init()
-        table = self.table(table_path)
-        try:
-            agg_val, values = await self._get_all_fields(key, table)
-            if not agg_val:
-                agg_val = None
-            if not values:
-                values = None
-            return [agg_val, values]
-        except Exception:
-            return [None, None]
+        table = self._table(table_path)
+
+        agg_val, values = await self._get_all_fields(key, table)
+        if not agg_val:
+            agg_val = None
+        if not values:
+            values = None
+        return [agg_val, values]
 
     async def _load_by_key(self, container, table_path, key, attribute):
         self._lazy_init()
-        table = self.table(table_path)
+        table = self._table(table_path)
         if attribute == "*":
             _, values = await self._get_all_fields(key, table)
         else:
-            values = None
+            _, values = await self._get_specific_fields(key, table, attribute)
         return values
 
     async def close(self):
@@ -614,9 +605,9 @@ class SQLDriver(Driver):
             self._sql_connection = None
 
     async def _get_all_fields(self, key, table):
-        where_statement = self._get_where_statement(key)
+        where_clause = self._get_where_clause(key)
         try:
-            my_query = f"SELECT * FROM {table} where {where_statement}"
+            my_query = f"SELECT * FROM {table} where {where_clause}"
             results = self._sql_connection.execute(my_query).fetchall()
         except Exception as e:
             raise RuntimeError(f"Failed to get key {key}. Response error was: {e}")
@@ -626,9 +617,9 @@ class SQLDriver(Driver):
         }
 
     async def _get_specific_fields(self, key: str, table, attributes: List[str]):
-        where_statement = self._get_where_statement(key)
+        where_clause = self._get_where_clause(key)
         try:
-            my_query = f"SELECT {','.join(attributes)} FROM {table} where {where_statement}"
+            my_query = f"SELECT {','.join(attributes)} FROM {table} where {where_clause}"
             results = self._sql_connection.execute(my_query).fetchall()
         except Exception as e:
             raise RuntimeError(f"Failed to get key {key}. Response error was: {e}")
@@ -640,15 +631,15 @@ class SQLDriver(Driver):
     def supports_aggregations(self):
         return False
 
-    def _get_where_statement(self, key):
-        where_statement = ""
+    def _get_where_clause(self, key):
+        where_clause = ""
         if isinstance(key, str) and '.' in key:
             key = key.split('.')
         if isinstance(key, List):
             for i in range(len(self._primary_key)):
                 if i != 0:
-                    where_statement += " and "
-                where_statement += f'{self._primary_key[i]}="{key[i]}"'
+                    where_clause += " and "
+                where_clause += f'{self._primary_key[i]}="{key[i]}"'
         else:
-            where_statement += f'{self._primary_key}="{key}"'
-        return where_statement
+            where_clause += f'{self._primary_key}="{key}"'
+        return where_clause

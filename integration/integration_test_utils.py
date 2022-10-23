@@ -123,7 +123,6 @@ def remove_sql_tables():
         # and drop them, if they exist
         metadata.drop_all(bind=engine, checkfirst=True)
         engine.dispose()
-        conn.close()
 
 
 class TestContext:
@@ -200,7 +199,7 @@ def setup_teardown_test(request):
     elif test_context.driver_name == "RedisDriver":
         remove_redis_table(test_context.table_name)
     elif test_context.driver_name == "SQLDriver":
-        # remove_sql_tables()
+        remove_sql_tables()
         pass
     else:
         raise ValueError(f'Unsupported driver name "{test_context.driver_name}"')
@@ -380,4 +379,3 @@ def create_sql_table(schema, table_name, sql_db_path, key):
 
         db.Table(table_name, metadata, *columns)
         metadata.create_all(engine)
-        conn.close()

@@ -81,12 +81,14 @@ def _get_redis_kv_all_attrs(setup_teardown_test: TestContext, key: str):
     values = get_redis_client(redis_fake_server=redis_fake_server).hgetall(redis_key)
     return {RedisDriver.convert_to_str(key): RedisDriver.convert_redis_value_to_python_obj(val) for key, val in values.items()}
 
-def _get_sql_by_key_all_attrs(setup_teardown_test: TestContext, key: str, key_name):
+
+def _get_sql_by_key_all_attrs(setup_teardown_test: TestContext, key: Union[str, List[str]],
+                              key_name: Union[str, List[str]]):
     import sqlalchemy as db
     where_statement = ""
     if isinstance(key, str) and '.' in key:
         key = key.split('.')
-    if isinstance(key, List):
+    if isinstance(key, list):
         for i in range(len(key_name)):
             if i != 0:
                 where_statement += " and "
@@ -105,12 +107,12 @@ def _get_sql_by_key_all_attrs(setup_teardown_test: TestContext, key: str, key_na
     my_query = f"SELECT * FROM {sql_table} where ({where_statement})"
     with engine.connect() as conn:
         results = conn.execute(my_query).fetchall()
-        conn.close()
     values = {results[0]._fields[i]: results[0][i] for i in range(len(results[0]))}
     return values
 
 
-def get_key_all_attrs_test_helper(setup_teardown_test: TestContext, key: str, key_name: Union[str,List[str]] = None):
+def get_key_all_attrs_test_helper(setup_teardown_test: TestContext, key: Union[str, List[str]],
+                                  key_name: Union[str, List[str]] = None):
     if setup_teardown_test.driver_name == "RedisDriver":
         result = _get_redis_kv_all_attrs(setup_teardown_test, key)
     elif setup_teardown_test.driver_name == "SQLDriver":

@@ -906,7 +906,7 @@ class ParquetSource(DataframeSource):
 
 
 class SQLSource(_IterableSource, WithUUID):
-    """Use dql table as input source for a flow.
+    """Use SQL table as input source for a flow.
 
 
     :parameter key_field: the primary key of the table.
@@ -915,10 +915,6 @@ class SQLSource(_IterableSource, WithUUID):
     :parameter db_name: url string connection to sql database.
     :parameter table_name: the name of the table to access,
                                 from the current database
-    :parameter start_filter: If not None, the results will be filtered by partitions and 'filter_column' > start_filter.
-                            Default is None (not in use)
-    :parameter end_filter:  If not None, the results will be filtered by partitions 'filter_column' <= end_filter.
-                            Default is None (not in use)
 
     """
 
@@ -927,8 +923,6 @@ class SQLSource(_IterableSource, WithUUID):
         db_path: str = None,
         table_name: str = None,
         key_field: Optional[Union[str, List[str]]] = None,
-        start_filter: Optional[datetime] = None,
-        end_filter: Optional[datetime] = None,
         time_field: Optional[str] = None,
         id_field: Optional[str] = None,
         **kwargs,
@@ -964,18 +958,14 @@ class SQLSource(_IterableSource, WithUUID):
 
         engine = db.create_engine(self.db_path)
         metadata = db.MetaData()
-        connection = engine.connect()
-        table = db.Table(self.table_name, metadata, autoload=True, autoload_with=engine)
-        results = connection.execute(db.select([table])).fetchall()
-        df = pandas.DataFrame(results)
-        df.columns = results[0].keys()
-        df.set_index("index", inplace=True)
-        connection.close()
+        with engine.connect() as conn:
+            table = db.Table(self.table_name, metadata, autoload=True, autoload_with=engine)
+            results = conn.execute(db.select([table])).fetchall()
 
-        for namedtuple in df.itertuples():
+        for namedtuple in results:
             create_event = True
             body = namedtuple._asdict()
-            body.pop("Index")
+            body.pop("index")
             key = None
             if self._key_field:
                 if isinstance(self._key_field, list):
