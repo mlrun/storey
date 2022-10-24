@@ -14,15 +14,7 @@
 #
 import pytest
 
-from storey import (
-    Complete,
-    JoinWithTable,
-    NoSqlTarget,
-    Reduce,
-    SyncEmitSource,
-    Table,
-    build_flow,
-)
+from storey import JoinWithTable, NoSqlTarget, Reduce, SyncEmitSource, Table, build_flow
 from storey.redis_driver import RedisDriver
 
 from .integration_test_utils import append_return, get_redis_client
@@ -34,45 +26,62 @@ def redis():
 
 
 def test_redis_driver_write(redis):
-    driver = RedisDriver(redis)
-    controller = build_flow([SyncEmitSource(), NoSqlTarget(Table("test", driver)), Complete()]).run()
-    controller.emit({"col1": 0}, "key").await_result()
-    controller.terminate()
-    controller.await_termination()
+    try:
+        table_name = "test_redis_driver_write"
 
-    data = driver.redis.hgetall("storey:test/key:static")
-    data_strings = {}
-    for key, val in data.items():
-        if isinstance(key, bytes):
-            data_strings[key.decode("utf-8")] = val.decode("utf-8")
-        else:
-            data_strings[key] = val
+        driver = RedisDriver(redis)
+        controller = build_flow([SyncEmitSource(), NoSqlTarget(Table(table_name, driver))]).run()
+        controller.emit({"col1": 0}, "key")
+        controller.terminate()
+        controller.await_termination()
 
-    assert data_strings == {"col1": "0"}
+        table_name = f"{table_name}/"
+        hash_key = RedisDriver.make_key("storey:", table_name, "key")
+        redis_key = RedisDriver._static_data_key(hash_key)
+
+        data = driver.redis.hgetall(redis_key)
+        data_strings = {}
+        for key, val in data.items():
+            if isinstance(key, bytes):
+                data_strings[key.decode("utf-8")] = val.decode("utf-8")
+            else:
+                data_strings[key] = val
+
+        assert data_strings == {"col1": "0"}
+    finally:
+        for key in driver.redis.scan_iter(f"*storey:{table_name}*"):
+            driver.redis.delete(key)
 
 
 def test_redis_driver_join(redis):
-    driver = RedisDriver(redis)
-    table = Table("test", driver)
+    try:
+        table_name = "test_redis_driver_join"
 
-    # Create the data we'll join with in Redis.
-    driver.redis.hset("storey:test/2:static", mapping={"name": "1234"})
-    controller = build_flow(
-        [
-            SyncEmitSource(),
-            JoinWithTable(table, lambda x: x["col2"]),
-            Reduce([], lambda acc, x: append_return(acc, x)),
-        ]
-    ).run()
+        driver = RedisDriver(redis)
+        table = Table(table_name, driver)
+        table_name = f"{table_name}/"
 
-    controller.emit({"col1": 1, "col2": "2"}, "key")
-    controller.emit({"col1": 1, "col2": "2"}, "key")
-    controller.terminate()
-    termination_result = controller.await_termination()
+        # Create the data we'll join with in Redis.
+        hash_key = RedisDriver.make_key("storey:", table_name, "2")
+        redis_key = RedisDriver._static_data_key(hash_key)
 
-    expected_result = [
-        {"col1": 1, "col2": "2", "name": 1234},
-        {"col1": 1, "col2": "2", "name": 1234},
-    ]
+        driver.redis.hset(redis_key, mapping={"name": "1234"})
+        controller = build_flow(
+            [
+                SyncEmitSource(),
+                JoinWithTable(table, lambda x: x["col2"]),
+                Reduce([], lambda acc, x: append_return(acc, x)),
+            ]
+        ).run()
 
-    assert termination_result == expected_result
+        controller.emit({"col1": 1, "col2": "2"}, "key")
+        controller.emit({"col1": 1, "col2": "2"}, "key")
+        controller.terminate()
+        termination_result = controller.await_termination()
+
+        expected_result = [{"col1": 1, "col2": "2", "name": 1234}, {"col1": 1, "col2": "2", "name": 1234}]
+
+        assert termination_result == expected_result
+    finally:
+        for key in driver.redis.scan_iter(f"*storey:{table_name}*"):
+            driver.redis.delete(key)

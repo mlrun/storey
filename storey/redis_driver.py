@@ -18,7 +18,6 @@ import math
 import os
 import time
 from datetime import datetime, timedelta, timezone
-from enum import Enum
 from functools import partial
 from typing import List, Optional, Union
 
@@ -29,11 +28,6 @@ import redis.cluster
 from .drivers import Driver
 from .dtypes import RedisError
 from .utils import schema_file_name
-
-
-class RedisType(Enum):
-    STANDALONE = 1
-    CLUSTER = 2
 
 
 class NeedsRedisAccess:
@@ -61,7 +55,6 @@ class RedisDriver(NeedsRedisAccess, Driver):
     def __init__(
         self,
         redis_client: Optional[Union[redis.Redis, redis.cluster.RedisCluster]] = None,
-        redis_type: RedisType = RedisType.STANDALONE,
         key_prefix: str = None,
         redis_url: Optional[str] = None,
         aggregation_attribute_prefix: str = "aggr_",
@@ -76,11 +69,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
             NeedsRedisAccess.__init__(self, redis_url)
             self._redis = None
 
-        if not isinstance(redis_type, RedisType):
-            raise ValueError(f'unsupported RedisType value provided  ("{redis_type}"), aborting')
-
         self._key_prefix = key_prefix if key_prefix is not None else self.DEFAULT_KEY_PREFIX
-        self._type = redis_type
         self._mtime_name = "$_mtime_"
 
         self._aggregation_attribute_prefix = aggregation_attribute_prefix
@@ -104,19 +93,15 @@ class RedisDriver(NeedsRedisAccess, Driver):
     @property
     def redis(self):
         if self._redis is None:
-            if self._type is RedisType.STANDALONE:
+            try:
+                self._redis = redis.cluster.RedisCluster.from_url(self._redis_url, decode_responses=True)
+            except redis.cluster.RedisClusterException:
                 self._redis = redis.Redis.from_url(self._redis_url, decode_responses=True)
-            else:
-                self._redis = redis.cluster.RedisCluster.from_url(self._redis_url, decode_response=True)
         return self._redis
-
-    async def close(self):
-        if self._redis:
-            self._redis.close()
 
     @staticmethod
     def make_key(key_prefix, *parts):
-        return f"{key_prefix}{''.join([str(p) for p in parts])}"
+        return f"{{{key_prefix}{''.join([str(p) for p in parts])}}}"
 
     def _make_key(self, *parts):
         return RedisDriver.make_key(self._key_prefix, *parts)

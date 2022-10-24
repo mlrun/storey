@@ -97,7 +97,11 @@ def _generate_table_name(prefix="bigdata/storey_ci/Aggr_test"):
 def get_redis_client(redis_fake_server=None):
     redis_url = os.environ.get("MLRUN_REDIS_URL")
     if redis_url:
-        return r.Redis.from_url(redis_url)
+        try:
+            res = r.cluster.RedisCluster.from_url(redis_url)
+            return res
+        except r.cluster.RedisClusterException:
+            return r.Redis.from_url(redis_url)
     else:
         return fakeredis.FakeRedis(decode_responses=True, server=redis_fake_server)
 
@@ -105,8 +109,7 @@ def get_redis_client(redis_fake_server=None):
 def remove_redis_table(table_name):
     redis_client = get_redis_client()
     count = 0
-    ns_keys = "storey-test:" + table_name + "*"
-    for key in redis_client.scan_iter(ns_keys):
+    for key in redis_client.scan_iter(f"*storey-test:{table_name}*"):
         redis_client.delete(key)
         count += 1
 
@@ -185,10 +188,9 @@ def create_temp_redis_kv(setup_teardown_test):
     redis_client = get_redis_client(redis_fake_server=redis_fake_server)
 
     for i in range(1, 10):
-        redis_client.hmset(
-            f"storey-test:{table_path}{i}:static",
-            mapping={"age": f"{10 - i}", "color": f"blue{i}"},
-        )
+        key = RedisDriver.make_key("storey-test:", table_path, i)
+        static_key = RedisDriver._static_data_key(key)
+        redis_client.hmset(static_key, mapping={"age": f"{10 - i}", "color": f"blue{i}"})
 
 
 async def create_temp_kv(table_path):
