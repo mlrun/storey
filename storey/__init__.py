@@ -19,7 +19,7 @@ import v3iofs  # noqa: F401
 
 from .aggregations import AggregateByKey, QueryByKey  # noqa: F401
 from .dataframe import ReduceToDataFrame, ToDataFrame  # noqa: F401
-from .drivers import Driver, NoopDriver, SQLDriver, V3ioDriver  # noqa: F401
+from .drivers import Driver, NoopDriver, V3ioDriver  # noqa: F401
 from .dtypes import EmissionType  # noqa: F401
 from .dtypes import EmitAfterDelay  # noqa: F401
 from .dtypes import EmitAfterMaxEvent  # noqa: F401
@@ -60,6 +60,7 @@ from .sources import DataframeSource  # noqa: F401
 from .sources import ParquetSource  # noqa: F401
 from .sources import SQLSource  # noqa: F401
 from .sources import SyncEmitSource  # noqa: F401
+from .sql_driver import SQLDriver  # noqa: F401
 from .table import Table  # noqa: F401
 from .targets import CSVTarget  # noqa: F401
 from .targets import KafkaTarget  # noqa: F401
