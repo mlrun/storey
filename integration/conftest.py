@@ -46,7 +46,6 @@ def setup_teardown_test(request):
         remove_redis_table(test_context.table_name)
     elif test_context.driver_name == "SQLDriver":
         remove_sql_tables()
-        pass
     else:
         raise ValueError(f'Unsupported driver name "{test_context.driver_name}"')
 

@@ -22,6 +22,7 @@ from datetime import datetime
 
 import aiohttp
 import fakeredis
+import pandas as pd
 import pytest
 import redis as r
 
@@ -179,16 +180,14 @@ class TestContext:
                 **kwargs,
             )
         elif self.driver_name == "SQLDriver":
-            if is_aggregationless_driver:
+            if IsAggregationlessDriver:
                 sql_driver_class = storey.sql_driver.SQLDriver
                 return sql_driver_class(db_path=SQL_DB, primary_key=primary_key)
             else:
                 pytest.skip("SQLDriver does not support aggregation")
         else:
             driver_name = self.driver_name
-            raise ValueError(
-                f'Unsupported driver name "{driver_name}" with IsAggregationlessDriver = {IsAggregationlessDriver}'
-            )
+            raise ValueError(f'Unsupported driver name "{driver_name}"')
 
 
 drivers_list = ["V3ioDriver", "RedisDriver", "SQLDriver"]
@@ -339,7 +338,7 @@ def create_sql_table(schema, table_name, sql_db_path, key):
                 col_type = db.Integer
             elif col_type == str:
                 col_type = db.String
-            elif col_type == datetime.datetime or col_type == pd.Timestamp or col_type == pd.Timedelta:
+            elif col_type == datetime or col_type == pd.Timestamp or col_type == pd.Timedelta:
                 col_type = db.DateTime
             elif col_type == bool:
                 col_type = db.Boolean

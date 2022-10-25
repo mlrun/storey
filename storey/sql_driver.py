@@ -84,13 +84,13 @@ class SQLDriver(Driver):
             values = None
         return [agg_val, values]
 
-    async def _load_by_key(self, container, table_path, key, attribute):
+    async def _load_by_key(self, container, table_path, key, attributes):
         self._lazy_init()
         table = self._table(table_path)
-        if attribute == "*":
-            _, values = await self._get_all_fields(key, table)
+        if attributes == "*":
+            values = await self._get_all_fields(key, table)
         else:
-            _, values = await self._get_specific_fields(key, table, attribute)
+            values = await self._get_specific_fields(key, table, attributes)
         return values
 
     async def close(self):
@@ -106,7 +106,7 @@ class SQLDriver(Driver):
         except Exception as e:
             raise RuntimeError(f"Failed to get key {key}. Response error was: {e}")
 
-        return None, {results[0]._fields[i]: results[0][i] for i in range(len(results[0]))}
+        return results[0]._mapping
 
     async def _get_specific_fields(self, key: str, table, attributes: List[str]):
         where_clause = self._get_where_clause(key)
@@ -116,7 +116,7 @@ class SQLDriver(Driver):
         except Exception as e:
             raise RuntimeError(f"Failed to get key {key}. Response error was: {e}")
 
-        return None, {results[0]._fields[i]: results[0][i] for i in range(len(results[0]))}
+        return results[0]._mapping
 
     def supports_aggregations(self):
         return False

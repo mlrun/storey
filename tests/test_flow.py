@@ -3925,7 +3925,6 @@ def test_read_sql_db():
     with engine.connect() as conn:
         origin_df = pd.DataFrame({"string": ["hello", "world"], "int": [1, 2], "float": [1.5, 2.5]})
         origin_df.to_sql("table_1", conn, if_exists="replace")
-        conn.close()
     controller = build_flow(
         [
             SQLSource("sqlite:///test.db", "table_1", "string"),

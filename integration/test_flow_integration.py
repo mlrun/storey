@@ -123,15 +123,14 @@ def _get_sql_by_key_all_attrs(
     import sqlalchemy as db
 
     where_statement = ""
-    if isinstance(key, str) and "." in key:
+    if isinstance(key, str):
         key = key.split(".")
     if isinstance(key, list):
         for i in range(len(key_name)):
             if i != 0:
                 where_statement += " and "
             where_statement += f'{key_name[i]}="{key[i]}"'
-    else:
-        where_statement += f'{key_name}="{key}"'
+
     table_name = setup_teardown_test._sql_table_name
     engine = db.create_engine(setup_teardown_test.sql_db_path, echo=True)
     metadata = db.MetaData()
@@ -144,8 +143,7 @@ def _get_sql_by_key_all_attrs(
     my_query = f"SELECT * FROM {sql_table} where ({where_statement})"
     with engine.connect() as conn:
         results = conn.execute(my_query).fetchall()
-    values = {results[0]._fields[i]: results[0][i] for i in range(len(results[0]))}
-    return values
+    return results[0]._mapping
 
 
 def get_key_all_attrs_test_helper(

@@ -1044,19 +1044,12 @@ class SQLSource(_IterableSource, WithUUID):
         _IterableSource.__init__(self, **kwargs)
         WithUUID.__init__(self)
 
-
         self.table_name = table_name
         self.db_path = db_path
 
         self._key_field = key_field
-        if isinstance(time_field, str) and "." in time_field:
-            self._time_field = time_field.split(".")
-        else:
-            self._time_field = time_field
-        if isinstance(id_field, str) and "." in id_field:
-            self._id_field = id_field.split(".")
-        else:
-            self._id_field = id_field
+        self._time_field = time_field
+        self._id_field = id_field
 
     async def _run_loop(self):
         import sqlalchemy as db
@@ -1087,9 +1080,9 @@ class SQLSource(_IterableSource, WithUUID):
             if create_event:
                 time = None
                 if self._time_field:
-                    time = self.get_val_from_multi_dictionary(body, self._time_field)
+                    time = body[self._time_field]
                 if self._id_field:
-                    _id = self.get_val_from_multi_dictionary(body, self._id_field)
+                    _id = body[self._id_field]
                 else:
                     _id = self._get_uuid()
                 event = Event(body, key=key, time=time, id=_id)
@@ -1098,9 +1091,3 @@ class SQLSource(_IterableSource, WithUUID):
                 if self.context:
                     self.context.logger.error(f"For {body} value of key {key_field} is None")
         return await self._do_downstream(_termination_obj)
-
-    def get_val_from_multi_dictionary(self, event, field):
-        for f in field:
-            event = event[f]
-
-        return event
