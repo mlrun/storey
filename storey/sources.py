@@ -1029,7 +1029,7 @@ class SQLSource(_IterableSource, WithUUID):
         self,
         db_path: str,
         table_name: str,
-        key_field: Optional[Union[str, List[str]]] = None,
+        key_field: Optional[Union[None, str, List[str]]] = None,
         time_field: Optional[str] = None,
         id_field: Optional[str] = None,
         **kwargs,
