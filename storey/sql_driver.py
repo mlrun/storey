@@ -123,13 +123,11 @@ class SQLDriver(Driver):
 
     def _get_where_clause(self, key):
         where_clause = ""
-        if isinstance(key, str) and "." in key:
+        if isinstance(key, str):
             key = key.split(".")
         if isinstance(key, List):
             for i in range(len(self._primary_key)):
                 if i != 0:
                     where_clause += " and "
                 where_clause += f'{self._primary_key[i]}="{key[i]}"'
-        else:
-            where_clause += f'{self._primary_key}="{key}"'
         return where_clause
