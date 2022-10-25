@@ -22,7 +22,7 @@ from storey.drivers import Driver
 
 class SQLDriver(Driver):
     """
-    Database connection to Sql data basw.
+    SQL database connector.
     :param db_path: url string connection to sql database.
     :param primary_key: the primary key of the table.
     """
