@@ -167,7 +167,7 @@ class TestContext:
         def supports_aggregations(self):
             return False
 
-    def driver(self, *args, IsAggregationlessDriver=False, primary_key=None, **kwargs):
+    def driver(self, IsAggregationlessDriver=False, primary_key=None, *args, **kwargs):
         if self.driver_name == "V3ioDriver":
             v3io_driver_class = TestContext.AggregationlessV3ioDriver if IsAggregationlessDriver else V3ioDriver
             return v3io_driver_class(*args, **kwargs)
