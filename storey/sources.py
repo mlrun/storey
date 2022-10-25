@@ -1044,8 +1044,6 @@ class SQLSource(_IterableSource, WithUUID):
         _IterableSource.__init__(self, **kwargs)
         WithUUID.__init__(self)
 
-        if not all([db_path, table_name]):
-            raise ValueError("cannot specify without db_path and table_name args")
 
         self.table_name = table_name
         self.db_path = db_path
