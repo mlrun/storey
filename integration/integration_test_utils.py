@@ -346,7 +346,7 @@ def create_sql_table(schema, table_name, sql_db_path, key):
             elif col_type == float:
                 col_type = db.Float
             else:
-                raise TypeError(f"{col_type} unsupported type")
+                raise TypeError(f"Unsupported type '{col_type}'")
             columns.append(db.Column(col, col_type, primary_key=(col in key)))
 
         db.Table(table_name, metadata, *columns)
