@@ -328,9 +328,6 @@ def _convert_nginx_to_python_type(typ, value):
 
 
 def create_sql_table(schema, table_name, sql_db_path, key):
-    import datetime
-
-    import pandas as pd
     import sqlalchemy as db
 
     engine = db.create_engine(sql_db_path, echo=True)
