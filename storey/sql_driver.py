@@ -23,7 +23,7 @@ from storey.drivers import Driver
 class SQLDriver(Driver):
     """
     SQL database connector.
-    :param db_path: url string connection to sql database.
+    :param db_url: database url
     :param primary_key: the primary key of the table.
     """
 
