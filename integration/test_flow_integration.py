@@ -46,6 +46,7 @@ from storey import (
     V3ioDriver,
     build_flow,
 )
+from storey.flow import DropColumns
 
 from .integration_test_utils import (
     TestContext,
@@ -208,7 +209,6 @@ async def async_test_write_to_v3io_stream_full_event_readback(
     setup_stream_teardown_test,
 ):
     stream_path = setup_stream_teardown_test
-    event_time = datetime(2022, 8, 8)
 
     controller = build_flow(
         [
@@ -224,18 +224,18 @@ async def async_test_write_to_v3io_stream_full_event_readback(
         ]
     ).run()
     for i in range(10):
-        await controller.emit(Event(i, time=event_time, id=str(i)))
+        await controller.emit(Event(i, id=str(i)))
 
     await asyncio.sleep(5)
 
     try:
         shard0_data = await GetShardData().get_shard_data(f"{stream_path}/0")
         assert shard0_data == [
-            b'{"full_event_wrapper": true, "body": 0, "time": "2022-08-08T00:00:00", "id": "0"}',
-            b'{"full_event_wrapper": true, "body": 2, "time": "2022-08-08T00:00:00", "id": "2"}',
-            b'{"full_event_wrapper": true, "body": 4, "time": "2022-08-08T00:00:00", "id": "4"}',
-            b'{"full_event_wrapper": true, "body": 6, "time": "2022-08-08T00:00:00", "id": "6"}',
-            b'{"full_event_wrapper": true, "body": 8, "time": "2022-08-08T00:00:00", "id": "8"}',
+            b'{"full_event_wrapper": true, "body": 0, "id": "0"}',
+            b'{"full_event_wrapper": true, "body": 2, "id": "2"}',
+            b'{"full_event_wrapper": true, "body": 4, "id": "4"}',
+            b'{"full_event_wrapper": true, "body": 6, "id": "6"}',
+            b'{"full_event_wrapper": true, "body": 8, "id": "8"}',
         ]
         shard1_data = await GetShardData().get_shard_data(f"{stream_path}/1")
         assert shard1_data == [
@@ -271,7 +271,6 @@ async def async_test_write_to_v3io_stream_full_event_readback(
     for i, record in enumerate(result):
         assert record.body == expected_bodies[i]
         assert record.id == str(expected_bodies[i])
-        assert record.time == event_time
 
 
 def test_async_test_write_to_v3io_stream_full_event_readback(
@@ -649,19 +648,20 @@ def test_write_table_specific_columns(setup_teardown_test):
 
     def enrich(event, state):
         if "first_activity" not in state:
-            state["first_activity"] = event.time
+            state["first_activity"] = event["sometime"]
 
-        event.body["time_since_activity"] = (event.time - state["first_activity"]).seconds
-        state["last_event"] = event.time
+        event["time_since_activity"] = (event["sometime"] - state["first_activity"]).seconds
+        state["last_event"] = event["sometime"]
         state["total_activities"] = state.get("total_activities", 0) + 1
-        event.body["color"] = state["color"]
-        event.body["twice_total_activities"] = state["total_activities"] * 2
+        event["color"] = state["color"]
+        event["twice_total_activities"] = state["total_activities"] * 2
         return event, state
 
     controller = build_flow(
         [
             SyncEmitSource(),
-            MapWithState(table, enrich, group_by_key=True, full_event=True),
+            MapWithState(table, enrich, group_by_key=True),
+            DropColumns("sometime"),
             NoSqlTarget(table, columns=["twice_total_activities"]),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
@@ -765,19 +765,20 @@ def test_write_table_metadata_columns(setup_teardown_test):
 
     def enrich(event, state):
         if "first_activity" not in state:
-            state["first_activity"] = event.time
+            state["first_activity"] = event["sometime"]
 
-        event.body["time_since_activity"] = (event.time - state["first_activity"]).seconds
-        state["last_event"] = event.time
+        event["time_since_activity"] = (event["sometime"] - state["first_activity"]).seconds
+        state["last_event"] = event["sometime"]
         state["total_activities"] = state.get("total_activities", 0) + 1
-        event.body["color"] = state["color"]
-        event.body["twice_total_activities"] = state["total_activities"] * 2
+        event["color"] = state["color"]
+        event["twice_total_activities"] = state["total_activities"] * 2
         return event, state
 
     controller = build_flow(
         [
             SyncEmitSource(),
-            MapWithState(table, enrich, group_by_key=True, full_event=True),
+            MapWithState(table, enrich, group_by_key=True),
+            DropColumns("sometime"),
             NoSqlTarget(table, columns=["twice_total_activities", "my_key=$key"]),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]

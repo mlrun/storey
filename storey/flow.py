@@ -225,7 +225,7 @@ class Flow:
         if getattr(event, "key", None):
             result += f"key={event.key}, "
         if getattr(event, "time", None):
-            result += f"time={event.time}, "
+            result += f"processing_time={processing_time}, "
         if getattr(event, "path", None):
             result += f"path={event.path}, "
         result += f"body={event.body})"
@@ -393,6 +393,22 @@ class _UnaryFunctionFlow(Flow):
             element = self._get_event_or_body(event)
             fn_result = await self._call(element)
             await self._do_internal(event, fn_result)
+
+
+class DropColumns(Flow):
+    def __init__(self, columns, **kwargs):
+        super().__init__(**kwargs)
+        if not isinstance(columns, list):
+            columns = [columns]
+        self._columns = columns
+
+    async def _do(self, event):
+        if event is not _termination_obj:
+            new_body = copy.copy(event.body)
+            for column in self._columns:
+                new_body.pop(column, None)
+            event.body = new_body
+        return await self._do_downstream(event)
 
 
 class Map(_UnaryFunctionFlow):
@@ -904,15 +920,15 @@ class _Batching(Flow):
         self,
         max_events: Optional[int] = None,
         flush_after_seconds: Optional[int] = None,
-        key: Optional[Union[str, Callable[[Event], str]]] = None,
+        key_field: Optional[Union[str, Callable[[Event], str]]] = None,
         **kwargs,
     ):
         if max_events:
             kwargs["max_events"] = max_events
         if flush_after_seconds is not None:
             kwargs["flush_after_seconds"] = flush_after_seconds
-        if isinstance(key, str):
-            kwargs["key"] = key
+        if isinstance(key_field, str):
+            kwargs["key_field"] = key_field
         super().__init__(**kwargs)
 
         self._max_events = max_events
@@ -921,7 +937,7 @@ class _Batching(Flow):
         if self._flush_after_seconds is not None and self._flush_after_seconds < 0:
             raise ValueError("flush_after_seconds cannot be negative")
 
-        self._extract_key: Optional[Callable[[Event], str]] = self._create_key_extractor(key)
+        self._extract_key: Optional[Callable[[Event], str]] = self._create_key_extractor(key_field)
 
     def _init(self):
         self._batch: Dict[Optional[str], List[Any]] = defaultdict(list)
@@ -932,18 +948,32 @@ class _Batching(Flow):
         self._timeout_task_ex: Optional[Exception] = None
 
     @staticmethod
-    def _create_key_extractor(key) -> Callable:
-        if key is None:
+    def _create_key_extractor(key_field) -> Callable:
+        if key_field is None:
             return lambda event: None
-        elif callable(key):
-            return key
-        elif isinstance(key, str):
-            if key == "$key":
+        elif callable(key_field):
+            return key_field
+        elif isinstance(key_field, str):
+            if key_field == "$key":
                 return lambda event: event.key
             else:
-                return lambda event: event.body[key]
+                return lambda event: event.body[key_field]
         else:
-            raise ValueError(f"Unsupported key type {type(key)}")
+            raise ValueError(f"Unsupported key_field type {type(key_field)}")
+
+    @staticmethod
+    def _create_time_extractor(key_field) -> Callable:
+        if key_field is None:
+            return lambda event: None
+        elif callable(key_field):
+            return key_field
+        elif isinstance(key_field, str):
+            if key_field == "$key":
+                return lambda event: event.key
+            else:
+                return lambda event: event.body[key_field]
+        else:
+            raise ValueError(f"Unsupported key_field type {type(key_field)}")
 
     async def _emit(self, batch, batch_key, batch_time, last_event_time=None):
         raise NotImplementedError
@@ -960,11 +990,11 @@ class _Batching(Flow):
         key = self._extract_key(event)
 
         if len(self._batch[key]) == 0:
-            self._batch_first_event_time[key] = event.time
+            self._batch_first_event_time[key] = event.processing_time
             self._batch_start_time[key] = time.monotonic()
-            self._batch_last_event_time[key] = event.time
-        elif self._batch_last_event_time[key] < event.time:
-            self._batch_last_event_time[key] = event.time
+            self._batch_last_event_time[key] = event.processing_time
+        elif self._batch_last_event_time[key] < event.processing_time:
+            self._batch_last_event_time[key] = event.processing_time
 
         if self._timeout_task_ex:
             raise self._timeout_task_ex
@@ -1028,7 +1058,7 @@ class Batch(_Batching):
     _do_downstream_per_event = False
 
     async def _emit(self, batch, batch_key, batch_time, last_event_time=None):
-        event = Event(batch, time=batch_time)
+        event = Event(batch)
         return await self._do_downstream(event)
 
 

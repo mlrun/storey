@@ -49,8 +49,10 @@ class AggregateByKey(Flow):
         accepts either list of FieldAggregators or a dictionary describing FieldAggregators.
     :param table: A Table object or name for persistence of aggregations.
         If a table name is provided, it will be looked up in the context object passed in kwargs.
-    :param key: Key field to aggregate by, accepts either a string representing the key field or
-        a key extracting function. Defaults to the key in the event's metadata. (Optional)
+    :param key_field: Key field to aggregate by, accepts either a string representing the key field or a key
+        extracting function. Defaults to the key in the event's metadata. (Optional)
+    :param time_field: Time field to aggregate by, accepts either a string representing the time field or a time
+        extracting function. Defaults to the processing time in the event's metadata. (Optional)
     :param emit_policy: Policy indicating when the data will be emitted. Defaults to EmitEveryEvent
     :param augmentation_fn: Function that augments the features into the event's body. Defaults to
         updating a dict. (Optional)
@@ -64,7 +66,8 @@ class AggregateByKey(Flow):
         self,
         aggregates: Union[List[FieldAggregator], List[Dict[str, object]]],
         table: Union[Table, str],
-        key: Union[str, Callable[[Event], object], None] = None,
+        key_field: Union[str, Callable[[Event], object], None] = None,
+        time_field: Union[str, Callable[[Event], object], None] = None,
         emit_policy: Union[EmitPolicy, Dict[str, object]] = _default_emit_policy,
         augmentation_fn: Optional[Callable[[Event, Dict[str, object]], Event]] = None,
         enrich_with: Optional[List[str]] = None,
@@ -107,16 +110,27 @@ class AggregateByKey(Flow):
 
             self._augmentation_fn = f
 
-        self.key_extractor = None
-        if key:
-            if callable(key):
-                self.key_extractor = key
-            elif isinstance(key, str):
-                self.key_extractor = lambda element: element.get(key)
-            elif isinstance(key, list):
-                self.key_extractor = lambda element: [element.get(single_key) for single_key in key]
+        self._key_extractor = lambda event: event.key
+        if key_field:
+            if callable(key_field):
+                self._key_extractor = key_field
+            elif isinstance(key_field, str):
+                self._key_extractor = lambda event: event.get(key_field)
+            elif isinstance(key_field, list):
+                self._key_extractor = lambda event: [event.get(single_key) for single_key in key_field]
             else:
-                raise TypeError(f"key is expected to be either a callable or string but got {type(key)}")
+                raise TypeError(
+                    f"key_field is expected to be either a callable or " f"string but got {type(key_field)}"
+                )
+
+        self._time_extractor = lambda event: event.processing_time
+        if time_field:
+            if callable(time_field):
+                self._time_extractor = time_field
+            elif isinstance(time_field, str):
+                self._time_extractor = lambda event: event.body.get(time_field)
+            else:
+                raise TypeError(f"time_field is expected to be either a callable or string but got {type(time_field)}")
 
     def _init(self):
         super()._init()
@@ -162,7 +176,7 @@ class AggregateByKey(Flow):
         raise TypeError("aggregates should be a list of FieldAggregator/dictionaries")
 
     def _get_timestamp(self, event):
-        event_timestamp = event.time
+        event_timestamp = self._time_extractor(event)
         if isinstance(event_timestamp, datetime):
             if isinstance(event_timestamp, pd.Timestamp) and event_timestamp.tzinfo is None:
                 # timestamp for pandas timestamp gives the wrong result in case there is no timezone (ML-313)
@@ -186,8 +200,8 @@ class AggregateByKey(Flow):
 
             element = event.body
             key = event.key
-            if self.key_extractor:
-                key = self.key_extractor(element)
+            if self._key_extractor:
+                key = self._key_extractor(element)
 
             event_timestamp = self._get_timestamp(event)
 
@@ -283,8 +297,10 @@ class QueryByKey(AggregateByKey):
     :param features: List of features to get.
     :param table: A Table object or name for persistence of aggregations.
         If a table name is provided, it will be looked up in the context object passed in kwargs.
-    :param key: Key field to aggregate by, accepts either a string representing the key field or a
-        key extracting function.
+    :param key_field: Key field to query by, accepts either a string representing the key field or a key
+        extracting function. Defaults to the key in the event's metadata. (Optional)
+    :param time_field: Time field to query by, accepts either a string representing the time field or a time
+        extracting function. Defaults to the processing time in the event's metadata. (Optional)
      Defaults to the key in the event's metadata. (Optional). Can be list of keys
     :param augmentation_fn: Function that augments the features into the event's body.
         Defaults to updating a dict. (Optional)
@@ -297,7 +313,8 @@ class QueryByKey(AggregateByKey):
         self,
         features: List[str],
         table: Union[Table, str],
-        key: Union[str, List[str], Callable[[Event], object], None] = None,
+        key_field: Union[str, List[str], Callable[[Event], object], None] = None,
+        time_field: Union[str, List[str], Callable[[Event], object], None] = None,
         augmentation_fn: Optional[Callable[[Event, Dict[str, object]], Event]] = None,
         aliases: Optional[Dict[str, str]] = None,
         fixed_window_type: Optional[FixedWindowType] = FixedWindowType.CurrentOpenWindow,
@@ -335,7 +352,8 @@ class QueryByKey(AggregateByKey):
             self,
             self._aggrs,
             other_table,
-            key,
+            key_field,
+            time_field,
             augmentation_fn=augmentation_fn,
             enrich_with=self._enrich_cols,
             aliases=aliases,
@@ -352,9 +370,9 @@ class QueryByKey(AggregateByKey):
 
         element = event.body
         key = event.key
-        if self.key_extractor:
+        if self._key_extractor:
             if element:
-                key = self.key_extractor(element)
+                key = self._key_extractor(element)
             if key is None or key == [None] or element is None:
                 event.body = None
                 await self._do_downstream(event)

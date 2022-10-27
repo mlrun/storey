@@ -62,6 +62,7 @@ v3io_web_api = 'https://webapi.change-me.com'
 v3io_acceess_key = '1284ne83-i262-46m6-9a23-810n41f169ea'
 table_object = Table('/projects/my_features', V3ioDriver(v3io_web_api, v3io_acceess_key))
 
+# TODO: Update this example
 def enrich(event, state):
     if 'first_activity' not in state:
         state['first_activity'] = event.time

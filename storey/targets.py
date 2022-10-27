@@ -45,6 +45,7 @@ class _Writer:
         infer_columns_from_data: Optional[bool],
         index_cols: Union[str, List[Union[str, Tuple[str, str]]], None] = None,
         partition_cols: Union[str, List[str], None] = None,
+        time_field: Union[None, str, int] = None,
         retain_dict: bool = False,
         storage_options: Optional[dict] = None,
     ):
@@ -133,6 +134,8 @@ class _Writer:
                     f"{list(cols_both_partition_and_index)}"
                 )
 
+        self._time_field = time_field
+
     _type_string_to_pyarrow_type = {
         "str": pyarrow.string(),
         "int32": pyarrow.int32(),
@@ -167,6 +170,9 @@ class _Writer:
                         self._non_partition_column_types.append(self._column_types[index])
 
     def _path_from_event(self, event):
+        event_time = event.processing_time
+        if self._time_field is not None:
+            event_time = event.body[self._time_field]
         res = "/"
         for col in self._partition_cols:
             hash_into = 0
@@ -177,19 +183,19 @@ class _Writer:
                 if isinstance(val, list):
                     val = ".".join(map(str, val))
             elif col == "$date":
-                val = f"{event.time.year:02}-{event.time.month:02}-{event.time.day:02}"
+                val = f"{event_time.year:02}-{event_time.month:02}-{event_time.day:02}"
             elif col == "$year":
-                val = f"{event.time.year:02}"
+                val = f"{event_time.year:02}"
             elif col == "$month":
-                val = f"{event.time.month:02}"
+                val = f"{event_time.month:02}"
             elif col == "$day":
-                val = f"{event.time.day:02}"
+                val = f"{event_time.day:02}"
             elif col == "$hour":
-                val = f"{event.time.hour:02}"
+                val = f"{event_time.hour:02}"
             elif col == "$minute":
-                val = f"{event.time.minute:02}"
+                val = f"{event_time.minute:02}"
             elif col == "$second":
-                val = f"{event.time.second:02}"
+                val = f"{event_time.second:02}"
             else:
                 if isinstance(event.body, list):
                     val = event.body[self._partition_col_to_index[col]]
@@ -492,6 +498,7 @@ class ParquetTarget(_Batching, _Writer):
         index_cols: Union[str, Union[List[str], List[Tuple[str, str]]], None] = None,
         columns: Union[str, Union[List[str], List[Tuple[str, str]]], None] = None,
         partition_cols: Union[str, Union[List[str], List[Tuple[str, int]]], None] = None,
+        time_field: Union[None, str, int] = None,
         infer_columns_from_data: Optional[bool] = None,
         max_events: Optional[int] = None,
         flush_after_seconds: Optional[int] = None,
@@ -533,7 +540,7 @@ class ParquetTarget(_Batching, _Writer):
             self,
             max_events=max_events,
             flush_after_seconds=flush_after_seconds,
-            key=path_from_event,
+            key_field=path_from_event,
             **kwargs,
         )
         _Writer.__init__(
@@ -542,6 +549,7 @@ class ParquetTarget(_Batching, _Writer):
             infer_columns_from_data,
             index_cols,
             partition_cols,
+            time_field,
             retain_dict=True,
             storage_options=storage_options,
         )

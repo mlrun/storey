@@ -174,7 +174,7 @@ def test_emit_timeless_event():
     class TimelessEvent:
         pass
 
-    controller = build_flow([SyncEmitSource(), ReduceToDataFrame(insert_time_column_as="mytime")]).run()
+    controller = build_flow([SyncEmitSource(), ReduceToDataFrame(insert_processing_time_column_as="mytime")]).run()
 
     event = TimelessEvent()
     event.id = "myevent"
@@ -241,7 +241,7 @@ def test_csv_reader_as_dict_with_key_and_timestamp():
                 header=True,
                 build_dict=True,
                 key_field="k",
-                time_field="t",
+                parse_dates="t",
                 timestamp_format="%d/%m/%Y %H:%M:%S",
             ),
             Reduce([], append_and_return, full_event=True),
@@ -252,7 +252,6 @@ def test_csv_reader_as_dict_with_key_and_timestamp():
 
     assert len(termination_result) == 2
     assert termination_result[0].key == "m1"
-    assert termination_result[0].time == datetime(2020, 2, 15, 2, 0)
     assert termination_result[0].body == {
         "k": "m1",
         "t": datetime(2020, 2, 15, 2, 0),
@@ -260,7 +259,6 @@ def test_csv_reader_as_dict_with_key_and_timestamp():
         "b": True,
     }
     assert termination_result[1].key == "m2"
-    assert termination_result[1].time == datetime(2020, 2, 16, 2, 0)
     assert termination_result[1].body == {
         "k": "m2",
         "t": datetime(2020, 2, 16, 2, 0),
@@ -276,7 +274,7 @@ def test_csv_reader_as_dict_with_compact_timestamp():
                 "tests/test-with-compact-timestamp.csv",
                 header=True,
                 build_dict=True,
-                time_field="t",
+                parse_dates="t",
                 timestamp_format="%Y%m%d%H",
             ),
             Reduce([], append_and_return, full_event=True),
@@ -287,7 +285,6 @@ def test_csv_reader_as_dict_with_compact_timestamp():
 
     assert len(termination_result) == 2
     assert termination_result[0].key is None
-    assert termination_result[0].time == datetime(2020, 2, 15, 2, 0)
     assert termination_result[0].body == {
         "k": "m1",
         "t": datetime(2020, 2, 15, 2, 0),
@@ -295,7 +292,6 @@ def test_csv_reader_as_dict_with_compact_timestamp():
         "b": True,
     }
     assert termination_result[1].key is None
-    assert termination_result[1].time == datetime(2020, 2, 16, 2, 0)
     assert termination_result[1].body == {
         "k": "m2",
         "t": datetime(2020, 2, 16, 2, 0),
@@ -311,7 +307,7 @@ def test_csv_reader_with_key_and_timestamp():
                 "tests/test-with-timestamp.csv",
                 header=True,
                 key_field="k",
-                time_field="t",
+                parse_dates="t",
                 timestamp_format="%d/%m/%Y %H:%M:%S",
             ),
             Reduce([], append_and_return, full_event=True),
@@ -322,10 +318,8 @@ def test_csv_reader_with_key_and_timestamp():
 
     assert len(termination_result) == 2
     assert termination_result[0].key == "m1"
-    assert termination_result[0].time == datetime(2020, 2, 15, 2, 0)
     assert termination_result[0].body == ["m1", datetime(2020, 2, 15, 2, 0), 8, True]
     assert termination_result[1].key == "m2"
-    assert termination_result[1].time == datetime(2020, 2, 16, 2, 0)
     assert termination_result[1].body == ["m2", datetime(2020, 2, 16, 2, 0), 14, False]
 
 
@@ -397,13 +391,11 @@ def test_dataframe_source_with_metadata():
         Event(
             {"my_key": "key1", "my_time": t1, "my_id": "id1", "my_value": 1.1},
             key="key1",
-            time=t1,
             id="id1",
         ),
         Event(
             {"my_key": "key2", "my_time": t2, "my_id": "id2", "my_value": 2.2},
             key="key2",
-            time=t2,
             id="id2",
         ),
     ]
@@ -1506,7 +1498,7 @@ def test_batch_with_timeout():
     for i in range(10):
         if i == 3:
             q.get()
-        controller.emit(i, event_time=datetime(2020, 2, 15, 2, 0))
+        controller.emit(Event(i, processing_time=datetime(2020, 2, 15, 2, 0)))
     controller.terminate()
     termination_result = controller.await_termination()
     assert termination_result == [[0, 1, 2], [3, 4, 5, 6], [7, 8, 9]]
@@ -2169,7 +2161,7 @@ def test_write_to_parquet_partition_by_date(tmpdir):
     controller = build_flow(
         [
             SyncEmitSource(),
-            ParquetTarget(out_file, partition_cols=["$date"], columns=["my_int", "my_string"]),
+            ParquetTarget(out_file, partition_cols=["$date"], columns=["time", "my_int", "my_string"], time_field=0),
         ]
     ).run()
 
@@ -2177,7 +2169,7 @@ def test_write_to_parquet_partition_by_date(tmpdir):
 
     expected = []
     for i in range(10):
-        controller.emit([i, f"this is {i}"], event_time=my_time)
+        controller.emit([my_time, i, f"this is {i}"])
         expected.append(["2020-02-15", i, f"this is {i}"])
     columns = ["date", "my_int", "my_string"]
     expected = pd.DataFrame(expected, columns=columns, dtype="int64")
@@ -2191,16 +2183,17 @@ def test_write_to_parquet_partition_by_date(tmpdir):
 
 def test_write_to_parquet_partition_by_hash(tmpdir):
     out_file = f"{tmpdir}/test_write_to_parquet_partition_by_hash{uuid.uuid4().hex}"
-    controller = build_flow([SyncEmitSource(), ParquetTarget(out_file, columns=["my_int", "my_string"])]).run()
+    controller = build_flow([SyncEmitSource(), ParquetTarget(out_file, columns=["time", "my_int", "my_string"],
+                                                             time_field=0)]).run()
 
     my_time = datetime(2020, 2, 15)
 
     expected = []
     for i in range(10):
-        controller.emit([i, f"this is {i}"], event_time=my_time, key=[i])
-        expected.append([i, f"this is {i}"])
-    columns = ["my_int", "my_string"]
-    expected = pd.DataFrame(expected, columns=columns, dtype="int64")
+        controller.emit([my_time, i, f"this is {i}"], key=[i])
+        expected.append([my_time, i, f"this is {i}"])
+    columns = ["time", "my_int", "my_string"]
+    expected = pd.DataFrame(expected, columns=columns)
     controller.terminate()
     controller.await_termination()
 
@@ -2688,7 +2681,7 @@ def test_csv_reader_parquet_write_microsecs(tmpdir):
                 "tests/test-with-timestamp-microsecs.csv",
                 header=True,
                 key_field="k",
-                time_field="t",
+                parse_dates="t",
                 timestamp_format=time_format,
             ),
             ParquetTarget(
@@ -2724,7 +2717,7 @@ def test_csv_reader_parquet_write_nanosecs(tmpdir):
                 "tests/test-with-timestamp-nanosecs.csv",
                 header=True,
                 key_field="k",
-                time_field="t",
+                parse_dates="t",
                 timestamp_format=time_format,
             ),
             ParquetTarget(
@@ -2832,7 +2825,7 @@ def test_push_error():
 def test_metadata_fields():
     controller = build_flow(
         [
-            SyncEmitSource(key_field="mykey", time_field="mytime"),
+            SyncEmitSource(key_field="mykey"),
             Reduce([], append_and_return, full_event=True),
         ]
     ).run()
@@ -2843,7 +2836,7 @@ def test_metadata_fields():
     body2 = {"mykey": "k2", "mytime": t2, "otherfield": "x"}
 
     controller.emit(body1)
-    controller.emit(Event(body2, "k2", t2))
+    controller.emit(Event(body2, "k2"))
 
     controller.terminate()
     result = controller.await_termination()
@@ -2852,12 +2845,10 @@ def test_metadata_fields():
 
     result1 = result[0]
     assert result1.key == "k1"
-    assert result1.time == t1
     assert result1.body == body1
 
     result2 = result[1]
     assert result2.key == "k2"
-    assert result2.time == t2
     assert result2.body == body2
 
 
@@ -2876,7 +2867,7 @@ def test_time_parsed_on_emit():
     body2 = {"mykey": "k2", "otherfield": "x"}
 
     controller.emit(body1)
-    controller.emit(body2, event_time=timestamp_datetime)
+    controller.emit(body2)
 
     controller.terminate()
     result = controller.await_termination()
@@ -2885,12 +2876,10 @@ def test_time_parsed_on_emit():
 
     result1 = result[0]
     assert result1.key == "k1"
-    assert result1.time == timestamp_datetime
     assert result1.body == expected_body1
 
     result2 = result[1]
     assert result2.key == "k2"
-    assert result2.time == timestamp_datetime
     assert result2.body == body2
 
 
@@ -3240,8 +3229,8 @@ def test_non_existing_key_query_by_key():
     controller = build_flow(
         [
             SyncEmitSource(),
-            QueryByKey(["color"], table, key="name"),
-            QueryByKey(["city"], table, key="name"),
+            QueryByKey(["color"], table, key_field="name"),
+            QueryByKey(["city"], table, key_field="name"),
         ]
     ).run()
 
@@ -3253,7 +3242,7 @@ def test_non_existing_key_query_by_key():
 # ML-2257
 def test_query_by_key_edge_case_field_name():
     table = Table("table", NoopDriver())
-    QueryByKey(["my_color_5sec"], table, key="name"),
+    QueryByKey(["my_color_5sec"], table, key_field="name"),
 
 
 def test_csv_source_with_none_values():

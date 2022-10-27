@@ -15,7 +15,6 @@
 import asyncio
 import json
 import os
-from datetime import datetime
 from time import sleep
 
 import pytest
@@ -94,7 +93,6 @@ def test_kafka_target(kafka_topic_setup_teardown):
 
 async def async_test_write_to_kafka_full_event_readback(kafka_topic_setup_teardown):
     kafka_consumer = kafka_topic_setup_teardown
-    event_time = datetime(2022, 8, 8)
 
     controller = build_flow(
         [
@@ -104,7 +102,7 @@ async def async_test_write_to_kafka_full_event_readback(kafka_topic_setup_teardo
     ).run()
     events = []
     for i in range(10):
-        event = Event(i, time=event_time, id=str(i))
+        event = Event(i, id=str(i))
         events.append(event)
         await controller.emit(event)
 
@@ -138,7 +136,6 @@ async def async_test_write_to_kafka_full_event_readback(kafka_topic_setup_teardo
     for i, record in enumerate(result):
         assert record.body == i
         assert record.id == str(i)
-        assert record.time == event_time
 
 
 @pytest.mark.skipif(

@@ -40,13 +40,13 @@ class Event:
     """
 
     _serialize_event_marker = "full_event_wrapper"
-    _serialize_fields = ["key", "time", "id"]
+    _serialize_fields = ["key", "id"]
 
     def __init__(
         self,
         body: object,
         key: Optional[Union[str, List[str]]] = None,
-        time: Optional[datetime] = None,
+        processing_time: Union[None, datetime, int, float] = None,
         id: Optional[str] = None,
         headers: Optional[dict] = None,
         method: Optional[str] = None,
@@ -56,14 +56,15 @@ class Event:
     ):
         self.body = body
         self.key = key
-        if time is not None and not isinstance(time, datetime):
-            if isinstance(time, str):
-                time = datetime.fromisoformat(time)
+        if processing_time is not None and not isinstance(processing_time, datetime):
+            if isinstance(processing_time, str):
+                processing_time = datetime.fromisoformat(processing_time)
             elif isinstance(time, int):
-                time = datetime.utcfromtimestamp(time)
+                processing_time = datetime.utcfromtimestamp(processing_time)
             else:
-                raise TypeError(f"Event time parameter must be a datetime, string, or int. Got {type(time)} instead.")
-        self.time = time or datetime.now(timezone.utc)
+                raise TypeError(f"Event processing_time parameter must be a datetime, string, or int. "
+                                f"Got {type(time)} instead.")
+        self.processing_time = processing_time or datetime.now(timezone.utc)
         self.id = id
         self.headers = headers
         self.method = method
@@ -78,7 +79,6 @@ class Event:
 
         return (
             self.body == other.body
-            and self.time == other.time
             and self.id == other.id
             and self.headers == other.headers
             and self.method == other.method
