@@ -194,7 +194,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
             ret = math.inf
         elif value == "-inf":
             ret = -math.inf
-        elif value == "nan" or value == "-nan" or value == "0/0":
+        elif value == "nan" or value == "-nan" or value == "0/0" or value == "-0/0":
             ret = float("nan")
         elif value == "true":
             ret = True
