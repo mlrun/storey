@@ -486,6 +486,29 @@ def test_write_parquet_timestamp_nanosecs(tmpdir):
     assert termination_result == expected
 
 
+# ML-1553
+def test_write_parquet_time_zone_mix(tmpdir):
+    out_file = f"{tmpdir}/test_write_parquet_time_zone_mix/{uuid.uuid4().hex}.pq"
+
+    controller = build_flow(
+        [
+            SyncEmitSource(),
+            ParquetTarget(out_file, columns=[("time", "datetime")]),
+        ]
+    ).run()
+
+    controller.emit({"time": datetime.fromisoformat("2022-01-01T09:40:00+02:00")})
+    controller.emit({"time": datetime.fromisoformat("2022-01-01T09:40:00+03:00")})
+
+    controller.terminate()
+    controller.await_termination()
+
+    read_back_df = pd.read_parquet(out_file)
+    assert read_back_df.to_dict() == {
+        "time": {0: datetime.fromisoformat("2022-01-01 07:40:00"), 1: datetime.fromisoformat("2022-01-01 06:40:00")}
+    }
+
+
 def test_read_parquet():
     controller = build_flow(
         [
