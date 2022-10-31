@@ -25,7 +25,7 @@ jobs:
         with:
           ref: refs/pull/${{ github.event.number }}/merge
       - name: Set up Python
-        uses: actions/setup-python@v1
+        uses: actions/setup-python@v4
         with:
           python-version: 3.7
           cache: pip
@@ -42,7 +42,7 @@ jobs:
         with:
           ref: refs/pull/${{ github.event.number }}/merge
       - name: Set up Python
-        uses: actions/setup-python@v1
+        uses: actions/setup-python@v4
         with:
           python-version: 3.7
           cache: pip
@@ -59,7 +59,7 @@ jobs:
         with:
           ref: refs/pull/${{ github.event.number }}/merge
       - name: Set up Python
-        uses: actions/setup-python@v1
+        uses: actions/setup-python@v4
         with:
           python-version: 3.7
           cache: pip
