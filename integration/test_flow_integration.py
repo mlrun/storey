@@ -658,15 +658,14 @@ def test_write_table_specific_columns(setup_teardown_test):
         event.body["twice_total_activities"] = state["total_activities"] * 2
         return event, state
 
-    flow = build_flow(
+    controller = build_flow(
         [
             SyncEmitSource(),
             MapWithState(table, enrich, group_by_key=True, full_event=True),
             NoSqlTarget(table, columns=["twice_total_activities"]),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
-    )
-    controller = flow.run()
+    ).run()
 
     items_in_ingest_batch = 10
     for i in range(items_in_ingest_batch):
@@ -757,19 +756,6 @@ def test_write_table_specific_columns(setup_teardown_test):
 
     actual_cache = get_key_all_attrs_test_helper(setup_teardown_test, "tal")
     assert expected_cache == actual_cache
-
-    # Check for ML-1553 regression
-
-    controller = flow.run()
-
-    items_in_ingest_batch = 10
-    for i in range(items_in_ingest_batch):
-        data = {"col1": i}
-        controller.emit(data, "tal", test_base_time + timedelta(minutes=25 * i))
-
-    controller.terminate()
-    actual = controller.await_termination()
-    print(actual)
 
 
 def test_write_table_metadata_columns(setup_teardown_test):
