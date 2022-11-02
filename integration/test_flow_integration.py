@@ -552,12 +552,12 @@ def test_write_to_tsdb_with_metadata_label():
     controller.terminate()
     controller.await_termination()
 
-    # client = frames.Client(container="projects")
-    # res = client.read("tsdb", table_name, start="0", end="now", multi_index=True)
-    # res = res.sort_values(["time"])
-    # df = pd.DataFrame(expected, columns=["time", "node", "cpu", "disk"])
-    # df.set_index(keys=["time", "node"], inplace=True)
-    # assert res.equals(df), f"result{res}\n!=\nexpected{df}"
+    client = frames.Client(container="projects")
+    res = client.read("tsdb", table_name, start="0", end="now", multi_index=True)
+    res = res.sort_values(["time"])
+    df = pd.DataFrame(expected, columns=["time", "node", "cpu", "disk"])
+    df.set_index(keys=["time", "node"], inplace=True)
+    assert res.equals(df), f"result{res}\n!=\nexpected{df}"
 
 
 def test_join_by_key(setup_kv_teardown_test):
