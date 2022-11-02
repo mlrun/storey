@@ -47,8 +47,8 @@ from storey import (
     build_flow,
 )
 
+from .conftest import ContextForTests
 from .integration_test_utils import (
-    TestContext,
     V3ioHeaders,
     append_return,
     create_stream,
@@ -100,7 +100,7 @@ class GetShardData(V3ioHeaders):
         return data
 
 
-def _get_redis_kv_all_attrs(setup_teardown_test: TestContext, key: str):
+def _get_redis_kv_all_attrs(setup_teardown_test: ContextForTests, key: str):
     from storey.redis_driver import RedisDriver
 
     from .integration_test_utils import get_redis_client
@@ -116,7 +116,7 @@ def _get_redis_kv_all_attrs(setup_teardown_test: TestContext, key: str):
     }
 
 
-def get_key_all_attrs_test_helper(setup_teardown_test: TestContext, key: str):
+def get_key_all_attrs_test_helper(setup_teardown_test: ContextForTests, key: str):
     if setup_teardown_test.driver_name == "RedisDriver":
         result = _get_redis_kv_all_attrs(setup_teardown_test, key)
     else:

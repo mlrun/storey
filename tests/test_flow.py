@@ -2087,7 +2087,7 @@ def test_write_to_parquet_single_file_on_termination(tmpdir):
     for i in range(10):
         controller.emit([i, f"this is {i}"])
         expected.append([i, f"this is {i}"])
-    expected = pd.DataFrame(expected, columns=columns, dtype="int64")
+    expected = pd.DataFrame(expected, columns=columns)
     controller.terminate()
     controller.await_termination()
 
@@ -2151,7 +2151,7 @@ def test_write_to_parquet_with_metadata(tmpdir):
     for i in range(10):
         controller.emit([i, f"this is {i}"], key=f"key{i}")
         expected.append([f"key{i}", i, f"this is {i}"])
-    expected = pd.DataFrame(expected, columns=columns, dtype="int64")
+    expected = pd.DataFrame(expected, columns=columns)
     controller.terminate()
     controller.await_termination()
 
@@ -2178,7 +2178,7 @@ def test_write_to_parquet_with_indices(tmpdir):
         controller.emit([i, f"this is {i}"], key=f"key{i}")
         expected.append([f"key{i}", i, f"this is {i}"])
     columns = ["event_key", "my_int", "my_string"]
-    expected = pd.DataFrame(expected, columns=columns, dtype="int64")
+    expected = pd.DataFrame(expected, columns=columns)
     expected.set_index(["event_key"], inplace=True)
     controller.terminate()
     controller.await_termination()
@@ -2203,7 +2203,7 @@ def test_write_to_parquet_partition_by_date(tmpdir):
         controller.emit([i, f"this is {i}"], event_time=my_time)
         expected.append(["2020-02-15", i, f"this is {i}"])
     columns = ["date", "my_int", "my_string"]
-    expected = pd.DataFrame(expected, columns=columns, dtype="int64")
+    expected = pd.DataFrame(expected, columns=columns)
     expected["date"] = expected["date"].astype("category")
     controller.terminate()
     controller.await_termination()
@@ -2223,7 +2223,7 @@ def test_write_to_parquet_partition_by_hash(tmpdir):
         controller.emit([i, f"this is {i}"], event_time=my_time, key=[i])
         expected.append([i, f"this is {i}"])
     columns = ["my_int", "my_string"]
-    expected = pd.DataFrame(expected, columns=columns, dtype="int64")
+    expected = pd.DataFrame(expected, columns=columns)
     controller.terminate()
     controller.await_termination()
 
@@ -2280,7 +2280,6 @@ def test_write_to_parquet_with_inference(tmpdir):
     expected = pd.DataFrame(
         expected,
         columns=["key", "only_first_event", "my_int", "my_string", "only_last_event"],
-        dtype="int64",
     )
     expected.set_index(["key"], inplace=True)
     controller.terminate()
