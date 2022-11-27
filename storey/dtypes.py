@@ -59,11 +59,11 @@ class Event:
         if processing_time is not None and not isinstance(processing_time, datetime):
             if isinstance(processing_time, str):
                 processing_time = datetime.fromisoformat(processing_time)
-            elif isinstance(time, int):
-                processing_time = datetime.utcfromtimestamp(processing_time)
             else:
-                raise TypeError(f"Event processing_time parameter must be a datetime, string, or int. "
-                                f"Got {type(time)} instead.")
+                raise TypeError(
+                    f"Event processing_time parameter must be a datetime, string, or int. "
+                    f"Got {type(processing_time)} instead."
+                )
         self.processing_time = processing_time or datetime.now(timezone.utc)
         self.id = id
         self.headers = headers

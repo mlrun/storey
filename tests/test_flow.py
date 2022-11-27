@@ -27,7 +27,6 @@ from unittest.mock import MagicMock
 import pandas as pd
 import pyarrow.parquet as pq
 import pytest
-import pytz
 from aiohttp import ClientConnectorError, InvalidURL
 from pandas.testing import assert_frame_equal
 
@@ -2206,8 +2205,9 @@ def test_write_to_parquet_partition_by_date(tmpdir):
 
 def test_write_to_parquet_partition_by_hash(tmpdir):
     out_file = f"{tmpdir}/test_write_to_parquet_partition_by_hash{uuid.uuid4().hex}"
-    controller = build_flow([SyncEmitSource(), ParquetTarget(out_file, columns=["time", "my_int", "my_string"],
-                                                             time_field=0)]).run()
+    controller = build_flow(
+        [SyncEmitSource(), ParquetTarget(out_file, columns=["time", "my_int", "my_string"], time_field=0)]
+    ).run()
 
     my_time = datetime(2020, 2, 15)
 
@@ -2233,8 +2233,9 @@ def test_write_to_parquet_partition_by_column(tmpdir):
             SyncEmitSource(),
             ParquetTarget(
                 out_file,
-                columns=["my_int", "my_string", "even"],
+                columns=["time", "my_int", "my_string", "even"],
                 partition_cols=["even"],
+                time_field="time",
             ),
         ]
     ).run()
@@ -2243,10 +2244,10 @@ def test_write_to_parquet_partition_by_column(tmpdir):
 
     expected = []
     for i in range(10):
-        even = "even" if i % 2 == 0 else "odd"
-        controller.emit([i, f"this is {i}", even], event_time=my_time, key=[i])
-        expected.append([i, f"this is {i}", even])
-    columns = ["my_int", "my_string", "even"]
+        event = "even" if i % 2 == 0 else "odd"
+        controller.emit([my_time, i, f"this is {i}", event], key=[i])
+        expected.append([my_time, i, f"this is {i}", event])
+    columns = ["time", "my_int", "my_string", "even"]
     expected = pd.DataFrame(expected, columns=columns)
     expected["even"] = expected["even"].astype("category")
     controller.terminate()
@@ -2649,6 +2650,7 @@ def test_write_to_tsdb_with_key_index_and_default_time():
             SyncEmitSource(),
             TSDBTarget(
                 path="container/some/path",
+                time_col="time",
                 index_cols="node=$key",
                 columns=["cpu", "disk"],
                 rate="1/h",
@@ -2662,7 +2664,7 @@ def test_write_to_tsdb_with_key_index_and_default_time():
     date_time_str = "18/09/19 01:55:1"
     for i in range(9):
         now = datetime.strptime(date_time_str + str(i) + " UTC-0000", "%d/%m/%y %H:%M:%S UTC%z")
-        controller.emit([i + 1, i + 2], key=i, event_time=now)
+        controller.emit([now, i + 1, i + 2], key=i)
         expected_data.append([now, i, i + 1, i + 2])
 
     controller.terminate()
@@ -2874,41 +2876,10 @@ def test_metadata_fields():
     assert result2.body == body2
 
 
-def test_time_parsed_on_emit():
-    controller = build_flow(
-        [
-            SyncEmitSource(key_field="mykey", time_field="mytime"),
-            Reduce([], append_and_return, full_event=True),
-        ]
-    ).run()
-
-    timestamp_str = "2016-05-30 13:30:00.057"
-    timestamp_datetime = datetime(2016, 5, 30, 13, 30, 0, 57000)
-    body1 = {"mykey": "k1", "mytime": timestamp_str, "otherfield": "x"}
-    expected_body1 = {"mykey": "k1", "mytime": timestamp_datetime, "otherfield": "x"}
-    body2 = {"mykey": "k2", "otherfield": "x"}
-
-    controller.emit(body1)
-    controller.emit(body2)
-
-    controller.terminate()
-    result = controller.await_termination()
-
-    assert len(result) == 2
-
-    result1 = result[0]
-    assert result1.key == "k1"
-    assert result1.body == expected_body1
-
-    result2 = result[1]
-    assert result2.key == "k2"
-    assert result2.body == body2
-
-
 async def async_test_async_metadata_fields():
     controller = build_flow(
         [
-            AsyncEmitSource(key_field="mykey", time_field="mytime"),
+            AsyncEmitSource(key_field="mykey"),
             Reduce([], append_and_return, full_event=True),
         ]
     ).run()
@@ -2920,7 +2891,6 @@ async def async_test_async_metadata_fields():
     assert len(result) == 1
     result = result[0]
     assert result.key == "k1"
-    assert result.time == datetime(2020, 2, 15, 2, 0)
     assert result.body == body
 
 
@@ -3305,7 +3275,7 @@ def test_csv_source_event_metadata():
                 timestamp_format="%d/%m/%Y %H:%M:%S",
                 id_field="k",
             ),
-            ReifyMetadata({"key", "time", "id"}),
+            ReifyMetadata({"key", "id"}),
             Reduce([], append_and_return, full_event=False),
         ]
     ).run()
@@ -3319,7 +3289,6 @@ def test_csv_source_event_metadata():
             "k": "m1",
             "key": "m1",
             "t": datetime(2020, 2, 15, 2, 0),
-            "time": datetime(2020, 2, 15, 2, 0),
             "v": 8,
         },
         {
@@ -3328,70 +3297,9 @@ def test_csv_source_event_metadata():
             "k": "m2",
             "key": "m2",
             "t": datetime(2020, 2, 16, 2, 0),
-            "time": datetime(2020, 2, 16, 2, 0),
             "v": 14,
         },
     ]
-
-
-def test_bad_time_string_input():
-    controller = build_flow(
-        [
-            SyncEmitSource(time_field="time"),
-        ]
-    ).run()
-
-    try:
-        with pytest.raises(ValueError):
-            controller.emit({"time": "not a time for sure"})
-    finally:
-        controller.terminate()
-
-
-def test_bad_time_input():
-    controller = build_flow(
-        [
-            SyncEmitSource(time_field="time"),
-        ]
-    ).run()
-
-    try:
-        with pytest.raises(ValueError):
-            controller.emit({"time": object()})
-    finally:
-        controller.terminate()
-
-
-def test_epoch_time_input():
-    controller = build_flow([SyncEmitSource(time_field="time"), Complete(full_event=True)]).run()
-
-    awaitable_result = controller.emit({"time": 1620569127})
-    result = awaitable_result.await_result()
-    controller.terminate()
-    assert result.time == datetime(2021, 5, 9, 14, 5, 27, tzinfo=pytz.utc)
-
-
-def test_iso_string_time_input():
-    controller = build_flow([SyncEmitSource(time_field="time"), Complete(full_event=True)]).run()
-
-    awaitable_result = controller.emit({"time": "2021-05-09T14:05:27+00:00"})
-    result = awaitable_result.await_result()
-    controller.terminate()
-    assert result.time == datetime(2021, 5, 9, 14, 5, 27, tzinfo=pytz.utc)
-
-
-def test_custom_string_time_input():
-    controller = build_flow(
-        [
-            SyncEmitSource(time_field="time", time_format="%Y-%m-%dT%H:%M:%S%z"),
-            Complete(full_event=True),
-        ]
-    ).run()
-
-    awaitable_result = controller.emit({"time": "2021-05-09T14:05:27+00:00"})
-    result = awaitable_result.await_result()
-    controller.terminate()
-    assert result.time == datetime(2021, 5, 9, 14, 5, 27, tzinfo=pytz.utc)
 
 
 def test_none_key_is_not_written():
@@ -3810,7 +3718,7 @@ def test_verbose_logs():
         ]
     ).run()
 
-    controller.emit(Event(id="myid", time=datetime.fromisoformat("2020-07-21T21:40:00+00:00"), body={}))
+    controller.emit(Event(id="myid", body={}))
     controller.terminate()
     controller.await_termination()
 
@@ -3818,12 +3726,12 @@ def test_verbose_logs():
 
     level, args, kwargs = logger.logs[0]
     assert level == "debug"
-    assert args == ("SyncEmitSource -> Map1 | Event(id=myid, time=2020-07-21 21:40:00+00:00, path=/, body={})",)
+    assert args == ("SyncEmitSource -> Map1 | Event(id=myid, path=/, body={})",)
     assert kwargs == {}
 
     level, args, kwargs = logger.logs[1]
     assert level == "debug"
-    assert args == ("Map1 -> Map2 | Event(id=myid, time=2020-07-21 21:40:00+00:00, path=/, body={})",)
+    assert args == ("Map1 -> Map2 | Event(id=myid, path=/, body={})",)
     assert kwargs == {}
 
 

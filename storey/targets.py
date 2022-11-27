@@ -148,6 +148,9 @@ class _Writer:
 
     def _init(self):
         self._columns = copy.copy(self._initial_columns)
+        self._col_to_index = {}
+        for index, col in enumerate(self._columns):
+            self._col_to_index[col] = index
         self._index_cols = copy.copy(self._initial_index_cols)
         self._init_partition_col_indices()
 
@@ -172,7 +175,10 @@ class _Writer:
     def _path_from_event(self, event):
         event_time = event.processing_time
         if self._time_field is not None:
-            event_time = event.body[self._time_field]
+            time_field = self._time_field
+            if isinstance(event.body, list) and isinstance(time_field, str):
+                time_field = self._col_to_index[time_field]
+            event_time = event.body[time_field]
         res = "/"
         for col in self._partition_cols:
             hash_into = 0
@@ -629,7 +635,7 @@ class TSDBTarget(_Batching, _Writer):
     """Writes incoming events to TSDB table.
 
     :param path: Path to TSDB table.
-    :param time_col: Name of the time column. Optional. Defaults to '$time'.
+    :param time_col: Name of the time column.
     :param columns: List of column names to be passed to the DataFrame constructor. Use = notation for renaming fields
         (e.g. write_this=event_field). Use $ notation to refer to metadata ($key, event_time=$time).
     :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries. If
@@ -659,7 +665,7 @@ class TSDBTarget(_Batching, _Writer):
     def __init__(
         self,
         path: str,
-        time_col: str = "$time",
+        time_col: str,
         columns: Union[str, List[str], None] = None,
         infer_columns_from_data: Optional[bool] = None,
         index_cols: Union[str, List[str], None] = None,

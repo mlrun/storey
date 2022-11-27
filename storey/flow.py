@@ -225,7 +225,7 @@ class Flow:
         if getattr(event, "key", None):
             result += f"key={event.key}, "
         if getattr(event, "time", None):
-            result += f"processing_time={processing_time}, "
+            result += f"processing_time={event.processing_time}, "
         if getattr(event, "path", None):
             result += f"path={event.path}, "
         result += f"body={event.body})"
