@@ -24,7 +24,6 @@ import aiohttp
 import fakeredis
 import redis as r
 
-from storey import V3ioDriver
 from storey.drivers import NeedsV3ioAccess
 from storey.flow import V3ioError
 from storey.redis_driver import RedisDriver
@@ -112,55 +111,6 @@ def remove_redis_table(table_name):
     for key in redis_client.scan_iter(f"*storey-test:{table_name}*"):
         redis_client.delete(key)
         count += 1
-
-
-class TestContext:
-    def __init__(self, driver_name: str, table_name: str):
-        self._driver_name = driver_name
-        self._table_name = table_name
-
-        self._redis_fake_server = None
-        if driver_name == "RedisDriver":
-            redis_url = os.environ.get("MLRUN_REDIS_URL")
-            if not redis_url:
-                # if we are using fakeredis, create fake-server to support tests involving multiple clients
-                self._redis_fake_server = fakeredis.FakeServer()
-
-    @property
-    def table_name(self):
-        return self._table_name
-
-    @property
-    def redis_fake_server(self):
-        return self._redis_fake_server
-
-    @property
-    def driver_name(self):
-        return self._driver_name
-
-    class AggregationlessV3ioDriver(V3ioDriver):
-        def supports_aggregations(self):
-            return False
-
-    class AggregationlessRedisDriver(RedisDriver):
-        def supports_aggregations(self):
-            return False
-
-    def driver(self, IsAggregationlessDriver=False, *args, **kwargs):
-        if self.driver_name == "V3ioDriver":
-            v3io_driver_class = TestContext.AggregationlessV3ioDriver if IsAggregationlessDriver else V3ioDriver
-            return v3io_driver_class(*args, **kwargs)
-        elif self.driver_name == "RedisDriver":
-            redis_driver_class = TestContext.AggregationlessRedisDriver if IsAggregationlessDriver else RedisDriver
-            return redis_driver_class(
-                *args,
-                redis_client=get_redis_client(self.redis_fake_server),
-                key_prefix="storey-test:",
-                **kwargs,
-            )
-        else:
-            driver_name = self.driver_name
-            raise ValueError(f'Unsupported driver name "{driver_name}"')
 
 
 drivers_list = ["V3ioDriver", "RedisDriver"]

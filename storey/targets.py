@@ -587,6 +587,9 @@ class ParquetTarget(_Batching, _Writer):
         file_path = self._path if self._single_file_mode else f"{dir_path}{uuid.uuid4()}.parquet"
         # Remove nanosecs from timestamp columns & index
         for name, _ in df.items():
+            if str(df[name].dtype) == "datetime64[ns]":
+                # Need to explicitly reduce the granularity to avoid getting a data loss error from pandas
+                df[name] = df[name].astype("datetime64[us]")
             # If column type is a datetime or if it's a string but the column is listed as a datetime in the schema.
             # Note that a partitioning column will not appear in the schema and will not be converted.
             if (
@@ -596,7 +599,13 @@ class ParquetTarget(_Batching, _Writer):
                 and name in self._schema.names
                 and isinstance(self._schema.field(name).type, pyarrow.TimestampType)
             ):
-                df[name] = df[name].astype("datetime64[us]")
+                try:
+                    df[name] = pd.to_datetime(df[name])
+                except ValueError as ex:
+                    if str(ex) == "Tz-aware datetime.datetime cannot be converted to datetime64 unless utc=True":
+                        df[name] = pd.to_datetime(df[name], utc=True)
+                    else:
+                        raise ex
         if pd.core.dtypes.common.is_datetime64_dtype(df.index) or pd.core.dtypes.common.is_datetime64tz_dtype(df.index):
             df.index = df.index.floor("u")
         with self._file_system.open(file_path, "wb") as file:
