@@ -843,7 +843,6 @@ class DataframeSource(_IterableSource, WithUUID):
 
     :param dfs: A pandas dataframe, or dataframes, to be used as input source for the flow.
     :param key_field: column to be used as key for events. can be list of columns
-    :param time_field: column to be used as time for events.
     :param id_field: column to be used as ID for events.
 
     for additional params, see documentation of  :class:`~storey.flow.Flow`
@@ -917,7 +916,6 @@ class ParquetSource(DataframeSource):
         'filter_column' <= end_filter. Default is None.
     :parameter filter_column: Optional. if not None, the results will be filtered by this column and before and/or after
     :param key_field: column to be used as key for events. can be list of columns
-    :param time_field: column to be used as time for events.
     :param id_field: column to be used as ID for events.
     """
 

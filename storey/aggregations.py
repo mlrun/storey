@@ -110,7 +110,7 @@ class AggregateByKey(Flow):
 
             self._augmentation_fn = f
 
-        self._key_extractor = lambda event: event.key
+        self._key_extractor = None
         if key_field:
             if callable(key_field):
                 self._key_extractor = key_field
