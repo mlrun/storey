@@ -3919,7 +3919,6 @@ def test_read_non_existing_key(setup_teardown_test):
                 ["number_of_stuff_sum_1h"],
                 other_table,
                 key_field="first_name",
-                time_field="time",
             ),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
@@ -3930,7 +3929,7 @@ def test_read_non_existing_key(setup_teardown_test):
     controller.terminate()
     actual = controller.await_termination()
 
-    assert "number_of_stuff_sum_1h" not in actual[0]
+    assert actual == [None]
 
 
 def test_concurrent_updates_to_kv_table(setup_teardown_test):
@@ -3991,7 +3990,14 @@ def test_concurrent_updates_to_kv_table(setup_teardown_test):
     controller.terminate()
     result = controller.await_termination()
 
-    assert result == [{"mykey": "onekey", "attr1": 9, "attr2": 9}]
+    assert result == [
+        {
+            "attr1": 9,
+            "attr2": 9,
+            "mykey": "onekey",
+            "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
+        }
+    ]
 
 
 def test_separate_aggregate_steps(setup_teardown_test):
@@ -4056,7 +4062,7 @@ def test_separate_aggregate_steps(setup_teardown_test):
                 ["number_of_stuff_avg_1h", "number_of_stuff2_sum_2h"],
                 other_table,
                 key_field=["first_name"],
-                time_field=["time"],
+                time_field="time",
             ),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
@@ -4068,9 +4074,10 @@ def test_separate_aggregate_steps(setup_teardown_test):
     actual = controller.await_termination()
     expected_results = [
         {
+            "first_name": "moshe",
             "number_of_stuff2_sum_2h": 11.0,
             "number_of_stuff_avg_1h": 5.5,
-            "first_name": "moshe",
+            "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
         }
     ]
 
@@ -4128,8 +4135,18 @@ def test_write_read_first_last(setup_teardown_test):
     result = controller.await_termination()
 
     assert result == [
-        {"mykey": "onekey", "attr_first_1h": 1.0, "attr_last_1h": 9.0},
-        {"mykey": "onekey", "attr_first_1h": 10.0, "attr_last_1h": 90.0},
+        {
+            "attr_first_1h": 1.0,
+            "attr_last_1h": 9.0,
+            "mykey": "onekey",
+            "time": datetime.datetime(2020, 7, 21, 21, 50, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "attr_first_1h": 10.0,
+            "attr_last_1h": 90.0,
+            "mykey": "onekey",
+            "time": datetime.datetime(2020, 7, 21, 22, 50, tzinfo=datetime.timezone.utc),
+        },
     ]
 
 
@@ -4215,11 +4232,12 @@ def test_multiple_keys_int(setup_teardown_test):
     actual = controller.await_termination()
     expected_results = [
         {
-            "number_of_stuff_sum_1h": 1.0,
             "key_column1": 10,
             "key_column2": 30,
             "key_column3": 5,
             "key_column4": 50,
+            "number_of_stuff_sum_1h": 1.0,
+            "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
         }
     ]
 
@@ -4276,7 +4294,14 @@ def test_column_begin_t(setup_teardown_test):
 
     controller.terminate()
     actual = controller.await_termination()
-    expected_results = [{"number_of_stuff_sum_1h": 1.0, "key_column": "a", "t_col": "storey"}]
+    expected_results = [
+        {
+            "key_column": "a",
+            "number_of_stuff_sum_1h": 1.0,
+            "t_col": "storey",
+            "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
+        }
+    ]
 
     assert (
         actual == expected_results
@@ -4330,7 +4355,13 @@ def test_aggregate_float_key(setup_teardown_test):
 
     controller.terminate()
     actual = controller.await_termination()
-    expected_results = [{"number_of_stuff_sum_1h": 2.0, "key_column2": 8.6}]
+    expected_results = [
+        {
+            "key_column2": 8.6,
+            "number_of_stuff_sum_1h": 2.0,
+            "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
+        }
+    ]
 
     assert (
         actual == expected_results
@@ -4365,29 +4396,144 @@ def test_aggregate_and_query_persist_before_advancing_window(setup_teardown_test
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [
-        {"particles_count_30m": 1.0, "number": 22, "sample": "U235"},
-        {"particles_count_30m": 2.0, "number": 21, "sample": "U235"},
-        {"particles_count_30m": 3.0, "number": 20, "sample": "U235"},
-        {"particles_count_30m": 4.0, "number": 19, "sample": "U235"},
-        {"particles_count_30m": 5.0, "number": 18, "sample": "U235"},
-        {"particles_count_30m": 6.0, "number": 17, "sample": "U235"},
-        {"particles_count_30m": 7.0, "number": 16, "sample": "U235"},
-        {"particles_count_30m": 8.0, "number": 15, "sample": "U235"},
-        {"particles_count_30m": 9.0, "number": 14, "sample": "U235"},
-        {"particles_count_30m": 1.0, "number": 13, "sample": "U235"},
-        {"particles_count_30m": 2.0, "number": 12, "sample": "U235"},
-        {"particles_count_30m": 3.0, "number": 11, "sample": "U235"},
-        {"particles_count_30m": 4.0, "number": 10, "sample": "U235"},
-        {"particles_count_30m": 5.0, "number": 9, "sample": "U235"},
-        {"particles_count_30m": 6.0, "number": 8, "sample": "U235"},
-        {"particles_count_30m": 7.0, "number": 7, "sample": "U235"},
-        {"particles_count_30m": 8.0, "number": 6, "sample": "U235"},
-        {"particles_count_30m": 9.0, "number": 5, "sample": "U235"},
-        {"particles_count_30m": 10.0, "number": 4, "sample": "U235"},
-        {"particles_count_30m": 1.0, "number": 3, "sample": "U235"},
-        {"particles_count_30m": 2.0, "number": 2, "sample": "U235"},
-        {"particles_count_30m": 3.0, "number": 1, "sample": "U235"},
-        {"particles_count_30m": 4.0, "number": 0, "sample": "U235"},
+        {
+            "number": 22,
+            "particles_count_30m": 1.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 20, 34, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 21,
+            "particles_count_30m": 2.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 20, 37, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 20,
+            "particles_count_30m": 3.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 20, 40, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 19,
+            "particles_count_30m": 4.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 20, 43, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 18,
+            "particles_count_30m": 5.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 20, 46, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 17,
+            "particles_count_30m": 6.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 20, 49, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 16,
+            "particles_count_30m": 7.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 20, 52, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 15,
+            "particles_count_30m": 8.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 20, 55, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 14,
+            "particles_count_30m": 9.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 20, 58, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 13,
+            "particles_count_30m": 1.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 21, 1, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 12,
+            "particles_count_30m": 2.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 21, 4, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 11,
+            "particles_count_30m": 3.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 21, 7, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 10,
+            "particles_count_30m": 4.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 21, 10, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 9,
+            "particles_count_30m": 5.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 21, 13, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 8,
+            "particles_count_30m": 6.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 21, 16, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 7,
+            "particles_count_30m": 7.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 21, 19, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 6,
+            "particles_count_30m": 8.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 21, 22, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 5,
+            "particles_count_30m": 9.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 21, 25, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 4,
+            "particles_count_30m": 10.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 21, 28, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 3,
+            "particles_count_30m": 1.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 21, 31, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 2,
+            "particles_count_30m": 2.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 21, 34, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 1,
+            "particles_count_30m": 3.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 21, 37, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 0,
+            "particles_count_30m": 4.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
+        },
     ]
 
     assert (
@@ -4413,7 +4559,13 @@ def test_aggregate_and_query_persist_before_advancing_window(setup_teardown_test
 
     controller.terminate()
     actual = controller.await_termination()
-    expected_results = [{"particles_count_30m": 10.0, "sample": "U235"}]
+    expected_results = [
+        {
+            "particles_count_30m": 10.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
+        }
+    ]
     assert (
         actual == expected_results
     ), f"actual did not match expected. \n actual: {actual} \n expected: {expected_results}"
@@ -4458,13 +4610,41 @@ def test_aggregate_and_query_by_key_with_holes(setup_teardown_test):
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [
-        {"number_of_stuff_sum_1h": 0, "col1": 0},
-        {"number_of_stuff_sum_1h": 1, "col1": 1},
-        {"number_of_stuff_sum_1h": 3, "col1": 2},
-        {"number_of_stuff_sum_1h": 6, "col1": 3},
-        {"number_of_stuff_sum_1h": 9, "col1": 4},
-        {"number_of_stuff_sum_1h": 8, "col1": 8},
-        {"number_of_stuff_sum_1h": 17, "col1": 9},
+        {
+            "col1": 0,
+            "number_of_stuff_sum_1h": 0.0,
+            "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "col1": 1,
+            "number_of_stuff_sum_1h": 1.0,
+            "time": datetime.datetime(2020, 7, 21, 22, 5, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "col1": 2,
+            "number_of_stuff_sum_1h": 3.0,
+            "time": datetime.datetime(2020, 7, 21, 22, 30, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "col1": 3,
+            "number_of_stuff_sum_1h": 6.0,
+            "time": datetime.datetime(2020, 7, 21, 22, 55, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "col1": 4,
+            "number_of_stuff_sum_1h": 9.0,
+            "time": datetime.datetime(2020, 7, 21, 23, 20, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "col1": 8,
+            "number_of_stuff_sum_1h": 8.0,
+            "time": datetime.datetime(2020, 7, 22, 1, 0, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "col1": 9,
+            "number_of_stuff_sum_1h": 17.0,
+            "time": datetime.datetime(2020, 7, 22, 1, 25, tzinfo=datetime.timezone.utc),
+        },
     ]
 
     assert (
@@ -4486,7 +4666,13 @@ def test_aggregate_and_query_by_key_with_holes(setup_teardown_test):
 
     controller.terminate()
     actual = controller.await_termination()
-    expected_results = [{"col1": 10, "number_of_stuff_sum_1h": 17}]
+    expected_results = [
+        {
+            "col1": 10,
+            "number_of_stuff_sum_1h": 17.0,
+            "time": datetime.datetime(2020, 7, 22, 1, 50, tzinfo=datetime.timezone.utc),
+        }
+    ]
 
     assert (
         actual == expected_results
