@@ -239,11 +239,11 @@ async def async_test_write_to_v3io_stream_full_event_readback(
         ]
         shard1_data = await GetShardData().get_shard_data(f"{stream_path}/1")
         assert shard1_data == [
-            b'{"full_event_wrapper": true, "body": 1, "time": "2022-08-08T00:00:00", "id": "1"}',
-            b'{"full_event_wrapper": true, "body": 3, "time": "2022-08-08T00:00:00", "id": "3"}',
-            b'{"full_event_wrapper": true, "body": 5, "time": "2022-08-08T00:00:00", "id": "5"}',
-            b'{"full_event_wrapper": true, "body": 7, "time": "2022-08-08T00:00:00", "id": "7"}',
-            b'{"full_event_wrapper": true, "body": 9, "time": "2022-08-08T00:00:00", "id": "9"}',
+            b'{"full_event_wrapper": true, "body": 1, "id": "1"}',
+            b'{"full_event_wrapper": true, "body": 3, "id": "3"}',
+            b'{"full_event_wrapper": true, "body": 5, "id": "5"}',
+            b'{"full_event_wrapper": true, "body": 7, "id": "7"}',
+            b'{"full_event_wrapper": true, "body": 9, "id": "9"}',
         ]
     finally:
         await controller.terminate()
@@ -533,6 +533,7 @@ def test_write_to_tsdb_with_metadata_label():
             SyncEmitSource(),
             TSDBTarget(
                 path=tsdb_path,
+                time_col="time",
                 index_cols="node",
                 columns=["cpu", "disk"],
                 rate="1/h",
@@ -545,7 +546,7 @@ def test_write_to_tsdb_with_metadata_label():
     date_time_str = "18/09/19 01:55:1"
     for i in range(9):
         now = datetime.strptime(date_time_str + str(i) + " UTC-0000", "%d/%m/%y %H:%M:%S UTC%z")
-        controller.emit([i, i + 1, i + 2], event_time=now)
+        controller.emit([now, i, i + 1, i + 2])
         expected.append([now, f"{i}", float(i + 1), float(i + 2)])
 
     controller.terminate()
@@ -669,8 +670,8 @@ def test_write_table_specific_columns(setup_teardown_test):
 
     items_in_ingest_batch = 10
     for i in range(items_in_ingest_batch):
-        data = {"col1": i}
-        controller.emit(data, "tal", test_base_time + timedelta(minutes=25 * i))
+        data = {"col1": i, "sometime": test_base_time + timedelta(minutes=25 * i)}
+        controller.emit(data, "tal")
 
     controller.terminate()
     actual = controller.await_termination()
@@ -786,8 +787,8 @@ def test_write_table_metadata_columns(setup_teardown_test):
 
     items_in_ingest_batch = 10
     for i in range(items_in_ingest_batch):
-        data = {"col1": i}
-        controller.emit(data, "tal", test_base_time + timedelta(minutes=25 * i))
+        data = {"col1": i, "sometime": test_base_time + timedelta(minutes=25 * i)}
+        controller.emit(data, "tal")
 
     controller.terminate()
     actual = controller.await_termination()
@@ -947,7 +948,7 @@ def test_write_two_keys_to_v3io_from_df(setup_teardown_test):
 
     expected = {"city": "tel aviv", "first_name": "moshe", "last_name": "cohen"}
     actual = get_key_all_attrs_test_helper(setup_teardown_test, "moshe.cohen")
-    assert expected == actual
+    assert actual == expected
 
 
 # ML-775
@@ -978,13 +979,13 @@ def test_write_three_keys_to_v3io_from_df(setup_teardown_test):
         "last_name": "cohen",
     }
     actual = get_key_all_attrs_test_helper(setup_teardown_test, "moshe.dc1e617eaae40eea3449baf3795bb5b50676c963")
-    assert expected == actual
+    assert actual == expected
 
 
 def test_write_string_as_time_via_time_field(setup_teardown_test):
     table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
-    t1 = "2020-03-16T05:00:00+00:00"
-    t2 = "2020-03-15T18:00:00+00:00"
+    t1 = datetime.fromisoformat("2020-03-16T05:00:00+00:00")
+    t2 = datetime.fromisoformat("2020-03-15T18:00:00+00:00")
     df = pd.DataFrame(
         {
             "name": ["jack", "tuna"],
@@ -994,15 +995,15 @@ def test_write_string_as_time_via_time_field(setup_teardown_test):
 
     controller = build_flow(
         [
-            DataframeSource(df, key_field="name", time_field="time"),
-            NoSqlTarget(table, columns=["name", "$time"]),
+            DataframeSource(df, key_field="name"),
+            NoSqlTarget(table, columns=["name", "time"]),
         ]
     ).run()
     controller.await_termination()
 
-    expected = {"name": "tuna", "time": datetime.fromisoformat(t2)}
+    expected = {"name": "tuna", "time": t2}
     actual = get_key_all_attrs_test_helper(setup_teardown_test, "tuna")
-    assert expected == actual
+    assert actual == expected
 
 
 def test_write_string_as_time_via_schema(setup_teardown_test):
@@ -1026,7 +1027,7 @@ def test_write_string_as_time_via_schema(setup_teardown_test):
 
     expected = {"name": "tuna", "time": datetime.fromisoformat(t2)}
     actual = get_key_all_attrs_test_helper(setup_teardown_test, "tuna")
-    assert expected == actual
+    assert actual == expected
 
 
 def test_write_multiple_keys_to_v3io_from_csv(setup_teardown_test):
@@ -1042,11 +1043,11 @@ def test_write_multiple_keys_to_v3io_from_csv(setup_teardown_test):
 
     expected = {"n1": 1, "n2": 2, "n3": 3}
     actual = get_key_all_attrs_test_helper(setup_teardown_test, "1.2")
-    assert expected == actual
+    assert actual == expected
 
     expected = {"n1": 4, "n2": 5, "n3": 6}
     actual = get_key_all_attrs_test_helper(setup_teardown_test, "4.5")
-    assert expected == actual
+    assert actual == expected
 
 
 def test_write_multiple_keys_to_v3io(setup_teardown_test):
@@ -1067,11 +1068,11 @@ def test_write_multiple_keys_to_v3io(setup_teardown_test):
 
     expected = {"n1": 1, "n2": 2, "n3": 3}
     actual = get_key_all_attrs_test_helper(setup_teardown_test, "1.2")
-    assert expected == actual
+    assert actual == expected
 
     expected = {"n1": 4, "n2": 5, "n3": 6}
     actual = get_key_all_attrs_test_helper(setup_teardown_test, "4.5")
-    assert expected == actual
+    assert actual == expected
 
 
 def test_write_none_time(setup_teardown_test):
@@ -1101,11 +1102,11 @@ def test_write_none_time(setup_teardown_test):
 
     expected = {"first_name": "yosi", "color": "yellow"}
     actual = get_key_all_attrs_test_helper(setup_teardown_test, "yosi")
-    assert expected == actual
+    assert actual == expected
 
     expected = {"first_name": "moshe", "color": "blue"}
     actual = get_key_all_attrs_test_helper(setup_teardown_test, "moshe")
-    assert expected == actual
+    assert actual == expected
 
 
 def test_cache_flushing(setup_teardown_test):

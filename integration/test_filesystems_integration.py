@@ -492,11 +492,12 @@ def test_filter_before_after_partitioned_random(setup_teardown_test):
     out_file = f"v3io:///{setup_teardown_test.table_name}/random/"
     controller = build_flow(
         [
-            DataframeSource(df, time_field="datetime"),
+            DataframeSource(df),
             ParquetTarget(
                 out_file,
                 columns=["string", "datetime"],
                 partition_cols=partition_columns,
+                time_field="datetime",
             ),
         ]
     ).run()
@@ -552,11 +553,12 @@ def test_filter_before_after_partitioned_inner_other_partition(setup_teardown_te
     out_file = f"v3io:///{setup_teardown_test.table_name}/inner_other_partition/"
     controller = build_flow(
         [
-            DataframeSource(df, time_field="my_time"),
+            DataframeSource(df),
             ParquetTarget(
                 out_file,
                 columns=columns,
                 partition_cols=["$year", "$month", "$day", "$hour", "my_city"],
+                time_field="my_time",
             ),
         ]
     ).run()
@@ -614,11 +616,12 @@ def test_filter_before_after_partitioned_outer_other_partition(setup_teardown_te
     out_file = f"v3io:///{setup_teardown_test.table_name}/outer_other_partition/"
     controller = build_flow(
         [
-            DataframeSource(df, time_field="my_time"),
+            DataframeSource(df),
             ParquetTarget(
                 out_file,
                 columns=columns,
                 partition_cols=["my_city", "$year", "$month", "$day", "$hour"],
+                time_field="my_time",
             ),
         ]
     ).run()
