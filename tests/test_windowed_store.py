@@ -32,7 +32,7 @@ def validate_window(expected, window):
             index = 0
             for bucket in data.features[column]:
                 if len(bucket.data) > 0:
-                    assert expected[key][index] == bucket.data
+                    assert bucket.data == expected[key][index]
 
                 index = index + 1
 
@@ -48,6 +48,7 @@ def test_windowed_flow():
             Filter(lambda x: x["col1"] > 3),
             Window(
                 SlidingWindow("30m", "5m"),
+                "time",
                 EmitAfterMaxEvent(max_events=3, emission_type=EmissionType.Incremental),
             ),
             Reduce([], lambda acc, x: append_return(acc, x)),
@@ -57,8 +58,8 @@ def test_windowed_flow():
     base_time = datetime.now()
 
     for i in range(10):
-        data = {"col1": i}
-        controller.emit(data, f"{i % 2}", base_time + timedelta(minutes=i))
+        data = {"col1": i, "time": base_time + timedelta(minutes=i)}
+        controller.emit(data, f"{i % 2}")
 
     controller.terminate()
     window_list = controller.await_termination()
