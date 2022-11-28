@@ -62,11 +62,10 @@ v3io_web_api = 'https://webapi.change-me.com'
 v3io_acceess_key = '1284ne83-i262-46m6-9a23-810n41f169ea'
 table_object = Table('/projects/my_features', V3ioDriver(v3io_web_api, v3io_acceess_key))
 
-# TODO: Update this example
 def enrich(event, state):
     if 'first_activity' not in state:
         state['first_activity'] = event.time
-    event.body['time_since_activity'] = (event.time - state['first_activity']).seconds
+    event.body['time_since_activity'] = (event.body["time"] - state['first_activity']).seconds
     state['last_event'] = event.time
     event.body['total_activities'] = state['total_activities'] = state.get('total_activities', 0) + 1
     return event, state
@@ -81,7 +80,8 @@ controller = build_flow([
                     FieldAggregator("failed_activities", "activity", ["count"],
                                     SlidingWindows(['1h'], '10m'),
                                     aggr_filter=lambda element: element['activity_status'] == 'fail'))],
-                   table_object),
+                   table_object,
+                   time_field="time"),
     NoSqlTarget(table_object),
     StreamTarget(V3ioDriver(v3io_web_api, v3io_acceess_key), 'features_stream')
 ]).run()
@@ -99,6 +99,7 @@ controller = build_flow([
                            FieldAggregator("failed_activities", "activity", ["count"],
                                            SlidingWindows(['1h'], '10m'),
                                            aggr_filter=lambda element: element['activity_status'] == 'fail'))],
-                           table_object)
+                           table_object,
+                           time_field="time")
 ]).run()
 ```
