@@ -15,7 +15,7 @@
 import asyncio
 import copy
 from datetime import datetime
-from typing import Union
+from typing import Optional
 
 from .dtypes import (
     EmissionType,
@@ -24,7 +24,6 @@ from .dtypes import (
     EmitAfterPeriod,
     EmitAfterWindow,
     EmitEveryEvent,
-    EmitPolicy,
     LateDataHandling,
 )
 from .flow import Event, Flow, _termination_obj
@@ -36,7 +35,7 @@ class Window(Flow):
     def __init__(
         self,
         window,
-        time_field: Union[str, EmitPolicy, None] = None,
+        time_field: Optional[str] = None,
         emit_policy=_default_emit_policy,
         late_data_handling=LateDataHandling.Nothing,
         **kwargs,
