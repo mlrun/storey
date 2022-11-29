@@ -202,10 +202,13 @@ class RedisDriver(NeedsRedisAccess, Driver):
             ret = False
         else:
             # if value is a number, convert type to int / float
-            no_sign_value = value[1:] if value[0] in ("-", "+") else value
-            if no_sign_value.replace(".", "", 1).isdigit():
-                ret = int(value) if int(float(value)) == float(value) else float(value)
-            else:
+            try:
+                ret = float(value)
+                try:
+                    ret = int(value)
+                except ValueError:
+                    pass
+            except ValueError:
                 ret = str_value
         return ret
 
