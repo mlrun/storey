@@ -802,7 +802,6 @@ class CSVSource(_IterableSource, WithUUID):
                                 id = parsed_line[id_field]
                             else:
                                 id = self._get_uuid()
-                            # TODO FIXME
                             event = Event(element, key=key, id=id)
                             self._event_buffer.put(event)
                         else:

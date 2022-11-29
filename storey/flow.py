@@ -961,20 +961,6 @@ class _Batching(Flow):
         else:
             raise ValueError(f"Unsupported key_field type {type(key_field)}")
 
-    @staticmethod
-    def _create_time_extractor(key_field) -> Callable:
-        if key_field is None:
-            return lambda event: None
-        elif callable(key_field):
-            return key_field
-        elif isinstance(key_field, str):
-            if key_field == "$key":
-                return lambda event: event.key
-            else:
-                return lambda event: event.body[key_field]
-        else:
-            raise ValueError(f"Unsupported key_field type {type(key_field)}")
-
     async def _emit(self, batch, batch_key, batch_time, last_event_time=None):
         raise NotImplementedError
 

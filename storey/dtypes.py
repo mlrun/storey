@@ -59,6 +59,8 @@ class Event:
         if processing_time is not None and not isinstance(processing_time, datetime):
             if isinstance(processing_time, str):
                 processing_time = datetime.fromisoformat(processing_time)
+            elif isinstance(processing_time, (int, float)):
+                processing_time = datetime.fromtimestamp(processing_time)
             else:
                 raise TypeError(
                     f"Event processing_time parameter must be a datetime, string, or int. "

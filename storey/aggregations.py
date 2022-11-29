@@ -66,7 +66,7 @@ class AggregateByKey(Flow):
         self,
         aggregates: Union[List[FieldAggregator], List[Dict[str, object]]],
         table: Union[Table, str],
-        key_field: Union[str, Callable[[Event], object], None] = None,
+        key_field: Union[str, List[str], Callable[[Event], object], None] = None,
         time_field: Union[str, Callable[[Event], object], None] = None,
         emit_policy: Union[EmitPolicy, Dict[str, object]] = _default_emit_policy,
         augmentation_fn: Optional[Callable[[Event, Dict[str, object]], Event]] = None,
@@ -120,7 +120,8 @@ class AggregateByKey(Flow):
                 self._key_extractor = lambda event: [event.get(single_key) for single_key in key_field]
             else:
                 raise TypeError(
-                    f"key_field is expected to be either a callable or " f"string but got {type(key_field)}"
+                    f"key_field is expected to be either a callable or string or list of strings "
+                    f"but got {type(key_field)}"
                 )
 
         self._time_extractor = lambda event: event.processing_time
