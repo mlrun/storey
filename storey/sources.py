@@ -803,21 +803,26 @@ class CSVSource(_IterableSource, WithUUID):
                                 element = {}
                                 for i in range(len(parsed_line)):
                                     element[header[i]] = parsed_line[i]
+                        single_key_field_index = "unknown"
                         if self._key_field:
                             if isinstance(self._key_field, list):
                                 key = []
                                 for single_key_field in self._key_field:
                                     if self._with_header and isinstance(single_key_field, str):
-                                        single_key_field = field_name_to_index[single_key_field]
-                                    if parsed_line[single_key_field] is None:
+                                        single_key_field_index = field_name_to_index[single_key_field]
+                                    else:
+                                        single_key_field_index = single_key_field
+                                    if parsed_line[single_key_field_index] is None:
                                         create_event = False
                                         break
-                                    key.append(parsed_line[single_key_field])
+                                    key.append(parsed_line[single_key_field_index])
                             else:
-                                key_field = self._key_field
-                                if self._with_header and isinstance(key_field, str):
-                                    key_field = field_name_to_index[key_field]
-                                key = parsed_line[key_field]
+                                single_key_field = self._key_field
+                                if self._with_header and isinstance(single_key_field, str):
+                                    single_key_field_index = field_name_to_index[single_key_field]
+                                else:
+                                    single_key_field_index = single_key_field
+                                key = parsed_line[single_key_field_index]
                                 if key is None:
                                     create_event = False
                         if create_event:
@@ -839,7 +844,7 @@ class CSVSource(_IterableSource, WithUUID):
                             self._event_buffer.put(event)
                         else:
                             if self.context:
-                                self.context.logger.error(f"For {parsed_line} value of key {key_field} is None")
+                                self.context.logger.error(f"For {parsed_line} value of key {single_key_field} is None")
                 if self._with_header:
                     self._dates_indices = []
 
