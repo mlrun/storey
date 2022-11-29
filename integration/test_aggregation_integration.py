@@ -4089,7 +4089,7 @@ def test_aggregate_and_query_by_key_with_holes(setup_teardown_test):
 
 def test_float_format(setup_teardown_test):
     t0 = pd.Timestamp(test_base_time)
-    floats_array = [1.5089629344164e-05, 1, 1.07174329054775e05]
+    floats_array = [1.5089695129344164e05, 1, 1.071743290547756e-05]
     data = pd.DataFrame(
         {
             "key_column2": [8.6, 8.6, 8.6],
