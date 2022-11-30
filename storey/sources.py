@@ -755,6 +755,7 @@ class CSVSource(_IterableSource, WithUUID):
             return datetime.fromisoformat(timestamp)
 
     def _blocking_io_loop(self):
+        single_key_field = "unknown"
         try:
 
             for path in self._paths:
@@ -803,7 +804,6 @@ class CSVSource(_IterableSource, WithUUID):
                                 element = {}
                                 for i in range(len(parsed_line)):
                                     element[header[i]] = parsed_line[i]
-                        single_key_field_index = "unknown"
                         if self._key_field:
                             if isinstance(self._key_field, list):
                                 key = []
