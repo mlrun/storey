@@ -4694,7 +4694,7 @@ def test_float_format(setup_teardown_test):
     table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     controller = build_flow(
         [
-            DataframeSource(data, key_field=keys, time_field="time"),
+            DataframeSource(data, key_field=keys),
             AggregateByKey(
                 [
                     FieldAggregator(
@@ -4705,28 +4705,34 @@ def test_float_format(setup_teardown_test):
                     )
                 ],
                 table,
+                time_field="time",
                 emit_policy=EmitAfterMaxEvent(1),
             ),
             NoSqlTarget(table),
         ]
     ).run()
 
-    actual = controller.await_termination()
+    controller.await_termination()
 
     other_table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     controller = build_flow(
         [
             SyncEmitSource(),
-            QueryByKey(["float_data", "number_of_stuff_sum_1h"], other_table, key=keys),
+            QueryByKey(["float_data", "number_of_stuff_sum_1h"], other_table, key_field=keys, time_field="time"),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
     ).run()
-    controller.emit({"key_column2": 8.6}, key=[8.6], event_time=test_base_time)
+    controller.emit({"key_column2": 8.6, "time": test_base_time}, key=[8.6])
     controller.terminate()
     actual = controller.await_termination()
 
     expected_results = [
-        {"float_data": floats_array[-1], "number_of_stuff_sum_1h": math.fsum(floats_array), "key_column2": 8.6}
+        {
+            "float_data": floats_array[-1],
+            "number_of_stuff_sum_1h": math.fsum(floats_array),
+            "key_column2": 8.6,
+            "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
+        }
     ]
     assert (
         actual == expected_results
