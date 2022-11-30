@@ -60,7 +60,7 @@ class Event:
             if isinstance(processing_time, str):
                 processing_time = datetime.fromisoformat(processing_time)
             elif isinstance(processing_time, (int, float)):
-                processing_time = datetime.fromtimestamp(processing_time)
+                processing_time = datetime.utcfromtimestamp(processing_time)
             else:
                 raise TypeError(
                     f"Event processing_time parameter must be a datetime, string, or int. "
