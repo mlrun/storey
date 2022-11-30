@@ -4677,3 +4677,57 @@ def test_aggregate_and_query_by_key_with_holes(setup_teardown_test):
     assert (
         actual == expected_results
     ), f"actual did not match expected. \n actual: {actual} \n expected: {expected_results}"
+
+
+def test_float_format(setup_teardown_test):
+    t0 = pd.Timestamp(test_base_time)
+    floats_array = [1.5089695129344164e05, 1, 1.071743290547756e-05]
+    data = pd.DataFrame(
+        {
+            "key_column2": [8.6, 8.6, 8.6],
+            "float_data": floats_array,
+            "time": [t0 - pd.Timedelta(minutes=25), t0 - pd.Timedelta(minutes=30), t0 - pd.Timedelta(minutes=31)],
+        }
+    )
+
+    keys = ["key_column2"]
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
+    controller = build_flow(
+        [
+            DataframeSource(data, key_field=keys, time_field="time"),
+            AggregateByKey(
+                [
+                    FieldAggregator(
+                        "number_of_stuff",
+                        "float_data",
+                        ["sum"],
+                        SlidingWindows(["1h"], "10m"),
+                    )
+                ],
+                table,
+                emit_policy=EmitAfterMaxEvent(1),
+            ),
+            NoSqlTarget(table),
+        ]
+    ).run()
+
+    actual = controller.await_termination()
+
+    other_table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
+    controller = build_flow(
+        [
+            SyncEmitSource(),
+            QueryByKey(["float_data", "number_of_stuff_sum_1h"], other_table, key=keys),
+            Reduce([], lambda acc, x: append_return(acc, x)),
+        ]
+    ).run()
+    controller.emit({"key_column2": 8.6}, key=[8.6], event_time=test_base_time)
+    controller.terminate()
+    actual = controller.await_termination()
+
+    expected_results = [
+        {"float_data": floats_array[-1], "number_of_stuff_sum_1h": math.fsum(floats_array), "key_column2": 8.6}
+    ]
+    assert (
+        actual == expected_results
+    ), f"actual did not match expected. \n actual: {actual} \n expected: {expected_results}"
