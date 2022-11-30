@@ -755,7 +755,6 @@ class CSVSource(_IterableSource, WithUUID):
             return datetime.fromisoformat(timestamp)
 
     def _blocking_io_loop(self):
-        single_key_field = "unknown"
         try:
 
             for path in self._paths:
@@ -844,7 +843,9 @@ class CSVSource(_IterableSource, WithUUID):
                             self._event_buffer.put(event)
                         else:
                             if self.context:
-                                self.context.logger.error(f"For {parsed_line} value of key {single_key_field} is None")
+                                self.context.logger.error(
+                                    f"For {parsed_line} value of key {single_key_field} is None"  # type: ignore
+                                )
                 if self._with_header:
                     self._dates_indices = []
 
