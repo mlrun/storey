@@ -29,7 +29,7 @@ class Event:
 
     :param body: the event payload, or data
     :param key: Event key. Used by steps that aggregate events by key, such as AggregateByKey. (Optional). Can be list
-    :param time: Event time. Defaults to the time the event was created, UTC. (Optional)
+    :param processing_time: Event processing time. Defaults to the time the event was created, UTC. (Optional)
     :param id: Event identifier. Usually a unique identifier. (Optional)
     :param headers: Request headers (HTTP only) (Optional)
     :param method: Request method (HTTP only) (Optional)
