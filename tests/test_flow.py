@@ -336,6 +336,22 @@ def test_csv_reader_as_dict_no_header():
     assert termination_result == 21
 
 
+def test_csv_reader_none_in_keyfield_should_send_error_log():
+    logger = MockLogger()
+    context = MockContext(logger, True)
+
+    controller = build_flow(
+        [
+            CSVSource("tests/test-none-in-keyfield.csv", header=True, key_field="k", context=context),
+        ]
+    ).run()
+
+    controller.await_termination()
+
+    assert "error" == logger.logs[0][0]
+    assert "value of key k is None" in logger.logs[0][1][0]
+
+
 def test_dataframe_source():
     df = pd.DataFrame([["hello", 1, 1.5], ["world", 2, 2.5]], columns=["string", "int", "float"])
     controller = build_flow(
