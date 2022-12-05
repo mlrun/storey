@@ -278,7 +278,7 @@ def test_write_to_parquet_to_v3io_single_file_on_termination(setup_teardown_test
     for i in range(10):
         controller.emit([i, f"this is {i}"])
         expected.append([i, f"this is {i}"])
-    expected = pd.DataFrame(expected, columns=columns, dtype="int64")
+    expected = pd.DataFrame(expected, columns=columns)
     controller.terminate()
     controller.await_termination()
 
@@ -345,7 +345,7 @@ def test_write_to_parquet_to_v3io_with_indices(setup_teardown_test):
         controller.emit([i, f"this is {i}"], key=f"key{i}")
         expected.append([f"key{i}", i, f"this is {i}"])
     columns = ["event_key", "my_int", "my_string"]
-    expected = pd.DataFrame(expected, columns=columns, dtype="int64")
+    expected = pd.DataFrame(expected, columns=columns)
     expected.set_index(["event_key"], inplace=True)
     controller.terminate()
     controller.await_termination()

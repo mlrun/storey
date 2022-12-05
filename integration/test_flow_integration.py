@@ -1122,9 +1122,8 @@ def test_cache_flushing(setup_teardown_test):
         ]
     ).run()
 
-    controller.emit({"col1": 0}, "dina", test_base_time + timedelta(minutes=25))
+    controller.emit({"col1": 0}, "dina")
 
-    response = None
     if setup_teardown_test.driver_name == "RedisDriver":
         response = _get_redis_kv_all_attrs(setup_teardown_test, "dina")
     else:
@@ -1133,7 +1132,6 @@ def test_cache_flushing(setup_teardown_test):
 
     time.sleep(4)
 
-    response = None
     if setup_teardown_test.driver_name == "RedisDriver":
         response = _get_redis_kv_all_attrs(setup_teardown_test, "dina")
     else:
