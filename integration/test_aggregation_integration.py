@@ -13,6 +13,7 @@
 # limitations under the License.
 #
 import asyncio
+import datetime
 import math
 from datetime import timedelta
 
@@ -39,6 +40,7 @@ from storey.dtypes import (
     FixedWindowType,
     SlidingWindows,
 )
+from storey.flow import DropColumns
 from storey.utils import _split_path
 
 from .integration_test_utils import append_return, test_base_time
@@ -73,8 +75,10 @@ def test_aggregate_with_fixed_windows_and_query_past_and_future_times(
                     )
                 ],
                 table,
-                key="col1",
+                time_field="time",
+                key_field="col1",
             ),
+            DropColumns("time"),
             NoSqlTarget(table),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
@@ -82,8 +86,8 @@ def test_aggregate_with_fixed_windows_and_query_past_and_future_times(
 
     items_in_ingest_batch = 10
     for i in range(items_in_ingest_batch):
-        data = {"col1": items_in_ingest_batch}
-        controller.emit(data, "tal", test_base_time + timedelta(minutes=25 * i))
+        data = {"col1": items_in_ingest_batch, "time": test_base_time + timedelta(minutes=25 * i)}
+        controller.emit(data, "tal")
 
     controller.terminate()
     actual = controller.await_termination()
@@ -530,16 +534,18 @@ def test_aggregate_with_fixed_windows_and_query_past_and_future_times(
                     "number_of_stuff_count_24h",
                 ],
                 table,
-                key="col1",
+                key_field="col1",
+                time_field="time",
                 fixed_window_type=fixed_window_type,
             ),
+            DropColumns("time"),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
     ).run()
 
     for i in range(-items_in_ingest_batch, 2 * items_in_ingest_batch):
-        data = {"col1": items_in_ingest_batch}
-        controller.emit(data, "tal", test_base_time + timedelta(minutes=25 * i))
+        data = {"col1": items_in_ingest_batch, "time": test_base_time + timedelta(minutes=25 * i)}
+        controller.emit(data, "tal")
 
     controller.terminate()
     actual = controller.await_termination()
@@ -571,6 +577,7 @@ def test_aggregate_and_query_with_different_sliding_windows(setup_teardown_test,
                     )
                 ],
                 table,
+                time_field="time",
             ),
             NoSqlTarget(table),
             Reduce([], lambda acc, x: append_return(acc, x)),
@@ -579,191 +586,201 @@ def test_aggregate_and_query_with_different_sliding_windows(setup_teardown_test,
 
     items_in_ingest_batch = 10
     for i in range(items_in_ingest_batch):
-        data = {"col1": i}
-        controller.emit(data, "tal", test_base_time + timedelta(minutes=25 * i))
+        data = {"col1": i, "time": test_base_time + timedelta(minutes=25 * i)}
+        controller.emit(data, "tal")
 
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [
         {
-            "number_of_stuff_sum_1h": 0,
-            "number_of_stuff_sum_2h": 0,
-            "number_of_stuff_sum_24h": 0,
-            "number_of_stuff_min_1h": 0,
-            "number_of_stuff_min_2h": 0,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 0,
-            "number_of_stuff_max_2h": 0,
-            "number_of_stuff_max_24h": 0,
-            "number_of_stuff_sqr_1h": 0,
-            "number_of_stuff_sqr_2h": 0,
-            "number_of_stuff_sqr_24h": 0,
-            "number_of_stuff_avg_1h": 0.0,
-            "number_of_stuff_avg_2h": 0.0,
-            "number_of_stuff_avg_24h": 0.0,
             "col1": 0,
+            "number_of_stuff_avg_1h": 0.0,
+            "number_of_stuff_avg_24h": 0.0,
+            "number_of_stuff_avg_2h": 0.0,
+            "number_of_stuff_max_1h": 0.0,
+            "number_of_stuff_max_24h": 0.0,
+            "number_of_stuff_max_2h": 0.0,
+            "number_of_stuff_min_1h": 0.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 0.0,
+            "number_of_stuff_sqr_1h": 0.0,
+            "number_of_stuff_sqr_24h": 0.0,
+            "number_of_stuff_sqr_2h": 0.0,
+            "number_of_stuff_sum_1h": 0.0,
+            "number_of_stuff_sum_24h": 0.0,
+            "number_of_stuff_sum_2h": 0.0,
+            "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
         },
         {
-            "number_of_stuff_sum_1h": 1,
-            "number_of_stuff_sum_2h": 1,
-            "number_of_stuff_sum_24h": 1,
-            "number_of_stuff_min_1h": 0,
-            "number_of_stuff_min_2h": 0,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 1,
-            "number_of_stuff_max_2h": 1,
-            "number_of_stuff_max_24h": 1,
-            "number_of_stuff_sqr_1h": 1,
-            "number_of_stuff_sqr_2h": 1,
-            "number_of_stuff_sqr_24h": 1,
-            "number_of_stuff_avg_1h": 0.5,
-            "number_of_stuff_avg_2h": 0.5,
-            "number_of_stuff_avg_24h": 0.5,
             "col1": 1,
+            "number_of_stuff_avg_1h": 0.5,
+            "number_of_stuff_avg_24h": 0.5,
+            "number_of_stuff_avg_2h": 0.5,
+            "number_of_stuff_max_1h": 1.0,
+            "number_of_stuff_max_24h": 1.0,
+            "number_of_stuff_max_2h": 1.0,
+            "number_of_stuff_min_1h": 0.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 0.0,
+            "number_of_stuff_sqr_1h": 1.0,
+            "number_of_stuff_sqr_24h": 1.0,
+            "number_of_stuff_sqr_2h": 1.0,
+            "number_of_stuff_sum_1h": 1.0,
+            "number_of_stuff_sum_24h": 1.0,
+            "number_of_stuff_sum_2h": 1.0,
+            "time": datetime.datetime(2020, 7, 21, 22, 5, tzinfo=datetime.timezone.utc),
         },
         {
-            "number_of_stuff_sum_1h": 3,
-            "number_of_stuff_sum_2h": 3,
-            "number_of_stuff_sum_24h": 3,
-            "number_of_stuff_min_1h": 0,
-            "number_of_stuff_min_2h": 0,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 2,
-            "number_of_stuff_max_2h": 2,
-            "number_of_stuff_max_24h": 2,
-            "number_of_stuff_sqr_1h": 5,
-            "number_of_stuff_sqr_2h": 5,
-            "number_of_stuff_sqr_24h": 5,
-            "number_of_stuff_avg_1h": 1.0,
-            "number_of_stuff_avg_2h": 1.0,
-            "number_of_stuff_avg_24h": 1.0,
             "col1": 2,
+            "number_of_stuff_avg_1h": 1.0,
+            "number_of_stuff_avg_24h": 1.0,
+            "number_of_stuff_avg_2h": 1.0,
+            "number_of_stuff_max_1h": 2.0,
+            "number_of_stuff_max_24h": 2.0,
+            "number_of_stuff_max_2h": 2.0,
+            "number_of_stuff_min_1h": 0.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 0.0,
+            "number_of_stuff_sqr_1h": 5.0,
+            "number_of_stuff_sqr_24h": 5.0,
+            "number_of_stuff_sqr_2h": 5.0,
+            "number_of_stuff_sum_1h": 3.0,
+            "number_of_stuff_sum_24h": 3.0,
+            "number_of_stuff_sum_2h": 3.0,
+            "time": datetime.datetime(2020, 7, 21, 22, 30, tzinfo=datetime.timezone.utc),
         },
         {
-            "number_of_stuff_sum_1h": 6,
-            "number_of_stuff_sum_2h": 6,
-            "number_of_stuff_sum_24h": 6,
-            "number_of_stuff_min_1h": 1,
-            "number_of_stuff_min_2h": 0,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 3,
-            "number_of_stuff_max_2h": 3,
-            "number_of_stuff_max_24h": 3,
-            "number_of_stuff_sqr_1h": 14,
-            "number_of_stuff_sqr_2h": 14,
-            "number_of_stuff_sqr_24h": 14,
-            "number_of_stuff_avg_1h": 2.0,
-            "number_of_stuff_avg_2h": 1.5,
-            "number_of_stuff_avg_24h": 1.5,
             "col1": 3,
+            "number_of_stuff_avg_1h": 2.0,
+            "number_of_stuff_avg_24h": 1.5,
+            "number_of_stuff_avg_2h": 1.5,
+            "number_of_stuff_max_1h": 3.0,
+            "number_of_stuff_max_24h": 3.0,
+            "number_of_stuff_max_2h": 3.0,
+            "number_of_stuff_min_1h": 1.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 0.0,
+            "number_of_stuff_sqr_1h": 14.0,
+            "number_of_stuff_sqr_24h": 14.0,
+            "number_of_stuff_sqr_2h": 14.0,
+            "number_of_stuff_sum_1h": 6.0,
+            "number_of_stuff_sum_24h": 6.0,
+            "number_of_stuff_sum_2h": 6.0,
+            "time": datetime.datetime(2020, 7, 21, 22, 55, tzinfo=datetime.timezone.utc),
         },
         {
-            "number_of_stuff_sum_1h": 9,
-            "number_of_stuff_sum_2h": 10,
-            "number_of_stuff_sum_24h": 10,
-            "number_of_stuff_min_1h": 2,
-            "number_of_stuff_min_2h": 0,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 4,
-            "number_of_stuff_max_2h": 4,
-            "number_of_stuff_max_24h": 4,
-            "number_of_stuff_sqr_1h": 29,
-            "number_of_stuff_sqr_2h": 30,
-            "number_of_stuff_sqr_24h": 30,
-            "number_of_stuff_avg_1h": 3.0,
-            "number_of_stuff_avg_2h": 2.0,
-            "number_of_stuff_avg_24h": 2.0,
             "col1": 4,
+            "number_of_stuff_avg_1h": 3.0,
+            "number_of_stuff_avg_24h": 2.0,
+            "number_of_stuff_avg_2h": 2.0,
+            "number_of_stuff_max_1h": 4.0,
+            "number_of_stuff_max_24h": 4.0,
+            "number_of_stuff_max_2h": 4.0,
+            "number_of_stuff_min_1h": 2.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 0.0,
+            "number_of_stuff_sqr_1h": 29.0,
+            "number_of_stuff_sqr_24h": 30.0,
+            "number_of_stuff_sqr_2h": 30.0,
+            "number_of_stuff_sum_1h": 9.0,
+            "number_of_stuff_sum_24h": 10.0,
+            "number_of_stuff_sum_2h": 10.0,
+            "time": datetime.datetime(2020, 7, 21, 23, 20, tzinfo=datetime.timezone.utc),
         },
         {
-            "number_of_stuff_sum_1h": 12,
-            "number_of_stuff_sum_2h": 15,
-            "number_of_stuff_sum_24h": 15,
-            "number_of_stuff_min_1h": 3,
-            "number_of_stuff_min_2h": 1,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 5,
-            "number_of_stuff_max_2h": 5,
-            "number_of_stuff_max_24h": 5,
-            "number_of_stuff_sqr_1h": 50,
-            "number_of_stuff_sqr_2h": 55,
-            "number_of_stuff_sqr_24h": 55,
-            "number_of_stuff_avg_1h": 4.0,
-            "number_of_stuff_avg_2h": 3.0,
-            "number_of_stuff_avg_24h": 2.5,
             "col1": 5,
+            "number_of_stuff_avg_1h": 4.0,
+            "number_of_stuff_avg_24h": 2.5,
+            "number_of_stuff_avg_2h": 3.0,
+            "number_of_stuff_max_1h": 5.0,
+            "number_of_stuff_max_24h": 5.0,
+            "number_of_stuff_max_2h": 5.0,
+            "number_of_stuff_min_1h": 3.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 1.0,
+            "number_of_stuff_sqr_1h": 50.0,
+            "number_of_stuff_sqr_24h": 55.0,
+            "number_of_stuff_sqr_2h": 55.0,
+            "number_of_stuff_sum_1h": 12.0,
+            "number_of_stuff_sum_24h": 15.0,
+            "number_of_stuff_sum_2h": 15.0,
+            "time": datetime.datetime(2020, 7, 21, 23, 45, tzinfo=datetime.timezone.utc),
         },
         {
-            "number_of_stuff_sum_1h": 15,
-            "number_of_stuff_sum_2h": 20,
-            "number_of_stuff_sum_24h": 21,
-            "number_of_stuff_min_1h": 4,
-            "number_of_stuff_min_2h": 2,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 6,
-            "number_of_stuff_max_2h": 6,
-            "number_of_stuff_max_24h": 6,
-            "number_of_stuff_sqr_1h": 77,
-            "number_of_stuff_sqr_2h": 90,
-            "number_of_stuff_sqr_24h": 91,
-            "number_of_stuff_avg_1h": 5.0,
-            "number_of_stuff_avg_2h": 4.0,
-            "number_of_stuff_avg_24h": 3.0,
             "col1": 6,
+            "number_of_stuff_avg_1h": 5.0,
+            "number_of_stuff_avg_24h": 3.0,
+            "number_of_stuff_avg_2h": 4.0,
+            "number_of_stuff_max_1h": 6.0,
+            "number_of_stuff_max_24h": 6.0,
+            "number_of_stuff_max_2h": 6.0,
+            "number_of_stuff_min_1h": 4.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 2.0,
+            "number_of_stuff_sqr_1h": 77.0,
+            "number_of_stuff_sqr_24h": 91.0,
+            "number_of_stuff_sqr_2h": 90.0,
+            "number_of_stuff_sum_1h": 15.0,
+            "number_of_stuff_sum_24h": 21.0,
+            "number_of_stuff_sum_2h": 20.0,
+            "time": datetime.datetime(2020, 7, 22, 0, 10, tzinfo=datetime.timezone.utc),
         },
         {
-            "number_of_stuff_sum_1h": 18,
-            "number_of_stuff_sum_2h": 25,
-            "number_of_stuff_sum_24h": 28,
-            "number_of_stuff_min_1h": 5,
-            "number_of_stuff_min_2h": 3,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 7,
-            "number_of_stuff_max_2h": 7,
-            "number_of_stuff_max_24h": 7,
-            "number_of_stuff_sqr_1h": 110,
-            "number_of_stuff_sqr_2h": 135,
-            "number_of_stuff_sqr_24h": 140,
-            "number_of_stuff_avg_1h": 6.0,
-            "number_of_stuff_avg_2h": 5.0,
-            "number_of_stuff_avg_24h": 3.5,
             "col1": 7,
+            "number_of_stuff_avg_1h": 6.0,
+            "number_of_stuff_avg_24h": 3.5,
+            "number_of_stuff_avg_2h": 5.0,
+            "number_of_stuff_max_1h": 7.0,
+            "number_of_stuff_max_24h": 7.0,
+            "number_of_stuff_max_2h": 7.0,
+            "number_of_stuff_min_1h": 5.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 3.0,
+            "number_of_stuff_sqr_1h": 110.0,
+            "number_of_stuff_sqr_24h": 140.0,
+            "number_of_stuff_sqr_2h": 135.0,
+            "number_of_stuff_sum_1h": 18.0,
+            "number_of_stuff_sum_24h": 28.0,
+            "number_of_stuff_sum_2h": 25.0,
+            "time": datetime.datetime(2020, 7, 22, 0, 35, tzinfo=datetime.timezone.utc),
         },
         {
-            "number_of_stuff_sum_1h": 21,
-            "number_of_stuff_sum_2h": 30,
-            "number_of_stuff_sum_24h": 36,
-            "number_of_stuff_min_1h": 6,
-            "number_of_stuff_min_2h": 4,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 8,
-            "number_of_stuff_max_2h": 8,
-            "number_of_stuff_max_24h": 8,
-            "number_of_stuff_sqr_1h": 149,
-            "number_of_stuff_sqr_2h": 190,
-            "number_of_stuff_sqr_24h": 204,
-            "number_of_stuff_avg_1h": 7.0,
-            "number_of_stuff_avg_2h": 6.0,
-            "number_of_stuff_avg_24h": 4.0,
             "col1": 8,
+            "number_of_stuff_avg_1h": 7.0,
+            "number_of_stuff_avg_24h": 4.0,
+            "number_of_stuff_avg_2h": 6.0,
+            "number_of_stuff_max_1h": 8.0,
+            "number_of_stuff_max_24h": 8.0,
+            "number_of_stuff_max_2h": 8.0,
+            "number_of_stuff_min_1h": 6.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 4.0,
+            "number_of_stuff_sqr_1h": 149.0,
+            "number_of_stuff_sqr_24h": 204.0,
+            "number_of_stuff_sqr_2h": 190.0,
+            "number_of_stuff_sum_1h": 21.0,
+            "number_of_stuff_sum_24h": 36.0,
+            "number_of_stuff_sum_2h": 30.0,
+            "time": datetime.datetime(2020, 7, 22, 1, 0, tzinfo=datetime.timezone.utc),
         },
         {
-            "number_of_stuff_sum_1h": 24,
-            "number_of_stuff_sum_2h": 35,
-            "number_of_stuff_sum_24h": 45,
-            "number_of_stuff_min_1h": 7,
-            "number_of_stuff_min_2h": 5,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 9,
-            "number_of_stuff_max_2h": 9,
-            "number_of_stuff_max_24h": 9,
-            "number_of_stuff_sqr_1h": 194,
-            "number_of_stuff_sqr_2h": 255,
-            "number_of_stuff_sqr_24h": 285,
-            "number_of_stuff_avg_1h": 8.0,
-            "number_of_stuff_avg_2h": 7.0,
-            "number_of_stuff_avg_24h": 4.5,
             "col1": 9,
+            "number_of_stuff_avg_1h": 8.0,
+            "number_of_stuff_avg_24h": 4.5,
+            "number_of_stuff_avg_2h": 7.0,
+            "number_of_stuff_max_1h": 9.0,
+            "number_of_stuff_max_24h": 9.0,
+            "number_of_stuff_max_2h": 9.0,
+            "number_of_stuff_min_1h": 7.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 5.0,
+            "number_of_stuff_sqr_1h": 194.0,
+            "number_of_stuff_sqr_24h": 285.0,
+            "number_of_stuff_sqr_2h": 255.0,
+            "number_of_stuff_sum_1h": 24.0,
+            "number_of_stuff_sum_24h": 45.0,
+            "number_of_stuff_sum_2h": 35.0,
+            "time": datetime.datetime(2020, 7, 22, 1, 25, tzinfo=datetime.timezone.utc),
         },
     ]
 
@@ -778,17 +795,19 @@ def test_aggregate_and_query_with_different_sliding_windows(setup_teardown_test,
     expected_results = [
         {
             "col1": 10,
-            "number_of_stuff_sum_1h": 17.0,
-            "number_of_stuff_min_1h": 8.0,
-            "number_of_stuff_max_1h": 9.0,
             "number_of_stuff_avg_1h": 8.5,
+            "number_of_stuff_max_1h": 9.0,
+            "number_of_stuff_min_1h": 8.0,
+            "number_of_stuff_sum_1h": 17.0,
+            "time": datetime.datetime(2020, 7, 22, 1, 50, tzinfo=datetime.timezone.utc),
         },
         {
             "col1": 10,
-            "number_of_stuff_sum_1h": 9.0,
-            "number_of_stuff_min_1h": 9.0,
-            "number_of_stuff_max_1h": 9.0,
             "number_of_stuff_avg_1h": 9.0,
+            "number_of_stuff_max_1h": 9.0,
+            "number_of_stuff_min_1h": 9.0,
+            "number_of_stuff_sum_1h": 9.0,
+            "time": datetime.datetime(2020, 7, 22, 2, 15, tzinfo=datetime.timezone.utc),
         },
     ]
     for table in tables:
@@ -803,15 +822,17 @@ def test_aggregate_and_query_with_different_sliding_windows(setup_teardown_test,
                         "number_of_stuff_max_1h",
                     ],
                     table,
+                    time_field="time",
                 ),
                 Reduce([], lambda acc, x: append_return(acc, x)),
             ]
         ).run()
 
         base_time = test_base_time + timedelta(minutes=25 * items_in_ingest_batch)
-        data = {"col1": items_in_ingest_batch}
-        controller.emit(data, "tal", base_time)
-        controller.emit(data, "tal", base_time + timedelta(minutes=25))
+        data = {"col1": items_in_ingest_batch, "time": base_time}
+        controller.emit(data, "tal")
+        data = {"col1": items_in_ingest_batch, "time": base_time + timedelta(minutes=25)}
+        controller.emit(data, "tal")
 
         controller.terminate()
         actual = controller.await_termination()
@@ -844,6 +865,7 @@ def test_aggregate_and_query_with_different_fixed_windows(setup_teardown_test, p
                     )
                 ],
                 table,
+                time_field="time",
             ),
             NoSqlTarget(table),
             Reduce([], lambda acc, x: append_return(acc, x)),
@@ -852,191 +874,201 @@ def test_aggregate_and_query_with_different_fixed_windows(setup_teardown_test, p
 
     items_in_ingest_batch = 10
     for i in range(items_in_ingest_batch):
-        data = {"col1": i}
-        controller.emit(data, "tal", test_base_time + timedelta(minutes=25 * i))
+        data = {"col1": i, "time": test_base_time + timedelta(minutes=25 * i)}
+        controller.emit(data, "tal")
 
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [
         {
-            "number_of_stuff_max_1h": 0.0,
-            "number_of_stuff_max_2h": 0.0,
-            "number_of_stuff_max_24h": 0.0,
-            "number_of_stuff_sqr_1h": 0.0,
-            "number_of_stuff_sqr_2h": 0.0,
-            "number_of_stuff_sqr_24h": 0.0,
-            "number_of_stuff_sum_1h": 0.0,
-            "number_of_stuff_sum_2h": 0.0,
-            "number_of_stuff_sum_24h": 0.0,
-            "number_of_stuff_min_1h": 0.0,
-            "number_of_stuff_min_2h": 0.0,
-            "number_of_stuff_min_24h": 0.0,
-            "number_of_stuff_avg_1h": 0.0,
-            "number_of_stuff_avg_2h": 0.0,
-            "number_of_stuff_avg_24h": 0.0,
             "col1": 0,
+            "number_of_stuff_avg_1h": 0.0,
+            "number_of_stuff_avg_24h": 0.0,
+            "number_of_stuff_avg_2h": 0.0,
+            "number_of_stuff_max_1h": 0.0,
+            "number_of_stuff_max_24h": 0.0,
+            "number_of_stuff_max_2h": 0.0,
+            "number_of_stuff_min_1h": 0.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 0.0,
+            "number_of_stuff_sqr_1h": 0.0,
+            "number_of_stuff_sqr_24h": 0.0,
+            "number_of_stuff_sqr_2h": 0.0,
+            "number_of_stuff_sum_1h": 0.0,
+            "number_of_stuff_sum_24h": 0.0,
+            "number_of_stuff_sum_2h": 0.0,
+            "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
         },
         {
-            "number_of_stuff_max_1h": 1.0,
-            "number_of_stuff_sqr_1h": 1.0,
-            "number_of_stuff_sum_1h": 1.0,
-            "number_of_stuff_min_1h": 1.0,
-            "number_of_stuff_max_2h": 1.0,
-            "number_of_stuff_sqr_2h": 1.0,
-            "number_of_stuff_sum_2h": 1.0,
-            "number_of_stuff_min_2h": 0.0,
-            "number_of_stuff_max_24h": 1.0,
-            "number_of_stuff_sqr_24h": 1.0,
-            "number_of_stuff_sum_24h": 1.0,
-            "number_of_stuff_min_24h": 0.0,
-            "number_of_stuff_avg_1h": 1.0,
-            "number_of_stuff_avg_2h": 0.5,
-            "number_of_stuff_avg_24h": 0.5,
             "col1": 1,
+            "number_of_stuff_avg_1h": 1.0,
+            "number_of_stuff_avg_24h": 0.5,
+            "number_of_stuff_avg_2h": 0.5,
+            "number_of_stuff_max_1h": 1.0,
+            "number_of_stuff_max_24h": 1.0,
+            "number_of_stuff_max_2h": 1.0,
+            "number_of_stuff_min_1h": 1.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 0.0,
+            "number_of_stuff_sqr_1h": 1.0,
+            "number_of_stuff_sqr_24h": 1.0,
+            "number_of_stuff_sqr_2h": 1.0,
+            "number_of_stuff_sum_1h": 1.0,
+            "number_of_stuff_sum_24h": 1.0,
+            "number_of_stuff_sum_2h": 1.0,
+            "time": datetime.datetime(2020, 7, 21, 22, 5, tzinfo=datetime.timezone.utc),
         },
         {
-            "number_of_stuff_max_1h": 2.0,
-            "number_of_stuff_max_2h": 2.0,
-            "number_of_stuff_max_24h": 2.0,
-            "number_of_stuff_sqr_1h": 5.0,
-            "number_of_stuff_sqr_2h": 5.0,
-            "number_of_stuff_sqr_24h": 5.0,
-            "number_of_stuff_sum_1h": 3.0,
-            "number_of_stuff_sum_2h": 3.0,
-            "number_of_stuff_sum_24h": 3.0,
-            "number_of_stuff_min_1h": 1.0,
-            "number_of_stuff_min_2h": 0.0,
-            "number_of_stuff_min_24h": 0.0,
-            "number_of_stuff_avg_1h": 1.5,
-            "number_of_stuff_avg_2h": 1.0,
-            "number_of_stuff_avg_24h": 1.0,
             "col1": 2,
-        },
-        {
-            "number_of_stuff_max_1h": 3.0,
-            "number_of_stuff_max_2h": 3.0,
-            "number_of_stuff_max_24h": 3.0,
-            "number_of_stuff_sqr_1h": 14.0,
-            "number_of_stuff_sqr_2h": 14.0,
-            "number_of_stuff_sqr_24h": 14.0,
-            "number_of_stuff_sum_1h": 6.0,
-            "number_of_stuff_sum_2h": 6.0,
-            "number_of_stuff_sum_24h": 6.0,
+            "number_of_stuff_avg_1h": 1.5,
+            "number_of_stuff_avg_24h": 1.0,
+            "number_of_stuff_avg_2h": 1.0,
+            "number_of_stuff_max_1h": 2.0,
+            "number_of_stuff_max_24h": 2.0,
+            "number_of_stuff_max_2h": 2.0,
             "number_of_stuff_min_1h": 1.0,
+            "number_of_stuff_min_24h": 0.0,
             "number_of_stuff_min_2h": 0.0,
-            "number_of_stuff_min_24h": 0.0,
-            "number_of_stuff_avg_1h": 2.0,
-            "number_of_stuff_avg_2h": 1.5,
-            "number_of_stuff_avg_24h": 1.5,
+            "number_of_stuff_sqr_1h": 5.0,
+            "number_of_stuff_sqr_24h": 5.0,
+            "number_of_stuff_sqr_2h": 5.0,
+            "number_of_stuff_sum_1h": 3.0,
+            "number_of_stuff_sum_24h": 3.0,
+            "number_of_stuff_sum_2h": 3.0,
+            "time": datetime.datetime(2020, 7, 21, 22, 30, tzinfo=datetime.timezone.utc),
+        },
+        {
             "col1": 3,
-        },
-        {
-            "number_of_stuff_max_1h": 4.0,
-            "number_of_stuff_sqr_1h": 16.0,
-            "number_of_stuff_sum_1h": 4.0,
-            "number_of_stuff_min_1h": 4.0,
-            "number_of_stuff_max_2h": 4.0,
-            "number_of_stuff_sqr_2h": 30.0,
-            "number_of_stuff_sum_2h": 10.0,
-            "number_of_stuff_min_2h": 1.0,
-            "number_of_stuff_max_24h": 4.0,
-            "number_of_stuff_sqr_24h": 30.0,
-            "number_of_stuff_sum_24h": 10.0,
+            "number_of_stuff_avg_1h": 2.0,
+            "number_of_stuff_avg_24h": 1.5,
+            "number_of_stuff_avg_2h": 1.5,
+            "number_of_stuff_max_1h": 3.0,
+            "number_of_stuff_max_24h": 3.0,
+            "number_of_stuff_max_2h": 3.0,
+            "number_of_stuff_min_1h": 1.0,
             "number_of_stuff_min_24h": 0.0,
-            "number_of_stuff_avg_1h": 4.0,
-            "number_of_stuff_avg_2h": 2.5,
-            "number_of_stuff_avg_24h": 2.0,
-            "col1": 4,
-        },
-        {
-            "number_of_stuff_max_1h": 5.0,
-            "number_of_stuff_max_2h": 5.0,
-            "number_of_stuff_max_24h": 5.0,
-            "number_of_stuff_sqr_1h": 41.0,
-            "number_of_stuff_sqr_2h": 55.0,
-            "number_of_stuff_sqr_24h": 55.0,
-            "number_of_stuff_sum_1h": 9.0,
-            "number_of_stuff_sum_2h": 15.0,
-            "number_of_stuff_sum_24h": 15.0,
-            "number_of_stuff_min_1h": 4.0,
-            "number_of_stuff_min_2h": 1.0,
-            "number_of_stuff_min_24h": 0.0,
-            "number_of_stuff_avg_1h": 4.5,
-            "number_of_stuff_avg_2h": 3.0,
-            "number_of_stuff_avg_24h": 2.5,
-            "col1": 5,
-        },
-        {
-            "number_of_stuff_max_1h": 6.0,
-            "number_of_stuff_sqr_1h": 36.0,
+            "number_of_stuff_min_2h": 0.0,
+            "number_of_stuff_sqr_1h": 14.0,
+            "number_of_stuff_sqr_24h": 14.0,
+            "number_of_stuff_sqr_2h": 14.0,
             "number_of_stuff_sum_1h": 6.0,
-            "number_of_stuff_min_1h": 6.0,
-            "number_of_stuff_max_2h": 6.0,
-            "number_of_stuff_sqr_2h": 36.0,
-            "number_of_stuff_sum_2h": 6.0,
-            "number_of_stuff_min_2h": 6.0,
-            "number_of_stuff_max_24h": 6.0,
-            "number_of_stuff_sqr_24h": 36.0,
             "number_of_stuff_sum_24h": 6.0,
-            "number_of_stuff_min_24h": 6.0,
-            "number_of_stuff_avg_1h": 6.0,
-            "number_of_stuff_avg_2h": 6.0,
-            "number_of_stuff_avg_24h": 6.0,
+            "number_of_stuff_sum_2h": 6.0,
+            "time": datetime.datetime(2020, 7, 21, 22, 55, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "col1": 4,
+            "number_of_stuff_avg_1h": 4.0,
+            "number_of_stuff_avg_24h": 2.0,
+            "number_of_stuff_avg_2h": 2.5,
+            "number_of_stuff_max_1h": 4.0,
+            "number_of_stuff_max_24h": 4.0,
+            "number_of_stuff_max_2h": 4.0,
+            "number_of_stuff_min_1h": 4.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 1.0,
+            "number_of_stuff_sqr_1h": 16.0,
+            "number_of_stuff_sqr_24h": 30.0,
+            "number_of_stuff_sqr_2h": 30.0,
+            "number_of_stuff_sum_1h": 4.0,
+            "number_of_stuff_sum_24h": 10.0,
+            "number_of_stuff_sum_2h": 10.0,
+            "time": datetime.datetime(2020, 7, 21, 23, 20, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "col1": 5,
+            "number_of_stuff_avg_1h": 4.5,
+            "number_of_stuff_avg_24h": 2.5,
+            "number_of_stuff_avg_2h": 3.0,
+            "number_of_stuff_max_1h": 5.0,
+            "number_of_stuff_max_24h": 5.0,
+            "number_of_stuff_max_2h": 5.0,
+            "number_of_stuff_min_1h": 4.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 1.0,
+            "number_of_stuff_sqr_1h": 41.0,
+            "number_of_stuff_sqr_24h": 55.0,
+            "number_of_stuff_sqr_2h": 55.0,
+            "number_of_stuff_sum_1h": 9.0,
+            "number_of_stuff_sum_24h": 15.0,
+            "number_of_stuff_sum_2h": 15.0,
+            "time": datetime.datetime(2020, 7, 21, 23, 45, tzinfo=datetime.timezone.utc),
+        },
+        {
             "col1": 6,
-        },
-        {
-            "number_of_stuff_max_1h": 7.0,
-            "number_of_stuff_max_2h": 7.0,
-            "number_of_stuff_max_24h": 7.0,
-            "number_of_stuff_sqr_1h": 85.0,
-            "number_of_stuff_sqr_2h": 85.0,
-            "number_of_stuff_sqr_24h": 85.0,
-            "number_of_stuff_sum_1h": 13.0,
-            "number_of_stuff_sum_2h": 13.0,
-            "number_of_stuff_sum_24h": 13.0,
+            "number_of_stuff_avg_1h": 6.0,
+            "number_of_stuff_avg_24h": 6.0,
+            "number_of_stuff_avg_2h": 6.0,
+            "number_of_stuff_max_1h": 6.0,
+            "number_of_stuff_max_24h": 6.0,
+            "number_of_stuff_max_2h": 6.0,
             "number_of_stuff_min_1h": 6.0,
-            "number_of_stuff_min_2h": 6.0,
             "number_of_stuff_min_24h": 6.0,
-            "number_of_stuff_avg_1h": 6.5,
-            "number_of_stuff_avg_2h": 6.5,
-            "number_of_stuff_avg_24h": 6.5,
+            "number_of_stuff_min_2h": 6.0,
+            "number_of_stuff_sqr_1h": 36.0,
+            "number_of_stuff_sqr_24h": 36.0,
+            "number_of_stuff_sqr_2h": 36.0,
+            "number_of_stuff_sum_1h": 6.0,
+            "number_of_stuff_sum_24h": 6.0,
+            "number_of_stuff_sum_2h": 6.0,
+            "time": datetime.datetime(2020, 7, 22, 0, 10, tzinfo=datetime.timezone.utc),
+        },
+        {
             "col1": 7,
+            "number_of_stuff_avg_1h": 6.5,
+            "number_of_stuff_avg_24h": 6.5,
+            "number_of_stuff_avg_2h": 6.5,
+            "number_of_stuff_max_1h": 7.0,
+            "number_of_stuff_max_24h": 7.0,
+            "number_of_stuff_max_2h": 7.0,
+            "number_of_stuff_min_1h": 6.0,
+            "number_of_stuff_min_24h": 6.0,
+            "number_of_stuff_min_2h": 6.0,
+            "number_of_stuff_sqr_1h": 85.0,
+            "number_of_stuff_sqr_24h": 85.0,
+            "number_of_stuff_sqr_2h": 85.0,
+            "number_of_stuff_sum_1h": 13.0,
+            "number_of_stuff_sum_24h": 13.0,
+            "number_of_stuff_sum_2h": 13.0,
+            "time": datetime.datetime(2020, 7, 22, 0, 35, tzinfo=datetime.timezone.utc),
         },
         {
-            "number_of_stuff_max_1h": 8.0,
-            "number_of_stuff_sqr_1h": 64.0,
-            "number_of_stuff_sum_1h": 8.0,
-            "number_of_stuff_min_1h": 8.0,
-            "number_of_stuff_max_2h": 8.0,
-            "number_of_stuff_sqr_2h": 149.0,
-            "number_of_stuff_sum_2h": 21.0,
-            "number_of_stuff_min_2h": 6.0,
-            "number_of_stuff_max_24h": 8.0,
-            "number_of_stuff_sqr_24h": 149.0,
-            "number_of_stuff_sum_24h": 21.0,
-            "number_of_stuff_min_24h": 6.0,
-            "number_of_stuff_avg_1h": 8.0,
-            "number_of_stuff_avg_2h": 7.0,
-            "number_of_stuff_avg_24h": 7.0,
             "col1": 8,
+            "number_of_stuff_avg_1h": 8.0,
+            "number_of_stuff_avg_24h": 7.0,
+            "number_of_stuff_avg_2h": 7.0,
+            "number_of_stuff_max_1h": 8.0,
+            "number_of_stuff_max_24h": 8.0,
+            "number_of_stuff_max_2h": 8.0,
+            "number_of_stuff_min_1h": 8.0,
+            "number_of_stuff_min_24h": 6.0,
+            "number_of_stuff_min_2h": 6.0,
+            "number_of_stuff_sqr_1h": 64.0,
+            "number_of_stuff_sqr_24h": 149.0,
+            "number_of_stuff_sqr_2h": 149.0,
+            "number_of_stuff_sum_1h": 8.0,
+            "number_of_stuff_sum_24h": 21.0,
+            "number_of_stuff_sum_2h": 21.0,
+            "time": datetime.datetime(2020, 7, 22, 1, 0, tzinfo=datetime.timezone.utc),
         },
         {
-            "number_of_stuff_max_1h": 9.0,
-            "number_of_stuff_max_2h": 9.0,
-            "number_of_stuff_max_24h": 9.0,
-            "number_of_stuff_sqr_1h": 145.0,
-            "number_of_stuff_sqr_2h": 230.0,
-            "number_of_stuff_sqr_24h": 230.0,
-            "number_of_stuff_sum_1h": 17.0,
-            "number_of_stuff_sum_2h": 30.0,
-            "number_of_stuff_sum_24h": 30.0,
-            "number_of_stuff_min_1h": 8.0,
-            "number_of_stuff_min_2h": 6.0,
-            "number_of_stuff_min_24h": 6.0,
-            "number_of_stuff_avg_1h": 8.5,
-            "number_of_stuff_avg_2h": 7.5,
-            "number_of_stuff_avg_24h": 7.5,
             "col1": 9,
+            "number_of_stuff_avg_1h": 8.5,
+            "number_of_stuff_avg_24h": 7.5,
+            "number_of_stuff_avg_2h": 7.5,
+            "number_of_stuff_max_1h": 9.0,
+            "number_of_stuff_max_24h": 9.0,
+            "number_of_stuff_max_2h": 9.0,
+            "number_of_stuff_min_1h": 8.0,
+            "number_of_stuff_min_24h": 6.0,
+            "number_of_stuff_min_2h": 6.0,
+            "number_of_stuff_sqr_1h": 145.0,
+            "number_of_stuff_sqr_24h": 230.0,
+            "number_of_stuff_sqr_2h": 230.0,
+            "number_of_stuff_sum_1h": 17.0,
+            "number_of_stuff_sum_24h": 30.0,
+            "number_of_stuff_sum_2h": 30.0,
+            "time": datetime.datetime(2020, 7, 22, 1, 25, tzinfo=datetime.timezone.utc),
         },
     ]
 
@@ -1053,17 +1085,19 @@ def test_aggregate_and_query_with_different_fixed_windows(setup_teardown_test, p
     expected_results = [
         {
             "col1": 10,
-            "number_of_stuff_sum_1h": 17.0,
-            "number_of_stuff_min_1h": 8.0,
-            "number_of_stuff_max_1h": 9.0,
             "number_of_stuff_avg_1h": 8.5,
+            "number_of_stuff_max_1h": 9.0,
+            "number_of_stuff_min_1h": 8.0,
+            "number_of_stuff_sum_1h": 17.0,
+            "time": datetime.datetime(2020, 7, 22, 1, 50, tzinfo=datetime.timezone.utc),
         },
         {
             "col1": 10,
-            "number_of_stuff_sum_1h": 0.0,
-            "number_of_stuff_min_1h": math.inf,
-            "number_of_stuff_max_1h": -math.inf,
             "number_of_stuff_avg_1h": math.nan,
+            "number_of_stuff_max_1h": -math.inf,
+            "number_of_stuff_min_1h": math.inf,
+            "number_of_stuff_sum_1h": 0.0,
+            "time": datetime.datetime(2020, 7, 22, 2, 15, tzinfo=datetime.timezone.utc),
         },
     ]
     for table in tables:
@@ -1084,6 +1118,7 @@ def test_aggregate_and_query_with_different_fixed_windows(setup_teardown_test, p
                         "number_of_stuff_max_1h",
                     ],
                     table,
+                    time_field="time",
                     context=context,
                 ),
                 Reduce([], lambda acc, x: append_return(acc, x)),
@@ -1091,9 +1126,10 @@ def test_aggregate_and_query_with_different_fixed_windows(setup_teardown_test, p
         ).run()
 
         base_time = test_base_time + timedelta(minutes=25 * items_in_ingest_batch)
-        data = {"col1": items_in_ingest_batch}
-        controller.emit(data, "tal", base_time)
-        controller.emit(data, "tal", base_time + timedelta(minutes=25))
+        data = {"col1": items_in_ingest_batch, "time": base_time}
+        controller.emit(data, "tal")
+        data = {"col1": items_in_ingest_batch, "time": base_time + timedelta(minutes=25)}
+        controller.emit(data, "tal")
 
         controller.terminate()
         actual = controller.await_termination()
@@ -1121,6 +1157,7 @@ def test_query_virtual_aggregations_flow(setup_teardown_test, use_parallel_opera
                     )
                 ],
                 table,
+                time_field="time",
             ),
             NoSqlTarget(table),
             Reduce([], lambda acc, x: append_return(acc, x)),
@@ -1129,8 +1166,8 @@ def test_query_virtual_aggregations_flow(setup_teardown_test, use_parallel_opera
 
     items_in_ingest_batch = 10
     for i in range(items_in_ingest_batch):
-        data = {"col1": i}
-        controller.emit(data, "dina", test_base_time + timedelta(minutes=25 * i))
+        data = {"col1": i, "time": test_base_time + timedelta(minutes=25 * i)}
+        controller.emit(data, "dina")
 
     controller.terminate()
     actual = controller.await_termination()
@@ -1140,60 +1177,70 @@ def test_query_virtual_aggregations_flow(setup_teardown_test, use_parallel_opera
             "number_of_stuff_avg_24h": 0.0,
             "number_of_stuff_stddev_24h": math.nan,
             "number_of_stuff_stdvar_24h": math.nan,
+            "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
         },
         {
             "col1": 1,
             "number_of_stuff_avg_24h": 0.5,
-            "number_of_stuff_stddev_24h": math.sqrt(0.5),
+            "number_of_stuff_stddev_24h": 0.7071067811865476,
             "number_of_stuff_stdvar_24h": 0.5,
+            "time": datetime.datetime(2020, 7, 21, 22, 5, tzinfo=datetime.timezone.utc),
         },
         {
             "col1": 2,
             "number_of_stuff_avg_24h": 1.0,
             "number_of_stuff_stddev_24h": 1.0,
             "number_of_stuff_stdvar_24h": 1.0,
+            "time": datetime.datetime(2020, 7, 21, 22, 30, tzinfo=datetime.timezone.utc),
         },
         {
             "col1": 3,
             "number_of_stuff_avg_24h": 1.5,
-            "number_of_stuff_stddev_24h": math.sqrt(1.6666666666666667),
+            "number_of_stuff_stddev_24h": 1.2909944487358056,
             "number_of_stuff_stdvar_24h": 1.6666666666666667,
+            "time": datetime.datetime(2020, 7, 21, 22, 55, tzinfo=datetime.timezone.utc),
         },
         {
             "col1": 4,
             "number_of_stuff_avg_24h": 2.0,
-            "number_of_stuff_stddev_24h": math.sqrt(2.5),
+            "number_of_stuff_stddev_24h": 1.5811388300841898,
             "number_of_stuff_stdvar_24h": 2.5,
+            "time": datetime.datetime(2020, 7, 21, 23, 20, tzinfo=datetime.timezone.utc),
         },
         {
             "col1": 5,
             "number_of_stuff_avg_24h": 2.5,
-            "number_of_stuff_stddev_24h": math.sqrt(3.5),
+            "number_of_stuff_stddev_24h": 1.8708286933869707,
             "number_of_stuff_stdvar_24h": 3.5,
+            "time": datetime.datetime(2020, 7, 21, 23, 45, tzinfo=datetime.timezone.utc),
         },
         {
             "col1": 6,
             "number_of_stuff_avg_24h": 3.0,
-            "number_of_stuff_stddev_24h": math.sqrt(4.666666666666667),
+            "number_of_stuff_stddev_24h": 2.160246899469287,
             "number_of_stuff_stdvar_24h": 4.666666666666667,
+            "time": datetime.datetime(2020, 7, 22, 0, 10, tzinfo=datetime.timezone.utc),
         },
         {
             "col1": 7,
             "number_of_stuff_avg_24h": 3.5,
-            "number_of_stuff_stddev_24h": math.sqrt(6.0),
+            "number_of_stuff_stddev_24h": 2.449489742783178,
             "number_of_stuff_stdvar_24h": 6.0,
+            "time": datetime.datetime(2020, 7, 22, 0, 35, tzinfo=datetime.timezone.utc),
         },
         {
             "col1": 8,
             "number_of_stuff_avg_24h": 4.0,
-            "number_of_stuff_stddev_24h": math.sqrt(7.5),
+            "number_of_stuff_stddev_24h": 2.7386127875258306,
             "number_of_stuff_stdvar_24h": 7.5,
+            "time": datetime.datetime(2020, 7, 22, 1, 0, tzinfo=datetime.timezone.utc),
         },
         {
             "col1": 9,
             "number_of_stuff_avg_24h": 4.5,
-            "number_of_stuff_stddev_24h": math.sqrt(9.166666666666666),
+            "number_of_stuff_stddev_24h": 3.0276503540974917,
             "number_of_stuff_stdvar_24h": 9.166666666666666,
+            "time": datetime.datetime(2020, 7, 22, 1, 25, tzinfo=datetime.timezone.utc),
         },
     ]
 
@@ -1215,15 +1262,17 @@ def test_query_virtual_aggregations_flow(setup_teardown_test, use_parallel_opera
                     "number_of_stuff_stddev_3h",
                 ],
                 other_table,
+                time_field="time",
             ),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
     ).run()
 
     base_time = test_base_time + timedelta(minutes=25 * items_in_ingest_batch)
-    data = {"col1": items_in_ingest_batch}
-    controller.emit(data, "dina", base_time)
-    controller.emit(data, "dina", base_time + timedelta(minutes=25))
+    data = {"col1": items_in_ingest_batch, "time": base_time}
+    controller.emit(data, "dina")
+    data = {"col1": items_in_ingest_batch, "time": base_time + timedelta(minutes=25)}
+    controller.emit(data, "dina")
 
     controller.terminate()
     actual = controller.await_termination()
@@ -1231,14 +1280,16 @@ def test_query_virtual_aggregations_flow(setup_teardown_test, use_parallel_opera
         {
             "col1": 10,
             "number_of_stuff_avg_1h": 8.5,
-            "number_of_stuff_stdvar_2h": 1.6666666666666667,
             "number_of_stuff_stddev_3h": 1.8708286933869707,
+            "number_of_stuff_stdvar_2h": 1.6666666666666667,
+            "time": datetime.datetime(2020, 7, 22, 1, 50, tzinfo=datetime.timezone.utc),
         },
         {
             "col1": 10,
             "number_of_stuff_avg_1h": 9.0,
-            "number_of_stuff_stdvar_2h": 1.0,
             "number_of_stuff_stddev_3h": 1.8708286933869707,
+            "number_of_stuff_stdvar_2h": 1.0,
+            "time": datetime.datetime(2020, 7, 22, 2, 15, tzinfo=datetime.timezone.utc),
         },
     ]
 
@@ -1270,6 +1321,7 @@ def test_query_aggregate_by_key(setup_teardown_test, partitioned_by_key, flush_i
                     )
                 ],
                 table,
+                time_field="time",
             ),
             NoSqlTarget(table),
             Reduce([], lambda acc, x: append_return(acc, x)),
@@ -1278,191 +1330,201 @@ def test_query_aggregate_by_key(setup_teardown_test, partitioned_by_key, flush_i
 
     items_in_ingest_batch = 10
     for i in range(items_in_ingest_batch):
-        data = {"col1": i}
-        controller.emit(data, "tal", test_base_time + timedelta(minutes=25 * i))
+        data = {"col1": i, "time": test_base_time + timedelta(minutes=25 * i)}
+        controller.emit(data, "tal")
 
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [
         {
-            "number_of_stuff_sum_1h": 0,
-            "number_of_stuff_sum_2h": 0,
-            "number_of_stuff_sum_24h": 0,
-            "number_of_stuff_min_1h": 0,
-            "number_of_stuff_min_2h": 0,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 0,
-            "number_of_stuff_max_2h": 0,
-            "number_of_stuff_max_24h": 0,
-            "number_of_stuff_sqr_1h": 0,
-            "number_of_stuff_sqr_2h": 0,
-            "number_of_stuff_sqr_24h": 0,
-            "number_of_stuff_avg_1h": 0.0,
-            "number_of_stuff_avg_2h": 0.0,
-            "number_of_stuff_avg_24h": 0.0,
             "col1": 0,
+            "number_of_stuff_avg_1h": 0.0,
+            "number_of_stuff_avg_24h": 0.0,
+            "number_of_stuff_avg_2h": 0.0,
+            "number_of_stuff_max_1h": 0.0,
+            "number_of_stuff_max_24h": 0.0,
+            "number_of_stuff_max_2h": 0.0,
+            "number_of_stuff_min_1h": 0.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 0.0,
+            "number_of_stuff_sqr_1h": 0.0,
+            "number_of_stuff_sqr_24h": 0.0,
+            "number_of_stuff_sqr_2h": 0.0,
+            "number_of_stuff_sum_1h": 0.0,
+            "number_of_stuff_sum_24h": 0.0,
+            "number_of_stuff_sum_2h": 0.0,
+            "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
         },
         {
-            "number_of_stuff_sum_1h": 1,
-            "number_of_stuff_sum_2h": 1,
-            "number_of_stuff_sum_24h": 1,
-            "number_of_stuff_min_1h": 0,
-            "number_of_stuff_min_2h": 0,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 1,
-            "number_of_stuff_max_2h": 1,
-            "number_of_stuff_max_24h": 1,
-            "number_of_stuff_sqr_1h": 1,
-            "number_of_stuff_sqr_2h": 1,
-            "number_of_stuff_sqr_24h": 1,
-            "number_of_stuff_avg_1h": 0.5,
-            "number_of_stuff_avg_2h": 0.5,
-            "number_of_stuff_avg_24h": 0.5,
             "col1": 1,
+            "number_of_stuff_avg_1h": 0.5,
+            "number_of_stuff_avg_24h": 0.5,
+            "number_of_stuff_avg_2h": 0.5,
+            "number_of_stuff_max_1h": 1.0,
+            "number_of_stuff_max_24h": 1.0,
+            "number_of_stuff_max_2h": 1.0,
+            "number_of_stuff_min_1h": 0.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 0.0,
+            "number_of_stuff_sqr_1h": 1.0,
+            "number_of_stuff_sqr_24h": 1.0,
+            "number_of_stuff_sqr_2h": 1.0,
+            "number_of_stuff_sum_1h": 1.0,
+            "number_of_stuff_sum_24h": 1.0,
+            "number_of_stuff_sum_2h": 1.0,
+            "time": datetime.datetime(2020, 7, 21, 22, 5, tzinfo=datetime.timezone.utc),
         },
         {
-            "number_of_stuff_sum_1h": 3,
-            "number_of_stuff_sum_2h": 3,
-            "number_of_stuff_sum_24h": 3,
-            "number_of_stuff_min_1h": 0,
-            "number_of_stuff_min_2h": 0,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 2,
-            "number_of_stuff_max_2h": 2,
-            "number_of_stuff_max_24h": 2,
-            "number_of_stuff_sqr_1h": 5,
-            "number_of_stuff_sqr_2h": 5,
-            "number_of_stuff_sqr_24h": 5,
-            "number_of_stuff_avg_1h": 1.0,
-            "number_of_stuff_avg_2h": 1.0,
-            "number_of_stuff_avg_24h": 1.0,
             "col1": 2,
+            "number_of_stuff_avg_1h": 1.0,
+            "number_of_stuff_avg_24h": 1.0,
+            "number_of_stuff_avg_2h": 1.0,
+            "number_of_stuff_max_1h": 2.0,
+            "number_of_stuff_max_24h": 2.0,
+            "number_of_stuff_max_2h": 2.0,
+            "number_of_stuff_min_1h": 0.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 0.0,
+            "number_of_stuff_sqr_1h": 5.0,
+            "number_of_stuff_sqr_24h": 5.0,
+            "number_of_stuff_sqr_2h": 5.0,
+            "number_of_stuff_sum_1h": 3.0,
+            "number_of_stuff_sum_24h": 3.0,
+            "number_of_stuff_sum_2h": 3.0,
+            "time": datetime.datetime(2020, 7, 21, 22, 30, tzinfo=datetime.timezone.utc),
         },
         {
-            "number_of_stuff_sum_1h": 6,
-            "number_of_stuff_sum_2h": 6,
-            "number_of_stuff_sum_24h": 6,
-            "number_of_stuff_min_1h": 1,
-            "number_of_stuff_min_2h": 0,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 3,
-            "number_of_stuff_max_2h": 3,
-            "number_of_stuff_max_24h": 3,
-            "number_of_stuff_sqr_1h": 14,
-            "number_of_stuff_sqr_2h": 14,
-            "number_of_stuff_sqr_24h": 14,
-            "number_of_stuff_avg_1h": 2.0,
-            "number_of_stuff_avg_2h": 1.5,
-            "number_of_stuff_avg_24h": 1.5,
             "col1": 3,
+            "number_of_stuff_avg_1h": 2.0,
+            "number_of_stuff_avg_24h": 1.5,
+            "number_of_stuff_avg_2h": 1.5,
+            "number_of_stuff_max_1h": 3.0,
+            "number_of_stuff_max_24h": 3.0,
+            "number_of_stuff_max_2h": 3.0,
+            "number_of_stuff_min_1h": 1.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 0.0,
+            "number_of_stuff_sqr_1h": 14.0,
+            "number_of_stuff_sqr_24h": 14.0,
+            "number_of_stuff_sqr_2h": 14.0,
+            "number_of_stuff_sum_1h": 6.0,
+            "number_of_stuff_sum_24h": 6.0,
+            "number_of_stuff_sum_2h": 6.0,
+            "time": datetime.datetime(2020, 7, 21, 22, 55, tzinfo=datetime.timezone.utc),
         },
         {
-            "number_of_stuff_sum_1h": 9,
-            "number_of_stuff_sum_2h": 10,
-            "number_of_stuff_sum_24h": 10,
-            "number_of_stuff_min_1h": 2,
-            "number_of_stuff_min_2h": 0,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 4,
-            "number_of_stuff_max_2h": 4,
-            "number_of_stuff_max_24h": 4,
-            "number_of_stuff_sqr_1h": 29,
-            "number_of_stuff_sqr_2h": 30,
-            "number_of_stuff_sqr_24h": 30,
-            "number_of_stuff_avg_1h": 3.0,
-            "number_of_stuff_avg_2h": 2.0,
-            "number_of_stuff_avg_24h": 2.0,
             "col1": 4,
+            "number_of_stuff_avg_1h": 3.0,
+            "number_of_stuff_avg_24h": 2.0,
+            "number_of_stuff_avg_2h": 2.0,
+            "number_of_stuff_max_1h": 4.0,
+            "number_of_stuff_max_24h": 4.0,
+            "number_of_stuff_max_2h": 4.0,
+            "number_of_stuff_min_1h": 2.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 0.0,
+            "number_of_stuff_sqr_1h": 29.0,
+            "number_of_stuff_sqr_24h": 30.0,
+            "number_of_stuff_sqr_2h": 30.0,
+            "number_of_stuff_sum_1h": 9.0,
+            "number_of_stuff_sum_24h": 10.0,
+            "number_of_stuff_sum_2h": 10.0,
+            "time": datetime.datetime(2020, 7, 21, 23, 20, tzinfo=datetime.timezone.utc),
         },
         {
-            "number_of_stuff_sum_1h": 12,
-            "number_of_stuff_sum_2h": 15,
-            "number_of_stuff_sum_24h": 15,
-            "number_of_stuff_min_1h": 3,
-            "number_of_stuff_min_2h": 1,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 5,
-            "number_of_stuff_max_2h": 5,
-            "number_of_stuff_max_24h": 5,
-            "number_of_stuff_sqr_1h": 50,
-            "number_of_stuff_sqr_2h": 55,
-            "number_of_stuff_sqr_24h": 55,
-            "number_of_stuff_avg_1h": 4.0,
-            "number_of_stuff_avg_2h": 3.0,
-            "number_of_stuff_avg_24h": 2.5,
             "col1": 5,
+            "number_of_stuff_avg_1h": 4.0,
+            "number_of_stuff_avg_24h": 2.5,
+            "number_of_stuff_avg_2h": 3.0,
+            "number_of_stuff_max_1h": 5.0,
+            "number_of_stuff_max_24h": 5.0,
+            "number_of_stuff_max_2h": 5.0,
+            "number_of_stuff_min_1h": 3.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 1.0,
+            "number_of_stuff_sqr_1h": 50.0,
+            "number_of_stuff_sqr_24h": 55.0,
+            "number_of_stuff_sqr_2h": 55.0,
+            "number_of_stuff_sum_1h": 12.0,
+            "number_of_stuff_sum_24h": 15.0,
+            "number_of_stuff_sum_2h": 15.0,
+            "time": datetime.datetime(2020, 7, 21, 23, 45, tzinfo=datetime.timezone.utc),
         },
         {
-            "number_of_stuff_sum_1h": 15,
-            "number_of_stuff_sum_2h": 20,
-            "number_of_stuff_sum_24h": 21,
-            "number_of_stuff_min_1h": 4,
-            "number_of_stuff_min_2h": 2,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 6,
-            "number_of_stuff_max_2h": 6,
-            "number_of_stuff_max_24h": 6,
-            "number_of_stuff_sqr_1h": 77,
-            "number_of_stuff_sqr_2h": 90,
-            "number_of_stuff_sqr_24h": 91,
-            "number_of_stuff_avg_1h": 5.0,
-            "number_of_stuff_avg_2h": 4.0,
-            "number_of_stuff_avg_24h": 3.0,
             "col1": 6,
+            "number_of_stuff_avg_1h": 5.0,
+            "number_of_stuff_avg_24h": 3.0,
+            "number_of_stuff_avg_2h": 4.0,
+            "number_of_stuff_max_1h": 6.0,
+            "number_of_stuff_max_24h": 6.0,
+            "number_of_stuff_max_2h": 6.0,
+            "number_of_stuff_min_1h": 4.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 2.0,
+            "number_of_stuff_sqr_1h": 77.0,
+            "number_of_stuff_sqr_24h": 91.0,
+            "number_of_stuff_sqr_2h": 90.0,
+            "number_of_stuff_sum_1h": 15.0,
+            "number_of_stuff_sum_24h": 21.0,
+            "number_of_stuff_sum_2h": 20.0,
+            "time": datetime.datetime(2020, 7, 22, 0, 10, tzinfo=datetime.timezone.utc),
         },
         {
-            "number_of_stuff_sum_1h": 18,
-            "number_of_stuff_sum_2h": 25,
-            "number_of_stuff_sum_24h": 28,
-            "number_of_stuff_min_1h": 5,
-            "number_of_stuff_min_2h": 3,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 7,
-            "number_of_stuff_max_2h": 7,
-            "number_of_stuff_max_24h": 7,
-            "number_of_stuff_sqr_1h": 110,
-            "number_of_stuff_sqr_2h": 135,
-            "number_of_stuff_sqr_24h": 140,
-            "number_of_stuff_avg_1h": 6.0,
-            "number_of_stuff_avg_2h": 5.0,
-            "number_of_stuff_avg_24h": 3.5,
             "col1": 7,
+            "number_of_stuff_avg_1h": 6.0,
+            "number_of_stuff_avg_24h": 3.5,
+            "number_of_stuff_avg_2h": 5.0,
+            "number_of_stuff_max_1h": 7.0,
+            "number_of_stuff_max_24h": 7.0,
+            "number_of_stuff_max_2h": 7.0,
+            "number_of_stuff_min_1h": 5.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 3.0,
+            "number_of_stuff_sqr_1h": 110.0,
+            "number_of_stuff_sqr_24h": 140.0,
+            "number_of_stuff_sqr_2h": 135.0,
+            "number_of_stuff_sum_1h": 18.0,
+            "number_of_stuff_sum_24h": 28.0,
+            "number_of_stuff_sum_2h": 25.0,
+            "time": datetime.datetime(2020, 7, 22, 0, 35, tzinfo=datetime.timezone.utc),
         },
         {
-            "number_of_stuff_sum_1h": 21,
-            "number_of_stuff_sum_2h": 30,
-            "number_of_stuff_sum_24h": 36,
-            "number_of_stuff_min_1h": 6,
-            "number_of_stuff_min_2h": 4,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 8,
-            "number_of_stuff_max_2h": 8,
-            "number_of_stuff_max_24h": 8,
-            "number_of_stuff_sqr_1h": 149,
-            "number_of_stuff_sqr_2h": 190,
-            "number_of_stuff_sqr_24h": 204,
-            "number_of_stuff_avg_1h": 7.0,
-            "number_of_stuff_avg_2h": 6.0,
-            "number_of_stuff_avg_24h": 4.0,
             "col1": 8,
+            "number_of_stuff_avg_1h": 7.0,
+            "number_of_stuff_avg_24h": 4.0,
+            "number_of_stuff_avg_2h": 6.0,
+            "number_of_stuff_max_1h": 8.0,
+            "number_of_stuff_max_24h": 8.0,
+            "number_of_stuff_max_2h": 8.0,
+            "number_of_stuff_min_1h": 6.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 4.0,
+            "number_of_stuff_sqr_1h": 149.0,
+            "number_of_stuff_sqr_24h": 204.0,
+            "number_of_stuff_sqr_2h": 190.0,
+            "number_of_stuff_sum_1h": 21.0,
+            "number_of_stuff_sum_24h": 36.0,
+            "number_of_stuff_sum_2h": 30.0,
+            "time": datetime.datetime(2020, 7, 22, 1, 0, tzinfo=datetime.timezone.utc),
         },
         {
-            "number_of_stuff_sum_1h": 24,
-            "number_of_stuff_sum_2h": 35,
-            "number_of_stuff_sum_24h": 45,
-            "number_of_stuff_min_1h": 7,
-            "number_of_stuff_min_2h": 5,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 9,
-            "number_of_stuff_max_2h": 9,
-            "number_of_stuff_max_24h": 9,
-            "number_of_stuff_sqr_1h": 194,
-            "number_of_stuff_sqr_2h": 255,
-            "number_of_stuff_sqr_24h": 285,
-            "number_of_stuff_avg_1h": 8.0,
-            "number_of_stuff_avg_2h": 7.0,
-            "number_of_stuff_avg_24h": 4.5,
             "col1": 9,
+            "number_of_stuff_avg_1h": 8.0,
+            "number_of_stuff_avg_24h": 4.5,
+            "number_of_stuff_avg_2h": 7.0,
+            "number_of_stuff_max_1h": 9.0,
+            "number_of_stuff_max_24h": 9.0,
+            "number_of_stuff_max_2h": 9.0,
+            "number_of_stuff_min_1h": 7.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 5.0,
+            "number_of_stuff_sqr_1h": 194.0,
+            "number_of_stuff_sqr_24h": 285.0,
+            "number_of_stuff_sqr_2h": 255.0,
+            "number_of_stuff_sum_1h": 24.0,
+            "number_of_stuff_sum_24h": 45.0,
+            "number_of_stuff_sum_2h": 35.0,
+            "time": datetime.datetime(2020, 7, 22, 1, 25, tzinfo=datetime.timezone.utc),
         },
     ]
 
@@ -1490,14 +1552,15 @@ def test_query_aggregate_by_key(setup_teardown_test, partitioned_by_key, flush_i
                     "number_of_stuff_max_24h",
                 ],
                 other_table,
+                time_field="time",
             ),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
     ).run()
 
     base_time = test_base_time + timedelta(minutes=25 * items_in_ingest_batch)
-    data = {"col1": items_in_ingest_batch}
-    controller.emit(data, "tal", base_time)
+    data = {"col1": items_in_ingest_batch, "time": base_time}
+    controller.emit(data, "tal")
 
     controller.terminate()
     actual = controller.await_termination()
@@ -1516,6 +1579,7 @@ def test_query_aggregate_by_key(setup_teardown_test, partitioned_by_key, flush_i
             "number_of_stuff_avg_1h": 8.5,
             "number_of_stuff_avg_2h": 7.5,
             "number_of_stuff_avg_24h": 4.5,
+            "time": datetime.datetime(2020, 7, 22, 1, 50, tzinfo=datetime.timezone.utc),
         }
     ]
 
@@ -1547,6 +1611,7 @@ def test_aggregate_and_query_with_dependent_aggrs_different_windows(setup_teardo
                     )
                 ],
                 table,
+                time_field="time",
             ),
             NoSqlTarget(table),
             Reduce([], lambda acc, x: append_return(acc, x)),
@@ -1555,81 +1620,91 @@ def test_aggregate_and_query_with_dependent_aggrs_different_windows(setup_teardo
 
     items_in_ingest_batch = 10
     for i in range(items_in_ingest_batch):
-        data = {"col1": i}
-        controller.emit(data, "tal", test_base_time + timedelta(minutes=25 * i))
+        data = {"col1": i, "time": test_base_time + timedelta(minutes=25 * i)}
+        controller.emit(data, "tal")
 
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [
         {
-            "number_of_stuff_sum_1h": 0,
-            "number_of_stuff_sum_2h": 0,
+            "col1": 0,
             "number_of_stuff_avg_1h": 0.0,
             "number_of_stuff_avg_2h": 0.0,
-            "col1": 0,
+            "number_of_stuff_sum_1h": 0.0,
+            "number_of_stuff_sum_2h": 0.0,
+            "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
         },
         {
-            "number_of_stuff_sum_1h": 1,
-            "number_of_stuff_sum_2h": 1,
+            "col1": 1,
             "number_of_stuff_avg_1h": 0.5,
             "number_of_stuff_avg_2h": 0.5,
-            "col1": 1,
+            "number_of_stuff_sum_1h": 1.0,
+            "number_of_stuff_sum_2h": 1.0,
+            "time": datetime.datetime(2020, 7, 21, 22, 5, tzinfo=datetime.timezone.utc),
         },
         {
-            "number_of_stuff_sum_1h": 3,
-            "number_of_stuff_sum_2h": 3,
+            "col1": 2,
             "number_of_stuff_avg_1h": 1.0,
             "number_of_stuff_avg_2h": 1.0,
-            "col1": 2,
+            "number_of_stuff_sum_1h": 3.0,
+            "number_of_stuff_sum_2h": 3.0,
+            "time": datetime.datetime(2020, 7, 21, 22, 30, tzinfo=datetime.timezone.utc),
         },
         {
-            "number_of_stuff_sum_1h": 6,
-            "number_of_stuff_sum_2h": 6,
+            "col1": 3,
             "number_of_stuff_avg_1h": 2.0,
             "number_of_stuff_avg_2h": 1.5,
-            "col1": 3,
+            "number_of_stuff_sum_1h": 6.0,
+            "number_of_stuff_sum_2h": 6.0,
+            "time": datetime.datetime(2020, 7, 21, 22, 55, tzinfo=datetime.timezone.utc),
         },
         {
-            "number_of_stuff_sum_1h": 9,
-            "number_of_stuff_sum_2h": 10,
+            "col1": 4,
             "number_of_stuff_avg_1h": 3.0,
             "number_of_stuff_avg_2h": 2.0,
-            "col1": 4,
+            "number_of_stuff_sum_1h": 9.0,
+            "number_of_stuff_sum_2h": 10.0,
+            "time": datetime.datetime(2020, 7, 21, 23, 20, tzinfo=datetime.timezone.utc),
         },
         {
-            "number_of_stuff_sum_1h": 12,
-            "number_of_stuff_sum_2h": 15,
+            "col1": 5,
             "number_of_stuff_avg_1h": 4.0,
             "number_of_stuff_avg_2h": 3.0,
-            "col1": 5,
+            "number_of_stuff_sum_1h": 12.0,
+            "number_of_stuff_sum_2h": 15.0,
+            "time": datetime.datetime(2020, 7, 21, 23, 45, tzinfo=datetime.timezone.utc),
         },
         {
-            "number_of_stuff_sum_1h": 15,
-            "number_of_stuff_sum_2h": 20,
+            "col1": 6,
             "number_of_stuff_avg_1h": 5.0,
             "number_of_stuff_avg_2h": 4.0,
-            "col1": 6,
+            "number_of_stuff_sum_1h": 15.0,
+            "number_of_stuff_sum_2h": 20.0,
+            "time": datetime.datetime(2020, 7, 22, 0, 10, tzinfo=datetime.timezone.utc),
         },
         {
-            "number_of_stuff_sum_1h": 18,
-            "number_of_stuff_sum_2h": 25,
+            "col1": 7,
             "number_of_stuff_avg_1h": 6.0,
             "number_of_stuff_avg_2h": 5.0,
-            "col1": 7,
+            "number_of_stuff_sum_1h": 18.0,
+            "number_of_stuff_sum_2h": 25.0,
+            "time": datetime.datetime(2020, 7, 22, 0, 35, tzinfo=datetime.timezone.utc),
         },
         {
-            "number_of_stuff_sum_1h": 21,
-            "number_of_stuff_sum_2h": 30,
+            "col1": 8,
             "number_of_stuff_avg_1h": 7.0,
             "number_of_stuff_avg_2h": 6.0,
-            "col1": 8,
+            "number_of_stuff_sum_1h": 21.0,
+            "number_of_stuff_sum_2h": 30.0,
+            "time": datetime.datetime(2020, 7, 22, 1, 0, tzinfo=datetime.timezone.utc),
         },
         {
-            "number_of_stuff_sum_1h": 24,
-            "number_of_stuff_sum_2h": 35,
+            "col1": 9,
             "number_of_stuff_avg_1h": 8.0,
             "number_of_stuff_avg_2h": 7.0,
-            "col1": 9,
+            "number_of_stuff_sum_1h": 24.0,
+            "number_of_stuff_sum_2h": 35.0,
+            "time": datetime.datetime(2020, 7, 22, 1, 25, tzinfo=datetime.timezone.utc),
         },
     ]
 
@@ -1641,18 +1716,25 @@ def test_aggregate_and_query_with_dependent_aggrs_different_windows(setup_teardo
     controller = build_flow(
         [
             SyncEmitSource(),
-            QueryByKey(query_aggregations, other_table),
+            QueryByKey(query_aggregations, other_table, time_field="time"),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
     ).run()
 
     base_time = test_base_time + timedelta(minutes=25 * items_in_ingest_batch)
-    data = {"col1": items_in_ingest_batch}
-    controller.emit(data, "tal", base_time)
+    data = {"col1": items_in_ingest_batch, "time": base_time}
+    controller.emit(data, "tal")
 
     controller.terminate()
     actual = controller.await_termination()
-    expected_results = [{"col1": 10, "number_of_stuff_sum_1h": 17, "number_of_stuff_avg_2h": 7.5}]
+    expected_results = [
+        {
+            "col1": 10,
+            "number_of_stuff_avg_2h": 7.5,
+            "number_of_stuff_sum_1h": 17.0,
+            "time": datetime.datetime(2020, 7, 22, 1, 50, tzinfo=datetime.timezone.utc),
+        }
+    ]
 
     assert (
         actual == expected_results
@@ -1664,19 +1746,64 @@ def test_aggregate_and_query_with_dependent_aggrs_different_windows(setup_teardo
 def test_aggregate_by_key_one_underlying_window(setup_teardown_test, partitioned_by_key, flush_interval):
     expected = {
         1: [
-            {"number_of_stuff_count_1h": 1, "other_stuff_sum_1h": 0.0, "col1": 0},
-            {"number_of_stuff_count_1h": 2, "other_stuff_sum_1h": 1.0, "col1": 1},
-            {"number_of_stuff_count_1h": 3, "other_stuff_sum_1h": 3.0, "col1": 2},
+            {
+                "col1": 0,
+                "number_of_stuff_count_1h": 1.0,
+                "other_stuff_sum_1h": 0.0,
+                "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
+            },
+            {
+                "col1": 1,
+                "number_of_stuff_count_1h": 2.0,
+                "other_stuff_sum_1h": 1.0,
+                "time": datetime.datetime(2020, 7, 21, 21, 41, tzinfo=datetime.timezone.utc),
+            },
+            {
+                "col1": 2,
+                "number_of_stuff_count_1h": 3.0,
+                "other_stuff_sum_1h": 3.0,
+                "time": datetime.datetime(2020, 7, 21, 21, 42, tzinfo=datetime.timezone.utc),
+            },
         ],
         2: [
-            {"number_of_stuff_count_1h": 4, "other_stuff_sum_1h": 6.0, "col1": 3},
-            {"number_of_stuff_count_1h": 5, "other_stuff_sum_1h": 10.0, "col1": 4},
-            {"number_of_stuff_count_1h": 6, "other_stuff_sum_1h": 15.0, "col1": 5},
+            {
+                "col1": 3,
+                "number_of_stuff_count_1h": 4.0,
+                "other_stuff_sum_1h": 6.0,
+                "time": datetime.datetime(2020, 7, 21, 21, 43, tzinfo=datetime.timezone.utc),
+            },
+            {
+                "col1": 4,
+                "number_of_stuff_count_1h": 5.0,
+                "other_stuff_sum_1h": 10.0,
+                "time": datetime.datetime(2020, 7, 21, 21, 44, tzinfo=datetime.timezone.utc),
+            },
+            {
+                "col1": 5,
+                "number_of_stuff_count_1h": 6.0,
+                "other_stuff_sum_1h": 15.0,
+                "time": datetime.datetime(2020, 7, 21, 21, 45, tzinfo=datetime.timezone.utc),
+            },
         ],
         3: [
-            {"number_of_stuff_count_1h": 7, "other_stuff_sum_1h": 21.0, "col1": 6},
-            {"number_of_stuff_count_1h": 8, "other_stuff_sum_1h": 28.0, "col1": 7},
-            {"number_of_stuff_count_1h": 9, "other_stuff_sum_1h": 36.0, "col1": 8},
+            {
+                "col1": 6,
+                "number_of_stuff_count_1h": 7.0,
+                "other_stuff_sum_1h": 21.0,
+                "time": datetime.datetime(2020, 7, 21, 21, 46, tzinfo=datetime.timezone.utc),
+            },
+            {
+                "col1": 7,
+                "number_of_stuff_count_1h": 8.0,
+                "other_stuff_sum_1h": 28.0,
+                "time": datetime.datetime(2020, 7, 21, 21, 47, tzinfo=datetime.timezone.utc),
+            },
+            {
+                "col1": 8,
+                "number_of_stuff_count_1h": 9.0,
+                "other_stuff_sum_1h": 36.0,
+                "time": datetime.datetime(2020, 7, 21, 21, 48, tzinfo=datetime.timezone.utc),
+            },
         ],
     }
 
@@ -1710,6 +1837,7 @@ def test_aggregate_by_key_one_underlying_window(setup_teardown_test, partitioned
                         ),
                     ],
                     table,
+                    time_field="time",
                 ),
                 NoSqlTarget(table),
                 Reduce([], lambda acc, x: append_return(acc, x)),
@@ -1717,8 +1845,8 @@ def test_aggregate_by_key_one_underlying_window(setup_teardown_test, partitioned
         ).run()
 
         for _ in range(items_in_ingest_batch):
-            data = {"col1": current_index}
-            controller.emit(data, "tal", test_base_time + timedelta(minutes=1 * current_index))
+            data = {"col1": current_index, "time": test_base_time + timedelta(minutes=1 * current_index)}
+            controller.emit(data, "tal")
             current_index = current_index + 1
 
         controller.terminate()
@@ -1733,19 +1861,64 @@ def test_aggregate_by_key_one_underlying_window(setup_teardown_test, partitioned
 def test_aggregate_by_key_two_underlying_windows(setup_teardown_test, partitioned_by_key):
     expected = {
         1: [
-            {"number_of_stuff_count_24h": 1, "other_stuff_sum_24h": 0.0, "col1": 0},
-            {"number_of_stuff_count_24h": 2, "other_stuff_sum_24h": 1.0, "col1": 1},
-            {"number_of_stuff_count_24h": 3, "other_stuff_sum_24h": 3.0, "col1": 2},
+            {
+                "col1": 0,
+                "number_of_stuff_count_24h": 1.0,
+                "other_stuff_sum_24h": 0.0,
+                "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
+            },
+            {
+                "col1": 1,
+                "number_of_stuff_count_24h": 2.0,
+                "other_stuff_sum_24h": 1.0,
+                "time": datetime.datetime(2020, 7, 21, 22, 5, tzinfo=datetime.timezone.utc),
+            },
+            {
+                "col1": 2,
+                "number_of_stuff_count_24h": 3.0,
+                "other_stuff_sum_24h": 3.0,
+                "time": datetime.datetime(2020, 7, 21, 22, 30, tzinfo=datetime.timezone.utc),
+            },
         ],
         2: [
-            {"number_of_stuff_count_24h": 4, "other_stuff_sum_24h": 6.0, "col1": 3},
-            {"number_of_stuff_count_24h": 5, "other_stuff_sum_24h": 10.0, "col1": 4},
-            {"number_of_stuff_count_24h": 6, "other_stuff_sum_24h": 15.0, "col1": 5},
+            {
+                "col1": 3,
+                "number_of_stuff_count_24h": 4.0,
+                "other_stuff_sum_24h": 6.0,
+                "time": datetime.datetime(2020, 7, 21, 22, 55, tzinfo=datetime.timezone.utc),
+            },
+            {
+                "col1": 4,
+                "number_of_stuff_count_24h": 5.0,
+                "other_stuff_sum_24h": 10.0,
+                "time": datetime.datetime(2020, 7, 21, 23, 20, tzinfo=datetime.timezone.utc),
+            },
+            {
+                "col1": 5,
+                "number_of_stuff_count_24h": 6.0,
+                "other_stuff_sum_24h": 15.0,
+                "time": datetime.datetime(2020, 7, 21, 23, 45, tzinfo=datetime.timezone.utc),
+            },
         ],
         3: [
-            {"number_of_stuff_count_24h": 7, "other_stuff_sum_24h": 21.0, "col1": 6},
-            {"number_of_stuff_count_24h": 8, "other_stuff_sum_24h": 28.0, "col1": 7},
-            {"number_of_stuff_count_24h": 9, "other_stuff_sum_24h": 36.0, "col1": 8},
+            {
+                "col1": 6,
+                "number_of_stuff_count_24h": 7.0,
+                "other_stuff_sum_24h": 21.0,
+                "time": datetime.datetime(2020, 7, 22, 0, 10, tzinfo=datetime.timezone.utc),
+            },
+            {
+                "col1": 7,
+                "number_of_stuff_count_24h": 8.0,
+                "other_stuff_sum_24h": 28.0,
+                "time": datetime.datetime(2020, 7, 22, 0, 35, tzinfo=datetime.timezone.utc),
+            },
+            {
+                "col1": 8,
+                "number_of_stuff_count_24h": 9.0,
+                "other_stuff_sum_24h": 36.0,
+                "time": datetime.datetime(2020, 7, 22, 1, 0, tzinfo=datetime.timezone.utc),
+            },
         ],
     }
 
@@ -1777,6 +1950,7 @@ def test_aggregate_by_key_two_underlying_windows(setup_teardown_test, partitione
                         ),
                     ],
                     table,
+                    time_field="time",
                 ),
                 NoSqlTarget(table),
                 Reduce([], lambda acc, x: append_return(acc, x)),
@@ -1784,8 +1958,8 @@ def test_aggregate_by_key_two_underlying_windows(setup_teardown_test, partitione
         ).run()
 
         for _ in range(items_in_ingest_batch):
-            data = {"col1": current_index}
-            controller.emit(data, "tal", test_base_time + timedelta(minutes=25 * current_index))
+            data = {"col1": current_index, "time": test_base_time + timedelta(minutes=25 * current_index)}
+            controller.emit(data, "tal")
             current_index = current_index + 1
 
         controller.terminate()
@@ -1803,18 +1977,18 @@ def test_aggregate_by_key_with_extra_aliases(setup_teardown_test):
 
     def enrich(event, state):
         if "first_activity" not in state:
-            state["first_activity"] = event.time
+            state["first_activity"] = event["sometime"]
 
-        event.body["time_since_activity"] = (event.time - state["first_activity"]).seconds
-        state["last_event"] = event.time
-        event.body["total_activities"] = state["total_activities"] = state.get("total_activities", 0) + 1
-        event.body["color"] = state["color"]
+        event["time_since_activity"] = (event["sometime"] - state["first_activity"]).seconds
+        state["last_event"] = event["sometime"]
+        event["total_activities"] = state["total_activities"] = state.get("total_activities", 0) + 1
+        event["color"] = state["color"]
         return event, state
 
     controller = build_flow(
         [
             SyncEmitSource(),
-            MapWithState(table, enrich, group_by_key=True, full_event=True),
+            MapWithState(table, enrich, group_by_key=True),
             AggregateByKey(
                 [
                     FieldAggregator(
@@ -1825,6 +1999,7 @@ def test_aggregate_by_key_with_extra_aliases(setup_teardown_test):
                     )
                 ],
                 table,
+                time_field="sometime",
             ),
             NoSqlTarget(table),
             Reduce([], lambda acc, x: append_return(acc, x)),
@@ -1833,91 +2008,101 @@ def test_aggregate_by_key_with_extra_aliases(setup_teardown_test):
 
     items_in_ingest_batch = 10
     for i in range(items_in_ingest_batch):
-        data = {"col1": i}
-        controller.emit(data, "tal", test_base_time + timedelta(minutes=25 * i))
+        data = {"col1": i, "sometime": test_base_time + timedelta(minutes=25 * i)}
+        controller.emit(data, "tal")
 
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [
         {
-            "number_of_stuff_sum_2h": 0,
-            "number_of_stuff_avg_2h": 0.0,
             "col1": 0,
+            "color": "blue",
+            "number_of_stuff_avg_2h": 0.0,
+            "number_of_stuff_sum_2h": 0.0,
+            "sometime": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
             "time_since_activity": 0,
             "total_activities": 1,
-            "color": "blue",
         },
         {
-            "number_of_stuff_sum_2h": 1,
-            "number_of_stuff_avg_2h": 0.5,
             "col1": 1,
+            "color": "blue",
+            "number_of_stuff_avg_2h": 0.5,
+            "number_of_stuff_sum_2h": 1.0,
+            "sometime": datetime.datetime(2020, 7, 21, 22, 5, tzinfo=datetime.timezone.utc),
             "time_since_activity": 1500,
             "total_activities": 2,
-            "color": "blue",
         },
         {
-            "number_of_stuff_sum_2h": 3,
-            "number_of_stuff_avg_2h": 1.0,
             "col1": 2,
+            "color": "blue",
+            "number_of_stuff_avg_2h": 1.0,
+            "number_of_stuff_sum_2h": 3.0,
+            "sometime": datetime.datetime(2020, 7, 21, 22, 30, tzinfo=datetime.timezone.utc),
             "time_since_activity": 3000,
             "total_activities": 3,
-            "color": "blue",
         },
         {
-            "number_of_stuff_sum_2h": 6,
-            "number_of_stuff_avg_2h": 1.5,
             "col1": 3,
+            "color": "blue",
+            "number_of_stuff_avg_2h": 1.5,
+            "number_of_stuff_sum_2h": 6.0,
+            "sometime": datetime.datetime(2020, 7, 21, 22, 55, tzinfo=datetime.timezone.utc),
             "time_since_activity": 4500,
             "total_activities": 4,
-            "color": "blue",
         },
         {
-            "number_of_stuff_sum_2h": 10,
-            "number_of_stuff_avg_2h": 2.0,
             "col1": 4,
+            "color": "blue",
+            "number_of_stuff_avg_2h": 2.0,
+            "number_of_stuff_sum_2h": 10.0,
+            "sometime": datetime.datetime(2020, 7, 21, 23, 20, tzinfo=datetime.timezone.utc),
             "time_since_activity": 6000,
             "total_activities": 5,
-            "color": "blue",
         },
         {
-            "number_of_stuff_sum_2h": 15,
-            "number_of_stuff_avg_2h": 3.0,
             "col1": 5,
+            "color": "blue",
+            "number_of_stuff_avg_2h": 3.0,
+            "number_of_stuff_sum_2h": 15.0,
+            "sometime": datetime.datetime(2020, 7, 21, 23, 45, tzinfo=datetime.timezone.utc),
             "time_since_activity": 7500,
             "total_activities": 6,
-            "color": "blue",
         },
         {
-            "number_of_stuff_sum_2h": 20,
-            "number_of_stuff_avg_2h": 4.0,
             "col1": 6,
+            "color": "blue",
+            "number_of_stuff_avg_2h": 4.0,
+            "number_of_stuff_sum_2h": 20.0,
+            "sometime": datetime.datetime(2020, 7, 22, 0, 10, tzinfo=datetime.timezone.utc),
             "time_since_activity": 9000,
             "total_activities": 7,
-            "color": "blue",
         },
         {
-            "number_of_stuff_sum_2h": 25,
-            "number_of_stuff_avg_2h": 5.0,
             "col1": 7,
+            "color": "blue",
+            "number_of_stuff_avg_2h": 5.0,
+            "number_of_stuff_sum_2h": 25.0,
+            "sometime": datetime.datetime(2020, 7, 22, 0, 35, tzinfo=datetime.timezone.utc),
             "time_since_activity": 10500,
             "total_activities": 8,
-            "color": "blue",
         },
         {
-            "number_of_stuff_sum_2h": 30,
-            "number_of_stuff_avg_2h": 6.0,
             "col1": 8,
+            "color": "blue",
+            "number_of_stuff_avg_2h": 6.0,
+            "number_of_stuff_sum_2h": 30.0,
+            "sometime": datetime.datetime(2020, 7, 22, 1, 0, tzinfo=datetime.timezone.utc),
             "time_since_activity": 12000,
             "total_activities": 9,
-            "color": "blue",
         },
         {
-            "number_of_stuff_sum_2h": 35,
-            "number_of_stuff_avg_2h": 7.0,
             "col1": 9,
+            "color": "blue",
+            "number_of_stuff_avg_2h": 7.0,
+            "number_of_stuff_sum_2h": 35.0,
+            "sometime": datetime.datetime(2020, 7, 22, 1, 25, tzinfo=datetime.timezone.utc),
             "time_since_activity": 13500,
             "total_activities": 10,
-            "color": "blue",
         },
     ]
 
@@ -1940,6 +2125,7 @@ def test_aggregate_by_key_with_extra_aliases(setup_teardown_test):
                     "sometime",
                 ],
                 other_table,
+                time_field="sometime",
                 aliases={
                     "color": "external.color",
                     "iss": "external.iss",
@@ -1951,20 +2137,20 @@ def test_aggregate_by_key_with_extra_aliases(setup_teardown_test):
     ).run()
 
     base_time = test_base_time + timedelta(minutes=25 * items_in_ingest_batch)
-    data = {"col1": items_in_ingest_batch}
-    controller.emit(data, "tal", base_time)
+    data = {"col1": items_in_ingest_batch, "sometime": base_time}
+    controller.emit(data, "tal")
 
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [
         {
-            "number_of_stuff_sum_2h": 30,
-            "my_avg": 7.5,
+            "age": 41,
             "col1": 10,
             "external.color": "blue",
-            "age": 41,
             "external.iss": True,
-            "sometime": test_base_time,
+            "my_avg": 7.5,
+            "number_of_stuff_sum_2h": 30.0,
+            "sometime": datetime.datetime(2020, 7, 22, 1, 25, tzinfo=datetime.timezone.utc),
         }
     ]
 
@@ -1985,18 +2171,18 @@ def test_write_cache_with_aggregations(setup_teardown_test, flush_interval):
 
     def enrich(event, state):
         if "first_activity" not in state:
-            state["first_activity"] = event.time
+            state["first_activity"] = event["sometime"]
 
-        event.body["time_since_activity"] = (event.time - state["first_activity"]).seconds
-        state["last_event"] = event.time
-        event.body["total_activities"] = state["total_activities"] = state.get("total_activities", 0) + 1
-        event.body["color"] = state["color"]
+        event["time_since_activity"] = (event["sometime"] - state["first_activity"]).seconds
+        state["last_event"] = event["sometime"]
+        event["total_activities"] = state["total_activities"] = state.get("total_activities", 0) + 1
+        event["color"] = state["color"]
         return event, state
 
     controller = build_flow(
         [
             SyncEmitSource(),
-            MapWithState(table, enrich, group_by_key=True, full_event=True),
+            MapWithState(table, enrich, group_by_key=True),
             AggregateByKey(
                 [
                     FieldAggregator(
@@ -2007,6 +2193,7 @@ def test_write_cache_with_aggregations(setup_teardown_test, flush_interval):
                     )
                 ],
                 table,
+                time_field="sometime",
             ),
             NoSqlTarget(table),
             Reduce([], lambda acc, x: append_return(acc, x)),
@@ -2015,91 +2202,101 @@ def test_write_cache_with_aggregations(setup_teardown_test, flush_interval):
 
     items_in_ingest_batch = 10
     for i in range(items_in_ingest_batch):
-        data = {"col1": i}
-        controller.emit(data, "tal", test_base_time + timedelta(minutes=25 * i))
+        data = {"col1": i, "sometime": test_base_time + timedelta(minutes=25 * i)}
+        controller.emit(data, "tal")
 
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [
         {
-            "number_of_stuff_sum_2h": 0,
-            "number_of_stuff_avg_2h": 0.0,
             "col1": 0,
+            "color": "blue",
+            "number_of_stuff_avg_2h": 0.0,
+            "number_of_stuff_sum_2h": 0.0,
+            "sometime": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
             "time_since_activity": 0,
             "total_activities": 1,
-            "color": "blue",
         },
         {
-            "number_of_stuff_sum_2h": 1,
-            "number_of_stuff_avg_2h": 0.5,
             "col1": 1,
+            "color": "blue",
+            "number_of_stuff_avg_2h": 0.5,
+            "number_of_stuff_sum_2h": 1.0,
+            "sometime": datetime.datetime(2020, 7, 21, 22, 5, tzinfo=datetime.timezone.utc),
             "time_since_activity": 1500,
             "total_activities": 2,
-            "color": "blue",
         },
         {
-            "number_of_stuff_sum_2h": 3,
-            "number_of_stuff_avg_2h": 1.0,
             "col1": 2,
+            "color": "blue",
+            "number_of_stuff_avg_2h": 1.0,
+            "number_of_stuff_sum_2h": 3.0,
+            "sometime": datetime.datetime(2020, 7, 21, 22, 30, tzinfo=datetime.timezone.utc),
             "time_since_activity": 3000,
             "total_activities": 3,
-            "color": "blue",
         },
         {
-            "number_of_stuff_sum_2h": 6,
-            "number_of_stuff_avg_2h": 1.5,
             "col1": 3,
+            "color": "blue",
+            "number_of_stuff_avg_2h": 1.5,
+            "number_of_stuff_sum_2h": 6.0,
+            "sometime": datetime.datetime(2020, 7, 21, 22, 55, tzinfo=datetime.timezone.utc),
             "time_since_activity": 4500,
             "total_activities": 4,
-            "color": "blue",
         },
         {
-            "number_of_stuff_sum_2h": 10,
-            "number_of_stuff_avg_2h": 2.0,
             "col1": 4,
+            "color": "blue",
+            "number_of_stuff_avg_2h": 2.0,
+            "number_of_stuff_sum_2h": 10.0,
+            "sometime": datetime.datetime(2020, 7, 21, 23, 20, tzinfo=datetime.timezone.utc),
             "time_since_activity": 6000,
             "total_activities": 5,
-            "color": "blue",
         },
         {
-            "number_of_stuff_sum_2h": 15,
-            "number_of_stuff_avg_2h": 3.0,
             "col1": 5,
+            "color": "blue",
+            "number_of_stuff_avg_2h": 3.0,
+            "number_of_stuff_sum_2h": 15.0,
+            "sometime": datetime.datetime(2020, 7, 21, 23, 45, tzinfo=datetime.timezone.utc),
             "time_since_activity": 7500,
             "total_activities": 6,
-            "color": "blue",
         },
         {
-            "number_of_stuff_sum_2h": 20,
-            "number_of_stuff_avg_2h": 4.0,
             "col1": 6,
+            "color": "blue",
+            "number_of_stuff_avg_2h": 4.0,
+            "number_of_stuff_sum_2h": 20.0,
+            "sometime": datetime.datetime(2020, 7, 22, 0, 10, tzinfo=datetime.timezone.utc),
             "time_since_activity": 9000,
             "total_activities": 7,
-            "color": "blue",
         },
         {
-            "number_of_stuff_sum_2h": 25,
-            "number_of_stuff_avg_2h": 5.0,
             "col1": 7,
+            "color": "blue",
+            "number_of_stuff_avg_2h": 5.0,
+            "number_of_stuff_sum_2h": 25.0,
+            "sometime": datetime.datetime(2020, 7, 22, 0, 35, tzinfo=datetime.timezone.utc),
             "time_since_activity": 10500,
             "total_activities": 8,
-            "color": "blue",
         },
         {
-            "number_of_stuff_sum_2h": 30,
-            "number_of_stuff_avg_2h": 6.0,
             "col1": 8,
+            "color": "blue",
+            "number_of_stuff_avg_2h": 6.0,
+            "number_of_stuff_sum_2h": 30.0,
+            "sometime": datetime.datetime(2020, 7, 22, 1, 0, tzinfo=datetime.timezone.utc),
             "time_since_activity": 12000,
             "total_activities": 9,
-            "color": "blue",
         },
         {
-            "number_of_stuff_sum_2h": 35,
-            "number_of_stuff_avg_2h": 7.0,
             "col1": 9,
+            "color": "blue",
+            "number_of_stuff_avg_2h": 7.0,
+            "number_of_stuff_sum_2h": 35.0,
+            "sometime": datetime.datetime(2020, 7, 22, 1, 25, tzinfo=datetime.timezone.utc),
             "time_since_activity": 13500,
             "total_activities": 10,
-            "color": "blue",
         },
     ]
 
@@ -2126,26 +2323,27 @@ def test_write_cache_with_aggregations(setup_teardown_test, flush_interval):
                     "sometime",
                 ],
                 other_table,
+                time_field="sometime",
             ),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
     ).run()
 
     base_time = test_base_time + timedelta(minutes=25 * items_in_ingest_batch)
-    data = {"col1": items_in_ingest_batch}
-    controller.emit(data, "tal", base_time)
+    data = {"col1": items_in_ingest_batch, "sometime": base_time}
+    controller.emit(data, "tal")
 
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [
         {
-            "number_of_stuff_sum_2h": 30,
-            "number_of_stuff_avg_2h": 7.5,
+            "age": 41,
             "col1": 10,
             "color": "blue",
-            "age": 41,
             "iss": True,
-            "sometime": test_base_time,
+            "number_of_stuff_avg_2h": 7.5,
+            "number_of_stuff_sum_2h": 30.0,
+            "sometime": datetime.datetime(2020, 7, 22, 1, 25, tzinfo=datetime.timezone.utc),
         }
     ]
 
@@ -2166,18 +2364,18 @@ def test_write_cache(setup_teardown_test, flush_interval):
 
     def enrich(event, state):
         if "first_activity" not in state:
-            state["first_activity"] = event.time
+            state["first_activity"] = event["sometime"]
 
-        event.body["time_since_activity"] = (event.time - state["first_activity"]).seconds
-        state["last_event"] = event.time
-        event.body["total_activities"] = state["total_activities"] = state.get("total_activities", 0) + 1
-        event.body["color"] = state["color"]
+        event["time_since_activity"] = (event["sometime"] - state["first_activity"]).seconds
+        state["last_event"] = event["sometime"]
+        event["total_activities"] = state["total_activities"] = state.get("total_activities", 0) + 1
+        event["color"] = state["color"]
         return event, state
 
     controller = build_flow(
         [
             SyncEmitSource(),
-            MapWithState(table, enrich, group_by_key=True, full_event=True),
+            MapWithState(table, enrich, group_by_key=True),
             NoSqlTarget(table),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
@@ -2185,66 +2383,81 @@ def test_write_cache(setup_teardown_test, flush_interval):
 
     items_in_ingest_batch = 10
     for i in range(items_in_ingest_batch):
-        data = {"col1": i}
-        controller.emit(data, "tal", test_base_time + timedelta(minutes=25 * i))
+        data = {"col1": i, "sometime": test_base_time + timedelta(minutes=25 * i)}
+        controller.emit(data, "tal")
 
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [
-        {"col1": 0, "time_since_activity": 0, "total_activities": 1, "color": "blue"},
+        {
+            "col1": 0,
+            "color": "blue",
+            "sometime": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
+            "time_since_activity": 0,
+            "total_activities": 1,
+        },
         {
             "col1": 1,
+            "color": "blue",
+            "sometime": datetime.datetime(2020, 7, 21, 22, 5, tzinfo=datetime.timezone.utc),
             "time_since_activity": 1500,
             "total_activities": 2,
-            "color": "blue",
         },
         {
             "col1": 2,
+            "color": "blue",
+            "sometime": datetime.datetime(2020, 7, 21, 22, 30, tzinfo=datetime.timezone.utc),
             "time_since_activity": 3000,
             "total_activities": 3,
-            "color": "blue",
         },
         {
             "col1": 3,
+            "color": "blue",
+            "sometime": datetime.datetime(2020, 7, 21, 22, 55, tzinfo=datetime.timezone.utc),
             "time_since_activity": 4500,
             "total_activities": 4,
-            "color": "blue",
         },
         {
             "col1": 4,
+            "color": "blue",
+            "sometime": datetime.datetime(2020, 7, 21, 23, 20, tzinfo=datetime.timezone.utc),
             "time_since_activity": 6000,
             "total_activities": 5,
-            "color": "blue",
         },
         {
             "col1": 5,
+            "color": "blue",
+            "sometime": datetime.datetime(2020, 7, 21, 23, 45, tzinfo=datetime.timezone.utc),
             "time_since_activity": 7500,
             "total_activities": 6,
-            "color": "blue",
         },
         {
             "col1": 6,
+            "color": "blue",
+            "sometime": datetime.datetime(2020, 7, 22, 0, 10, tzinfo=datetime.timezone.utc),
             "time_since_activity": 9000,
             "total_activities": 7,
-            "color": "blue",
         },
         {
             "col1": 7,
+            "color": "blue",
+            "sometime": datetime.datetime(2020, 7, 22, 0, 35, tzinfo=datetime.timezone.utc),
             "time_since_activity": 10500,
             "total_activities": 8,
-            "color": "blue",
         },
         {
             "col1": 8,
+            "color": "blue",
+            "sometime": datetime.datetime(2020, 7, 22, 1, 0, tzinfo=datetime.timezone.utc),
             "time_since_activity": 12000,
             "total_activities": 9,
-            "color": "blue",
         },
         {
             "col1": 9,
+            "color": "blue",
+            "sometime": datetime.datetime(2020, 7, 22, 1, 25, tzinfo=datetime.timezone.utc),
             "time_since_activity": 13500,
             "total_activities": 10,
-            "color": "blue",
         },
     ]
 
@@ -2257,23 +2470,24 @@ def test_write_cache(setup_teardown_test, flush_interval):
     controller = build_flow(
         [
             SyncEmitSource(),
-            MapWithState(other_table, enrich, group_by_key=True, full_event=True),
+            MapWithState(other_table, enrich, group_by_key=True),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
     ).run()
 
     base_time = test_base_time + timedelta(minutes=25 * items_in_ingest_batch)
-    data = {"col1": items_in_ingest_batch}
-    controller.emit(data, "tal", base_time)
+    data = {"col1": items_in_ingest_batch, "sometime": base_time}
+    controller.emit(data, "tal")
 
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [
         {
             "col1": 10,
+            "color": "blue",
+            "sometime": datetime.datetime(2020, 7, 22, 1, 50, tzinfo=datetime.timezone.utc),
             "time_since_activity": 15000,
             "total_activities": 11,
-            "color": "blue",
         }
     ]
 
@@ -2299,6 +2513,7 @@ def test_aggregate_with_string_table(setup_teardown_test):
                     )
                 ],
                 table_name,
+                time_field="time",
                 context=context,
             ),
             NoSqlTarget(table),
@@ -2308,191 +2523,201 @@ def test_aggregate_with_string_table(setup_teardown_test):
 
     items_in_ingest_batch = 10
     for i in range(items_in_ingest_batch):
-        data = {"col1": i}
-        controller.emit(data, "tal", test_base_time + timedelta(minutes=25 * i))
+        data = {"col1": i, "time": test_base_time + timedelta(minutes=25 * i)}
+        controller.emit(data, "tal")
 
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [
         {
-            "number_of_stuff_sum_1h": 0,
-            "number_of_stuff_sum_2h": 0,
-            "number_of_stuff_sum_24h": 0,
-            "number_of_stuff_min_1h": 0,
-            "number_of_stuff_min_2h": 0,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 0,
-            "number_of_stuff_max_2h": 0,
-            "number_of_stuff_max_24h": 0,
-            "number_of_stuff_sqr_1h": 0,
-            "number_of_stuff_sqr_2h": 0,
-            "number_of_stuff_sqr_24h": 0,
-            "number_of_stuff_avg_1h": 0.0,
-            "number_of_stuff_avg_2h": 0.0,
-            "number_of_stuff_avg_24h": 0.0,
             "col1": 0,
+            "number_of_stuff_avg_1h": 0.0,
+            "number_of_stuff_avg_24h": 0.0,
+            "number_of_stuff_avg_2h": 0.0,
+            "number_of_stuff_max_1h": 0.0,
+            "number_of_stuff_max_24h": 0.0,
+            "number_of_stuff_max_2h": 0.0,
+            "number_of_stuff_min_1h": 0.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 0.0,
+            "number_of_stuff_sqr_1h": 0.0,
+            "number_of_stuff_sqr_24h": 0.0,
+            "number_of_stuff_sqr_2h": 0.0,
+            "number_of_stuff_sum_1h": 0.0,
+            "number_of_stuff_sum_24h": 0.0,
+            "number_of_stuff_sum_2h": 0.0,
+            "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
         },
         {
-            "number_of_stuff_sum_1h": 1,
-            "number_of_stuff_sum_2h": 1,
-            "number_of_stuff_sum_24h": 1,
-            "number_of_stuff_min_1h": 0,
-            "number_of_stuff_min_2h": 0,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 1,
-            "number_of_stuff_max_2h": 1,
-            "number_of_stuff_max_24h": 1,
-            "number_of_stuff_sqr_1h": 1,
-            "number_of_stuff_sqr_2h": 1,
-            "number_of_stuff_sqr_24h": 1,
-            "number_of_stuff_avg_1h": 0.5,
-            "number_of_stuff_avg_2h": 0.5,
-            "number_of_stuff_avg_24h": 0.5,
             "col1": 1,
+            "number_of_stuff_avg_1h": 0.5,
+            "number_of_stuff_avg_24h": 0.5,
+            "number_of_stuff_avg_2h": 0.5,
+            "number_of_stuff_max_1h": 1.0,
+            "number_of_stuff_max_24h": 1.0,
+            "number_of_stuff_max_2h": 1.0,
+            "number_of_stuff_min_1h": 0.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 0.0,
+            "number_of_stuff_sqr_1h": 1.0,
+            "number_of_stuff_sqr_24h": 1.0,
+            "number_of_stuff_sqr_2h": 1.0,
+            "number_of_stuff_sum_1h": 1.0,
+            "number_of_stuff_sum_24h": 1.0,
+            "number_of_stuff_sum_2h": 1.0,
+            "time": datetime.datetime(2020, 7, 21, 22, 5, tzinfo=datetime.timezone.utc),
         },
         {
-            "number_of_stuff_sum_1h": 3,
-            "number_of_stuff_sum_2h": 3,
-            "number_of_stuff_sum_24h": 3,
-            "number_of_stuff_min_1h": 0,
-            "number_of_stuff_min_2h": 0,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 2,
-            "number_of_stuff_max_2h": 2,
-            "number_of_stuff_max_24h": 2,
-            "number_of_stuff_sqr_1h": 5,
-            "number_of_stuff_sqr_2h": 5,
-            "number_of_stuff_sqr_24h": 5,
-            "number_of_stuff_avg_1h": 1.0,
-            "number_of_stuff_avg_2h": 1.0,
-            "number_of_stuff_avg_24h": 1.0,
             "col1": 2,
+            "number_of_stuff_avg_1h": 1.0,
+            "number_of_stuff_avg_24h": 1.0,
+            "number_of_stuff_avg_2h": 1.0,
+            "number_of_stuff_max_1h": 2.0,
+            "number_of_stuff_max_24h": 2.0,
+            "number_of_stuff_max_2h": 2.0,
+            "number_of_stuff_min_1h": 0.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 0.0,
+            "number_of_stuff_sqr_1h": 5.0,
+            "number_of_stuff_sqr_24h": 5.0,
+            "number_of_stuff_sqr_2h": 5.0,
+            "number_of_stuff_sum_1h": 3.0,
+            "number_of_stuff_sum_24h": 3.0,
+            "number_of_stuff_sum_2h": 3.0,
+            "time": datetime.datetime(2020, 7, 21, 22, 30, tzinfo=datetime.timezone.utc),
         },
         {
-            "number_of_stuff_sum_1h": 6,
-            "number_of_stuff_sum_2h": 6,
-            "number_of_stuff_sum_24h": 6,
-            "number_of_stuff_min_1h": 1,
-            "number_of_stuff_min_2h": 0,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 3,
-            "number_of_stuff_max_2h": 3,
-            "number_of_stuff_max_24h": 3,
-            "number_of_stuff_sqr_1h": 14,
-            "number_of_stuff_sqr_2h": 14,
-            "number_of_stuff_sqr_24h": 14,
-            "number_of_stuff_avg_1h": 2.0,
-            "number_of_stuff_avg_2h": 1.5,
-            "number_of_stuff_avg_24h": 1.5,
             "col1": 3,
+            "number_of_stuff_avg_1h": 2.0,
+            "number_of_stuff_avg_24h": 1.5,
+            "number_of_stuff_avg_2h": 1.5,
+            "number_of_stuff_max_1h": 3.0,
+            "number_of_stuff_max_24h": 3.0,
+            "number_of_stuff_max_2h": 3.0,
+            "number_of_stuff_min_1h": 1.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 0.0,
+            "number_of_stuff_sqr_1h": 14.0,
+            "number_of_stuff_sqr_24h": 14.0,
+            "number_of_stuff_sqr_2h": 14.0,
+            "number_of_stuff_sum_1h": 6.0,
+            "number_of_stuff_sum_24h": 6.0,
+            "number_of_stuff_sum_2h": 6.0,
+            "time": datetime.datetime(2020, 7, 21, 22, 55, tzinfo=datetime.timezone.utc),
         },
         {
-            "number_of_stuff_sum_1h": 9,
-            "number_of_stuff_sum_2h": 10,
-            "number_of_stuff_sum_24h": 10,
-            "number_of_stuff_min_1h": 2,
-            "number_of_stuff_min_2h": 0,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 4,
-            "number_of_stuff_max_2h": 4,
-            "number_of_stuff_max_24h": 4,
-            "number_of_stuff_sqr_1h": 29,
-            "number_of_stuff_sqr_2h": 30,
-            "number_of_stuff_sqr_24h": 30,
-            "number_of_stuff_avg_1h": 3.0,
-            "number_of_stuff_avg_2h": 2.0,
-            "number_of_stuff_avg_24h": 2.0,
             "col1": 4,
+            "number_of_stuff_avg_1h": 3.0,
+            "number_of_stuff_avg_24h": 2.0,
+            "number_of_stuff_avg_2h": 2.0,
+            "number_of_stuff_max_1h": 4.0,
+            "number_of_stuff_max_24h": 4.0,
+            "number_of_stuff_max_2h": 4.0,
+            "number_of_stuff_min_1h": 2.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 0.0,
+            "number_of_stuff_sqr_1h": 29.0,
+            "number_of_stuff_sqr_24h": 30.0,
+            "number_of_stuff_sqr_2h": 30.0,
+            "number_of_stuff_sum_1h": 9.0,
+            "number_of_stuff_sum_24h": 10.0,
+            "number_of_stuff_sum_2h": 10.0,
+            "time": datetime.datetime(2020, 7, 21, 23, 20, tzinfo=datetime.timezone.utc),
         },
         {
-            "number_of_stuff_sum_1h": 12,
-            "number_of_stuff_sum_2h": 15,
-            "number_of_stuff_sum_24h": 15,
-            "number_of_stuff_min_1h": 3,
-            "number_of_stuff_min_2h": 1,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 5,
-            "number_of_stuff_max_2h": 5,
-            "number_of_stuff_max_24h": 5,
-            "number_of_stuff_sqr_1h": 50,
-            "number_of_stuff_sqr_2h": 55,
-            "number_of_stuff_sqr_24h": 55,
-            "number_of_stuff_avg_1h": 4.0,
-            "number_of_stuff_avg_2h": 3.0,
-            "number_of_stuff_avg_24h": 2.5,
             "col1": 5,
+            "number_of_stuff_avg_1h": 4.0,
+            "number_of_stuff_avg_24h": 2.5,
+            "number_of_stuff_avg_2h": 3.0,
+            "number_of_stuff_max_1h": 5.0,
+            "number_of_stuff_max_24h": 5.0,
+            "number_of_stuff_max_2h": 5.0,
+            "number_of_stuff_min_1h": 3.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 1.0,
+            "number_of_stuff_sqr_1h": 50.0,
+            "number_of_stuff_sqr_24h": 55.0,
+            "number_of_stuff_sqr_2h": 55.0,
+            "number_of_stuff_sum_1h": 12.0,
+            "number_of_stuff_sum_24h": 15.0,
+            "number_of_stuff_sum_2h": 15.0,
+            "time": datetime.datetime(2020, 7, 21, 23, 45, tzinfo=datetime.timezone.utc),
         },
         {
-            "number_of_stuff_sum_1h": 15,
-            "number_of_stuff_sum_2h": 20,
-            "number_of_stuff_sum_24h": 21,
-            "number_of_stuff_min_1h": 4,
-            "number_of_stuff_min_2h": 2,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 6,
-            "number_of_stuff_max_2h": 6,
-            "number_of_stuff_max_24h": 6,
-            "number_of_stuff_sqr_1h": 77,
-            "number_of_stuff_sqr_2h": 90,
-            "number_of_stuff_sqr_24h": 91,
-            "number_of_stuff_avg_1h": 5.0,
-            "number_of_stuff_avg_2h": 4.0,
-            "number_of_stuff_avg_24h": 3.0,
             "col1": 6,
+            "number_of_stuff_avg_1h": 5.0,
+            "number_of_stuff_avg_24h": 3.0,
+            "number_of_stuff_avg_2h": 4.0,
+            "number_of_stuff_max_1h": 6.0,
+            "number_of_stuff_max_24h": 6.0,
+            "number_of_stuff_max_2h": 6.0,
+            "number_of_stuff_min_1h": 4.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 2.0,
+            "number_of_stuff_sqr_1h": 77.0,
+            "number_of_stuff_sqr_24h": 91.0,
+            "number_of_stuff_sqr_2h": 90.0,
+            "number_of_stuff_sum_1h": 15.0,
+            "number_of_stuff_sum_24h": 21.0,
+            "number_of_stuff_sum_2h": 20.0,
+            "time": datetime.datetime(2020, 7, 22, 0, 10, tzinfo=datetime.timezone.utc),
         },
         {
-            "number_of_stuff_sum_1h": 18,
-            "number_of_stuff_sum_2h": 25,
-            "number_of_stuff_sum_24h": 28,
-            "number_of_stuff_min_1h": 5,
-            "number_of_stuff_min_2h": 3,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 7,
-            "number_of_stuff_max_2h": 7,
-            "number_of_stuff_max_24h": 7,
-            "number_of_stuff_sqr_1h": 110,
-            "number_of_stuff_sqr_2h": 135,
-            "number_of_stuff_sqr_24h": 140,
-            "number_of_stuff_avg_1h": 6.0,
-            "number_of_stuff_avg_2h": 5.0,
-            "number_of_stuff_avg_24h": 3.5,
             "col1": 7,
+            "number_of_stuff_avg_1h": 6.0,
+            "number_of_stuff_avg_24h": 3.5,
+            "number_of_stuff_avg_2h": 5.0,
+            "number_of_stuff_max_1h": 7.0,
+            "number_of_stuff_max_24h": 7.0,
+            "number_of_stuff_max_2h": 7.0,
+            "number_of_stuff_min_1h": 5.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 3.0,
+            "number_of_stuff_sqr_1h": 110.0,
+            "number_of_stuff_sqr_24h": 140.0,
+            "number_of_stuff_sqr_2h": 135.0,
+            "number_of_stuff_sum_1h": 18.0,
+            "number_of_stuff_sum_24h": 28.0,
+            "number_of_stuff_sum_2h": 25.0,
+            "time": datetime.datetime(2020, 7, 22, 0, 35, tzinfo=datetime.timezone.utc),
         },
         {
-            "number_of_stuff_sum_1h": 21,
-            "number_of_stuff_sum_2h": 30,
-            "number_of_stuff_sum_24h": 36,
-            "number_of_stuff_min_1h": 6,
-            "number_of_stuff_min_2h": 4,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 8,
-            "number_of_stuff_max_2h": 8,
-            "number_of_stuff_max_24h": 8,
-            "number_of_stuff_sqr_1h": 149,
-            "number_of_stuff_sqr_2h": 190,
-            "number_of_stuff_sqr_24h": 204,
-            "number_of_stuff_avg_1h": 7.0,
-            "number_of_stuff_avg_2h": 6.0,
-            "number_of_stuff_avg_24h": 4.0,
             "col1": 8,
+            "number_of_stuff_avg_1h": 7.0,
+            "number_of_stuff_avg_24h": 4.0,
+            "number_of_stuff_avg_2h": 6.0,
+            "number_of_stuff_max_1h": 8.0,
+            "number_of_stuff_max_24h": 8.0,
+            "number_of_stuff_max_2h": 8.0,
+            "number_of_stuff_min_1h": 6.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 4.0,
+            "number_of_stuff_sqr_1h": 149.0,
+            "number_of_stuff_sqr_24h": 204.0,
+            "number_of_stuff_sqr_2h": 190.0,
+            "number_of_stuff_sum_1h": 21.0,
+            "number_of_stuff_sum_24h": 36.0,
+            "number_of_stuff_sum_2h": 30.0,
+            "time": datetime.datetime(2020, 7, 22, 1, 0, tzinfo=datetime.timezone.utc),
         },
         {
-            "number_of_stuff_sum_1h": 24,
-            "number_of_stuff_sum_2h": 35,
-            "number_of_stuff_sum_24h": 45,
-            "number_of_stuff_min_1h": 7,
-            "number_of_stuff_min_2h": 5,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 9,
-            "number_of_stuff_max_2h": 9,
-            "number_of_stuff_max_24h": 9,
-            "number_of_stuff_sqr_1h": 194,
-            "number_of_stuff_sqr_2h": 255,
-            "number_of_stuff_sqr_24h": 285,
-            "number_of_stuff_avg_1h": 8.0,
-            "number_of_stuff_avg_2h": 7.0,
-            "number_of_stuff_avg_24h": 4.5,
             "col1": 9,
+            "number_of_stuff_avg_1h": 8.0,
+            "number_of_stuff_avg_24h": 4.5,
+            "number_of_stuff_avg_2h": 7.0,
+            "number_of_stuff_max_1h": 9.0,
+            "number_of_stuff_max_24h": 9.0,
+            "number_of_stuff_max_2h": 9.0,
+            "number_of_stuff_min_1h": 7.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 5.0,
+            "number_of_stuff_sqr_1h": 194.0,
+            "number_of_stuff_sqr_24h": 285.0,
+            "number_of_stuff_sqr_2h": 255.0,
+            "number_of_stuff_sum_1h": 24.0,
+            "number_of_stuff_sum_24h": 45.0,
+            "number_of_stuff_sum_2h": 35.0,
+            "time": datetime.datetime(2020, 7, 22, 1, 25, tzinfo=datetime.timezone.utc),
         },
     ]
 
@@ -2534,7 +2759,9 @@ def test_modify_schema(setup_teardown_test):
                     )
                 ],
                 table,
+                time_field="time",
             ),
+            DropColumns("time"),
             NoSqlTarget(table),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
@@ -2542,8 +2769,8 @@ def test_modify_schema(setup_teardown_test):
 
     items_in_ingest_batch = 10
     for i in range(items_in_ingest_batch):
-        data = {"col1": i}
-        controller.emit(data, "tal", test_base_time + timedelta(minutes=25 * i))
+        data = {"col1": i, "time": test_base_time + timedelta(minutes=25 * i)}
+        controller.emit(data, "tal")
 
     controller.terminate()
     actual = controller.await_termination()
@@ -2734,35 +2961,36 @@ def test_modify_schema(setup_teardown_test):
                     ),
                 ],
                 other_table,
+                time_field="time",
             ),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
     ).run()
 
     base_time = test_base_time + timedelta(minutes=25 * items_in_ingest_batch)
-    data = {"col1": items_in_ingest_batch}
-    controller.emit(data, "tal", base_time)
+    data = {"col1": items_in_ingest_batch, "time": base_time}
+    controller.emit(data, "tal")
 
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [
         {
             "col1": 10,
-            "number_of_stuff_sum_1h": 27,
-            "number_of_stuff_sum_2h": 40,
-            "number_of_stuff_sum_24h": 55,
-            "number_of_stuff_min_1h": 8,
-            "number_of_stuff_min_2h": 6,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 10,
-            "number_of_stuff_max_2h": 10,
-            "number_of_stuff_max_24h": 10,
-            "new_aggr_min_3h": 10,
-            "new_aggr_max_3h": 10,
+            "new_aggr_max_3h": 10.0,
+            "new_aggr_min_3h": 10.0,
             "number_of_stuff_avg_1h": 9.0,
-            "number_of_stuff_avg_2h": 8.0,
             "number_of_stuff_avg_24h": 5.0,
-            "col1": 10,
+            "number_of_stuff_avg_2h": 8.0,
+            "number_of_stuff_max_1h": 10.0,
+            "number_of_stuff_max_24h": 10.0,
+            "number_of_stuff_max_2h": 10.0,
+            "number_of_stuff_min_1h": 8.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 6.0,
+            "number_of_stuff_sum_1h": 27.0,
+            "number_of_stuff_sum_24h": 55.0,
+            "number_of_stuff_sum_2h": 40.0,
+            "time": datetime.datetime(2020, 7, 22, 1, 50, tzinfo=datetime.timezone.utc),
         }
     ]
 
@@ -2797,6 +3025,7 @@ def test_invalid_modify_schema(setup_teardown_test):
                     )
                 ],
                 table,
+                time_field="time",
             ),
             NoSqlTarget(table),
             Reduce([], lambda acc, x: append_return(acc, x)),
@@ -2805,161 +3034,171 @@ def test_invalid_modify_schema(setup_teardown_test):
 
     items_in_ingest_batch = 10
     for i in range(items_in_ingest_batch):
-        data = {"col1": i}
-        controller.emit(data, "tal", test_base_time + timedelta(minutes=25 * i))
+        data = {"col1": i, "time": test_base_time + timedelta(minutes=25 * i)}
+        controller.emit(data, "tal")
 
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [
         {
             "col1": 0,
-            "number_of_stuff_sum_1h": 0,
-            "number_of_stuff_sum_2h": 0,
-            "number_of_stuff_sum_24h": 0,
-            "number_of_stuff_min_1h": 0,
-            "number_of_stuff_min_2h": 0,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 0,
-            "number_of_stuff_max_2h": 0,
-            "number_of_stuff_max_24h": 0,
             "number_of_stuff_avg_1h": 0.0,
-            "number_of_stuff_avg_2h": 0.0,
             "number_of_stuff_avg_24h": 0.0,
+            "number_of_stuff_avg_2h": 0.0,
+            "number_of_stuff_max_1h": 0.0,
+            "number_of_stuff_max_24h": 0.0,
+            "number_of_stuff_max_2h": 0.0,
+            "number_of_stuff_min_1h": 0.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 0.0,
+            "number_of_stuff_sum_1h": 0.0,
+            "number_of_stuff_sum_24h": 0.0,
+            "number_of_stuff_sum_2h": 0.0,
+            "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
         },
         {
             "col1": 1,
-            "number_of_stuff_sum_1h": 1,
-            "number_of_stuff_sum_2h": 1,
-            "number_of_stuff_sum_24h": 1,
-            "number_of_stuff_min_1h": 0,
-            "number_of_stuff_min_2h": 0,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 1,
-            "number_of_stuff_max_2h": 1,
-            "number_of_stuff_max_24h": 1,
             "number_of_stuff_avg_1h": 0.5,
-            "number_of_stuff_avg_2h": 0.5,
             "number_of_stuff_avg_24h": 0.5,
+            "number_of_stuff_avg_2h": 0.5,
+            "number_of_stuff_max_1h": 1.0,
+            "number_of_stuff_max_24h": 1.0,
+            "number_of_stuff_max_2h": 1.0,
+            "number_of_stuff_min_1h": 0.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 0.0,
+            "number_of_stuff_sum_1h": 1.0,
+            "number_of_stuff_sum_24h": 1.0,
+            "number_of_stuff_sum_2h": 1.0,
+            "time": datetime.datetime(2020, 7, 21, 22, 5, tzinfo=datetime.timezone.utc),
         },
         {
             "col1": 2,
-            "number_of_stuff_sum_1h": 3,
-            "number_of_stuff_sum_2h": 3,
-            "number_of_stuff_sum_24h": 3,
-            "number_of_stuff_min_1h": 0,
-            "number_of_stuff_min_2h": 0,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 2,
-            "number_of_stuff_max_2h": 2,
-            "number_of_stuff_max_24h": 2,
             "number_of_stuff_avg_1h": 1.0,
-            "number_of_stuff_avg_2h": 1.0,
             "number_of_stuff_avg_24h": 1.0,
+            "number_of_stuff_avg_2h": 1.0,
+            "number_of_stuff_max_1h": 2.0,
+            "number_of_stuff_max_24h": 2.0,
+            "number_of_stuff_max_2h": 2.0,
+            "number_of_stuff_min_1h": 0.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 0.0,
+            "number_of_stuff_sum_1h": 3.0,
+            "number_of_stuff_sum_24h": 3.0,
+            "number_of_stuff_sum_2h": 3.0,
+            "time": datetime.datetime(2020, 7, 21, 22, 30, tzinfo=datetime.timezone.utc),
         },
         {
             "col1": 3,
-            "number_of_stuff_sum_1h": 6,
-            "number_of_stuff_sum_2h": 6,
-            "number_of_stuff_sum_24h": 6,
-            "number_of_stuff_min_1h": 1,
-            "number_of_stuff_min_2h": 0,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 3,
-            "number_of_stuff_max_2h": 3,
-            "number_of_stuff_max_24h": 3,
             "number_of_stuff_avg_1h": 2.0,
-            "number_of_stuff_avg_2h": 1.5,
             "number_of_stuff_avg_24h": 1.5,
+            "number_of_stuff_avg_2h": 1.5,
+            "number_of_stuff_max_1h": 3.0,
+            "number_of_stuff_max_24h": 3.0,
+            "number_of_stuff_max_2h": 3.0,
+            "number_of_stuff_min_1h": 1.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 0.0,
+            "number_of_stuff_sum_1h": 6.0,
+            "number_of_stuff_sum_24h": 6.0,
+            "number_of_stuff_sum_2h": 6.0,
+            "time": datetime.datetime(2020, 7, 21, 22, 55, tzinfo=datetime.timezone.utc),
         },
         {
             "col1": 4,
-            "number_of_stuff_sum_1h": 9,
-            "number_of_stuff_sum_2h": 10,
-            "number_of_stuff_sum_24h": 10,
-            "number_of_stuff_min_1h": 2,
-            "number_of_stuff_min_2h": 0,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 4,
-            "number_of_stuff_max_2h": 4,
-            "number_of_stuff_max_24h": 4,
             "number_of_stuff_avg_1h": 3.0,
-            "number_of_stuff_avg_2h": 2.0,
             "number_of_stuff_avg_24h": 2.0,
+            "number_of_stuff_avg_2h": 2.0,
+            "number_of_stuff_max_1h": 4.0,
+            "number_of_stuff_max_24h": 4.0,
+            "number_of_stuff_max_2h": 4.0,
+            "number_of_stuff_min_1h": 2.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 0.0,
+            "number_of_stuff_sum_1h": 9.0,
+            "number_of_stuff_sum_24h": 10.0,
+            "number_of_stuff_sum_2h": 10.0,
+            "time": datetime.datetime(2020, 7, 21, 23, 20, tzinfo=datetime.timezone.utc),
         },
         {
             "col1": 5,
-            "number_of_stuff_sum_1h": 12,
-            "number_of_stuff_sum_2h": 15,
-            "number_of_stuff_sum_24h": 15,
-            "number_of_stuff_min_1h": 3,
-            "number_of_stuff_min_2h": 1,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 5,
-            "number_of_stuff_max_2h": 5,
-            "number_of_stuff_max_24h": 5,
             "number_of_stuff_avg_1h": 4.0,
-            "number_of_stuff_avg_2h": 3.0,
             "number_of_stuff_avg_24h": 2.5,
+            "number_of_stuff_avg_2h": 3.0,
+            "number_of_stuff_max_1h": 5.0,
+            "number_of_stuff_max_24h": 5.0,
+            "number_of_stuff_max_2h": 5.0,
+            "number_of_stuff_min_1h": 3.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 1.0,
+            "number_of_stuff_sum_1h": 12.0,
+            "number_of_stuff_sum_24h": 15.0,
+            "number_of_stuff_sum_2h": 15.0,
+            "time": datetime.datetime(2020, 7, 21, 23, 45, tzinfo=datetime.timezone.utc),
         },
         {
             "col1": 6,
-            "number_of_stuff_sum_1h": 15,
-            "number_of_stuff_sum_2h": 20,
-            "number_of_stuff_sum_24h": 21,
-            "number_of_stuff_min_1h": 4,
-            "number_of_stuff_min_2h": 2,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 6,
-            "number_of_stuff_max_2h": 6,
-            "number_of_stuff_max_24h": 6,
             "number_of_stuff_avg_1h": 5.0,
-            "number_of_stuff_avg_2h": 4.0,
             "number_of_stuff_avg_24h": 3.0,
+            "number_of_stuff_avg_2h": 4.0,
+            "number_of_stuff_max_1h": 6.0,
+            "number_of_stuff_max_24h": 6.0,
+            "number_of_stuff_max_2h": 6.0,
+            "number_of_stuff_min_1h": 4.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 2.0,
+            "number_of_stuff_sum_1h": 15.0,
+            "number_of_stuff_sum_24h": 21.0,
+            "number_of_stuff_sum_2h": 20.0,
+            "time": datetime.datetime(2020, 7, 22, 0, 10, tzinfo=datetime.timezone.utc),
         },
         {
             "col1": 7,
-            "number_of_stuff_sum_1h": 18,
-            "number_of_stuff_sum_2h": 25,
-            "number_of_stuff_sum_24h": 28,
-            "number_of_stuff_min_1h": 5,
-            "number_of_stuff_min_2h": 3,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 7,
-            "number_of_stuff_max_2h": 7,
-            "number_of_stuff_max_24h": 7,
             "number_of_stuff_avg_1h": 6.0,
-            "number_of_stuff_avg_2h": 5.0,
             "number_of_stuff_avg_24h": 3.5,
+            "number_of_stuff_avg_2h": 5.0,
+            "number_of_stuff_max_1h": 7.0,
+            "number_of_stuff_max_24h": 7.0,
+            "number_of_stuff_max_2h": 7.0,
+            "number_of_stuff_min_1h": 5.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 3.0,
+            "number_of_stuff_sum_1h": 18.0,
+            "number_of_stuff_sum_24h": 28.0,
+            "number_of_stuff_sum_2h": 25.0,
+            "time": datetime.datetime(2020, 7, 22, 0, 35, tzinfo=datetime.timezone.utc),
         },
         {
             "col1": 8,
-            "number_of_stuff_sum_1h": 21,
-            "number_of_stuff_sum_2h": 30,
-            "number_of_stuff_sum_24h": 36,
-            "number_of_stuff_min_1h": 6,
-            "number_of_stuff_min_2h": 4,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 8,
-            "number_of_stuff_max_2h": 8,
-            "number_of_stuff_max_24h": 8,
             "number_of_stuff_avg_1h": 7.0,
-            "number_of_stuff_avg_2h": 6.0,
             "number_of_stuff_avg_24h": 4.0,
+            "number_of_stuff_avg_2h": 6.0,
+            "number_of_stuff_max_1h": 8.0,
+            "number_of_stuff_max_24h": 8.0,
+            "number_of_stuff_max_2h": 8.0,
+            "number_of_stuff_min_1h": 6.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 4.0,
+            "number_of_stuff_sum_1h": 21.0,
+            "number_of_stuff_sum_24h": 36.0,
+            "number_of_stuff_sum_2h": 30.0,
+            "time": datetime.datetime(2020, 7, 22, 1, 0, tzinfo=datetime.timezone.utc),
         },
         {
             "col1": 9,
-            "number_of_stuff_sum_1h": 24,
-            "number_of_stuff_sum_2h": 35,
-            "number_of_stuff_sum_24h": 45,
-            "number_of_stuff_min_1h": 7,
-            "number_of_stuff_min_2h": 5,
-            "number_of_stuff_min_24h": 0,
-            "number_of_stuff_max_1h": 9,
-            "number_of_stuff_max_2h": 9,
-            "number_of_stuff_max_24h": 9,
             "number_of_stuff_avg_1h": 8.0,
-            "number_of_stuff_avg_2h": 7.0,
             "number_of_stuff_avg_24h": 4.5,
+            "number_of_stuff_avg_2h": 7.0,
+            "number_of_stuff_max_1h": 9.0,
+            "number_of_stuff_max_24h": 9.0,
+            "number_of_stuff_max_2h": 9.0,
+            "number_of_stuff_min_1h": 7.0,
+            "number_of_stuff_min_24h": 0.0,
+            "number_of_stuff_min_2h": 5.0,
+            "number_of_stuff_sum_1h": 24.0,
+            "number_of_stuff_sum_24h": 45.0,
+            "number_of_stuff_sum_2h": 35.0,
+            "time": datetime.datetime(2020, 7, 22, 1, 25, tzinfo=datetime.timezone.utc),
         },
     ]
 
@@ -2992,14 +3231,15 @@ def test_invalid_modify_schema(setup_teardown_test):
                         )
                     ],
                     other_table,
+                    time_field="time",
                 ),
                 Reduce([], lambda acc, x: append_return(acc, x)),
             ]
         ).run()
 
         base_time = test_base_time + timedelta(minutes=25 * items_in_ingest_batch)
-        data = {"col1": items_in_ingest_batch}
-        controller.emit(data, "tal", base_time)
+        data = {"col1": items_in_ingest_batch, "time": base_time}
+        controller.emit(data, "tal")
 
         controller.terminate()
         controller.await_termination()
@@ -3025,6 +3265,7 @@ def test_query_aggregate_by_key_sliding_window_new_time_exceeds_stored_window(
                     )
                 ],
                 table,
+                time_field="time",
             ),
             NoSqlTarget(table),
             Reduce([], lambda acc, x: append_return(acc, x)),
@@ -3033,15 +3274,30 @@ def test_query_aggregate_by_key_sliding_window_new_time_exceeds_stored_window(
 
     items_in_ingest_batch = 3
     for i in range(items_in_ingest_batch):
-        data = {"col1": i}
-        controller.emit(data, "tal", test_base_time + timedelta(hours=i))
+        data = {"col1": i, "time": test_base_time + timedelta(hours=i)}
+        controller.emit(data, "tal")
 
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [
-        {"col1": 0, "number_of_stuff_count_30m": 1, "number_of_stuff_count_2h": 1},
-        {"col1": 1, "number_of_stuff_count_30m": 1, "number_of_stuff_count_2h": 2},
-        {"col1": 2, "number_of_stuff_count_30m": 1, "number_of_stuff_count_2h": 2},
+        {
+            "col1": 0,
+            "number_of_stuff_count_2h": 1.0,
+            "number_of_stuff_count_30m": 1.0,
+            "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "col1": 1,
+            "number_of_stuff_count_2h": 2.0,
+            "number_of_stuff_count_30m": 1.0,
+            "time": datetime.datetime(2020, 7, 21, 22, 40, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "col1": 2,
+            "number_of_stuff_count_2h": 2.0,
+            "number_of_stuff_count_30m": 1.0,
+            "time": datetime.datetime(2020, 7, 21, 23, 40, tzinfo=datetime.timezone.utc),
+        },
     ]
 
     assert (
@@ -3052,18 +3308,25 @@ def test_query_aggregate_by_key_sliding_window_new_time_exceeds_stored_window(
     controller = build_flow(
         [
             SyncEmitSource(),
-            QueryByKey(["number_of_stuff_count_30m", "number_of_stuff_count_2h"], other_table),
+            QueryByKey(["number_of_stuff_count_30m", "number_of_stuff_count_2h"], other_table, time_field="time"),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
     ).run()
 
     base_time = test_base_time + timedelta(hours=items_in_ingest_batch)
-    data = {"col1": items_in_ingest_batch}
-    controller.emit(data, "tal", base_time)
+    data = {"col1": items_in_ingest_batch, "time": base_time}
+    controller.emit(data, "tal")
 
     controller.terminate()
     actual = controller.await_termination()
-    expected_results = [{"col1": 3, "number_of_stuff_count_30m": 0, "number_of_stuff_count_2h": 1}]
+    expected_results = [
+        {
+            "col1": 3,
+            "number_of_stuff_count_2h": 1.0,
+            "number_of_stuff_count_30m": 0.0,
+            "time": datetime.datetime(2020, 7, 22, 0, 40, tzinfo=datetime.timezone.utc),
+        }
+    ]
 
     assert (
         actual == expected_results
@@ -3088,6 +3351,7 @@ def test_query_aggregate_by_key_fixed_window_new_time_exceeds_stored_window(
                     )
                 ],
                 table,
+                time_field="time",
             ),
             NoSqlTarget(table),
             Reduce([], lambda acc, x: append_return(acc, x)),
@@ -3096,15 +3360,30 @@ def test_query_aggregate_by_key_fixed_window_new_time_exceeds_stored_window(
 
     items_in_ingest_batch = 3
     for i in range(items_in_ingest_batch):
-        data = {"col1": i}
-        controller.emit(data, "tal", test_base_time + timedelta(minutes=45 * i))
+        data = {"col1": i, "time": test_base_time + timedelta(minutes=45 * i)}
+        controller.emit(data, "tal")
 
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [
-        {"col1": 0, "number_of_stuff_count_30m": 1, "number_of_stuff_count_2h": 1},
-        {"col1": 1, "number_of_stuff_count_30m": 1, "number_of_stuff_count_2h": 1},
-        {"col1": 2, "number_of_stuff_count_30m": 1, "number_of_stuff_count_2h": 2},
+        {
+            "col1": 0,
+            "number_of_stuff_count_2h": 1.0,
+            "number_of_stuff_count_30m": 1.0,
+            "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "col1": 1,
+            "number_of_stuff_count_2h": 1.0,
+            "number_of_stuff_count_30m": 1.0,
+            "time": datetime.datetime(2020, 7, 21, 22, 25, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "col1": 2,
+            "number_of_stuff_count_2h": 2.0,
+            "number_of_stuff_count_30m": 1.0,
+            "time": datetime.datetime(2020, 7, 21, 23, 10, tzinfo=datetime.timezone.utc),
+        },
     ]
 
     assert (
@@ -3115,18 +3394,25 @@ def test_query_aggregate_by_key_fixed_window_new_time_exceeds_stored_window(
     controller = build_flow(
         [
             SyncEmitSource(),
-            QueryByKey(["number_of_stuff_count_30m", "number_of_stuff_count_2h"], other_table),
+            QueryByKey(["number_of_stuff_count_30m", "number_of_stuff_count_2h"], other_table, time_field="time"),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
     ).run()
 
     base_time = test_base_time + timedelta(hours=items_in_ingest_batch)
-    data = {"col1": items_in_ingest_batch}
-    controller.emit(data, "tal", base_time)
+    data = {"col1": items_in_ingest_batch, "time": base_time}
+    controller.emit(data, "tal")
 
     controller.terminate()
     actual = controller.await_termination()
-    expected_results = [{"col1": 3, "number_of_stuff_count_30m": 0, "number_of_stuff_count_2h": 0}]
+    expected_results = [
+        {
+            "col1": 3,
+            "number_of_stuff_count_2h": 0.0,
+            "number_of_stuff_count_30m": 0.0,
+            "time": datetime.datetime(2020, 7, 22, 0, 40, tzinfo=datetime.timezone.utc),
+        }
+    ]
 
     assert (
         actual == expected_results
@@ -3151,6 +3437,7 @@ def test_sliding_query_time_exceeds_stored_window_by_more_than_window(
                     )
                 ],
                 table,
+                time_field="time",
             ),
             NoSqlTarget(table),
             Reduce([], lambda acc, x: append_return(acc, x)),
@@ -3159,15 +3446,30 @@ def test_sliding_query_time_exceeds_stored_window_by_more_than_window(
 
     items_in_ingest_batch = 3
     for i in range(items_in_ingest_batch):
-        data = {"col1": i}
-        controller.emit(data, "tal", test_base_time + timedelta(hours=i))
+        data = {"col1": i, "time": test_base_time + timedelta(hours=i)}
+        controller.emit(data, "tal")
 
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [
-        {"col1": 0, "number_of_stuff_count_30m": 1, "number_of_stuff_count_2h": 1},
-        {"col1": 1, "number_of_stuff_count_30m": 1, "number_of_stuff_count_2h": 2},
-        {"col1": 2, "number_of_stuff_count_30m": 1, "number_of_stuff_count_2h": 2},
+        {
+            "col1": 0,
+            "number_of_stuff_count_2h": 1.0,
+            "number_of_stuff_count_30m": 1.0,
+            "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "col1": 1,
+            "number_of_stuff_count_2h": 2.0,
+            "number_of_stuff_count_30m": 1.0,
+            "time": datetime.datetime(2020, 7, 21, 22, 40, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "col1": 2,
+            "number_of_stuff_count_2h": 2.0,
+            "number_of_stuff_count_30m": 1.0,
+            "time": datetime.datetime(2020, 7, 21, 23, 40, tzinfo=datetime.timezone.utc),
+        },
     ]
 
     assert (
@@ -3178,18 +3480,25 @@ def test_sliding_query_time_exceeds_stored_window_by_more_than_window(
     controller = build_flow(
         [
             SyncEmitSource(),
-            QueryByKey(["number_of_stuff_count_30m", "number_of_stuff_count_2h"], other_table),
+            QueryByKey(["number_of_stuff_count_30m", "number_of_stuff_count_2h"], other_table, time_field="time"),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
     ).run()
 
     base_time = test_base_time + timedelta(days=10)
-    data = {"col1": items_in_ingest_batch}
-    controller.emit(data, "tal", base_time)
+    data = {"col1": items_in_ingest_batch, "time": base_time}
+    controller.emit(data, "tal")
 
     controller.terminate()
     actual = controller.await_termination()
-    expected_results = [{"col1": 3, "number_of_stuff_count_30m": 0, "number_of_stuff_count_2h": 0}]
+    expected_results = [
+        {
+            "col1": 3,
+            "number_of_stuff_count_2h": 0.0,
+            "number_of_stuff_count_30m": 0.0,
+            "time": datetime.datetime(2020, 7, 31, 21, 40, tzinfo=datetime.timezone.utc),
+        }
+    ]
 
     assert (
         actual == expected_results
@@ -3214,6 +3523,7 @@ def test_fixed_query_time_exceeds_stored_window_by_more_than_window(
                     )
                 ],
                 table,
+                time_field="time",
             ),
             NoSqlTarget(table),
             Reduce([], lambda acc, x: append_return(acc, x)),
@@ -3222,15 +3532,30 @@ def test_fixed_query_time_exceeds_stored_window_by_more_than_window(
 
     items_in_ingest_batch = 3
     for i in range(items_in_ingest_batch):
-        data = {"col1": i}
-        controller.emit(data, "tal", test_base_time + timedelta(minutes=45 * i))
+        data = {"col1": i, "time": test_base_time + timedelta(minutes=45 * i)}
+        controller.emit(data, "tal")
 
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [
-        {"col1": 0, "number_of_stuff_count_30m": 1, "number_of_stuff_count_2h": 1},
-        {"col1": 1, "number_of_stuff_count_30m": 1, "number_of_stuff_count_2h": 1},
-        {"col1": 2, "number_of_stuff_count_30m": 1, "number_of_stuff_count_2h": 2},
+        {
+            "col1": 0,
+            "number_of_stuff_count_2h": 1.0,
+            "number_of_stuff_count_30m": 1.0,
+            "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "col1": 1,
+            "number_of_stuff_count_2h": 1.0,
+            "number_of_stuff_count_30m": 1.0,
+            "time": datetime.datetime(2020, 7, 21, 22, 25, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "col1": 2,
+            "number_of_stuff_count_2h": 2.0,
+            "number_of_stuff_count_30m": 1.0,
+            "time": datetime.datetime(2020, 7, 21, 23, 10, tzinfo=datetime.timezone.utc),
+        },
     ]
 
     assert (
@@ -3241,18 +3566,29 @@ def test_fixed_query_time_exceeds_stored_window_by_more_than_window(
     controller = build_flow(
         [
             SyncEmitSource(),
-            QueryByKey(["number_of_stuff_count_30m", "number_of_stuff_count_2h"], other_table),
+            QueryByKey(
+                ["number_of_stuff_count_30m", "number_of_stuff_count_2h"],
+                other_table,
+                time_field="time",
+            ),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
     ).run()
 
     base_time = test_base_time + timedelta(days=10)
-    data = {"col1": items_in_ingest_batch}
-    controller.emit(data, "tal", base_time)
+    data = {"col1": items_in_ingest_batch, "time": base_time}
+    controller.emit(data, "tal")
 
     controller.terminate()
     actual = controller.await_termination()
-    expected_results = [{"col1": 3, "number_of_stuff_count_30m": 0, "number_of_stuff_count_2h": 0}]
+    expected_results = [
+        {
+            "col1": 3,
+            "number_of_stuff_count_2h": 0.0,
+            "number_of_stuff_count_30m": 0.0,
+            "time": datetime.datetime(2020, 7, 31, 21, 40, tzinfo=datetime.timezone.utc),
+        }
+    ]
 
     assert (
         actual == expected_results
@@ -3274,6 +3610,7 @@ def test_write_to_table_reuse(setup_teardown_test):
                     )
                 ],
                 table,
+                time_field="time",
             ),
             NoSqlTarget(table),
             Reduce([], lambda acc, x: append_return(acc, x)),
@@ -3283,25 +3620,65 @@ def test_write_to_table_reuse(setup_teardown_test):
 
     expected_results = [
         [
-            {"number_of_stuff_count_30m": 1, "number_of_stuff_count_2h": 1, "col1": 0},
-            {"number_of_stuff_count_30m": 1, "number_of_stuff_count_2h": 1, "col1": 1},
-            {"number_of_stuff_count_30m": 1, "number_of_stuff_count_2h": 2, "col1": 2},
+            {
+                "col1": 0,
+                "number_of_stuff_count_2h": 1.0,
+                "number_of_stuff_count_30m": 1.0,
+                "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
+            },
+            {
+                "col1": 1,
+                "number_of_stuff_count_2h": 1.0,
+                "number_of_stuff_count_30m": 1.0,
+                "time": datetime.datetime(2020, 7, 21, 22, 25, tzinfo=datetime.timezone.utc),
+            },
+            {
+                "col1": 2,
+                "number_of_stuff_count_2h": 2.0,
+                "number_of_stuff_count_30m": 1.0,
+                "time": datetime.datetime(2020, 7, 21, 23, 10, tzinfo=datetime.timezone.utc),
+            },
         ],
         [
-            {"number_of_stuff_count_30m": 1, "number_of_stuff_count_2h": 1, "col1": 0},
-            {"number_of_stuff_count_30m": 1, "number_of_stuff_count_2h": 1, "col1": 1},
-            {"number_of_stuff_count_30m": 1, "number_of_stuff_count_2h": 2, "col1": 2},
-            {"col1": 0},
-            {"number_of_stuff_count_30m": 2, "number_of_stuff_count_2h": 2, "col1": 1},
-            {"number_of_stuff_count_30m": 2, "number_of_stuff_count_2h": 3, "col1": 2},
+            {
+                "col1": 0,
+                "number_of_stuff_count_2h": 1.0,
+                "number_of_stuff_count_30m": 1.0,
+                "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
+            },
+            {
+                "col1": 1,
+                "number_of_stuff_count_2h": 1.0,
+                "number_of_stuff_count_30m": 1.0,
+                "time": datetime.datetime(2020, 7, 21, 22, 25, tzinfo=datetime.timezone.utc),
+            },
+            {
+                "col1": 2,
+                "number_of_stuff_count_2h": 2.0,
+                "number_of_stuff_count_30m": 1.0,
+                "time": datetime.datetime(2020, 7, 21, 23, 10, tzinfo=datetime.timezone.utc),
+            },
+            {"col1": 0, "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc)},
+            {
+                "col1": 1,
+                "number_of_stuff_count_2h": 2.0,
+                "number_of_stuff_count_30m": 2.0,
+                "time": datetime.datetime(2020, 7, 21, 22, 25, tzinfo=datetime.timezone.utc),
+            },
+            {
+                "col1": 2,
+                "number_of_stuff_count_2h": 3.0,
+                "number_of_stuff_count_30m": 2.0,
+                "time": datetime.datetime(2020, 7, 21, 23, 10, tzinfo=datetime.timezone.utc),
+            },
         ],
     ]
 
     for iteration in range(2):
         controller = flow.run()
         for i in range(items_in_ingest_batch):
-            data = {"col1": i}
-            controller.emit(data, "tal", test_base_time + timedelta(minutes=45 * i))
+            data = {"col1": i, "time": test_base_time + timedelta(minutes=45 * i)}
+            controller.emit(data, "tal")
 
         controller.terminate()
         actual = controller.await_termination()
@@ -3338,6 +3715,7 @@ def test_aggregate_multiple_keys(setup_teardown_test):
                     )
                 ],
                 table,
+                time_field="time",
                 emit_policy=EmitAfterMaxEvent(1),
             ),
             NoSqlTarget(table),
@@ -3350,42 +3728,48 @@ def test_aggregate_multiple_keys(setup_teardown_test):
     controller = build_flow(
         [
             SyncEmitSource(),
-            QueryByKey(["number_of_stuff_sum_1h"], other_table, key=["first_name", "last_name"]),
+            QueryByKey(
+                ["number_of_stuff_sum_1h"], other_table, key_field=["first_name", "last_name"], time_field="time"
+            ),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
     ).run()
 
     controller.emit(
-        {"first_name": "moshe", "last_name": "cohen", "some_data": 4},
+        {"first_name": "moshe", "last_name": "cohen", "some_data": 4, "time": test_base_time},
         ["moshe", "cohen"],
-        event_time=test_base_time,
     )
     controller.emit(
-        {"first_name": "moshe", "last_name": "levi", "some_data": 5},
+        {"first_name": "moshe", "last_name": "levi", "some_data": 5, "time": test_base_time},
         ["moshe", "levi"],
-        event_time=test_base_time,
     )
     controller.emit(
-        {"first_name": "yosi", "last_name": "levi", "some_data": 6},
+        {"first_name": "yosi", "last_name": "levi", "some_data": 6, "time": test_base_time},
         ["yosi", "levi"],
-        event_time=test_base_time,
     )
 
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [
         {
-            "number_of_stuff_sum_1h": 1.0,
             "first_name": "moshe",
             "last_name": "cohen",
+            "number_of_stuff_sum_1h": 1.0,
             "some_data": 4,
+            "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
         },
-        {"first_name": "moshe", "last_name": "levi", "some_data": 5},
         {
-            "number_of_stuff_sum_1h": 5.0,
+            "first_name": "moshe",
+            "last_name": "levi",
+            "some_data": 5,
+            "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
+        },
+        {
             "first_name": "yosi",
             "last_name": "levi",
+            "number_of_stuff_sum_1h": 5.0,
             "some_data": 6,
+            "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
         },
     ]
 
@@ -3424,6 +3808,7 @@ def test_aggregate_multiple_keys_and_aggregationless_query(setup_teardown_test):
                     )
                 ],
                 table,
+                time_field="time",
                 emit_policy=EmitAfterMaxEvent(1),
             ),
             NoSqlTarget(table),
@@ -3437,25 +3822,24 @@ def test_aggregate_multiple_keys_and_aggregationless_query(setup_teardown_test):
     controller = build_flow(
         [
             SyncEmitSource(),
-            QueryByKey(["number_of_stuff_sum_1h"], other_table, key=["first_name", "last_name"]),
+            QueryByKey(
+                ["number_of_stuff_sum_1h"], other_table, key_field=["first_name", "last_name"], time_field="time"
+            ),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
     ).run()
 
     controller.emit(
-        {"first_name": "moshe", "last_name": "cohen", "some_data": 4},
+        {"first_name": "moshe", "last_name": "cohen", "some_data": 4, "time": test_base_time},
         ["moshe", "cohen"],
-        event_time=test_base_time,
     )
     controller.emit(
-        {"first_name": "moshe", "last_name": "levi", "some_data": 5},
+        {"first_name": "moshe", "last_name": "levi", "some_data": 5, "time": test_base_time},
         ["moshe", "levi"],
-        event_time=test_base_time,
     )
     controller.emit(
-        {"first_name": "yosi", "last_name": "levi", "some_data": 6},
+        {"first_name": "yosi", "last_name": "levi", "some_data": 6, "time": test_base_time},
         ["yosi", "levi"],
-        event_time=test_base_time,
     )
 
     controller.terminate()
@@ -3466,8 +3850,14 @@ def test_aggregate_multiple_keys_and_aggregationless_query(setup_teardown_test):
             "first_name": "moshe",
             "last_name": "cohen",
             "some_data": 4,
+            "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
         },
-        {"first_name": "moshe", "last_name": "levi", "some_data": 5},
+        {
+            "first_name": "moshe",
+            "last_name": "levi",
+            "some_data": 5,
+            "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
+        },
         # number_of_stuff_sum_1h is 2 because the events were inserted out of order, and reading back
         # aggregationless takes the value relative to the event time of the last event that was inserted.
         {
@@ -3475,6 +3865,7 @@ def test_aggregate_multiple_keys_and_aggregationless_query(setup_teardown_test):
             "first_name": "yosi",
             "last_name": "levi",
             "some_data": 6,
+            "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
         },
     ]
 
@@ -3512,6 +3903,7 @@ def test_read_non_existing_key(setup_teardown_test):
                     )
                 ],
                 table,
+                time_field="time",
             ),
             NoSqlTarget(table),
         ]
@@ -3523,7 +3915,11 @@ def test_read_non_existing_key(setup_teardown_test):
     controller = build_flow(
         [
             SyncEmitSource(),
-            QueryByKey(["number_of_stuff_sum_1h"], other_table, keys="first_name"),
+            QueryByKey(
+                ["number_of_stuff_sum_1h"],
+                other_table,
+                key_field="first_name",
+            ),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
     ).run()
@@ -3533,7 +3929,7 @@ def test_read_non_existing_key(setup_teardown_test):
     controller.terminate()
     actual = controller.await_termination()
 
-    assert "number_of_stuff_sum_1h" not in actual[0]
+    assert actual == [None]
 
 
 def test_concurrent_updates_to_kv_table(setup_teardown_test):
@@ -3553,6 +3949,7 @@ def test_concurrent_updates_to_kv_table(setup_teardown_test):
             AggregateByKey(
                 [FieldAggregator("attr1", "attr1", ["sum"], SlidingWindows(["1h"], "10m"))],
                 table1,
+                time_field="time",
             ),
             NoSqlTarget(table1),
         ]
@@ -3563,6 +3960,7 @@ def test_concurrent_updates_to_kv_table(setup_teardown_test):
             AggregateByKey(
                 [FieldAggregator("attr2", "attr2", ["sum"], SlidingWindows(["1h"], "10m"))],
                 table2,
+                time_field="time",
             ),
             NoSqlTarget(table2),
         ]
@@ -3570,8 +3968,8 @@ def test_concurrent_updates_to_kv_table(setup_teardown_test):
 
     try:
         for i in range(10):
-            controller1.emit({"attr1": i}, key="onekey", event_time=test_base_time)
-            controller2.emit({"attr2": i}, key="onekey", event_time=test_base_time)
+            controller1.emit({"attr1": i, "time": test_base_time}, key="onekey")
+            controller2.emit({"attr2": i, "time": test_base_time}, key="onekey")
     finally:
         controller1.terminate()
         controller2.terminate()
@@ -3582,17 +3980,24 @@ def test_concurrent_updates_to_kv_table(setup_teardown_test):
     controller = build_flow(
         [
             SyncEmitSource(),
-            QueryByKey(["attr1", "attr2"], table, key="mykey"),
+            QueryByKey(["attr1", "attr2"], table, key_field="mykey", time_field="time"),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
     ).run()
 
-    controller.emit({"mykey": "onekey"}, event_time=test_base_time)
+    controller.emit({"mykey": "onekey", "time": test_base_time})
 
     controller.terminate()
     result = controller.await_termination()
 
-    assert result == [{"mykey": "onekey", "attr1": 9, "attr2": 9}]
+    assert result == [
+        {
+            "attr1": 9,
+            "attr2": 9,
+            "mykey": "onekey",
+            "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
+        }
+    ]
 
 
 def test_separate_aggregate_steps(setup_teardown_test):
@@ -3628,6 +4033,7 @@ def test_separate_aggregate_steps(setup_teardown_test):
                     )
                 ],
                 table,
+                time_field="time",
             ),
             Map(map_multiply),
             AggregateByKey(
@@ -3640,6 +4046,7 @@ def test_separate_aggregate_steps(setup_teardown_test):
                     )
                 ],
                 table,
+                time_field="time",
             ),
             NoSqlTarget(table),
         ]
@@ -3654,21 +4061,23 @@ def test_separate_aggregate_steps(setup_teardown_test):
             QueryByKey(
                 ["number_of_stuff_avg_1h", "number_of_stuff2_sum_2h"],
                 other_table,
-                key=["first_name"],
+                key_field=["first_name"],
+                time_field="time",
             ),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
     ).run()
 
-    controller.emit({"first_name": "moshe"}, ["moshe"], event_time=test_base_time)
+    controller.emit({"first_name": "moshe", "time": test_base_time}, ["moshe"])
 
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [
         {
+            "first_name": "moshe",
             "number_of_stuff2_sum_2h": 11.0,
             "number_of_stuff_avg_1h": 5.5,
-            "first_name": "moshe",
+            "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
         }
     ]
 
@@ -3690,6 +4099,7 @@ def test_write_read_first_last(setup_teardown_test):
             AggregateByKey(
                 [FieldAggregator("attr", "attr", ["first", "last"], SlidingWindows(["1h"], "10m"))],
                 table,
+                time_field="time",
             ),
             NoSqlTarget(table),
         ]
@@ -3698,14 +4108,12 @@ def test_write_read_first_last(setup_teardown_test):
     try:
         for i in range(1, 10):
             controller.emit(
-                {"attr": i},
+                {"attr": i, "time": test_base_time + timedelta(minutes=i)},
                 key="onekey",
-                event_time=test_base_time + timedelta(minutes=i),
             )
             controller.emit(
-                {"attr": i * 10},
+                {"attr": i * 10, "time": test_base_time + timedelta(hours=1, minutes=i)},
                 key="onekey",
-                event_time=test_base_time + timedelta(hours=1, minutes=i),
             )
     finally:
         controller.terminate()
@@ -3715,20 +4123,30 @@ def test_write_read_first_last(setup_teardown_test):
     controller = build_flow(
         [
             SyncEmitSource(),
-            QueryByKey(["attr_first_1h", "attr_last_1h"], table, key="mykey"),
+            QueryByKey(["attr_first_1h", "attr_last_1h"], table, key_field="mykey", time_field="time"),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
     ).run()
 
-    controller.emit({"mykey": "onekey"}, event_time=test_base_time + timedelta(minutes=10))
-    controller.emit({"mykey": "onekey"}, event_time=test_base_time + timedelta(hours=1, minutes=10))
+    controller.emit({"mykey": "onekey", "time": test_base_time + timedelta(minutes=10)})
+    controller.emit({"mykey": "onekey", "time": test_base_time + timedelta(hours=1, minutes=10)})
 
     controller.terminate()
     result = controller.await_termination()
 
     assert result == [
-        {"mykey": "onekey", "attr_first_1h": 1.0, "attr_last_1h": 9.0},
-        {"mykey": "onekey", "attr_first_1h": 10.0, "attr_last_1h": 90.0},
+        {
+            "attr_first_1h": 1.0,
+            "attr_last_1h": 9.0,
+            "mykey": "onekey",
+            "time": datetime.datetime(2020, 7, 21, 21, 50, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "attr_first_1h": 10.0,
+            "attr_last_1h": 90.0,
+            "mykey": "onekey",
+            "time": datetime.datetime(2020, 7, 21, 22, 50, tzinfo=datetime.timezone.utc),
+        },
     ]
 
 
@@ -3749,8 +4167,8 @@ def test_non_existing_key_query_by_key_from_v3io_key_is_list(setup_teardown_test
     controller = build_flow(
         [
             SyncEmitSource(),
-            QueryByKey(["color"], table, key=["name"]),
-            QueryByKey(["city"], table, key="name"),
+            QueryByKey(["color"], table, key_field=["name"]),
+            QueryByKey(["city"], table, key_field="name"),
         ]
     ).run()
 
@@ -3787,6 +4205,7 @@ def test_multiple_keys_int(setup_teardown_test):
                     )
                 ],
                 table,
+                time_field="time",
                 emit_policy=EmitAfterMaxEvent(1),
             ),
             NoSqlTarget(table),
@@ -3799,26 +4218,26 @@ def test_multiple_keys_int(setup_teardown_test):
     controller = build_flow(
         [
             SyncEmitSource(),
-            QueryByKey(["number_of_stuff_sum_1h"], other_table, key=keys),
+            QueryByKey(["number_of_stuff_sum_1h"], other_table, key_field=keys, time_field="time"),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
     ).run()
 
     controller.emit(
-        {"key_column1": 10, "key_column2": 30, "key_column3": 5, "key_column4": 50},
+        {"key_column1": 10, "key_column2": 30, "key_column3": 5, "key_column4": 50, "time": test_base_time},
         key=[10, 30, 5, 50],
-        event_time=test_base_time,
     )
 
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [
         {
-            "number_of_stuff_sum_1h": 1.0,
             "key_column1": 10,
             "key_column2": 30,
             "key_column3": 5,
             "key_column4": 50,
+            "number_of_stuff_sum_1h": 1.0,
+            "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
         }
     ]
 
@@ -3853,6 +4272,7 @@ def test_column_begin_t(setup_teardown_test):
                     )
                 ],
                 table,
+                time_field="time",
                 emit_policy=EmitAfterMaxEvent(1),
             ),
             NoSqlTarget(table),
@@ -3865,16 +4285,23 @@ def test_column_begin_t(setup_teardown_test):
     controller = build_flow(
         [
             SyncEmitSource(),
-            QueryByKey(["number_of_stuff_sum_1h", "t_col"], other_table, key=keys),
+            QueryByKey(["number_of_stuff_sum_1h", "t_col"], other_table, key_field=keys, time_field="time"),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
     ).run()
 
-    controller.emit({"key_column": "a"}, key=["a"], event_time=test_base_time)
+    controller.emit({"key_column": "a", "time": test_base_time}, key=["a"])
 
     controller.terminate()
     actual = controller.await_termination()
-    expected_results = [{"number_of_stuff_sum_1h": 1.0, "key_column": "a", "t_col": "storey"}]
+    expected_results = [
+        {
+            "key_column": "a",
+            "number_of_stuff_sum_1h": 1.0,
+            "t_col": "storey",
+            "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
+        }
+    ]
 
     assert (
         actual == expected_results
@@ -3906,6 +4333,7 @@ def test_aggregate_float_key(setup_teardown_test):
                     )
                 ],
                 table,
+                time_field="time",
                 emit_policy=EmitAfterMaxEvent(1),
             ),
             NoSqlTarget(table),
@@ -3918,16 +4346,22 @@ def test_aggregate_float_key(setup_teardown_test):
     controller = build_flow(
         [
             SyncEmitSource(),
-            QueryByKey(["number_of_stuff_sum_1h"], other_table, key=keys),
+            QueryByKey(["number_of_stuff_sum_1h"], other_table, key_field=keys, time_field="time"),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
     ).run()
 
-    controller.emit({"key_column2": 8.6}, key=[8.6], event_time=test_base_time)
+    controller.emit({"key_column2": 8.6, "time": test_base_time}, key=[8.6])
 
     controller.terminate()
     actual = controller.await_termination()
-    expected_results = [{"number_of_stuff_sum_1h": 2.0, "key_column2": 8.6}]
+    expected_results = [
+        {
+            "key_column2": 8.6,
+            "number_of_stuff_sum_1h": 2.0,
+            "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
+        }
+    ]
 
     assert (
         actual == expected_results
@@ -3947,7 +4381,8 @@ def test_aggregate_and_query_persist_before_advancing_window(setup_teardown_test
             AggregateByKey(
                 [FieldAggregator("particles", "sample", ["count"], FixedWindows(["30m"]))],
                 table,
-                key="sample",
+                key_field="sample",
+                time_field="time",
             ),
             NoSqlTarget(table),
             Reduce([], lambda acc, x: append_return(acc, x)),
@@ -3955,35 +4390,150 @@ def test_aggregate_and_query_persist_before_advancing_window(setup_teardown_test
     ).run()
 
     for i in range(22, -1, -1):
-        data = {"number": i, "sample": "U235"}
-        controller.emit(data, "tal", test_base_time - timedelta(minutes=3 * i))
+        data = {"number": i, "sample": "U235", "time": test_base_time - timedelta(minutes=3 * i)}
+        controller.emit(data, "tal")
 
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [
-        {"particles_count_30m": 1.0, "number": 22, "sample": "U235"},
-        {"particles_count_30m": 2.0, "number": 21, "sample": "U235"},
-        {"particles_count_30m": 3.0, "number": 20, "sample": "U235"},
-        {"particles_count_30m": 4.0, "number": 19, "sample": "U235"},
-        {"particles_count_30m": 5.0, "number": 18, "sample": "U235"},
-        {"particles_count_30m": 6.0, "number": 17, "sample": "U235"},
-        {"particles_count_30m": 7.0, "number": 16, "sample": "U235"},
-        {"particles_count_30m": 8.0, "number": 15, "sample": "U235"},
-        {"particles_count_30m": 9.0, "number": 14, "sample": "U235"},
-        {"particles_count_30m": 1.0, "number": 13, "sample": "U235"},
-        {"particles_count_30m": 2.0, "number": 12, "sample": "U235"},
-        {"particles_count_30m": 3.0, "number": 11, "sample": "U235"},
-        {"particles_count_30m": 4.0, "number": 10, "sample": "U235"},
-        {"particles_count_30m": 5.0, "number": 9, "sample": "U235"},
-        {"particles_count_30m": 6.0, "number": 8, "sample": "U235"},
-        {"particles_count_30m": 7.0, "number": 7, "sample": "U235"},
-        {"particles_count_30m": 8.0, "number": 6, "sample": "U235"},
-        {"particles_count_30m": 9.0, "number": 5, "sample": "U235"},
-        {"particles_count_30m": 10.0, "number": 4, "sample": "U235"},
-        {"particles_count_30m": 1.0, "number": 3, "sample": "U235"},
-        {"particles_count_30m": 2.0, "number": 2, "sample": "U235"},
-        {"particles_count_30m": 3.0, "number": 1, "sample": "U235"},
-        {"particles_count_30m": 4.0, "number": 0, "sample": "U235"},
+        {
+            "number": 22,
+            "particles_count_30m": 1.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 20, 34, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 21,
+            "particles_count_30m": 2.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 20, 37, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 20,
+            "particles_count_30m": 3.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 20, 40, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 19,
+            "particles_count_30m": 4.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 20, 43, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 18,
+            "particles_count_30m": 5.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 20, 46, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 17,
+            "particles_count_30m": 6.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 20, 49, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 16,
+            "particles_count_30m": 7.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 20, 52, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 15,
+            "particles_count_30m": 8.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 20, 55, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 14,
+            "particles_count_30m": 9.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 20, 58, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 13,
+            "particles_count_30m": 1.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 21, 1, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 12,
+            "particles_count_30m": 2.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 21, 4, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 11,
+            "particles_count_30m": 3.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 21, 7, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 10,
+            "particles_count_30m": 4.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 21, 10, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 9,
+            "particles_count_30m": 5.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 21, 13, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 8,
+            "particles_count_30m": 6.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 21, 16, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 7,
+            "particles_count_30m": 7.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 21, 19, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 6,
+            "particles_count_30m": 8.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 21, 22, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 5,
+            "particles_count_30m": 9.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 21, 25, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 4,
+            "particles_count_30m": 10.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 21, 28, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 3,
+            "particles_count_30m": 1.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 21, 31, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 2,
+            "particles_count_30m": 2.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 21, 34, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 1,
+            "particles_count_30m": 3.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 21, 37, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "number": 0,
+            "particles_count_30m": 4.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
+        },
     ]
 
     assert (
@@ -3997,18 +4547,25 @@ def test_aggregate_and_query_persist_before_advancing_window(setup_teardown_test
             QueryByKey(
                 ["particles_count_30m"],
                 table,
-                key="sample",
+                key_field="sample",
+                time_field="time",
                 fixed_window_type=FixedWindowType.LastClosedWindow,
             ),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
     ).run()
-    data = {"sample": "U235"}
-    controller.emit(data, "tal", test_base_time)
+    data = {"sample": "U235", "time": test_base_time}
+    controller.emit(data, "tal")
 
     controller.terminate()
     actual = controller.await_termination()
-    expected_results = [{"particles_count_30m": 10.0, "sample": "U235"}]
+    expected_results = [
+        {
+            "particles_count_30m": 10.0,
+            "sample": "U235",
+            "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
+        }
+    ]
     assert (
         actual == expected_results
     ), f"actual did not match expected. \n actual: {actual} \n expected: {expected_results}"
@@ -4035,6 +4592,7 @@ def test_aggregate_and_query_by_key_with_holes(setup_teardown_test):
                     )
                 ],
                 table,
+                time_field="time",
             ),
             NoSqlTarget(table),
             Reduce([], lambda acc, x: append_return(acc, x)),
@@ -4043,22 +4601,50 @@ def test_aggregate_and_query_by_key_with_holes(setup_teardown_test):
 
     items_in_ingest_batch = 5
     for i in range(items_in_ingest_batch):
-        data = {"col1": i}
-        controller.emit(data, "tal", test_base_time + timedelta(minutes=25 * i))
+        data = {"col1": i, "time": test_base_time + timedelta(minutes=25 * i)}
+        controller.emit(data, "tal")
 
-    controller.emit({"col1": 8}, "tal", test_base_time + timedelta(minutes=25 * 8))
-    controller.emit({"col1": 9}, "tal", test_base_time + timedelta(minutes=25 * 9))
+    controller.emit({"col1": 8, "time": test_base_time + timedelta(minutes=25 * 8)}, "tal")
+    controller.emit({"col1": 9, "time": test_base_time + timedelta(minutes=25 * 9)}, "tal")
 
     controller.terminate()
     actual = controller.await_termination()
     expected_results = [
-        {"number_of_stuff_sum_1h": 0, "col1": 0},
-        {"number_of_stuff_sum_1h": 1, "col1": 1},
-        {"number_of_stuff_sum_1h": 3, "col1": 2},
-        {"number_of_stuff_sum_1h": 6, "col1": 3},
-        {"number_of_stuff_sum_1h": 9, "col1": 4},
-        {"number_of_stuff_sum_1h": 8, "col1": 8},
-        {"number_of_stuff_sum_1h": 17, "col1": 9},
+        {
+            "col1": 0,
+            "number_of_stuff_sum_1h": 0.0,
+            "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "col1": 1,
+            "number_of_stuff_sum_1h": 1.0,
+            "time": datetime.datetime(2020, 7, 21, 22, 5, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "col1": 2,
+            "number_of_stuff_sum_1h": 3.0,
+            "time": datetime.datetime(2020, 7, 21, 22, 30, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "col1": 3,
+            "number_of_stuff_sum_1h": 6.0,
+            "time": datetime.datetime(2020, 7, 21, 22, 55, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "col1": 4,
+            "number_of_stuff_sum_1h": 9.0,
+            "time": datetime.datetime(2020, 7, 21, 23, 20, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "col1": 8,
+            "number_of_stuff_sum_1h": 8.0,
+            "time": datetime.datetime(2020, 7, 22, 1, 0, tzinfo=datetime.timezone.utc),
+        },
+        {
+            "col1": 9,
+            "number_of_stuff_sum_1h": 17.0,
+            "time": datetime.datetime(2020, 7, 22, 1, 25, tzinfo=datetime.timezone.utc),
+        },
     ]
 
     assert (
@@ -4069,18 +4655,24 @@ def test_aggregate_and_query_by_key_with_holes(setup_teardown_test):
     controller = build_flow(
         [
             SyncEmitSource(),
-            QueryByKey(["number_of_stuff_sum_1h"], other_table),
+            QueryByKey(["number_of_stuff_sum_1h"], other_table, time_field="time"),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
     ).run()
 
     base_time = test_base_time + timedelta(minutes=25 * 10)
-    data = {"col1": 10}
-    controller.emit(data, "tal", base_time)
+    data = {"col1": 10, "time": base_time}
+    controller.emit(data, "tal")
 
     controller.terminate()
     actual = controller.await_termination()
-    expected_results = [{"col1": 10, "number_of_stuff_sum_1h": 17}]
+    expected_results = [
+        {
+            "col1": 10,
+            "number_of_stuff_sum_1h": 17.0,
+            "time": datetime.datetime(2020, 7, 22, 1, 50, tzinfo=datetime.timezone.utc),
+        }
+    ]
 
     assert (
         actual == expected_results
@@ -4102,7 +4694,7 @@ def test_float_format(setup_teardown_test):
     table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     controller = build_flow(
         [
-            DataframeSource(data, key_field=keys, time_field="time"),
+            DataframeSource(data, key_field=keys),
             AggregateByKey(
                 [
                     FieldAggregator(
@@ -4113,28 +4705,34 @@ def test_float_format(setup_teardown_test):
                     )
                 ],
                 table,
+                time_field="time",
                 emit_policy=EmitAfterMaxEvent(1),
             ),
             NoSqlTarget(table),
         ]
     ).run()
 
-    actual = controller.await_termination()
+    controller.await_termination()
 
     other_table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     controller = build_flow(
         [
             SyncEmitSource(),
-            QueryByKey(["float_data", "number_of_stuff_sum_1h"], other_table, key=keys),
+            QueryByKey(["float_data", "number_of_stuff_sum_1h"], other_table, key_field=keys, time_field="time"),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
     ).run()
-    controller.emit({"key_column2": 8.6}, key=[8.6], event_time=test_base_time)
+    controller.emit({"key_column2": 8.6, "time": test_base_time}, key=[8.6])
     controller.terminate()
     actual = controller.await_termination()
 
     expected_results = [
-        {"float_data": floats_array[-1], "number_of_stuff_sum_1h": math.fsum(floats_array), "key_column2": 8.6}
+        {
+            "float_data": floats_array[-1],
+            "number_of_stuff_sum_1h": math.fsum(floats_array),
+            "key_column2": 8.6,
+            "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
+        }
     ]
     assert (
         actual == expected_results

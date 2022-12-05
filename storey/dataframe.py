@@ -40,7 +40,7 @@ class ReduceToDataFrame(Flow):
         index: Optional[str] = None,
         columns: Optional[List[str]] = None,
         insert_key_column_as: Optional[str] = None,
-        insert_time_column_as: Optional[str] = None,
+        insert_processing_time_column_as: Optional[str] = None,
         insert_id_column_as: Optional[str] = None,
         **kwargs,
     ):
@@ -48,13 +48,13 @@ class ReduceToDataFrame(Flow):
         self._index = index
         self._columns = columns
         self._insert_key_column_as = insert_key_column_as
-        self._insert_time_column_as = insert_time_column_as
+        self._insert_processing_time_column_as = insert_processing_time_column_as
         self._insert_id_column_as = insert_id_column_as
 
     def _init(self):
         super()._init()
         self._key_column = []
-        self._time_column = []
+        self._processing_time_column = []
         self._id_column = []
         self._data = []
 
@@ -68,8 +68,8 @@ class ReduceToDataFrame(Flow):
             if not df.empty:
                 if self._insert_key_column_as:
                     df[self._insert_key_column_as] = pd.DataFrame(self._key_column)
-                if self._insert_time_column_as:
-                    df[self._insert_time_column_as] = self._time_column
+                if self._insert_processing_time_column_as:
+                    df[self._insert_processing_time_column_as] = self._processing_time_column
                 if self._insert_id_column_as:
                     df[self._insert_id_column_as] = self._id_column
                 if self._index:
@@ -81,8 +81,8 @@ class ReduceToDataFrame(Flow):
                 self._data.append(body)
                 if self._insert_key_column_as:
                     self._key_column.append(event.key)
-                if self._insert_time_column_as:
-                    self._time_column.append(event.time)
+                if self._insert_processing_time_column_as:
+                    self._processing_time_column.append(event.processing_time)
                 if self._insert_id_column_as:
                     self._id_column.append(event.id)
             else:
