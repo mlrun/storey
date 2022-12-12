@@ -1049,7 +1049,7 @@ class SQLSource(_IterableSource, WithUUID):
                     _id = body[self._id_field]
                 else:
                     _id = self._get_uuid()
-                event = Event(body, key=key, time=time, id=_id)
+                event = Event(body, key=key, id=_id, processing_time=time)
                 await self._do_downstream(event)
             else:
                 if self.context:
