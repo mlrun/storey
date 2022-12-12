@@ -43,8 +43,6 @@ class SQLDriver(Driver):
             self._sql_connection = self._engine.connect()
 
     def _table(self, table_path):
-        import sqlalchemy as db
-
         metadata = db.MetaData()
         while table_path.startswith("/"):
             table_path = table_path[1:]
@@ -66,11 +64,8 @@ class SQLDriver(Driver):
         self._lazy_init()
 
         table = self._table(table_path)
-        try:
-            self._sql_connection.execute(table.insert(), [additional_data], autocommit=True)
+        self._sql_connection.execute(table.insert(), [additional_data], autocommit=True)
 
-        except db.exc.IntegrityError:
-            raise RuntimeError(f"Failed to get insert {additional_data} to {table_path} table because IntegrityError")
         await self.close()
 
     async def _load_aggregates_by_key(self, container, table_path, key):
