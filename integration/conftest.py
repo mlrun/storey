@@ -13,20 +13,27 @@
 # limitations under the License.
 #
 import asyncio
+import os
 
+import fakeredis
 import pytest
 
 from integration.integration_test_utils import (
-    TestContext,
     V3ioHeaders,
     _generate_table_name,
     create_temp_kv,
     create_temp_redis_kv,
     drivers_list,
+    get_redis_client,
     recursive_delete,
     remove_redis_table,
     remove_sql_tables,
 )
+from storey import V3ioDriver
+from storey.redis_driver import RedisDriver
+from storey.sql_driver import SQLDriver
+
+SQL_DB = "sqlite:///test.db"
 
 
 @pytest.fixture(params=drivers_list)
@@ -34,7 +41,7 @@ def setup_teardown_test(request):
     # Setup
     if request.param == "SQLDriver" and request.fspath.basename != "test_flow_integration.py":
         pytest.skip("SQLDriver test only in test_flow_integration")
-    test_context = TestContext(request.param, table_name=_generate_table_name())
+    test_context = ContextForTests(request.param, table_name=_generate_table_name())
 
     # Test runs
     yield test_context
@@ -53,7 +60,7 @@ def setup_teardown_test(request):
 @pytest.fixture(params=drivers_list)
 def setup_kv_teardown_test(request):
     # Setup
-    test_context = TestContext(request.param, table_name=_generate_table_name())
+    test_context = ContextForTests(request.param, table_name=_generate_table_name())
 
     if test_context.driver_name == "V3ioDriver":
         asyncio.run(create_temp_kv(test_context.table_name))
@@ -86,3 +93,67 @@ def assign_stream_teardown_test():
 
     # Teardown
     asyncio.run(recursive_delete(stream_path, V3ioHeaders()))
+
+
+# Can't call it TestContext because then pytest tries to run it as if it were a test suite
+class ContextForTests:
+    def __init__(self, driver_name: str, table_name: str):
+        self._driver_name = driver_name
+        self._table_name = table_name
+
+        self._redis_fake_server = None
+        if driver_name == "RedisDriver":
+            redis_url = os.environ.get("MLRUN_REDIS_URL")
+            if not redis_url:
+                # if we are using fakeredis, create fake-server to support tests involving multiple clients
+                self._redis_fake_server = fakeredis.FakeServer()
+        if driver_name == "SQLDriver":
+            self._sql_db_path = SQL_DB
+            self._sql_table_name = table_name.split("/")[-2]
+            self._table_name = f"{SQL_DB}/{self._sql_table_name}"
+
+    @property
+    def table_name(self):
+        return self._table_name
+
+    @property
+    def redis_fake_server(self):
+        return self._redis_fake_server
+
+    @property
+    def driver_name(self):
+        return self._driver_name
+
+    @property
+    def sql_db_path(self):
+        return self._sql_db_path
+
+    class AggregationlessV3ioDriver(V3ioDriver):
+        def supports_aggregations(self):
+            return False
+
+    class AggregationlessRedisDriver(RedisDriver):
+        def supports_aggregations(self):
+            return False
+
+    def driver(self, IsAggregationlessDriver=False, primary_key=None, *args, **kwargs):
+        if self.driver_name == "V3ioDriver":
+            v3io_driver_class = ContextForTests.AggregationlessV3ioDriver if IsAggregationlessDriver else V3ioDriver
+            return v3io_driver_class(*args, **kwargs)
+        elif self.driver_name == "RedisDriver":
+            redis_driver_class = ContextForTests.AggregationlessRedisDriver if IsAggregationlessDriver else RedisDriver
+            return redis_driver_class(
+                *args,
+                redis_client=get_redis_client(self.redis_fake_server),
+                key_prefix="storey-test:",
+                **kwargs,
+            )
+        elif self.driver_name == "SQLDriver":
+            if IsAggregationlessDriver:
+                sql_driver_class = SQLDriver
+                return sql_driver_class(db_path=SQL_DB, primary_key=primary_key)
+            else:
+                pytest.skip("SQLDriver does not support aggregation")
+        else:
+            driver_name = self.driver_name
+            raise ValueError(f'Unsupported driver name "{driver_name}"')

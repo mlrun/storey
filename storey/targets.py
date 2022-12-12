@@ -45,6 +45,7 @@ class _Writer:
         infer_columns_from_data: Optional[bool],
         index_cols: Union[str, List[Union[str, Tuple[str, str]]], None] = None,
         partition_cols: Union[str, List[str], None] = None,
+        time_field: Union[None, str, int] = None,
         retain_dict: bool = False,
         storage_options: Optional[dict] = None,
     ):
@@ -133,6 +134,8 @@ class _Writer:
                     f"{list(cols_both_partition_and_index)}"
                 )
 
+        self._time_field = time_field
+
     _type_string_to_pyarrow_type = {
         "str": pyarrow.string(),
         "int32": pyarrow.int32(),
@@ -145,6 +148,9 @@ class _Writer:
 
     def _init(self):
         self._columns = copy.copy(self._initial_columns)
+        self._col_to_index = {}
+        for index, col in enumerate(self._columns):
+            self._col_to_index[col] = index
         self._index_cols = copy.copy(self._initial_index_cols)
         self._init_partition_col_indices()
 
@@ -167,6 +173,12 @@ class _Writer:
                         self._non_partition_column_types.append(self._column_types[index])
 
     def _path_from_event(self, event):
+        event_time = event.processing_time
+        if self._time_field is not None:
+            time_field = self._time_field
+            if isinstance(event.body, list) and isinstance(time_field, str):
+                time_field = self._col_to_index[time_field]
+            event_time = event.body[time_field]
         res = "/"
         for col in self._partition_cols:
             hash_into = 0
@@ -177,19 +189,19 @@ class _Writer:
                 if isinstance(val, list):
                     val = ".".join(map(str, val))
             elif col == "$date":
-                val = f"{event.time.year:02}-{event.time.month:02}-{event.time.day:02}"
+                val = f"{event_time.year:02}-{event_time.month:02}-{event_time.day:02}"
             elif col == "$year":
-                val = f"{event.time.year:02}"
+                val = f"{event_time.year:02}"
             elif col == "$month":
-                val = f"{event.time.month:02}"
+                val = f"{event_time.month:02}"
             elif col == "$day":
-                val = f"{event.time.day:02}"
+                val = f"{event_time.day:02}"
             elif col == "$hour":
-                val = f"{event.time.hour:02}"
+                val = f"{event_time.hour:02}"
             elif col == "$minute":
-                val = f"{event.time.minute:02}"
+                val = f"{event_time.minute:02}"
             elif col == "$second":
-                val = f"{event.time.second:02}"
+                val = f"{event_time.second:02}"
             else:
                 if isinstance(event.body, list):
                     val = event.body[self._partition_col_to_index[col]]
@@ -492,6 +504,7 @@ class ParquetTarget(_Batching, _Writer):
         index_cols: Union[str, Union[List[str], List[Tuple[str, str]]], None] = None,
         columns: Union[str, Union[List[str], List[Tuple[str, str]]], None] = None,
         partition_cols: Union[str, Union[List[str], List[Tuple[str, int]]], None] = None,
+        time_field: Union[None, str, int] = None,
         infer_columns_from_data: Optional[bool] = None,
         max_events: Optional[int] = None,
         flush_after_seconds: Optional[int] = None,
@@ -533,7 +546,7 @@ class ParquetTarget(_Batching, _Writer):
             self,
             max_events=max_events,
             flush_after_seconds=flush_after_seconds,
-            key=path_from_event,
+            key_field=path_from_event,
             **kwargs,
         )
         _Writer.__init__(
@@ -542,6 +555,7 @@ class ParquetTarget(_Batching, _Writer):
             infer_columns_from_data,
             index_cols,
             partition_cols,
+            time_field,
             retain_dict=True,
             storage_options=storage_options,
         )
@@ -579,6 +593,9 @@ class ParquetTarget(_Batching, _Writer):
         file_path = self._path if self._single_file_mode else f"{dir_path}{uuid.uuid4()}.parquet"
         # Remove nanosecs from timestamp columns & index
         for name, _ in df.items():
+            if str(df[name].dtype) == "datetime64[ns]":
+                # Need to explicitly reduce the granularity to avoid getting a data loss error from pandas
+                df[name] = df[name].astype("datetime64[us]")
             # If column type is a datetime or if it's a string but the column is listed as a datetime in the schema.
             # Note that a partitioning column will not appear in the schema and will not be converted.
             if (
@@ -588,7 +605,13 @@ class ParquetTarget(_Batching, _Writer):
                 and name in self._schema.names
                 and isinstance(self._schema.field(name).type, pyarrow.TimestampType)
             ):
-                df[name] = df[name].astype("datetime64[us]")
+                try:
+                    df[name] = pd.to_datetime(df[name])
+                except ValueError as ex:
+                    if str(ex) == "Tz-aware datetime.datetime cannot be converted to datetime64 unless utc=True":
+                        df[name] = pd.to_datetime(df[name], utc=True)
+                    else:
+                        raise ex
         if pd.core.dtypes.common.is_datetime64_dtype(df.index) or pd.core.dtypes.common.is_datetime64tz_dtype(df.index):
             df.index = df.index.floor("u")
         with self._file_system.open(file_path, "wb") as file:
@@ -612,7 +635,7 @@ class TSDBTarget(_Batching, _Writer):
     """Writes incoming events to TSDB table.
 
     :param path: Path to TSDB table.
-    :param time_col: Name of the time column. Optional. Defaults to '$time'.
+    :param time_col: Name of the time column.
     :param columns: List of column names to be passed to the DataFrame constructor. Use = notation for renaming fields
         (e.g. write_this=event_field). Use $ notation to refer to metadata ($key, event_time=$time).
     :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries. If
@@ -642,7 +665,7 @@ class TSDBTarget(_Batching, _Writer):
     def __init__(
         self,
         path: str,
-        time_col: str = "$time",
+        time_col: str,
         columns: Union[str, List[str], None] = None,
         infer_columns_from_data: Optional[bool] = None,
         index_cols: Union[str, List[str], None] = None,

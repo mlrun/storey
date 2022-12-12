@@ -27,7 +27,6 @@ from unittest.mock import MagicMock
 import pandas as pd
 import pyarrow.parquet as pq
 import pytest
-import pytz
 from aiohttp import ClientConnectorError, InvalidURL
 from pandas.testing import assert_frame_equal
 
@@ -175,7 +174,7 @@ def test_emit_timeless_event():
     class TimelessEvent:
         pass
 
-    controller = build_flow([SyncEmitSource(), ReduceToDataFrame(insert_time_column_as="mytime")]).run()
+    controller = build_flow([SyncEmitSource(), ReduceToDataFrame(insert_processing_time_column_as="mytime")]).run()
 
     event = TimelessEvent()
     event.id = "myevent"
@@ -242,7 +241,7 @@ def test_csv_reader_as_dict_with_key_and_timestamp():
                 header=True,
                 build_dict=True,
                 key_field="k",
-                time_field="t",
+                parse_dates="t",
                 timestamp_format="%d/%m/%Y %H:%M:%S",
             ),
             Reduce([], append_and_return, full_event=True),
@@ -253,7 +252,6 @@ def test_csv_reader_as_dict_with_key_and_timestamp():
 
     assert len(termination_result) == 2
     assert termination_result[0].key == "m1"
-    assert termination_result[0].time == datetime(2020, 2, 15, 2, 0)
     assert termination_result[0].body == {
         "k": "m1",
         "t": datetime(2020, 2, 15, 2, 0),
@@ -261,7 +259,6 @@ def test_csv_reader_as_dict_with_key_and_timestamp():
         "b": True,
     }
     assert termination_result[1].key == "m2"
-    assert termination_result[1].time == datetime(2020, 2, 16, 2, 0)
     assert termination_result[1].body == {
         "k": "m2",
         "t": datetime(2020, 2, 16, 2, 0),
@@ -277,7 +274,7 @@ def test_csv_reader_as_dict_with_compact_timestamp():
                 "tests/test-with-compact-timestamp.csv",
                 header=True,
                 build_dict=True,
-                time_field="t",
+                parse_dates="t",
                 timestamp_format="%Y%m%d%H",
             ),
             Reduce([], append_and_return, full_event=True),
@@ -288,7 +285,6 @@ def test_csv_reader_as_dict_with_compact_timestamp():
 
     assert len(termination_result) == 2
     assert termination_result[0].key is None
-    assert termination_result[0].time == datetime(2020, 2, 15, 2, 0)
     assert termination_result[0].body == {
         "k": "m1",
         "t": datetime(2020, 2, 15, 2, 0),
@@ -296,7 +292,6 @@ def test_csv_reader_as_dict_with_compact_timestamp():
         "b": True,
     }
     assert termination_result[1].key is None
-    assert termination_result[1].time == datetime(2020, 2, 16, 2, 0)
     assert termination_result[1].body == {
         "k": "m2",
         "t": datetime(2020, 2, 16, 2, 0),
@@ -312,7 +307,7 @@ def test_csv_reader_with_key_and_timestamp():
                 "tests/test-with-timestamp.csv",
                 header=True,
                 key_field="k",
-                time_field="t",
+                parse_dates="t",
                 timestamp_format="%d/%m/%Y %H:%M:%S",
             ),
             Reduce([], append_and_return, full_event=True),
@@ -323,10 +318,8 @@ def test_csv_reader_with_key_and_timestamp():
 
     assert len(termination_result) == 2
     assert termination_result[0].key == "m1"
-    assert termination_result[0].time == datetime(2020, 2, 15, 2, 0)
     assert termination_result[0].body == ["m1", datetime(2020, 2, 15, 2, 0), 8, True]
     assert termination_result[1].key == "m2"
-    assert termination_result[1].time == datetime(2020, 2, 16, 2, 0)
     assert termination_result[1].body == ["m2", datetime(2020, 2, 16, 2, 0), 14, False]
 
 
@@ -342,6 +335,22 @@ def test_csv_reader_as_dict_no_header():
 
     termination_result = controller.await_termination()
     assert termination_result == 21
+
+
+def test_csv_reader_none_in_keyfield_should_send_error_log():
+    logger = MockLogger()
+    context = MockContext(logger, True)
+
+    controller = build_flow(
+        [
+            CSVSource("tests/test-none-in-keyfield.csv", header=True, key_field="k", context=context),
+        ]
+    ).run()
+
+    controller.await_termination()
+
+    assert "error" == logger.logs[0][0]
+    assert "value of key k is None" in logger.logs[0][1][0]
 
 
 def test_dataframe_source():
@@ -398,13 +407,11 @@ def test_dataframe_source_with_metadata():
         Event(
             {"my_key": "key1", "my_time": t1, "my_id": "id1", "my_value": 1.1},
             key="key1",
-            time=t1,
             id="id1",
         ),
         Event(
             {"my_key": "key2", "my_time": t2, "my_id": "id2", "my_value": 2.2},
             key="key2",
-            time=t2,
             id="id2",
         ),
     ]
@@ -485,6 +492,29 @@ def test_write_parquet_timestamp_nanosecs(tmpdir):
         },
     ]
     assert termination_result == expected
+
+
+# ML-1553
+def test_write_parquet_time_zone_mix(tmpdir):
+    out_file = f"{tmpdir}/test_write_parquet_time_zone_mix/{uuid.uuid4().hex}.pq"
+
+    controller = build_flow(
+        [
+            SyncEmitSource(),
+            ParquetTarget(out_file, columns=[("time", "datetime")]),
+        ]
+    ).run()
+
+    controller.emit({"time": datetime.fromisoformat("2022-01-01T09:40:00+02:00")})
+    controller.emit({"time": datetime.fromisoformat("2022-01-01T09:40:00+03:00")})
+
+    controller.terminate()
+    controller.await_termination()
+
+    read_back_df = pd.read_parquet(out_file)
+    assert read_back_df.to_dict() == {
+        "time": {0: datetime.fromisoformat("2022-01-01 07:40:00"), 1: datetime.fromisoformat("2022-01-01 06:40:00")}
+    }
 
 
 def test_read_parquet():
@@ -1507,7 +1537,7 @@ def test_batch_with_timeout():
     for i in range(10):
         if i == 3:
             q.get()
-        controller.emit(i, event_time=datetime(2020, 2, 15, 2, 0))
+        controller.emit(Event(i, processing_time=datetime(2020, 2, 15, 2, 0)))
     controller.terminate()
     termination_result = controller.await_termination()
     assert termination_result == [[0, 1, 2], [3, 4, 5, 6], [7, 8, 9]]
@@ -2065,7 +2095,7 @@ def test_write_to_parquet_single_file_on_termination(tmpdir):
     for i in range(10):
         controller.emit([i, f"this is {i}"])
         expected.append([i, f"this is {i}"])
-    expected = pd.DataFrame(expected, columns=columns, dtype="int64")
+    expected = pd.DataFrame(expected, columns=columns)
     controller.terminate()
     controller.await_termination()
 
@@ -2129,7 +2159,7 @@ def test_write_to_parquet_with_metadata(tmpdir):
     for i in range(10):
         controller.emit([i, f"this is {i}"], key=f"key{i}")
         expected.append([f"key{i}", i, f"this is {i}"])
-    expected = pd.DataFrame(expected, columns=columns, dtype="int64")
+    expected = pd.DataFrame(expected, columns=columns)
     controller.terminate()
     controller.await_termination()
 
@@ -2156,7 +2186,7 @@ def test_write_to_parquet_with_indices(tmpdir):
         controller.emit([i, f"this is {i}"], key=f"key{i}")
         expected.append([f"key{i}", i, f"this is {i}"])
     columns = ["event_key", "my_int", "my_string"]
-    expected = pd.DataFrame(expected, columns=columns, dtype="int64")
+    expected = pd.DataFrame(expected, columns=columns)
     expected.set_index(["event_key"], inplace=True)
     controller.terminate()
     controller.await_termination()
@@ -2170,7 +2200,7 @@ def test_write_to_parquet_partition_by_date(tmpdir):
     controller = build_flow(
         [
             SyncEmitSource(),
-            ParquetTarget(out_file, partition_cols=["$date"], columns=["my_int", "my_string"]),
+            ParquetTarget(out_file, partition_cols=["$date"], columns=["time", "my_int", "my_string"], time_field=0),
         ]
     ).run()
 
@@ -2178,10 +2208,10 @@ def test_write_to_parquet_partition_by_date(tmpdir):
 
     expected = []
     for i in range(10):
-        controller.emit([i, f"this is {i}"], event_time=my_time)
+        controller.emit([my_time, i, f"this is {i}"])
         expected.append(["2020-02-15", i, f"this is {i}"])
     columns = ["date", "my_int", "my_string"]
-    expected = pd.DataFrame(expected, columns=columns, dtype="int64")
+    expected = pd.DataFrame(expected, columns=columns)
     expected["date"] = expected["date"].astype("category")
     controller.terminate()
     controller.await_termination()
@@ -2192,16 +2222,18 @@ def test_write_to_parquet_partition_by_date(tmpdir):
 
 def test_write_to_parquet_partition_by_hash(tmpdir):
     out_file = f"{tmpdir}/test_write_to_parquet_partition_by_hash{uuid.uuid4().hex}"
-    controller = build_flow([SyncEmitSource(), ParquetTarget(out_file, columns=["my_int", "my_string"])]).run()
+    controller = build_flow(
+        [SyncEmitSource(), ParquetTarget(out_file, columns=["time", "my_int", "my_string"], time_field=0)]
+    ).run()
 
     my_time = datetime(2020, 2, 15)
 
     expected = []
     for i in range(10):
-        controller.emit([i, f"this is {i}"], event_time=my_time, key=[i])
-        expected.append([i, f"this is {i}"])
-    columns = ["my_int", "my_string"]
-    expected = pd.DataFrame(expected, columns=columns, dtype="int64")
+        controller.emit([my_time, i, f"this is {i}"], key=[i])
+        expected.append([my_time, i, f"this is {i}"])
+    columns = ["time", "my_int", "my_string"]
+    expected = pd.DataFrame(expected, columns=columns)
     controller.terminate()
     controller.await_termination()
 
@@ -2218,8 +2250,9 @@ def test_write_to_parquet_partition_by_column(tmpdir):
             SyncEmitSource(),
             ParquetTarget(
                 out_file,
-                columns=["my_int", "my_string", "even"],
+                columns=["time", "my_int", "my_string", "even"],
                 partition_cols=["even"],
+                time_field="time",
             ),
         ]
     ).run()
@@ -2228,10 +2261,10 @@ def test_write_to_parquet_partition_by_column(tmpdir):
 
     expected = []
     for i in range(10):
-        even = "even" if i % 2 == 0 else "odd"
-        controller.emit([i, f"this is {i}", even], event_time=my_time, key=[i])
-        expected.append([i, f"this is {i}", even])
-    columns = ["my_int", "my_string", "even"]
+        event = "even" if i % 2 == 0 else "odd"
+        controller.emit([my_time, i, f"this is {i}", event], key=[i])
+        expected.append([my_time, i, f"this is {i}", event])
+    columns = ["time", "my_int", "my_string", "even"]
     expected = pd.DataFrame(expected, columns=columns)
     expected["even"] = expected["even"].astype("category")
     controller.terminate()
@@ -2258,7 +2291,6 @@ def test_write_to_parquet_with_inference(tmpdir):
     expected = pd.DataFrame(
         expected,
         columns=["key", "only_first_event", "my_int", "my_string", "only_last_event"],
-        dtype="int64",
     )
     expected.set_index(["key"], inplace=True)
     controller.terminate()
@@ -2635,6 +2667,7 @@ def test_write_to_tsdb_with_key_index_and_default_time():
             SyncEmitSource(),
             TSDBTarget(
                 path="container/some/path",
+                time_col="time",
                 index_cols="node=$key",
                 columns=["cpu", "disk"],
                 rate="1/h",
@@ -2648,7 +2681,7 @@ def test_write_to_tsdb_with_key_index_and_default_time():
     date_time_str = "18/09/19 01:55:1"
     for i in range(9):
         now = datetime.strptime(date_time_str + str(i) + " UTC-0000", "%d/%m/%y %H:%M:%S UTC%z")
-        controller.emit([i + 1, i + 2], key=i, event_time=now)
+        controller.emit([now, i + 1, i + 2], key=i)
         expected_data.append([now, i, i + 1, i + 2])
 
     controller.terminate()
@@ -2689,7 +2722,7 @@ def test_csv_reader_parquet_write_microsecs(tmpdir):
                 "tests/test-with-timestamp-microsecs.csv",
                 header=True,
                 key_field="k",
-                time_field="t",
+                parse_dates="t",
                 timestamp_format=time_format,
             ),
             ParquetTarget(
@@ -2725,7 +2758,7 @@ def test_csv_reader_parquet_write_nanosecs(tmpdir):
                 "tests/test-with-timestamp-nanosecs.csv",
                 header=True,
                 key_field="k",
-                time_field="t",
+                parse_dates="t",
                 timestamp_format=time_format,
             ),
             ParquetTarget(
@@ -2833,7 +2866,7 @@ def test_push_error():
 def test_metadata_fields():
     controller = build_flow(
         [
-            SyncEmitSource(key_field="mykey", time_field="mytime"),
+            SyncEmitSource(key_field="mykey"),
             Reduce([], append_and_return, full_event=True),
         ]
     ).run()
@@ -2844,7 +2877,7 @@ def test_metadata_fields():
     body2 = {"mykey": "k2", "mytime": t2, "otherfield": "x"}
 
     controller.emit(body1)
-    controller.emit(Event(body2, "k2", t2))
+    controller.emit(Event(body2, "k2"))
 
     controller.terminate()
     result = controller.await_termination()
@@ -2853,52 +2886,17 @@ def test_metadata_fields():
 
     result1 = result[0]
     assert result1.key == "k1"
-    assert result1.time == t1
     assert result1.body == body1
 
     result2 = result[1]
     assert result2.key == "k2"
-    assert result2.time == t2
-    assert result2.body == body2
-
-
-def test_time_parsed_on_emit():
-    controller = build_flow(
-        [
-            SyncEmitSource(key_field="mykey", time_field="mytime"),
-            Reduce([], append_and_return, full_event=True),
-        ]
-    ).run()
-
-    timestamp_str = "2016-05-30 13:30:00.057"
-    timestamp_datetime = datetime(2016, 5, 30, 13, 30, 0, 57000)
-    body1 = {"mykey": "k1", "mytime": timestamp_str, "otherfield": "x"}
-    expected_body1 = {"mykey": "k1", "mytime": timestamp_datetime, "otherfield": "x"}
-    body2 = {"mykey": "k2", "otherfield": "x"}
-
-    controller.emit(body1)
-    controller.emit(body2, event_time=timestamp_datetime)
-
-    controller.terminate()
-    result = controller.await_termination()
-
-    assert len(result) == 2
-
-    result1 = result[0]
-    assert result1.key == "k1"
-    assert result1.time == timestamp_datetime
-    assert result1.body == expected_body1
-
-    result2 = result[1]
-    assert result2.key == "k2"
-    assert result2.time == timestamp_datetime
     assert result2.body == body2
 
 
 async def async_test_async_metadata_fields():
     controller = build_flow(
         [
-            AsyncEmitSource(key_field="mykey", time_field="mytime"),
+            AsyncEmitSource(key_field="mykey"),
             Reduce([], append_and_return, full_event=True),
         ]
     ).run()
@@ -2910,7 +2908,6 @@ async def async_test_async_metadata_fields():
     assert len(result) == 1
     result = result[0]
     assert result.key == "k1"
-    assert result.time == datetime(2020, 2, 15, 2, 0)
     assert result.body == body
 
 
@@ -3241,8 +3238,8 @@ def test_non_existing_key_query_by_key():
     controller = build_flow(
         [
             SyncEmitSource(),
-            QueryByKey(["color"], table, key="name"),
-            QueryByKey(["city"], table, key="name"),
+            QueryByKey(["color"], table, key_field="name"),
+            QueryByKey(["city"], table, key_field="name"),
         ]
     ).run()
 
@@ -3254,7 +3251,7 @@ def test_non_existing_key_query_by_key():
 # ML-2257
 def test_query_by_key_edge_case_field_name():
     table = Table("table", NoopDriver())
-    QueryByKey(["my_color_5sec"], table, key="name"),
+    QueryByKey(["my_color_5sec"], table, key_field="name"),
 
 
 def test_csv_source_with_none_values():
@@ -3295,7 +3292,7 @@ def test_csv_source_event_metadata():
                 timestamp_format="%d/%m/%Y %H:%M:%S",
                 id_field="k",
             ),
-            ReifyMetadata({"key", "time", "id"}),
+            ReifyMetadata({"key", "id"}),
             Reduce([], append_and_return, full_event=False),
         ]
     ).run()
@@ -3309,7 +3306,6 @@ def test_csv_source_event_metadata():
             "k": "m1",
             "key": "m1",
             "t": datetime(2020, 2, 15, 2, 0),
-            "time": datetime(2020, 2, 15, 2, 0),
             "v": 8,
         },
         {
@@ -3318,70 +3314,9 @@ def test_csv_source_event_metadata():
             "k": "m2",
             "key": "m2",
             "t": datetime(2020, 2, 16, 2, 0),
-            "time": datetime(2020, 2, 16, 2, 0),
             "v": 14,
         },
     ]
-
-
-def test_bad_time_string_input():
-    controller = build_flow(
-        [
-            SyncEmitSource(time_field="time"),
-        ]
-    ).run()
-
-    try:
-        with pytest.raises(ValueError):
-            controller.emit({"time": "not a time for sure"})
-    finally:
-        controller.terminate()
-
-
-def test_bad_time_input():
-    controller = build_flow(
-        [
-            SyncEmitSource(time_field="time"),
-        ]
-    ).run()
-
-    try:
-        with pytest.raises(ValueError):
-            controller.emit({"time": object()})
-    finally:
-        controller.terminate()
-
-
-def test_epoch_time_input():
-    controller = build_flow([SyncEmitSource(time_field="time"), Complete(full_event=True)]).run()
-
-    awaitable_result = controller.emit({"time": 1620569127})
-    result = awaitable_result.await_result()
-    controller.terminate()
-    assert result.time == datetime(2021, 5, 9, 14, 5, 27, tzinfo=pytz.utc)
-
-
-def test_iso_string_time_input():
-    controller = build_flow([SyncEmitSource(time_field="time"), Complete(full_event=True)]).run()
-
-    awaitable_result = controller.emit({"time": "2021-05-09T14:05:27+00:00"})
-    result = awaitable_result.await_result()
-    controller.terminate()
-    assert result.time == datetime(2021, 5, 9, 14, 5, 27, tzinfo=pytz.utc)
-
-
-def test_custom_string_time_input():
-    controller = build_flow(
-        [
-            SyncEmitSource(time_field="time", time_format="%Y-%m-%dT%H:%M:%S%z"),
-            Complete(full_event=True),
-        ]
-    ).run()
-
-    awaitable_result = controller.emit({"time": "2021-05-09T14:05:27+00:00"})
-    result = awaitable_result.await_result()
-    controller.terminate()
-    assert result.time == datetime(2021, 5, 9, 14, 5, 27, tzinfo=pytz.utc)
 
 
 def test_none_key_is_not_written():
@@ -3800,7 +3735,7 @@ def test_verbose_logs():
         ]
     ).run()
 
-    controller.emit(Event(id="myid", time=datetime.fromisoformat("2020-07-21T21:40:00+00:00"), body={}))
+    controller.emit(Event(id="myid", body={}))
     controller.terminate()
     controller.await_termination()
 
@@ -3808,12 +3743,12 @@ def test_verbose_logs():
 
     level, args, kwargs = logger.logs[0]
     assert level == "debug"
-    assert args == ("SyncEmitSource -> Map1 | Event(id=myid, time=2020-07-21 21:40:00+00:00, path=/, body={})",)
+    assert args == ("SyncEmitSource -> Map1 | Event(id=myid, path=/, body={})",)
     assert kwargs == {}
 
     level, args, kwargs = logger.logs[1]
     assert level == "debug"
-    assert args == ("Map1 -> Map2 | Event(id=myid, time=2020-07-21 21:40:00+00:00, path=/, body={})",)
+    assert args == ("Map1 -> Map2 | Event(id=myid, path=/, body={})",)
     assert kwargs == {}
 
 

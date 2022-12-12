@@ -47,9 +47,10 @@ from storey import (
     V3ioDriver,
     build_flow,
 )
+from storey.flow import DropColumns
 
+from .conftest import ContextForTests
 from .integration_test_utils import (
-    TestContext,
     V3ioHeaders,
     append_return,
     create_sql_table,
@@ -102,13 +103,14 @@ class GetShardData(V3ioHeaders):
         return data
 
 
-def _get_redis_kv_all_attrs(setup_teardown_test: TestContext, key: str):
+def _get_redis_kv_all_attrs(setup_teardown_test: ContextForTests, key: str):
     from storey.redis_driver import RedisDriver
 
     from .integration_test_utils import get_redis_client
 
     table_name = setup_teardown_test.table_name
-    redis_key = f"storey-test:{table_name}{key}:static"
+    hash_key = RedisDriver.make_key("storey-test:", table_name, key)
+    redis_key = RedisDriver._static_data_key(hash_key)
     redis_fake_server = setup_teardown_test.redis_fake_server
     values = get_redis_client(redis_fake_server=redis_fake_server).hgetall(redis_key)
     return {
@@ -118,7 +120,7 @@ def _get_redis_kv_all_attrs(setup_teardown_test: TestContext, key: str):
 
 
 def _get_sql_by_key_all_attrs(
-    setup_teardown_test: TestContext, key: Union[str, List[str]], key_name: Union[str, List[str]]
+    setup_teardown_test: ContextForTests, key: Union[str, List[str]], key_name: Union[str, List[str]]
 ):
     import sqlalchemy as db
 
@@ -147,7 +149,7 @@ def _get_sql_by_key_all_attrs(
 
 
 def get_key_all_attrs_test_helper(
-    setup_teardown_test: TestContext, key: Union[str, List[str]], key_name: Union[str, List[str]] = None
+    setup_teardown_test: ContextForTests, key: Union[str, List[str]], key_name: Union[str, List[str]] = None
 ):
     if setup_teardown_test.driver_name == "RedisDriver":
         result = _get_redis_kv_all_attrs(setup_teardown_test, key)
@@ -242,7 +244,6 @@ async def async_test_write_to_v3io_stream_full_event_readback(
     setup_stream_teardown_test,
 ):
     stream_path = setup_stream_teardown_test
-    event_time = datetime(2022, 8, 8)
 
     controller = build_flow(
         [
@@ -258,26 +259,26 @@ async def async_test_write_to_v3io_stream_full_event_readback(
         ]
     ).run()
     for i in range(10):
-        await controller.emit(Event(i, time=event_time, id=str(i)))
+        await controller.emit(Event(i, id=str(i)))
 
     await asyncio.sleep(5)
 
     try:
         shard0_data = await GetShardData().get_shard_data(f"{stream_path}/0")
         assert shard0_data == [
-            b'{"full_event_wrapper": true, "body": 0, "time": "2022-08-08T00:00:00", "id": "0"}',
-            b'{"full_event_wrapper": true, "body": 2, "time": "2022-08-08T00:00:00", "id": "2"}',
-            b'{"full_event_wrapper": true, "body": 4, "time": "2022-08-08T00:00:00", "id": "4"}',
-            b'{"full_event_wrapper": true, "body": 6, "time": "2022-08-08T00:00:00", "id": "6"}',
-            b'{"full_event_wrapper": true, "body": 8, "time": "2022-08-08T00:00:00", "id": "8"}',
+            b'{"full_event_wrapper": true, "body": 0, "id": "0"}',
+            b'{"full_event_wrapper": true, "body": 2, "id": "2"}',
+            b'{"full_event_wrapper": true, "body": 4, "id": "4"}',
+            b'{"full_event_wrapper": true, "body": 6, "id": "6"}',
+            b'{"full_event_wrapper": true, "body": 8, "id": "8"}',
         ]
         shard1_data = await GetShardData().get_shard_data(f"{stream_path}/1")
         assert shard1_data == [
-            b'{"full_event_wrapper": true, "body": 1, "time": "2022-08-08T00:00:00", "id": "1"}',
-            b'{"full_event_wrapper": true, "body": 3, "time": "2022-08-08T00:00:00", "id": "3"}',
-            b'{"full_event_wrapper": true, "body": 5, "time": "2022-08-08T00:00:00", "id": "5"}',
-            b'{"full_event_wrapper": true, "body": 7, "time": "2022-08-08T00:00:00", "id": "7"}',
-            b'{"full_event_wrapper": true, "body": 9, "time": "2022-08-08T00:00:00", "id": "9"}',
+            b'{"full_event_wrapper": true, "body": 1, "id": "1"}',
+            b'{"full_event_wrapper": true, "body": 3, "id": "3"}',
+            b'{"full_event_wrapper": true, "body": 5, "id": "5"}',
+            b'{"full_event_wrapper": true, "body": 7, "id": "7"}',
+            b'{"full_event_wrapper": true, "body": 9, "id": "9"}',
         ]
     finally:
         await controller.terminate()
@@ -305,7 +306,6 @@ async def async_test_write_to_v3io_stream_full_event_readback(
     for i, record in enumerate(result):
         assert record.body == expected_bodies[i]
         assert record.id == str(expected_bodies[i])
-        assert record.time == event_time
 
 
 def test_async_test_write_to_v3io_stream_full_event_readback(
@@ -568,6 +568,7 @@ def test_write_to_tsdb_with_metadata_label():
             SyncEmitSource(),
             TSDBTarget(
                 path=tsdb_path,
+                time_col="time",
                 index_cols="node",
                 columns=["cpu", "disk"],
                 rate="1/h",
@@ -580,7 +581,7 @@ def test_write_to_tsdb_with_metadata_label():
     date_time_str = "18/09/19 01:55:1"
     for i in range(9):
         now = datetime.strptime(date_time_str + str(i) + " UTC-0000", "%d/%m/%y %H:%M:%S UTC%z")
-        controller.emit([i, i + 1, i + 2], event_time=now)
+        controller.emit([now, i, i + 1, i + 2])
         expected.append([now, f"{i}", float(i + 1), float(i + 2)])
 
     controller.terminate()
@@ -686,19 +687,20 @@ def test_write_table_specific_columns(setup_teardown_test):
 
     def enrich(event, state):
         if "first_activity" not in state:
-            state["first_activity"] = event.time
+            state["first_activity"] = event["sometime"]
 
-        event.body["time_since_activity"] = (event.time - state["first_activity"]).seconds
-        state["last_event"] = event.time
+        event["time_since_activity"] = (event["sometime"] - state["first_activity"]).seconds
+        state["last_event"] = event["sometime"]
         state["total_activities"] = state.get("total_activities", 0) + 1
-        event.body["color"] = state["color"]
-        event.body["twice_total_activities"] = state["total_activities"] * 2
+        event["color"] = state["color"]
+        event["twice_total_activities"] = state["total_activities"] * 2
         return event, state
 
     controller = build_flow(
         [
             SyncEmitSource(),
-            MapWithState(table, enrich, group_by_key=True, full_event=True),
+            MapWithState(table, enrich, group_by_key=True),
+            DropColumns("sometime"),
             NoSqlTarget(table, columns=["twice_total_activities"]),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
@@ -706,8 +708,8 @@ def test_write_table_specific_columns(setup_teardown_test):
 
     items_in_ingest_batch = 10
     for i in range(items_in_ingest_batch):
-        data = {"col1": i}
-        controller.emit(data, "tal", test_base_time + timedelta(minutes=25 * i))
+        data = {"col1": i, "sometime": test_base_time + timedelta(minutes=25 * i)}
+        controller.emit(data, "tal")
 
     controller.terminate()
     actual = controller.await_termination()
@@ -805,19 +807,20 @@ def test_write_table_metadata_columns(setup_teardown_test):
 
     def enrich(event, state):
         if "first_activity" not in state:
-            state["first_activity"] = event.time
+            state["first_activity"] = event["sometime"]
 
-        event.body["time_since_activity"] = (event.time - state["first_activity"]).seconds
-        state["last_event"] = event.time
+        event["time_since_activity"] = (event["sometime"] - state["first_activity"]).seconds
+        state["last_event"] = event["sometime"]
         state["total_activities"] = state.get("total_activities", 0) + 1
-        event.body["color"] = state["color"]
-        event.body["twice_total_activities"] = state["total_activities"] * 2
+        event["color"] = state["color"]
+        event["twice_total_activities"] = state["total_activities"] * 2
         return event, state
 
     controller = build_flow(
         [
             SyncEmitSource(),
-            MapWithState(table, enrich, group_by_key=True, full_event=True),
+            MapWithState(table, enrich, group_by_key=True),
+            DropColumns("sometime"),
             NoSqlTarget(table, columns=["twice_total_activities", "my_key=$key"]),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
@@ -825,8 +828,8 @@ def test_write_table_metadata_columns(setup_teardown_test):
 
     items_in_ingest_batch = 10
     for i in range(items_in_ingest_batch):
-        data = {"col1": i}
-        controller.emit(data, "tal", test_base_time + timedelta(minutes=25 * i))
+        data = {"col1": i, "sometime": test_base_time + timedelta(minutes=25 * i)}
+        controller.emit(data, "tal")
 
     controller.terminate()
     actual = controller.await_termination()
@@ -1044,19 +1047,16 @@ def test_write_three_keys_to_v3io_from_df(setup_teardown_test):
         "last_name": "cohen",
     }
     actual = get_key_all_attrs_test_helper(setup_teardown_test, "moshe.dc1e617eaae40eea3449baf3795bb5b50676c963")
-    assert expected == actual
+    assert actual == expected
 
 
 def test_write_string_as_time_via_time_field(setup_teardown_test):
-
     if setup_teardown_test.driver_name == "SQLDriver":
         pytest.skip("test_write_string_as_time_via_time_field not testing over SQLDriver")
     else:
         table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
-
-    t1 = "2020-03-16T05:00:00+00:00"
-    t2 = "2020-03-15T18:00:00+00:00"
-
+    t1 = datetime.fromisoformat("2020-03-16T05:00:00+00:00")
+    t2 = datetime.fromisoformat("2020-03-15T18:00:00+00:00")
     df = pd.DataFrame(
         {
             "name": ["jack", "tuna"],
@@ -1066,15 +1066,15 @@ def test_write_string_as_time_via_time_field(setup_teardown_test):
 
     controller = build_flow(
         [
-            DataframeSource(df, key_field="name", time_field="time"),
-            NoSqlTarget(table, columns=["name", "$time"]),
+            DataframeSource(df, key_field="name"),
+            NoSqlTarget(table, columns=["name", "time"]),
         ]
     ).run()
     controller.await_termination()
 
-    expected = {"name": "tuna", "time": datetime.fromisoformat(t2)}
-    actual = get_key_all_attrs_test_helper(setup_teardown_test, "tuna", "name")
-    assert expected == actual
+    expected = {"name": "tuna", "time": t2}
+    actual = get_key_all_attrs_test_helper(setup_teardown_test, "tuna")
+    assert actual == expected
 
 
 def test_write_string_as_time_via_schema(setup_teardown_test):
@@ -1101,7 +1101,7 @@ def test_write_string_as_time_via_schema(setup_teardown_test):
 
     expected = {"name": "tuna", "time": datetime.fromisoformat(t2)}
     actual = get_key_all_attrs_test_helper(setup_teardown_test, "tuna")
-    assert expected == actual
+    assert actual == expected
 
 
 def test_write_multiple_keys_to_v3io_from_csv(setup_teardown_test):
@@ -1223,9 +1223,8 @@ def test_cache_flushing(setup_teardown_test):
         ]
     ).run()
 
-    controller.emit({"col1": 0}, "dina", test_base_time + timedelta(minutes=25))
+    controller.emit({"col1": 0}, "dina")
 
-    response = None
     if setup_teardown_test.driver_name == "RedisDriver":
         response = _get_redis_kv_all_attrs(setup_teardown_test, "dina")
     else:
@@ -1234,7 +1233,6 @@ def test_cache_flushing(setup_teardown_test):
 
     time.sleep(4)
 
-    response = None
     if setup_teardown_test.driver_name == "RedisDriver":
         response = _get_redis_kv_all_attrs(setup_teardown_test, "dina")
     else:

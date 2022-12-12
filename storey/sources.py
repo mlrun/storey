@@ -20,7 +20,7 @@ import queue
 import threading
 import uuid
 import warnings
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Callable, Coroutine, Iterable, List, Optional, Union
 
 import pandas
@@ -104,17 +104,13 @@ class FlowControllerBase(WithUUID):
     def __init__(
         self,
         key_field: Optional[Union[str, List[str]]],
-        time_field: Optional[str],
-        time_format: Optional[str],
         id_field: Optional[str],
     ):
         super().__init__()
         self._key_field = key_field
-        self._time_field = time_field
-        self._time_format = time_format
         self._id_field = id_field
 
-    def _build_event(self, element, key, event_time):
+    def _build_event(self, element, key):
         element_is_event = hasattr(element, "id")
         if element_is_event:
             if isinstance(element.body, dict) and element.body.get(Event._serialize_event_marker):
@@ -131,8 +127,11 @@ class FlowControllerBase(WithUUID):
                             setattr(element, field, val)
             else:
                 body = element.body
-            if not hasattr(element, "time") and hasattr(element, "timestamp"):
-                element.time = element.timestamp
+            if not hasattr(element, "processing_time"):
+                if hasattr(element, "timestamp"):
+                    element.processing_time = element.timestamp
+                else:
+                    element.processing_time = datetime.now(timezone.utc)
         else:
             body = element
 
@@ -143,18 +142,13 @@ class FlowControllerBase(WithUUID):
                 key = []
                 for field in self._key_field:
                     key.append(body[field])
-        if not event_time and self._time_field:
-            event_time = _convert_to_datetime(body[self._time_field], self._time_format)
-            body[self._time_field] = event_time
 
         if element_is_event:
             if key or not hasattr(element, "key"):
                 element.key = key
-            if event_time:
-                element.time = event_time
             return element
         else:
-            return Event(body, id=self._get_uuid(), key=key, time=event_time)
+            return Event(body, id=self._get_uuid(), key=key)
 
 
 class FlowController(FlowControllerBase):
@@ -168,11 +162,9 @@ class FlowController(FlowControllerBase):
         await_termination_fn,
         return_awaitable_result,
         key_field: Optional[str] = None,
-        time_field: Optional[str] = None,
-        time_format: Optional[str] = None,
         id_field: Optional[str] = None,
     ):
-        super().__init__(key_field, time_field, time_format, id_field)
+        super().__init__(key_field, id_field)
         self._emit_fn = emit_fn
         self._await_termination_fn = await_termination_fn
         self._return_awaitable_result = return_awaitable_result
@@ -181,7 +173,6 @@ class FlowController(FlowControllerBase):
         self,
         element: object,
         key: Optional[Union[str, List[str]]] = None,
-        event_time: Optional[datetime] = None,
         return_awaitable_result: Optional[bool] = None,
         expected_number_of_results: Optional[int] = None,
     ):
@@ -189,7 +180,6 @@ class FlowController(FlowControllerBase):
 
         :param element: The event data, or payload. To set metadata as well, pass an Event object.
         :param key: The event key(s) (optional) #add to async
-        :param event_time: The event time (default to current time, UTC).
         :param return_awaitable_result: Deprecated! An awaitable result object will be returned if a Complete step
             appears in the flow.
         :param expected_number_of_results: Number of times the event will have to pass through a Complete step to be
@@ -205,7 +195,7 @@ class FlowController(FlowControllerBase):
                 DeprecationWarning,
             )
 
-        event = self._build_event(element, key, event_time)
+        event = self._build_event(element, key)
         awaitable_result = None
         if self._return_awaitable_result:
             awaitable_result = AwaitableResult(expected_number_of_results=expected_number_of_results or 1)
@@ -257,8 +247,6 @@ class SyncEmitSource(Flow):
         self,
         buffer_size: Optional[int] = None,
         key_field: Union[list, str, int, None] = None,
-        time_field: Union[str, int, None] = None,
-        time_format: Optional[str] = None,
         **kwargs,
     ):
         if buffer_size is None:
@@ -272,8 +260,6 @@ class SyncEmitSource(Flow):
             raise ValueError("Buffer size must be positive")
         self._q = queue.Queue(buffer_size)
         self._key_field = key_field
-        self._time_field = time_field
-        self._time_format = time_format
         self._termination_q = queue.Queue(1)
         self._ex = None
         self._closeables = []
@@ -349,8 +335,6 @@ class SyncEmitSource(Flow):
             raise_error_or_return_termination_result,
             has_complete,
             self._key_field,
-            self._time_field,
-            self._time_format,
         )
 
 
@@ -406,23 +390,18 @@ class AsyncFlowController(FlowControllerBase):
         loop_task,
         await_result,
         key_field: Optional[str] = None,
-        time_field: Optional[str] = None,
-        time_format: Optional[str] = None,
         id_field: Optional[str] = None,
     ):
-        super().__init__(key_field, time_field, time_format, id_field)
+        super().__init__(key_field, id_field)
         self._emit_fn = emit_fn
         self._loop_task = loop_task
         self._key_field = key_field
-        self._time_field = time_field
-        self._time_format = time_format
         self._await_result = await_result
 
     async def emit(
         self,
         element: object,
         key: Optional[Union[str, List[str]]] = None,
-        event_time: Optional[datetime] = None,
         await_result: Optional[bool] = None,
         expected_number_of_results: Optional[int] = None,
     ) -> object:
@@ -430,7 +409,6 @@ class AsyncFlowController(FlowControllerBase):
 
         :param element: The event data, or payload. To set metadata as well, pass an Event object.
         :param key: The event key(s) (optional)
-        :param event_time: The event time (default to current time, UTC).
         :param await_result: Deprecated. Will await a result if a Complete step appears in the flow.
         :param expected_number_of_results: Number of times the event will have to pass through a Complete step to be
         completed (for graph flows).
@@ -444,7 +422,7 @@ class AsyncFlowController(FlowControllerBase):
                 DeprecationWarning,
             )
 
-        event = self._build_event(element, key, event_time)
+        event = self._build_event(element, key)
         awaitable = None
         if self._await_result:
             awaitable = AsyncAwaitableResult()
@@ -476,9 +454,6 @@ class AsyncEmitSource(Flow):
     :param buffer_size: size of the incoming event buffer. Defaults to 8.
     :param name: Name of this step, as it should appear in logs. Defaults to class name (AsyncEmitSource).
     :type name: string
-    :param time_field: Field to extract and use as the time. Optional.
-    :param time_format: Format of the event time. Needed when a nonstandard string timestamp is used (i.e. not ISO or
-        epoch). Optional.
 
     for additional params, see documentation of  :class:`~storey.flow.Flow`
     """
@@ -489,8 +464,6 @@ class AsyncEmitSource(Flow):
         self,
         buffer_size: int = None,
         key_field: Union[list, str, None] = None,
-        time_field: Optional[str] = None,
-        time_format: Optional[str] = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -502,8 +475,6 @@ class AsyncEmitSource(Flow):
             kwargs["buffer_size"] = buffer_size
         self._q = asyncio.Queue(buffer_size)
         self._key_field = key_field
-        self._time_field = time_field
-        self._time_format = time_format
         self._ex = None
         self._closeables = []
 
@@ -556,7 +527,7 @@ class AsyncEmitSource(Flow):
         self._closeables = super().run()
         loop_task = asyncio.get_running_loop().create_task(self._run_loop())
         has_complete = self._check_step_in_flow(Complete)
-        return AsyncFlowController(self._emit, loop_task, has_complete, self._key_field, self._time_field)
+        return AsyncFlowController(self._emit, loop_task, has_complete, self._key_field)
 
 
 class _IterableSource(Flow):
@@ -649,7 +620,7 @@ class CSVSource(_IterableSource, WithUUID):
         timestamp_format: Optional[str] = None,
         id_field: Union[str, int, None] = None,
         type_inference: bool = True,
-        parse_dates: Optional[Union[List[int], List[str]]] = None,
+        parse_dates: Optional[Union[int, str, List[int], List[str]]] = None,
         **kwargs,
     ):
         kwargs["paths"] = paths
@@ -679,11 +650,14 @@ class CSVSource(_IterableSource, WithUUID):
         self._storage_options = kwargs.get("storage_options")
         self._parse_dates = parse_dates
         self._dates_indices = []
-        if isinstance(parse_dates, List):
-            if self._with_header and any([isinstance(f, int) for f in self._parse_dates]):
-                raise ValueError("parse_dates can be list of int only when there is no header")
-            if not self._with_header and all([isinstance(f, int) for f in self._parse_dates]):
-                self._dates_indices = parse_dates
+        if parse_dates:
+            if not isinstance(parse_dates, List):
+                parse_dates = [parse_dates]
+            if isinstance(parse_dates, List):
+                if self._with_header and any([isinstance(f, int) for f in self._parse_dates]):
+                    raise ValueError("parse_dates can be list of int only when there is no header")
+                if not self._with_header and all([isinstance(f, int) for f in self._parse_dates]):
+                    self._dates_indices = parse_dates
         if isinstance(self._time_field, int):
             if self._with_header:
                 raise ValueError("time field can be int only when there is no header")
@@ -808,26 +782,23 @@ class CSVSource(_IterableSource, WithUUID):
                                 key = []
                                 for single_key_field in self._key_field:
                                     if self._with_header and isinstance(single_key_field, str):
-                                        single_key_field = field_name_to_index[single_key_field]
-                                    if parsed_line[single_key_field] is None:
+                                        single_key_field_index = field_name_to_index[single_key_field]
+                                    else:
+                                        single_key_field_index = single_key_field
+                                    if parsed_line[single_key_field_index] is None:
                                         create_event = False
                                         break
-                                    key.append(parsed_line[single_key_field])
+                                    key.append(parsed_line[single_key_field_index])
                             else:
-                                key_field = self._key_field
-                                if self._with_header and isinstance(key_field, str):
-                                    key_field = field_name_to_index[key_field]
-                                key = parsed_line[key_field]
+                                single_key_field = self._key_field
+                                if self._with_header and isinstance(single_key_field, str):
+                                    single_key_field_index = field_name_to_index[single_key_field]
+                                else:
+                                    single_key_field_index = single_key_field
+                                key = parsed_line[single_key_field_index]
                                 if key is None:
                                     create_event = False
                         if create_event:
-                            if self._time_field:
-                                time_field = self._time_field
-                                if self._with_header and isinstance(time_field, str):
-                                    time_field = field_name_to_index[time_field]
-                                time_as_datetime = parsed_line[time_field]
-                            else:
-                                time_as_datetime = datetime.now()
                             if self._id_field:
                                 id_field = self._id_field
                                 if self._with_header and isinstance(id_field, str):
@@ -835,11 +806,13 @@ class CSVSource(_IterableSource, WithUUID):
                                 id = parsed_line[id_field]
                             else:
                                 id = self._get_uuid()
-                            event = Event(element, key=key, time=time_as_datetime, id=id)
+                            event = Event(element, key=key, id=id)
                             self._event_buffer.put(event)
                         else:
                             if self.context:
-                                self.context.logger.error(f"For {parsed_line} value of key {key_field} is None")
+                                self.context.logger.error(
+                                    f"For {parsed_line} value of key {single_key_field} is None"  # type: ignore
+                                )
                 if self._with_header:
                     self._dates_indices = []
 
@@ -875,7 +848,6 @@ class DataframeSource(_IterableSource, WithUUID):
 
     :param dfs: A pandas dataframe, or dataframes, to be used as input source for the flow.
     :param key_field: column to be used as key for events. can be list of columns
-    :param time_field: column to be used as time for events.
     :param id_field: column to be used as ID for events.
 
     for additional params, see documentation of  :class:`~storey.flow.Flow`
@@ -885,14 +857,11 @@ class DataframeSource(_IterableSource, WithUUID):
         self,
         dfs: Union[pandas.DataFrame, Iterable[pandas.DataFrame]],
         key_field: Optional[Union[str, List[str]]] = None,
-        time_field: Optional[str] = None,
         id_field: Optional[str] = None,
         **kwargs,
     ):
         if key_field is not None:
             kwargs["key_field"] = key_field
-        if time_field is not None:
-            kwargs["time_field"] = time_field
         if id_field is not None:
             kwargs["id_field"] = id_field
         _IterableSource.__init__(self, **kwargs)
@@ -901,7 +870,6 @@ class DataframeSource(_IterableSource, WithUUID):
             dfs = [dfs]
         self._dfs = dfs
         self._key_field = key_field
-        self._time_field = time_field
         self._id_field = id_field
 
     async def _run_loop(self):
@@ -930,14 +898,11 @@ class DataframeSource(_IterableSource, WithUUID):
                         if key is None:
                             create_event = False
                 if create_event:
-                    time = None
-                    if self._time_field:
-                        time = body[self._time_field]
                     if self._id_field:
                         id = body[self._id_field]
                     else:
                         id = self._get_uuid()
-                    event = Event(body, key=key, time=time, id=id)
+                    event = Event(body, key=key, id=id)
                     await self._do_downstream(event)
                 else:
                     if self.context:
@@ -956,7 +921,6 @@ class ParquetSource(DataframeSource):
         'filter_column' <= end_filter. Default is None.
     :parameter filter_column: Optional. if not None, the results will be filtered by this column and before and/or after
     :param key_field: column to be used as key for events. can be list of columns
-    :param time_field: column to be used as time for events.
     :param id_field: column to be used as ID for events.
     """
 

@@ -101,7 +101,11 @@ def _generate_table_name(prefix="bigdata/storey_ci/Aggr_test"):
 def get_redis_client(redis_fake_server=None):
     redis_url = os.environ.get("MLRUN_REDIS_URL")
     if redis_url:
-        return r.Redis.from_url(redis_url)
+        try:
+            res = r.cluster.RedisCluster.from_url(redis_url)
+            return res
+        except r.cluster.RedisClusterException:
+            return r.Redis.from_url(redis_url)
     else:
         return fakeredis.FakeRedis(decode_responses=True, server=redis_fake_server)
 
@@ -109,8 +113,7 @@ def get_redis_client(redis_fake_server=None):
 def remove_redis_table(table_name):
     redis_client = get_redis_client()
     count = 0
-    ns_keys = "storey-test:" + table_name + "*"
-    for key in redis_client.scan_iter(ns_keys):
+    for key in redis_client.scan_iter(f"*storey-test:{table_name}*"):
         redis_client.delete(key)
         count += 1
 
@@ -125,70 +128,6 @@ def remove_sql_tables():
         # drop them, if they exist
         metadata.drop_all(bind=engine, checkfirst=True)
         engine.dispose()
-
-
-class TestContext:
-    def __init__(self, driver_name: str, table_name: str):
-        self._driver_name = driver_name
-        self._table_name = table_name
-
-        self._redis_fake_server = None
-        if driver_name == "RedisDriver":
-            redis_url = os.environ.get("MLRUN_REDIS_URL")
-            if not redis_url:
-                # if we are using fakeredis, create fake-server to support tests involving multiple clients
-                self._redis_fake_server = fakeredis.FakeServer()
-        if driver_name == "SQLDriver":
-            self._sql_db_path = SQL_DB
-            self._sql_table_name = table_name.split("/")[-2]
-            self._table_name = f"{SQL_DB}/{self._sql_table_name}"
-
-    @property
-    def table_name(self):
-        return self._table_name
-
-    @property
-    def redis_fake_server(self):
-        return self._redis_fake_server
-
-    @property
-    def driver_name(self):
-        return self._driver_name
-
-    @property
-    def sql_db_path(self):
-        return self._sql_db_path
-
-    class AggregationlessV3ioDriver(V3ioDriver):
-        def supports_aggregations(self):
-            return False
-
-    class AggregationlessRedisDriver(RedisDriver):
-        def supports_aggregations(self):
-            return False
-
-    def driver(self, IsAggregationlessDriver=False, primary_key=None, *args, **kwargs):
-        if self.driver_name == "V3ioDriver":
-            v3io_driver_class = TestContext.AggregationlessV3ioDriver if IsAggregationlessDriver else V3ioDriver
-            return v3io_driver_class(*args, **kwargs)
-        elif self.driver_name == "RedisDriver":
-            redis_driver_class = TestContext.AggregationlessRedisDriver if IsAggregationlessDriver else RedisDriver
-            return redis_driver_class(
-                *args,
-                redis_client=get_redis_client(self.redis_fake_server),
-                key_prefix="storey-test:",
-                **kwargs,
-            )
-        elif self.driver_name == "SQLDriver":
-            if IsAggregationlessDriver:
-                sql_driver_class = storey.sql_driver.SQLDriver
-                return sql_driver_class(db_path=SQL_DB, primary_key=primary_key)
-            else:
-                pytest.skip("SQLDriver does not support aggregation")
-        else:
-            driver_name = self.driver_name
-            raise ValueError(f'Unsupported driver name "{driver_name}"')
-
 
 drivers_list = ["V3ioDriver", "RedisDriver", "SQLDriver"]
 
@@ -215,10 +154,9 @@ def create_temp_redis_kv(setup_teardown_test):
     redis_client = get_redis_client(redis_fake_server=redis_fake_server)
 
     for i in range(1, 10):
-        redis_client.hmset(
-            f"storey-test:{table_path}{i}:static",
-            mapping={"age": f"{10 - i}", "color": f"blue{i}"},
-        )
+        key = RedisDriver.make_key("storey-test:", table_path, i)
+        static_key = RedisDriver._static_data_key(key)
+        redis_client.hset(static_key, mapping={"age": f"{10 - i}", "color": f"blue{i}"})
 
 
 async def create_temp_kv(table_path):
