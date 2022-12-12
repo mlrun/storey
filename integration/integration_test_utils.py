@@ -23,11 +23,8 @@ from datetime import datetime
 import aiohttp
 import fakeredis
 import pandas as pd
-import pytest
 import redis as r
 
-import storey.drivers
-from storey import V3ioDriver
 from storey.drivers import NeedsV3ioAccess
 from storey.flow import V3ioError
 from storey.redis_driver import RedisDriver
@@ -128,6 +125,7 @@ def remove_sql_tables():
         # drop them, if they exist
         metadata.drop_all(bind=engine, checkfirst=True)
         engine.dispose()
+
 
 drivers_list = ["V3ioDriver", "RedisDriver", "SQLDriver"]
 
