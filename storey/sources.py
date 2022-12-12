@@ -993,9 +993,9 @@ class SQLSource(_IterableSource, WithUUID):
         self,
         db_path: str,
         table_name: str,
-        key_field: Optional[Union[None, str, List[str]]] = None,
-        time_field: Optional[str] = None,
-        id_field: Optional[str] = None,
+        key_field: Union[None, str, List[str]] = None,
+        time_field: str = None,
+        id_field: str = None,
         **kwargs,
     ):
 
@@ -1025,33 +1025,29 @@ class SQLSource(_IterableSource, WithUUID):
             results = conn.execute(db.select([table])).fetchall()
 
         for namedtuple in results:
-            create_event = True
             body = namedtuple._asdict()
-            body.pop("index")
             key = None
             if self._key_field:
                 if isinstance(self._key_field, list):
                     key = []
                     for key_field in self._key_field:
                         if key_field not in body or pandas.isna(body[key_field]):
-                            create_event = False
+                            self.context.logger.error(
+                                f"For {body} value there is no {self._key_field} " f"field (key_field)"
+                            )
                             break
                         key.append(body[key_field])
                 else:
                     key = body[self._key_field]
                     if key is None:
-                        create_event = False
-            if create_event:
-                time = None
-                if self._time_field:
-                    time = body[self._time_field]
-                if self._id_field:
-                    _id = body[self._id_field]
-                else:
-                    _id = self._get_uuid()
-                event = Event(body, key=key, id=_id, processing_time=time)
-                await self._do_downstream(event)
+                        self.context.logger.error(f"For {body} value there is no {self._key_field} field (key_field)")
+            time = None
+            if self._time_field:
+                time = body[self._time_field]
+            if self._id_field:
+                _id = body[self._id_field]
             else:
-                if self.context:
-                    self.context.logger.error(f"For {body} value of key {key_field} is None")
+                _id = self._get_uuid()
+            event = Event(body, key=key, id=_id, processing_time=time)
+            await self._do_downstream(event)
         return await self._do_downstream(_termination_obj)

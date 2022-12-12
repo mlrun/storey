@@ -1104,7 +1104,7 @@ def test_write_string_as_time_via_schema(setup_teardown_test):
     assert actual == expected
 
 
-def test_write_multiple_keys_to_v3io_from_csv(setup_teardown_test):
+def test_write_multiple_keys_from_csv(setup_teardown_test):
     if setup_teardown_test.driver_name == "SQLDriver":
         create_sql_table(
             {"n1": int, "n2": int, "n3": int},

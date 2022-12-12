@@ -23,8 +23,8 @@ from storey.drivers import Driver
 class SQLDriver(Driver):
     """
     SQL database connector.
-    :param db_url: database url
     :param primary_key: the primary key of the table.
+    :param db_path: database url
     """
 
     def __init__(
@@ -44,21 +44,13 @@ class SQLDriver(Driver):
 
     def _table(self, table_path):
         metadata = db.MetaData()
-        while table_path.startswith("/"):
-            table_path = table_path[1:]
 
         return db.Table(
-            table_path.split("/")[1],
+            table_path.split("/")[2],
             metadata,
             autoload=True,
             autoload_with=self._engine,
         )
-
-    async def _save_schema(self, container, table_path, schema):
-        self._lazy_init()
-
-    async def _load_schema(self, container, table_path):
-        self._lazy_init()
 
     async def _save_key(self, container, table_path, key, aggr_item, partitioned_by_key, additional_data):
         self._lazy_init()
@@ -72,12 +64,10 @@ class SQLDriver(Driver):
         self._lazy_init()
         table = self._table(table_path)
 
-        agg_val, values = await self._get_all_fields(key, table)
-        if not agg_val:
-            agg_val = None
+        values = await self._get_all_fields(key, table)
         if not values:
             values = None
-        return [agg_val, values]
+        return [None, values]
 
     async def _load_by_key(self, container, table_path, key, attributes):
         self._lazy_init()
@@ -95,11 +85,8 @@ class SQLDriver(Driver):
 
     async def _get_all_fields(self, key, table):
         where_clause = self._get_where_clause(key)
-        try:
-            my_query = f"SELECT * FROM {table} where {where_clause}"
-            results = self._sql_connection.execute(my_query).fetchall()
-        except Exception as e:
-            raise RuntimeError(f"Failed to get key {key}. Response error was: {e}")
+        my_query = f"SELECT * FROM {table} where {where_clause}"
+        results = self._sql_connection.execute(my_query).fetchall()
 
         return results[0]._mapping
 
@@ -120,7 +107,7 @@ class SQLDriver(Driver):
         where_clause = ""
         if isinstance(key, str):
             key = key.split(".")
-        if isinstance(key, List):
+        if isinstance(key, list):
             for i in range(len(self._primary_key)):
                 if i != 0:
                     where_clause += " and "
