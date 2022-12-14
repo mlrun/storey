@@ -871,6 +871,33 @@ def test_map_with_state_flow_keyless_event():
     assert termination_result == 1036
 
 
+def test_map_with_state_closes_state_on_termination():
+    class MyCloseable:
+        def __init__(self):
+            self.times_closed = 0
+
+        def close(self):
+            self.times_closed += 1
+
+    closeable_state = MyCloseable()
+    controller = build_flow(
+        [
+            SyncEmitSource(),
+            MapWithState(closeable_state, lambda x, state: (x, state)),
+            Reduce(0, lambda acc, x: acc + x),
+        ]
+    ).run()
+
+    for i in range(3):
+        event = Event(i)
+        del event.key
+        controller.emit(event)
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == 3
+    assert closeable_state.times_closed == 1
+
+
 def test_map_with_table_state_flow():
     table_object = Table("table", NoopDriver())
     table_object["tal"] = {"color": "blue"}

@@ -491,8 +491,8 @@ class _FunctionWithStateFlow(Flow):
             self._state = self.context.get_table(self._state)
         self._fn = fn
         self._group_by_key = group_by_key
-        if hasattr(initial_state, "close"):
-            self._closeables = [initial_state]
+        if hasattr(self._state, "close"):
+            self._closeables = [self._state]
 
     async def _call(self, event):
         element = self._get_event_or_body(event)
