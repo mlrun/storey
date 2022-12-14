@@ -305,7 +305,13 @@ class SyncEmitSource(Flow):
                 break
 
         for closeable in self._closeables:
-            await closeable.close()
+            try:
+                maybe_coroutine = closeable.close()
+                if asyncio.iscoroutine(maybe_coroutine):
+                    await maybe_coroutine
+            except Exception as ex:
+                if self.context:
+                    self.context.logger.error(f"Error trying to close {closeable}: {ex}")
 
     def _loop_thread_main(self):
         asyncio.run(self._run_loop())
@@ -529,7 +535,13 @@ class AsyncEmitSource(Flow):
             finally:
                 if event is _termination_obj or self._ex:
                     for closeable in self._closeables:
-                        await closeable.close()
+                        try:
+                            maybe_coroutine = closeable.close()
+                            if asyncio.iscoroutine(maybe_coroutine):
+                                await maybe_coroutine
+                        except Exception as ex:
+                            if self.context:
+                                self.context.logger.error(f"Error trying to close {closeable}: {ex}")
 
     def _raise_on_error(self):
         if self._ex:
