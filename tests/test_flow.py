@@ -24,6 +24,7 @@ from datetime import datetime
 from random import choice
 from unittest.mock import MagicMock
 
+import fakeredis
 import pandas as pd
 import pyarrow.parquet as pq
 import pytest
@@ -905,8 +906,15 @@ def test_map_with_state_closes_state_on_termination():
     assert closeable_state.times_closed == 1
 
 
-def test_map_with_table_state_flow():
-    table_object = Table("table", NoopDriver())
+@pytest.mark.parametrize("driver_type", ["v3io", "redis"])
+def test_map_with_table_state_flow(driver_type):
+    if driver_type == "v3io":
+        driver = NoopDriver()
+    elif driver_type == "redis":
+        driver = fakeredis.FakeRedis(decode_responses=True, server=fakeredis.FakeServer())
+    else:
+        raise AssertionError(f"Unknown driver type {driver_type}")
+    table_object = Table("table", driver)
     table_object["tal"] = {"color": "blue"}
     table_object["dina"] = {"color": "red"}
 
@@ -915,7 +923,7 @@ def test_map_with_table_state_flow():
         state["counter"] = state.get("counter", 0) + 1
         return event, state
 
-    table_path = "v3io:///mycontainer/mytable/"
+    table_path = f"{driver_type}:///mycontainer/mytable/"
     controller = build_flow(
         [
             SyncEmitSource(),
