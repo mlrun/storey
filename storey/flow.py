@@ -24,7 +24,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Union
 
 import aiohttp
 
-from .dtypes import Event, FlowError, V3ioError, _termination_obj
+from .dtypes import Event, FlowError, V3ioError, _termination_obj, known_driver_schemes
 from .queue import AsyncQueue
 from .table import Table
 from .utils import _split_path, get_in, stringify_key, update_in
@@ -485,10 +485,16 @@ class _FunctionWithStateFlow(Flow):
             raise TypeError(f"Expected a callable, got {type(fn)}")
         self._is_async = asyncio.iscoroutinefunction(fn)
         self._state = initial_state
-        if isinstance(self._state, str) and self._state.startswith("v3io://"):
-            if not self.context:
-                raise TypeError("Table can not be string if no context was provided to the step")
-            self._state = self.context.get_table(self._state)
+        if isinstance(self._state, str):
+            should_get_from_context = False
+            for known_scheme in known_driver_schemes:
+                if self._state.startswith(f"{known_scheme}://"):
+                    should_get_from_context = True
+                    break
+            if should_get_from_context:
+                if not self.context:
+                    raise TypeError("Table can not be string if no context was provided to the step")
+                self._state = self.context.get_table(self._state)
         self._fn = fn
         self._group_by_key = group_by_key
         if hasattr(self._state, "close"):
