@@ -23,7 +23,7 @@ from .utils import bucketPerWindow, get_one_unit_of_duration, parse_duration
 
 _termination_obj = object()
 
-known_driver_schemes = ["v3io", "redis"]
+known_driver_schemes = ["v3io", "redis", "rediss"]
 
 
 class Event:
