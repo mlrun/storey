@@ -3794,6 +3794,7 @@ def test_init_of_recovery_step():
             self.times_init_called = 0
 
         def _init(self):
+            super()._init()
             self.times_init_called += 1
 
         async def _do(self, event):
