@@ -232,9 +232,6 @@ class SyncEmitSource(Flow):
 
     :param buffer_size: size of the incoming event buffer. Defaults to 8.
     :param key_field: Field to extract and use as the key. Optional.
-    :param time_field: Field to extract and use as the time. Optional.
-    :param time_format: Format of the event time. Needed when a nonstandard string timestamp is used (i.e. not ISO or
-        epoch). Optional.
     :param name: Name of this step, as it should appear in logs. Defaults to class name (SyncEmitSource).
     :type name: string
 
