@@ -145,6 +145,40 @@ def test_multiple_upstreams_completion():
     assert results == [[1, 0], [2, 10], [3, 20]]
 
 
+# ML-1167
+def test_multiple_upstreams_termination():
+    class FailOnSubsequentTermination(storey.Flow):
+        def _init(self):
+            super()._init()
+            self.terminated = False
+
+        async def _do(self, event):
+            if event is storey.dtypes._termination_obj:
+                if self.terminated:
+                    raise AssertionError("Termination must only be received once")
+                self.terminated = True
+            return event
+
+    source = SyncEmitSource()
+    map1 = Map(lambda x: x + 1)
+    map2 = Map(lambda x: x * 10)
+    termination_checker = FailOnSubsequentTermination()
+    source.to(map1)
+    source.to(map2)
+    map1.to(termination_checker)
+    map2.to(termination_checker)
+
+    controller = source.run()
+    try:
+        for i in range(3):
+            controller.emit(i)
+    finally:
+        controller.terminate()
+    controller.await_termination()
+
+    assert termination_checker.terminated
+
+
 def test_recover():
     def increment_maybe_boom(x):
         inc = x + 1
