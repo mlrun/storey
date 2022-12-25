@@ -996,6 +996,7 @@ class KafkaTarget(Flow, _Writer):
         self._full_event = full_event
 
     def _init(self):
+        Flow._init(self)
         _Writer._init(self)
 
     async def _lazy_init(self):
@@ -1074,6 +1075,7 @@ class NoSqlTarget(_Writer, Flow):
         self._write_missing_fields = False
 
     def _init(self):
+        Flow._init(self)
         _Writer._init(self)
 
     async def _handle_completed(self, event, response):

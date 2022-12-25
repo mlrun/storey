@@ -41,7 +41,16 @@ class Flow:
         **kwargs,
     ):
         self._outlets = []
+        self._inlets = []
+
         self._recovery_step = recovery_step
+        if recovery_step:
+            if isinstance(recovery_step, dict):
+                for step in recovery_step.values():
+                    step._inlets.append(self)
+            else:
+                recovery_step._inlets.append(self)
+
         self._termination_result_fn = termination_result_fn
         self.context = context
         self.verbose = context and getattr(context, "verbose", False)
@@ -61,7 +70,8 @@ class Flow:
         self._closeables = []
 
     def _init(self):
-        pass
+        self._termination_received = 0
+        self._termination_result = None
 
     def to_dict(self, fields=None, exclude=None):
         """convert the step object to a python dictionary"""
@@ -158,6 +168,7 @@ class Flow:
         if outlet._legal_first_step:
             raise ValueError(f"{outlet.name} can only appear as the first step of a flow")
         self._outlets.append(outlet)
+        outlet._inlets.append(self)
         return outlet
 
     def set_recovery_step(self, outlet):
@@ -176,15 +187,19 @@ class Flow:
         self._init()
         outlets = []
         outlets.extend(self._outlets)
-        if self._recovery_step:
-            if isinstance(self._recovery_step, dict):
-                outlets.extend(self._recovery_step.values())
-            else:
-                outlets.append(self._recovery_step)
+        outlets.extend(self._get_recovery_steps())
         for outlet in outlets:
             outlet._runnable = True
             self._closeables.extend(outlet.run())
         return self._closeables
+
+    def _get_recovery_steps(self):
+        if self._recovery_step:
+            if isinstance(self._recovery_step, dict):
+                return list(self._recovery_step.values())
+            else:
+                return [self._recovery_step]
+        return []
 
     async def run_async(self):
         raise NotImplementedError
@@ -231,16 +246,24 @@ class Flow:
         result += f"body={event.body})"
         return result
 
+    def _should_terminate(self):
+        return self._termination_received == len(self._inlets)
+
     async def _do_downstream(self, event):
         if not self._outlets:
             return
         if event is _termination_obj:
-            termination_result = await self._outlets[0]._do(_termination_obj)
-            for i in range(1, len(self._outlets)):
-                termination_result = self._termination_result_fn(
-                    termination_result, await self._outlets[i]._do(_termination_obj)
-                )
-            return termination_result
+            # Only propagate the termination object once we received one per inlet
+            self._outlets[0]._termination_received += 1
+            if self._outlets[0]._should_terminate():
+                self._termination_result = await self._outlets[0]._do(_termination_obj)
+            for outlet in self._outlets[1:] + self._get_recovery_steps():
+                outlet._termination_received += 1
+                if outlet._should_terminate():
+                    self._termination_result = self._termination_result_fn(
+                        self._termination_result, await outlet._do(_termination_obj)
+                    )
+            return self._termination_result
         # If there is more than one outlet, allow concurrent execution.
         tasks = []
         if len(self._outlets) > 1:
@@ -322,10 +345,10 @@ class Choice(Flow):
 
         self._choice_array = choice_array
         for outlet, _ in choice_array:
-            self._outlets.append(outlet)
+            self.to(outlet)
 
         if default:
-            self._outlets.append(default)
+            self.to(default)
         self._default = default
 
     async def _do(self, event):
@@ -700,6 +723,7 @@ class Reduce(Flow):
         self._initial_value = initial_value
 
     def _init(self):
+        super()._init()
         self._result = self._initial_value
 
     def to(self, outlet):
@@ -769,6 +793,7 @@ class _ConcurrentJobExecution(Flow):
         self._queue_size = max_in_flight - 1 if max_in_flight else 8
 
     def _init(self):
+        super()._init()
         self._q = None
         self._lazy_init_complete = False
 
@@ -946,6 +971,7 @@ class _Batching(Flow):
         self._extract_key: Optional[Callable[[Event], str]] = self._create_key_extractor(key_field)
 
     def _init(self):
+        super()._init()
         self._batch: Dict[Optional[str], List[Any]] = defaultdict(list)
         self._batch_first_event_time: Dict[Optional[str], datetime.datetime] = {}
         self._batch_last_event_time: Dict[Optional[str], datetime.datetime] = {}

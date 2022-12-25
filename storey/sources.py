@@ -262,6 +262,7 @@ class SyncEmitSource(Flow):
         self._closeables = []
 
     def _init(self):
+        super()._init()
         self._is_terminated = False
 
     async def _run_loop(self):
@@ -482,6 +483,7 @@ class AsyncEmitSource(Flow):
         self._closeables = []
 
     def _init(self):
+        super()._init()
         self._is_terminated = False
 
     async def _run_loop(self):
@@ -548,9 +550,6 @@ class _IterableSource(Flow):
         self._termination_q = queue.Queue(1)
         self._ex = None
         self._closeables = []
-
-    def _init(self):
-        pass
 
     async def _run_loop(self):
         raise NotImplementedError()
@@ -678,6 +677,7 @@ class CSVSource(_IterableSource, WithUUID):
             raise ValueError("time_field can only be set to an integer when with_header is false")
 
     def _init(self):
+        super()._init()
         self._event_buffer = queue.Queue(1024)
         self._types = []
         self._none_columns = set()
@@ -976,6 +976,7 @@ class ParquetSource(DataframeSource):
         )
 
     def _init(self):
+        super()._init()
         self._dfs = []
         for path in self._paths:
             if self._start_filter or self._end_filter:
