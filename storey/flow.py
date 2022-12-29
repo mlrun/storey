@@ -1007,12 +1007,17 @@ class _Batching(Flow):
 
         key = self._extract_key(event)
 
+        if hasattr(self, "_get_event_time"):
+            event_time = self._get_event_time(event)
+        else:
+            event_time = event.processing_time
+
         if len(self._batch[key]) == 0:
-            self._batch_first_event_time[key] = event.processing_time
+            self._batch_first_event_time[key] = event_time
             self._batch_start_time[key] = time.monotonic()
-            self._batch_last_event_time[key] = event.processing_time
-        elif self._batch_last_event_time[key] < event.processing_time:
-            self._batch_last_event_time[key] = event.processing_time
+            self._batch_last_event_time[key] = event_time
+        elif self._batch_last_event_time[key] < event_time:
+            self._batch_last_event_time[key] = event_time
 
         if self._timeout_task_ex:
             raise self._timeout_task_ex
