@@ -18,20 +18,20 @@ import os
 import random
 import re
 import string
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import aiohttp
 import fakeredis
 import pandas as pd
 import redis as r
 
+import integration.conftest
 from storey.drivers import NeedsV3ioAccess
 from storey.flow import V3ioError
 from storey.redis_driver import RedisDriver
 
 _non_int_char_pattern = re.compile(r"[^-0-9]")
 test_base_time = datetime.fromisoformat("2020-07-21T21:40:00+00:00")
-SQL_DB = "sqlite:///test.db"
 
 
 class V3ioHeaders(NeedsV3ioAccess):
@@ -118,7 +118,7 @@ def remove_redis_table(table_name):
 def remove_sql_tables():
     import sqlalchemy as db
 
-    engine = db.create_engine(SQL_DB)
+    engine = db.create_engine(integration.conftest.SQLITE_DB)
     with engine.connect() as _:
         metadata = db.MetaData()
         metadata.reflect(bind=engine)
@@ -265,7 +265,7 @@ def _convert_nginx_to_python_type(typ, value):
 def create_sql_table(schema, table_name, sql_db_path, key):
     import sqlalchemy as db
 
-    engine = db.create_engine(sql_db_path, echo=True)
+    engine = db.create_engine(sql_db_path)
     with engine.connect() as _:
         metadata = db.MetaData()
         columns = []
@@ -274,7 +274,9 @@ def create_sql_table(schema, table_name, sql_db_path, key):
                 col_type = db.Integer
             elif col_type == str:
                 col_type = db.String
-            elif col_type == datetime or col_type == pd.Timestamp or col_type == pd.Timedelta:
+            elif col_type == timedelta or col_type == pd.Timedelta:
+                col_type = db.Interval
+            elif col_type == datetime or col_type == pd.Timestamp:
                 col_type = db.DateTime
             elif col_type == bool:
                 col_type = db.Boolean

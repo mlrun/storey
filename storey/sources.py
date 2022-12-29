@@ -985,7 +985,7 @@ class SQLSource(_IterableSource, WithUUID):
     :parameter key_field: the primary key of the table.
     :parameter time_field: column to be used as time for events.
     :parameter id_field: column to be used as ID for events.
-    :parameter db_name: url string connection to sql database.
+    :parameter db_path: url string connection to sql database.
     :parameter table_name: the name of the table to access, from the current database
     """
 
@@ -1019,8 +1019,8 @@ class SQLSource(_IterableSource, WithUUID):
         import sqlalchemy as db
 
         engine = db.create_engine(self.db_path)
-        metadata = db.MetaData()
         with engine.connect() as conn:
+            metadata = db.MetaData()
             table = db.Table(self.table_name, metadata, autoload=True, autoload_with=engine)
             results = conn.execute(db.select([table])).fetchall()
 

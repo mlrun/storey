@@ -134,7 +134,7 @@ def _get_sql_by_key_all_attrs(
             where_statement += f'{key_name[i]}="{key[i]}"'
 
     table_name = setup_teardown_test._sql_table_name
-    engine = db.create_engine(setup_teardown_test.sql_db_path, echo=True)
+    engine = db.create_engine(setup_teardown_test.sql_db_path)
     metadata = db.MetaData()
     sql_table = db.Table(
         table_name,
@@ -145,21 +145,39 @@ def _get_sql_by_key_all_attrs(
     my_query = f"SELECT * FROM {sql_table} where ({where_statement})"
     with engine.connect() as conn:
         results = conn.execute(my_query).fetchall()
-    return results[0]._mapping
+    return [r._asdict() for r in results][0]
 
 
 def get_key_all_attrs_test_helper(
-    setup_teardown_test: ContextForTests, key: Union[str, List[str]], key_name: Union[str, List[str]] = None
+    setup_teardown_test: ContextForTests,
+    key: Union[str, List[str]],
+    key_name: Union[str, List[str]] = None,
+    time_fields: List[str] = None,
 ):
     if setup_teardown_test.driver_name == "RedisDriver":
         result = _get_redis_kv_all_attrs(setup_teardown_test, key)
     elif setup_teardown_test.driver_name == "SQLDriver":
         result = _get_sql_by_key_all_attrs(setup_teardown_test, key, key_name)
+        if time_fields is not None:
+            for time_field in time_fields:
+                result[time_field] = datetime.strptime(result[time_field] + " UTC-0000", "%Y-%m-%d %H:%M:%S.%f UTC%z")
     else:
         response = asyncio.run(get_kv_item(setup_teardown_test.table_name, key))
         assert response.status_code == 200
         result = response.output.item
     return result
+
+
+def _get_table(setup_teardown_test, schema, keys):
+    if setup_teardown_test.driver_name == "SQLDriver":
+        create_sql_table(schema, setup_teardown_test._sql_table_name, setup_teardown_test.sql_db_path, keys)
+        table = Table(
+            setup_teardown_test.table_name, setup_teardown_test.driver(primary_key=keys, is_aggregationless_driver=True)
+        )
+    else:
+        table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
+
+    return table
 
 
 def test_join_with_v3io_table(setup_kv_teardown_test):
@@ -671,10 +689,24 @@ def test_inner_join_by_key(setup_kv_teardown_test):
 
 
 def test_write_table_specific_columns(setup_teardown_test):
-    if setup_teardown_test.driver_name == "SQLDriver":
-        pytest.skip("test_write_table_specific_columns not testing over SQLDriver")
-    else:
-        table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
+    keys = ["my_key"]
+    table = _get_table(
+        setup_teardown_test,
+        {
+            "my_key": str,
+            "color": str,
+            "age": int,
+            "iss": bool,
+            "sometime": pd.Timestamp,
+            "first_activity": pd.Timestamp,
+            "last_event": pd.Timestamp,
+            "total_activities": int,
+            "twice_total_activities": int,
+            "min": int,
+            "Avg": int,
+        },
+        keys,
+    )
 
     table["tal"] = {
         "color": "blue",
@@ -701,7 +733,7 @@ def test_write_table_specific_columns(setup_teardown_test):
             SyncEmitSource(),
             MapWithState(table, enrich, group_by_key=True),
             DropColumns("sometime"),
-            NoSqlTarget(table, columns=["twice_total_activities"]),
+            NoSqlTarget(table, columns=["twice_total_activities", "my_key=$key"]),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
     ).run()
@@ -791,17 +823,32 @@ def test_write_table_specific_columns(setup_teardown_test):
         "twice_total_activities": 20,
         "min": 1,
         "Avg": 3,
+        "my_key": "tal",
     }
 
-    actual_cache = get_key_all_attrs_test_helper(setup_teardown_test, "tal")
+    actual_cache = get_key_all_attrs_test_helper(
+        setup_teardown_test, "tal", keys, ["sometime", "first_activity", "last_event"]
+    )
     assert expected_cache == actual_cache
 
 
 def test_write_table_metadata_columns(setup_teardown_test):
-    if setup_teardown_test.driver_name == "SQLDriver":
-        pytest.skip("test_write_table_metadata_columns not testing over SQLDriver")
-    else:
-        table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
+    keys = ["my_key"]
+    table = _get_table(
+        setup_teardown_test,
+        {
+            "color": str,
+            "age": int,
+            "iss": bool,
+            "sometime": datetime,
+            "first_activity": datetime,
+            "last_event": datetime,
+            "total_activities": int,
+            "twice_total_activities": int,
+            "my_key": str,
+        },
+        keys,
+    )
 
     table["tal"] = {"color": "blue", "age": 41, "iss": True, "sometime": test_base_time}
 
@@ -911,7 +958,9 @@ def test_write_table_metadata_columns(setup_teardown_test):
         "twice_total_activities": 20,
         "my_key": "tal",
     }
-    actual_cache = get_key_all_attrs_test_helper(setup_teardown_test, "tal")
+    actual_cache = get_key_all_attrs_test_helper(
+        setup_teardown_test, "tal", keys, ["sometime", "first_activity", "last_event"]
+    )
     assert expected_cache == actual_cache
 
 
@@ -933,15 +982,8 @@ async def get_kv_item(full_path, key):
 
 
 def test_writing_int_key(setup_teardown_test):
-    if setup_teardown_test.driver_name == "SQLDriver":
-        create_sql_table(
-            {"num": int, "color": str}, setup_teardown_test._sql_table_name, setup_teardown_test.sql_db_path, "num"
-        )
-        table = Table(
-            setup_teardown_test.table_name, setup_teardown_test.driver(primary_key="num", IsAggregationlessDriver=True)
-        )
-    else:
-        table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
+    keys = ["num"]
+    table = _get_table(setup_teardown_test, {"num": int, "color": str}, keys)
 
     df = pd.DataFrame({"num": [0, 1, 2], "color": ["green", "blue", "red"]})
 
@@ -956,7 +998,7 @@ def test_writing_int_key(setup_teardown_test):
 
 def test_writing_timedelta_key(setup_teardown_test):
     if setup_teardown_test.driver_name == "SQLDriver":
-        pytest.skip("test_writing_timedelta_key not testing over SQLDriver")
+        pytest.skip("test_writing_timedelta_key not testing over SQLDriver because SQLITE not support interval type")
     else:
         table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
 
@@ -980,20 +1022,8 @@ def test_writing_timedelta_key(setup_teardown_test):
 
 
 def test_write_two_keys_to_v3io_from_df(setup_teardown_test):
-    if setup_teardown_test.driver_name == "SQLDriver":
-        create_sql_table(
-            {"first_name": str, "last_name": str, "city": str},
-            setup_teardown_test._sql_table_name,
-            setup_teardown_test.sql_db_path,
-            ["first_name", "last_name"],
-        )
-        table = Table(
-            setup_teardown_test.table_name,
-            setup_teardown_test.driver(primary_key=["first_name", "last_name"], IsAggregationlessDriver=True),
-        )
-
-    else:
-        table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
+    keys = ["first_name", "last_name"]
+    table = _get_table(setup_teardown_test, {"first_name": int, "last_name": str, "city": str}, keys)
     data = pd.DataFrame(
         {
             "first_name": ["moshe", "yosi"],
@@ -1002,7 +1032,6 @@ def test_write_two_keys_to_v3io_from_df(setup_teardown_test):
         }
     )
 
-    keys = ["first_name", "last_name"]
     controller = build_flow(
         [
             DataframeSource(data, key_field=keys),
@@ -1051,10 +1080,8 @@ def test_write_three_keys_to_v3io_from_df(setup_teardown_test):
 
 
 def test_write_string_as_time_via_time_field(setup_teardown_test):
-    if setup_teardown_test.driver_name == "SQLDriver":
-        pytest.skip("test_write_string_as_time_via_time_field not testing over SQLDriver")
-    else:
-        table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
+    keys = ["name"]
+    table = _get_table(setup_teardown_test, {"name": str, "time": datetime}, keys)
     t1 = datetime.fromisoformat("2020-03-16T05:00:00+00:00")
     t2 = datetime.fromisoformat("2020-03-15T18:00:00+00:00")
     df = pd.DataFrame(
@@ -1073,15 +1100,13 @@ def test_write_string_as_time_via_time_field(setup_teardown_test):
     controller.await_termination()
 
     expected = {"name": "tuna", "time": t2}
-    actual = get_key_all_attrs_test_helper(setup_teardown_test, "tuna")
+    actual = get_key_all_attrs_test_helper(setup_teardown_test, "tuna", keys, time_fields=["time"])
     assert actual == expected
 
 
 def test_write_string_as_time_via_schema(setup_teardown_test):
-    if setup_teardown_test.driver_name == "SQLDriver":
-        pytest.skip("test_write_string_as_time_via_schema not testing over SQLDriver")
-    else:
-        table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
+    keys = ["name"]
+    table = _get_table(setup_teardown_test, {"name": str, "time": datetime}, keys)
     t1 = "2020-03-16T05:00:00+00:00"
     t2 = "2020-03-15T18:00:00+00:00"
     df = pd.DataFrame(
@@ -1100,25 +1125,13 @@ def test_write_string_as_time_via_schema(setup_teardown_test):
     controller.await_termination()
 
     expected = {"name": "tuna", "time": datetime.fromisoformat(t2)}
-    actual = get_key_all_attrs_test_helper(setup_teardown_test, "tuna")
+    actual = get_key_all_attrs_test_helper(setup_teardown_test, "tuna", keys, time_fields=["time"])
     assert actual == expected
 
 
 def test_write_multiple_keys_from_csv(setup_teardown_test):
-    if setup_teardown_test.driver_name == "SQLDriver":
-        create_sql_table(
-            {"n1": int, "n2": int, "n3": int},
-            setup_teardown_test._sql_table_name,
-            setup_teardown_test.sql_db_path,
-            ["n1", "n2"],
-        )
-        table = Table(
-            setup_teardown_test.table_name,
-            setup_teardown_test.driver(primary_key=["n1", "n2"], IsAggregationlessDriver=True),
-        )
-    else:
-        table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
-
+    keys = ["n1", "n2"]
+    table = _get_table(setup_teardown_test, {"n1": int, "n2": int, "n3": int}, keys)
     controller = build_flow(
         [
             CSVSource("tests/test.csv", header=True, key_field=["n1", "n2"], build_dict=True),
@@ -1137,23 +1150,11 @@ def test_write_multiple_keys_from_csv(setup_teardown_test):
 
 
 def test_write_multiple_keys_to_v3io(setup_teardown_test):
-    if setup_teardown_test.driver_name == "SQLDriver":
-        create_sql_table(
-            {"n1": int, "n2": int, "n3": int},
-            setup_teardown_test._sql_table_name,
-            setup_teardown_test.sql_db_path,
-            ["n1", "n2"],
-        )
-        table = Table(
-            setup_teardown_test.table_name,
-            setup_teardown_test.driver(primary_key=["n1", "n2"], IsAggregationlessDriver=True),
-        )
-    else:
-        table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
-
+    keys = ["n1", "n2"]
+    table = _get_table(setup_teardown_test, {"n1": int, "n2": int, "n3": int}, keys)
     controller = build_flow(
         [
-            SyncEmitSource(key_field=["n1", "n2"]),
+            SyncEmitSource(key_field=keys),
             NoSqlTarget(table),
         ]
     ).run()
@@ -1165,11 +1166,11 @@ def test_write_multiple_keys_to_v3io(setup_teardown_test):
     controller.await_termination()
 
     expected = {"n1": 1, "n2": 2, "n3": 3}
-    actual = get_key_all_attrs_test_helper(setup_teardown_test, "1.2", ["n1", "n2"])
+    actual = get_key_all_attrs_test_helper(setup_teardown_test, "1.2", keys)
     assert expected == actual
 
     expected = {"n1": 4, "n2": 5, "n3": 6}
-    actual = get_key_all_attrs_test_helper(setup_teardown_test, "4.5", ["n1", "n2"])
+    actual = get_key_all_attrs_test_helper(setup_teardown_test, "4.5", keys)
     assert expected == actual
 
 
@@ -1213,7 +1214,7 @@ def test_write_none_time(setup_teardown_test):
 
 def test_cache_flushing(setup_teardown_test):
     if setup_teardown_test.driver_name == "SQLDriver":
-        pytest.skip("test_cache_flushing not testing over SQLDriver")
+        pytest.skip("test_cache_flushing not testing over SQLDriver, SQL is not kv")
     else:
         table = Table(setup_teardown_test.table_name, setup_teardown_test.driver(), flush_interval_secs=3)
     controller = build_flow(
@@ -1246,7 +1247,7 @@ def test_cache_flushing(setup_teardown_test):
 def test_write_empty_df(setup_teardown_test):
     table = Table(
         setup_teardown_test.table_name,
-        setup_teardown_test.driver(IsAggregationlessDriver=setup_teardown_test.driver_name == "SQLDriver"),
+        setup_teardown_test.driver(is_aggregationless_driver=setup_teardown_test.driver_name == "SQLDriver"),
     )
     df = pd.DataFrame({})
 

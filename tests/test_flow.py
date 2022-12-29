@@ -30,6 +30,7 @@ import pytest
 from aiohttp import ClientConnectorError, InvalidURL
 from pandas.testing import assert_frame_equal
 
+import integration.conftest
 import storey
 from storey import (
     AsyncEmitSource,
@@ -3856,7 +3857,7 @@ def test_rename():
 def test_read_sql_db():
     import sqlalchemy as db
 
-    engine = db.create_engine("sqlite:///test.db", echo=True)
+    engine = db.create_engine(integration.conftest.SQLITE_DB)
     with engine.connect() as conn:
         origin_df = pd.DataFrame({"string": ["hello", "world"], "int": [1, 2], "float": [1.5, 2.5]})
         origin_df.to_sql("table_1", conn, if_exists="replace", index=False)
@@ -3867,9 +3868,9 @@ def test_read_sql_db():
         ]
     ).run()
 
-    termination_result = controller.await_termination()
+    actual = controller.await_termination()
     expected = [
         {"string": "hello", "int": 1, "float": 1.5},
         {"string": "world", "int": 2, "float": 2.5},
     ]
-    assert termination_result == expected
+    assert actual == expected

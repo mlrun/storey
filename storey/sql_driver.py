@@ -13,8 +13,9 @@
 # limitations under the License.
 #
 
-from typing import List
+from typing import List, Union
 
+import pandas as pd
 import sqlalchemy as db
 
 from storey.drivers import Driver
@@ -23,18 +24,18 @@ from storey.drivers import Driver
 class SQLDriver(Driver):
     """
     SQL database connector.
-    :param primary_key: the primary key of the table.
+    :param primary_key: the primary key of the table, format <str>.<str>..
     :param db_path: database url
     """
 
     def __init__(
         self,
-        primary_key: str,
+        primary_key: Union[str, List[str]],
         db_path: str,
     ):
         self._db_path = db_path
         self._sql_connection = None
-        self._primary_key = primary_key
+        self._primary_key = primary_key if isinstance(primary_key, list) else self._extract_list_of_keys(primary_key)
 
     def _lazy_init(self):
 
@@ -54,11 +55,12 @@ class SQLDriver(Driver):
 
     async def _save_key(self, container, table_path, key, aggr_item, partitioned_by_key, additional_data):
         self._lazy_init()
-
+        key = self._extract_list_of_keys(key)
+        for i in range(len(self._primary_key)):
+            additional_data[self._primary_key[i]] = key[i]
         table = self._table(table_path)
-        self._sql_connection.execute(table.insert(), [additional_data], autocommit=True)
-
-        await self.close()
+        df = pd.DataFrame(additional_data, index=[0])
+        df.to_sql(table.name, con=self._sql_connection, if_exists="append", index=False)
 
     async def _load_aggregates_by_key(self, container, table_path, key):
         self._lazy_init()
@@ -105,11 +107,17 @@ class SQLDriver(Driver):
 
     def _get_where_clause(self, key):
         where_clause = ""
+        key = self._extract_list_of_keys(key)
+        for i in range(len(self._primary_key)):
+            if i != 0:
+                where_clause += " and "
+            where_clause += f'{self._primary_key[i]}="{key[i]}"'
+        return where_clause
+
+    @staticmethod
+    def _extract_list_of_keys(key):
         if isinstance(key, str):
             key = key.split(".")
-        if isinstance(key, list):
-            for i in range(len(self._primary_key)):
-                if i != 0:
-                    where_clause += " and "
-                where_clause += f'{self._primary_key[i]}="{key[i]}"'
-        return where_clause
+        if isinstance(key, int):
+            key = [key]
+        return key
