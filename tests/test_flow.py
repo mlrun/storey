@@ -492,18 +492,18 @@ def test_write_parquet_timestamp_nanosecs(tmpdir):
         columns=columns,
     )
     df.set_index(keys=["timestamp1"], inplace=True)
+    parquet_target = ParquetTarget(
+        out_dir, columns=["string", "timestamp2"], partition_cols=[], index_cols="timestamp1", time_field="timestamp1"
+    )
     controller = build_flow(
         [
             DataframeSource(df),
-            ParquetTarget(
-                out_dir,
-                columns=["string", "timestamp2"],
-                partition_cols=[],
-                index_cols="timestamp1",
-            ),
+            parquet_target,
         ]
     ).run()
     controller.await_termination()
+
+    assert parquet_target._last_written_event == pd.Timestamp("2020-01-26 14:52:37.12325679")
 
     controller = build_flow(
         [
