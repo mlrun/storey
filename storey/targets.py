@@ -172,13 +172,17 @@ class _Writer:
                     if self._column_types:
                         self._non_partition_column_types.append(self._column_types[index])
 
-    def _path_from_event(self, event):
+    def _get_event_time(self, event):
         event_time = event.processing_time
         if self._time_field is not None:
             time_field = self._time_field
             if isinstance(event.body, list) and isinstance(time_field, str):
                 time_field = self._col_to_index[time_field]
             event_time = event.body[time_field]
+        return event_time
+
+    def _path_from_event(self, event):
+        event_time = self._get_event_time(event)
         res = "/"
         for col in self._partition_cols:
             hash_into = 0
