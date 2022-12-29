@@ -3859,18 +3859,20 @@ def test_read_sql_db():
 
     engine = db.create_engine(integration.conftest.SQLITE_DB)
     with engine.connect() as conn:
-        origin_df = pd.DataFrame({"string": ["hello", "world"], "int": [1, 2], "float": [1.5, 2.5]})
+        origin_df = pd.DataFrame({"string": ["hello", "world"], "int": [1, 2], "float": [1.5, 2.5],
+                                  'time': [datetime.fromisoformat("2020-07-21T21:40:00"),
+                                           datetime.fromisoformat("2020-07-21T21:41:00")]})
         origin_df.to_sql("table_1", conn, if_exists="replace", index=False)
     controller = build_flow(
         [
-            SQLSource("sqlite:///test.db", "table_1", "string"),
+            SQLSource("sqlite:///test.db", "table_1", "string", time_field='time', id_field='int'),
             Reduce([], append_and_return),
         ]
     ).run()
 
     actual = controller.await_termination()
     expected = [
-        {"string": "hello", "int": 1, "float": 1.5},
-        {"string": "world", "int": 2, "float": 2.5},
+        {"string": "hello", "int": 1, "float": 1.5, 'time': datetime.fromisoformat("2020-07-21T21:40:00")},
+        {"string": "world", "int": 2, "float": 2.5, 'time': datetime.fromisoformat("2020-07-21T21:41:00")},
     ]
     assert actual == expected
