@@ -656,6 +656,8 @@ class TSDBTarget(_Batching, _Writer):
 
     :param path: Path to TSDB table.
     :param time_col: Name of the time column.
+    :param time_format: If time_col is a string column, and its format is not compatible with ISO-8601, use this
+        parameter to determine the expected format.
     :param columns: List of column names to be passed to the DataFrame constructor. Use = notation for renaming fields
         (e.g. write_this=event_field). Use $ notation to refer to metadata ($key, event_time=$time).
     :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries. If
@@ -686,6 +688,7 @@ class TSDBTarget(_Batching, _Writer):
         self,
         path: str,
         time_col: str,
+        time_format: Optional[str],
         columns: Union[str, List[str], None] = None,
         infer_columns_from_data: Optional[bool] = None,
         index_cols: Union[str, List[str], None] = None,
@@ -699,6 +702,7 @@ class TSDBTarget(_Batching, _Writer):
     ):
         kwargs["path"] = path
         kwargs["time_col"] = time_col
+        kwargs["time_format"] = time_format
         if columns is not None:
             kwargs["columns"] = columns
         if infer_columns_from_data is not None:
@@ -719,6 +723,8 @@ class TSDBTarget(_Batching, _Writer):
             if isinstance(index_cols, str):
                 index_cols = [index_cols]
             new_index_cols.extend(index_cols)
+        self._time_col = time_col
+        self._time_format = time_format
         _Writer.__init__(self, columns, infer_columns_from_data, index_cols=new_index_cols)
         parts = urlparse(path)
         self._path = parts.path
@@ -744,6 +750,7 @@ class TSDBTarget(_Batching, _Writer):
             df_columns.extend(self._index_cols)
         df_columns.extend(self._columns)
         df = pd.DataFrame(batch, columns=df_columns)
+        df["time"] = pd.to_datetime(df["time"], format=self._time_format)
         df.set_index(keys=self._index_cols, inplace=True)
         if not self._created and self._rate:
             self._created = True
