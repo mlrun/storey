@@ -46,6 +46,7 @@ class _Writer:
         index_cols: Union[str, List[Union[str, Tuple[str, str]]], None] = None,
         partition_cols: Union[str, List[str], None] = None,
         time_field: Union[None, str, int] = None,
+        time_format: Optional[str] = None,
         retain_dict: bool = False,
         storage_options: Optional[dict] = None,
     ):
@@ -135,6 +136,7 @@ class _Writer:
                 )
 
         self._time_field = time_field
+        self._time_format = time_format
 
     _type_string_to_pyarrow_type = {
         "str": pyarrow.string(),
@@ -180,7 +182,10 @@ class _Writer:
                 time_field = self._col_to_index[time_field]
             event_time = event.body[time_field]
             if isinstance(event_time, str):
-                event_time = datetime.datetime.fromisoformat(event_time)
+                if self._time_format:
+                    event_time = datetime.datetime.strptime(event_time, self._time_format)
+                else:
+                    event_time = datetime.datetime.fromisoformat(event_time)
                 event.body[time_field] = event_time
             if isinstance(event_time, int):
                 event_time = datetime.datetime.fromtimestamp(event_time)
@@ -515,6 +520,7 @@ class ParquetTarget(_Batching, _Writer):
         columns: Union[str, Union[List[str], List[Tuple[str, str]]], None] = None,
         partition_cols: Union[str, Union[List[str], List[Tuple[str, int]]], None] = None,
         time_field: Union[None, str, int] = None,
+        time_format: Optional[str] = None,
         infer_columns_from_data: Optional[bool] = None,
         max_events: Optional[int] = None,
         flush_after_seconds: Optional[int] = None,
@@ -566,6 +572,7 @@ class ParquetTarget(_Batching, _Writer):
             index_cols,
             partition_cols,
             time_field,
+            time_format,
             retain_dict=True,
             storage_options=storage_options,
         )
