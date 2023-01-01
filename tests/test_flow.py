@@ -528,6 +528,67 @@ def test_write_parquet_timestamp_nanosecs(tmpdir):
     assert termination_result == expected
 
 
+def test_write_parquet_string_timestamp(tmpdir):
+    out_dir = f"{tmpdir}/test_write_parquet_timestamp_nanosecs/{uuid.uuid4().hex}/"
+    columns = ["string", "timestamp1", "timestamp2"]
+
+    df = pd.DataFrame(
+        [
+            [
+                "hello",
+                "2020-01-26 14:52:37.123256",
+                "2020-01-26 12:41:37.123456",
+            ],
+            [
+                "world",
+                "2018-05-11 13:52:37.333421",
+                "2020-01-14 14:52:37.987654",
+            ],
+        ],
+        columns=columns,
+    )
+    df.set_index(keys=["timestamp1"], inplace=True)
+    parquet_target = ParquetTarget(
+        out_dir,
+        columns=["string", "timestamp2"],
+        partition_cols=[],
+        index_cols="timestamp1",
+        time_field="timestamp1",
+        time_format="%Y-%m-%d %H:%M:%S.%f",
+    )
+    controller = build_flow(
+        [
+            DataframeSource(df),
+            parquet_target,
+        ]
+    ).run()
+    controller.await_termination()
+
+    assert parquet_target._last_written_event == pd.Timestamp("2020-01-26 14:52:37.123256")
+
+    controller = build_flow(
+        [
+            ParquetSource(out_dir),
+            Reduce([], append_and_return),
+        ]
+    ).run()
+
+    termination_result = controller.await_termination()
+    expected = [
+        {
+            "string": "hello",
+            "timestamp1": pd.Timestamp("2020-01-26 14:52:37.123256"),
+            "timestamp2": "2020-01-26 12:41:37.123456",
+        },
+        {
+            "string": "world",
+            "timestamp1": pd.Timestamp("2018-05-11 13:52:37.333421"),
+            "timestamp2": "2020-01-14 14:52:37.987654",
+        },
+    ]
+    assert termination_result == expected
+
+
 # ML-1553
 def test_write_parquet_time_zone_mix(tmpdir):
     out_file = f"{tmpdir}/test_write_parquet_time_zone_mix/{uuid.uuid4().hex}.pq"

@@ -490,15 +490,18 @@ def test_push_error_on_write_to_v3io_stream(assign_stream_teardown_test):
     assert shard0_data == [b"0"]
 
 
-def test_write_to_tsdb():
+@pytest.mark.parametrize("timestamp", [True, False])
+def test_write_to_tsdb(timestamp):
     table_name = f"storey_ci/tsdb_path-{int(time.time_ns() / 1000)}"
     tsdb_path = f"v3io://bigdata/{table_name}"
+    time_format = "%d/%m/%y %H:%M:%S UTC%z"
     controller = build_flow(
         [
             SyncEmitSource(),
             TSDBTarget(
                 path=tsdb_path,
                 time_col="time",
+                time_format=time_format,
                 index_cols="node",
                 columns=["cpu", "disk"],
                 rate="1/h",
@@ -510,9 +513,11 @@ def test_write_to_tsdb():
     expected = []
     date_time_str = "18/09/19 01:55:1"
     for i in range(9):
-        now = datetime.strptime(date_time_str + str(i) + " UTC-0000", "%d/%m/%y %H:%M:%S UTC%z")
-        controller.emit([now, i, i + 1, i + 2])
-        expected.append([now, f"{i}", float(i + 1), float(i + 2)])
+        now_str = f"{date_time_str}{i} UTC-0000"
+        now_datetime = datetime.strptime(now_str, time_format)
+        now_for_emit = now_datetime if timestamp else now_str
+        controller.emit([now_for_emit, i, i + 1, i + 2])
+        expected.append([now_datetime, f"{i}", float(i + 1), float(i + 2)])
 
     controller.terminate()
     controller.await_termination()

@@ -46,6 +46,7 @@ class _Writer:
         index_cols: Union[str, List[Union[str, Tuple[str, str]]], None] = None,
         partition_cols: Union[str, List[str], None] = None,
         time_field: Union[None, str, int] = None,
+        time_format: Optional[str] = None,
         retain_dict: bool = False,
         storage_options: Optional[dict] = None,
     ):
@@ -135,6 +136,7 @@ class _Writer:
                 )
 
         self._time_field = time_field
+        self._time_format = time_format
 
     _type_string_to_pyarrow_type = {
         "str": pyarrow.string(),
@@ -179,6 +181,15 @@ class _Writer:
             if isinstance(event.body, list) and isinstance(time_field, str):
                 time_field = self._col_to_index[time_field]
             event_time = event.body[time_field]
+            if isinstance(event_time, str):
+                if self._time_format:
+                    event_time = datetime.datetime.strptime(event_time, self._time_format)
+                else:
+                    event_time = datetime.datetime.fromisoformat(event_time)
+                event.body[time_field] = event_time
+            elif isinstance(event_time, int):
+                event_time = datetime.datetime.fromtimestamp(event_time)
+                event.body[time_field] = event_time
         return event_time
 
     def _path_from_event(self, event):
@@ -488,6 +499,9 @@ class ParquetTarget(_Batching, _Writer):
         specified as a tuple, such as ('$key', 64), which means partitioning by the event key hashed into 64 partitions.
         If None (the default), the data will only be partitioned if the path ends in .parquet or .pq. Otherwise, it will
         be partitioned by key/year/month/day/hour, where the key is hashed into 256 buckets.
+    :param time_field: Column to use for time partitioning, if applicable.
+    :param time_format: If time_field is provided, and the expected value type is str rather than datetime, time strings
+        will be parsed according to this format. If not provided, they will be parsed in accordance with ISO-8601.
     :param max_events: Maximum number of events to write at a time. If None (default), all events will be written on
         flow termination, or after flush_after_seconds (if flush_after_seconds is set).
     :type max_events: int
@@ -507,6 +521,7 @@ class ParquetTarget(_Batching, _Writer):
         columns: Union[str, Union[List[str], List[Tuple[str, str]]], None] = None,
         partition_cols: Union[str, Union[List[str], List[Tuple[str, int]]], None] = None,
         time_field: Union[None, str, int] = None,
+        time_format: Optional[str] = None,
         infer_columns_from_data: Optional[bool] = None,
         max_events: Optional[int] = None,
         flush_after_seconds: Optional[int] = None,
@@ -558,6 +573,7 @@ class ParquetTarget(_Batching, _Writer):
             index_cols,
             partition_cols,
             time_field,
+            time_format,
             retain_dict=True,
             storage_options=storage_options,
         )
@@ -638,6 +654,8 @@ class TSDBTarget(_Batching, _Writer):
 
     :param path: Path to TSDB table.
     :param time_col: Name of the time column.
+    :param time_format: If time_col is a string column, and its format is not compatible with ISO-8601, use this
+        parameter to determine the expected format.
     :param columns: List of column names to be passed to the DataFrame constructor. Use = notation for renaming fields
         (e.g. write_this=event_field). Use $ notation to refer to metadata ($key, event_time=$time).
     :param infer_columns_from_data: Whether to infer columns from the first event, when events are dictionaries. If
@@ -668,6 +686,7 @@ class TSDBTarget(_Batching, _Writer):
         self,
         path: str,
         time_col: str,
+        time_format: Optional[str] = None,
         columns: Union[str, List[str], None] = None,
         infer_columns_from_data: Optional[bool] = None,
         index_cols: Union[str, List[str], None] = None,
@@ -701,6 +720,8 @@ class TSDBTarget(_Batching, _Writer):
             if isinstance(index_cols, str):
                 index_cols = [index_cols]
             new_index_cols.extend(index_cols)
+        self._time_col = time_col
+        self._time_format = time_format
         _Writer.__init__(self, columns, infer_columns_from_data, index_cols=new_index_cols)
         parts = urlparse(path)
         self._path = parts.path
@@ -726,6 +747,7 @@ class TSDBTarget(_Batching, _Writer):
             df_columns.extend(self._index_cols)
         df_columns.extend(self._columns)
         df = pd.DataFrame(batch, columns=df_columns)
+        df["time"] = pd.to_datetime(df["time"], format=self._time_format)
         df.set_index(keys=self._index_cols, inplace=True)
         if not self._created and self._rate:
             self._created = True
