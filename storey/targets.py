@@ -179,6 +179,12 @@ class _Writer:
             if isinstance(event.body, list) and isinstance(time_field, str):
                 time_field = self._col_to_index[time_field]
             event_time = event.body[time_field]
+            if isinstance(event_time, str):
+                event_time = datetime.datetime.fromisoformat(event_time)
+                event.body[time_field] = event_time
+            if isinstance(event_time, int):
+                event_time = datetime.datetime.fromtimestamp(event_time)
+                event.body[time_field] = event_time
         return event_time
 
     def _path_from_event(self, event):
