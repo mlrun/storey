@@ -688,7 +688,7 @@ class TSDBTarget(_Batching, _Writer):
         self,
         path: str,
         time_col: str,
-        time_format: Optional[str],
+        time_format: Optional[str] = None,
         columns: Union[str, List[str], None] = None,
         infer_columns_from_data: Optional[bool] = None,
         index_cols: Union[str, List[str], None] = None,
