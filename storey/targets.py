@@ -358,16 +358,14 @@ class CSVTarget(_Batching, _Writer):
         True, columns will be inferred from data and used in place of explicit columns list if none was provided, or
         appended to the provided list. If columns is not provided, infer_columns_from_data=True is implied. Optional.
         Default to False if columns is provided, True otherwise.
-    :param max_lines_before_flush: Number of lines to write before flushing data to the output file. Defaults to 128.
-    :param max_seconds_before_flush: Maximum delay in seconds before flushing lines. Defaults to 3.
     :param name: Name of this step, as it should appear in logs. Defaults to class name (CSVTarget).
     :type name: string
     :param max_events: Maximum number of events to write at a time. If None (default), all events will be written on
-        flow termination, or after timeout_secs (if timeout_secs is set).
+        flow termination, or after flush_after_seconds (if flush_after_seconds is set).
     :type max_events: int
-    :param timeout_secs: Maximum number of seconds to hold events before they are written. If None (default), all events
-        will be written on flow termination, or after max_events are accumulated (if max_events is set).
-    :type timeout_secs: int
+    :param flush_after_seconds: Maximum number of seconds to hold events before they are written. If None (default), all
+        events will be written on flow termination, or after max_events are accumulated (if max_events is set).
+    :type flush_after_seconds: int
     :param key: batching will be done by key
     :type key: str or Event
     :param storage_options: Extra options that make sense for a particular storage connection, e.g. host, port,
@@ -382,8 +380,8 @@ class CSVTarget(_Batching, _Writer):
         columns: Optional[List[str]] = None,
         header: bool = False,
         infer_columns_from_data: Optional[bool] = None,
-        max_lines_before_flush: int = 128,
-        max_seconds_before_flush: int = 3,
+        max_events: int = 128,
+        flush_after_seconds: int = 3,
         **kwargs,
     ):
         if not columns:
@@ -391,8 +389,8 @@ class CSVTarget(_Batching, _Writer):
 
         _Batching.__init__(
             self,
-            max_events=max_lines_before_flush,
-            timeout_secs=max_seconds_before_flush,
+            max_events=max_events,
+            flush_after_seconds=flush_after_seconds,
             **kwargs,
         )
         _Writer.__init__(
@@ -491,11 +489,11 @@ class ParquetTarget(_Batching, _Writer):
         If None (the default), the data will only be partitioned if the path ends in .parquet or .pq. Otherwise, it will
         be partitioned by key/year/month/day/hour, where the key is hashed into 256 buckets.
     :param max_events: Maximum number of events to write at a time. If None (default), all events will be written on
-        flow termination, or after timeout_secs (if timeout_secs is set).
+        flow termination, or after flush_after_seconds (if flush_after_seconds is set).
     :type max_events: int
-    :param timeout_secs: Maximum number of seconds to hold events before they are written. If None (default), all events
-        will be written on flow termination, or after max_events are accumulated (if max_events is set).
-    :type timeout_secs: int
+    :param flush_after_seconds: Maximum number of seconds to hold events before they are written. If None (default), all
+        events will be written on flow termination, or after max_events are accumulated (if max_events is set).
+    :type flush_after_seconds: int
     :param storage_options: Extra options that make sense for a particular storage connection, e.g. host, port,
         username, password, etc., if using a URL that will be parsed by fsspec, e.g., starting
         "s3://”, "gcs://”. Optional.
@@ -655,11 +653,11 @@ class TSDBTarget(_Batching, _Writer):
     :param aggr_granularity: Granularity of server-side aggregations for this TSDB table (e.g. '1h').
     :param frames_client: Frames instance. Allows usage of an existing frames client.
     :param max_events: Maximum number of events to write at a time. If None (default), all events will be written on
-        flow termination, or after timeout_secs (if timeout_secs is set).
+        flow termination, or after flush_after_seconds (if flush_after_seconds is set).
     :type max_events: int
-    :param timeout_secs: Maximum number of seconds to hold events before they are written. If None (default), all
+    :param flush_after_seconds: Maximum number of seconds to hold events before they are written. If None (default), all
         events will be written on flow termination, or after max_events are accumulated (if max_events is set).
-    :type timeout_secs: int
+    :type flush_after_seconds: int
     :param storage_options: Extra options that make sense for a particular storage connection, e.g. host, port,
         username, password, etc., if using a URL that will be parsed by fsspec, e.g., starting
         "s3://”, "gcs://”. Optional
