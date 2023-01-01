@@ -702,7 +702,6 @@ class TSDBTarget(_Batching, _Writer):
     ):
         kwargs["path"] = path
         kwargs["time_col"] = time_col
-        kwargs["time_format"] = time_format
         if columns is not None:
             kwargs["columns"] = columns
         if infer_columns_from_data is not None:
