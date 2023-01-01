@@ -187,7 +187,7 @@ class _Writer:
                 else:
                     event_time = datetime.datetime.fromisoformat(event_time)
                 event.body[time_field] = event_time
-            if isinstance(event_time, int):
+            elif isinstance(event_time, int):
                 event_time = datetime.datetime.fromtimestamp(event_time)
                 event.body[time_field] = event_time
         return event_time
@@ -501,6 +501,9 @@ class ParquetTarget(_Batching, _Writer):
         specified as a tuple, such as ('$key', 64), which means partitioning by the event key hashed into 64 partitions.
         If None (the default), the data will only be partitioned if the path ends in .parquet or .pq. Otherwise, it will
         be partitioned by key/year/month/day/hour, where the key is hashed into 256 buckets.
+    :param time_field: Column to use for time partitioning, if applicable.
+    :param time_format: If time_field is provided, and the expected value type is str rather than datetime, time strings
+        will be parsed according to this format. If not provided, they will be parsed in accordance with ISO-8601.
     :param max_events: Maximum number of events to write at a time. If None (default), all events will be written on
         flow termination, or after timeout_secs (if timeout_secs is set).
     :type max_events: int
