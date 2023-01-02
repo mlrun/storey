@@ -1016,29 +1016,34 @@ class SQLSource(_IterableSource, WithUUID):
         with engine.connect() as conn:
             metadata = db.MetaData()
             table = db.Table(self.table_name, metadata, autoload=True, autoload_with=engine)
-            results = conn.execute(db.select([table])).fetchall()
+            cursor = conn.execute(db.select([table]))
 
-        for row in results:
-            body = row._asdict()
-            key = None
-            if self._key_field:
-                if isinstance(self._key_field, list):
-                    key = []
-                    for key_field in self._key_field:
-                        if key_field not in body or pandas.isna(body[key_field]):
-                            self.context.logger.error(
-                                f"For {body} value there is no {self._key_field} " f"field (key_field)"
-                            )
-                            break
-                        key.append(body[key_field])
-                else:
-                    key = body.get(self._key_field, None)
-                    if key is None:
-                        self.context.logger.error(f"For {body} value there is no {self._key_field} field (key_field)")
-            if self._id_field:
-                event_id = body[self._id_field]
-            else:
-                event_id = self._get_uuid()
-            event = Event(body, key=key, id=event_id)
-            await self._do_downstream(event)
+            results = cursor.fetchmany(100)
+            while results:
+                for row in results:
+                    body = row._asdict()
+                    key = None
+                    if self._key_field:
+                        if isinstance(self._key_field, list):
+                            key = []
+                            for key_field in self._key_field:
+                                if key_field not in body or pandas.isna(body[key_field]):
+                                    self.context.logger.error(
+                                        f"For {body} value there is no {self._key_field} " f"field (key_field)"
+                                    )
+                                    break
+                                key.append(body[key_field])
+                        else:
+                            key = body.get(self._key_field, None)
+                            if key is None:
+                                self.context.logger.error(
+                                    f"For {body} value there is no {self._key_field} field (key_field)"
+                                )
+                    if self._id_field:
+                        event_id = body[self._id_field]
+                    else:
+                        event_id = self._get_uuid()
+                    event = Event(body, key=key, id=event_id)
+                    await self._do_downstream(event)
+                results = cursor.fetchmany(100)
         return await self._do_downstream(_termination_obj)
