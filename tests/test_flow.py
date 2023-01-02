@@ -31,6 +31,7 @@ import pytest
 from aiohttp import ClientConnectorError, InvalidURL
 from pandas.testing import assert_frame_equal
 
+import integration.conftest
 import storey
 from storey import (
     AsyncEmitSource,
@@ -59,6 +60,7 @@ from storey import (
     Reduce,
     ReduceToDataFrame,
     SendToHttp,
+    SQLSource,
     SyncEmitSource,
     Table,
     ToDataFrame,
@@ -3981,3 +3983,32 @@ def test_rename():
     controller.terminate()
     termination_result = controller.await_termination()
     assert termination_result == [{"b": 1, "c": 3, "e": 5}]
+
+
+def test_read_sql_db():
+    import sqlalchemy as db
+
+    engine = db.create_engine(integration.conftest.SQLITE_DB)
+    with engine.connect() as conn:
+        origin_df = pd.DataFrame(
+            {
+                "string": ["hello", "world"],
+                "int": [1, 2],
+                "float": [1.5, 2.5],
+                "time": [datetime.fromisoformat("2020-07-21T21:40:00"), datetime.fromisoformat("2020-07-21T21:41:00")],
+            }
+        )
+        origin_df.to_sql("table_1", conn, if_exists="replace", index=False)
+    controller = build_flow(
+        [
+            SQLSource("sqlite:///test.db", "table_1", "string", id_field="int"),
+            Reduce([], append_and_return),
+        ]
+    ).run()
+
+    actual = controller.await_termination()
+    expected = [
+        {"string": "hello", "int": 1, "float": 1.5, "time": datetime.fromisoformat("2020-07-21T21:40:00")},
+        {"string": "world", "int": 2, "float": 2.5, "time": datetime.fromisoformat("2020-07-21T21:41:00")},
+    ]
+    assert actual == expected

@@ -43,6 +43,7 @@ extras_require = {
     "kafka": ["kafka-python~=2.0"],
     "redis": ["redis~=4.3"],
     "lupa": ["lupa~=1.13"],
+    "sqlalchemy": ["sqlalchemy~=1.3"],
 }
 
 

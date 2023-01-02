@@ -3817,7 +3817,7 @@ def test_aggregate_multiple_keys_and_aggregationless_query(setup_teardown_test):
 
     controller.await_termination()
 
-    other_table = Table(setup_teardown_test.table_name, setup_teardown_test.driver(True))
+    other_table = Table(setup_teardown_test.table_name, setup_teardown_test.driver(is_aggregationless_driver=True))
 
     controller = build_flow(
         [

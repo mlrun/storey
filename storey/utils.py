@@ -113,6 +113,8 @@ def _split_path(path):
         path = path[1:]
 
     parts = path.split("/", 1)
+    if ":///" in path:
+        parts = path.split(":///", 1)
     if len(parts) == 1:
         return parts[0], "/"
     else:

@@ -984,3 +984,74 @@ class ParquetSource(DataframeSource):
             else:
                 df = pandas.read_parquet(path, columns=self._columns, storage_options=self._storage_options)
             self._dfs.append(df)
+
+
+class SQLSource(_IterableSource, WithUUID):
+    """Use SQL table as input source for a flow.
+
+    :parameter key_field: the primary key of the table.
+    :parameter id_field: column to be used as ID for events.
+    :parameter db_path: url string connection to sql database.
+    :parameter table_name: the name of the table to access, from the current database
+    """
+
+    def __init__(
+        self,
+        db_path: str,
+        table_name: str,
+        key_field: Union[None, str, List[str]] = None,
+        id_field: str = None,
+        **kwargs,
+    ):
+
+        if key_field is not None:
+            kwargs["key_field"] = key_field
+        if id_field is not None:
+            kwargs["id_field"] = id_field
+        _IterableSource.__init__(self, **kwargs)
+        WithUUID.__init__(self)
+
+        self.table_name = table_name
+        self.db_path = db_path
+
+        self._key_field = key_field
+        self._id_field = id_field
+
+    async def _run_loop(self):
+        import sqlalchemy as db
+
+        engine = db.create_engine(self.db_path)
+        with engine.connect() as conn:
+            metadata = db.MetaData()
+            table = db.Table(self.table_name, metadata, autoload=True, autoload_with=engine)
+            cursor = conn.execute(db.select([table]))
+
+            results = cursor.fetchmany(100)
+            while results:
+                for row in results:
+                    body = row._asdict()
+                    key = None
+                    if self._key_field:
+                        if isinstance(self._key_field, list):
+                            key = []
+                            for key_field in self._key_field:
+                                if key_field not in body or pandas.isna(body[key_field]):
+                                    self.context.logger.error(
+                                        f"For {body} value there is no {self._key_field} " f"field (key_field)"
+                                    )
+                                    break
+                                key.append(body[key_field])
+                        else:
+                            key = body.get(self._key_field, None)
+                            if key is None:
+                                self.context.logger.error(
+                                    f"For {body} value there is no {self._key_field} field (key_field)"
+                                )
+                    if self._id_field:
+                        event_id = body[self._id_field]
+                    else:
+                        event_id = self._get_uuid()
+                    event = Event(body, key=key, id=event_id)
+                    await self._do_downstream(event)
+                results = cursor.fetchmany(100)
+        return await self._do_downstream(_termination_obj)

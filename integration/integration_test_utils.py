@@ -18,12 +18,14 @@ import os
 import random
 import re
 import string
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import aiohttp
 import fakeredis
+import pandas as pd
 import redis as r
 
+import integration.conftest
 from storey.drivers import NeedsV3ioAccess
 from storey.flow import V3ioError
 from storey.redis_driver import RedisDriver
@@ -113,7 +115,19 @@ def remove_redis_table(table_name):
         count += 1
 
 
-drivers_list = ["V3ioDriver", "RedisDriver"]
+def remove_sql_tables():
+    import sqlalchemy as db
+
+    engine = db.create_engine(integration.conftest.SQLITE_DB)
+    with engine.connect():
+        metadata = db.MetaData()
+        metadata.reflect(bind=engine)
+        # drop them, if they exist
+        metadata.drop_all(bind=engine, checkfirst=True)
+        engine.dispose()
+
+
+drivers_list = ["V3ioDriver", "RedisDriver", "SQLDriver"]
 
 
 async def create_stream(stream_path):
@@ -246,3 +260,31 @@ def _convert_nginx_to_python_type(typ, value):
         return datetime.utcfromtimestamp(secs + nanosecs / 1000000000)
     else:
         raise V3ioError(f"Type {typ} in get item response is not supported")
+
+
+def create_sql_table(schema, table_name, sql_db_path, key):
+    import sqlalchemy as db
+
+    engine = db.create_engine(sql_db_path)
+    with engine.connect():
+        metadata = db.MetaData()
+        columns = []
+        for col, col_type in schema.items():
+            if col_type == int:
+                col_type = db.Integer
+            elif col_type == str:
+                col_type = db.String
+            elif col_type == timedelta or col_type == pd.Timedelta:
+                col_type = db.Interval
+            elif col_type == datetime or col_type == pd.Timestamp:
+                col_type = db.DateTime
+            elif col_type == bool:
+                col_type = db.Boolean
+            elif col_type == float:
+                col_type = db.Float
+            else:
+                raise TypeError(f"Column '{col}' has unsupported type '{col_type}'")
+            columns.append(db.Column(col, col_type, primary_key=(col in key)))
+
+        db.Table(table_name, metadata, *columns)
+        metadata.create_all(engine)
