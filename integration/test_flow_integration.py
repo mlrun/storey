@@ -145,7 +145,7 @@ def _get_sql_by_key_all_attrs(
     my_query = f"SELECT * FROM {sql_table} where ({where_statement})"
     with engine.connect() as conn:
         results = conn.execute(my_query).fetchall()
-    return [r._asdict() for r in results][0]
+    return results[0]._asdict()
 
 
 def get_key_all_attrs_test_helper(
@@ -1041,7 +1041,7 @@ def test_write_two_keys_to_v3io_from_df(setup_teardown_test):
     controller.await_termination()
     expected = {"city": "tel aviv", "first_name": "moshe", "last_name": "cohen"}
     actual = get_key_all_attrs_test_helper(setup_teardown_test, "moshe.cohen", keys)
-    assert expected == actual
+    assert actual == expected
 
 
 # ML-775
@@ -1142,11 +1142,11 @@ def test_write_multiple_keys_from_csv(setup_teardown_test):
 
     expected = {"n1": 1, "n2": 2, "n3": 3}
     actual = get_key_all_attrs_test_helper(setup_teardown_test, "1.2", ["n1", "n2"])
-    assert expected == actual
+    assert actual == expected
 
     expected = {"n1": 4, "n2": 5, "n3": 6}
     actual = get_key_all_attrs_test_helper(setup_teardown_test, "4.5", ["n1", "n2"])
-    assert expected == actual
+    assert actual == expected
 
 
 def test_write_multiple_keys_to_v3io(setup_teardown_test):
@@ -1167,11 +1167,11 @@ def test_write_multiple_keys_to_v3io(setup_teardown_test):
 
     expected = {"n1": 1, "n2": 2, "n3": 3}
     actual = get_key_all_attrs_test_helper(setup_teardown_test, "1.2", keys)
-    assert expected == actual
+    assert actual == expected
 
     expected = {"n1": 4, "n2": 5, "n3": 6}
     actual = get_key_all_attrs_test_helper(setup_teardown_test, "4.5", keys)
-    assert expected == actual
+    assert actual == expected
 
 
 def test_write_none_time(setup_teardown_test):
@@ -1205,11 +1205,11 @@ def test_write_none_time(setup_teardown_test):
 
     expected = {"first_name": "yosi", "color": "yellow"}
     actual = get_key_all_attrs_test_helper(setup_teardown_test, "yosi", "first_name")
-    assert expected == actual
+    assert actual == expected
 
     expected = {"first_name": "moshe", "color": "blue"}
     actual = get_key_all_attrs_test_helper(setup_teardown_test, "moshe", "first_name")
-    assert expected == actual
+    assert actual == expected
 
 
 def test_cache_flushing(setup_teardown_test):

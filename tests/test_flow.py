@@ -3870,7 +3870,7 @@ def test_read_sql_db():
         origin_df.to_sql("table_1", conn, if_exists="replace", index=False)
     controller = build_flow(
         [
-            SQLSource("sqlite:///test.db", "table_1", "string", time_field="time", id_field="int"),
+            SQLSource("sqlite:///test.db", "table_1", "string", id_field="int"),
             Reduce([], append_and_return),
         ]
     ).run()

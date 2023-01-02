@@ -119,7 +119,7 @@ def remove_sql_tables():
     import sqlalchemy as db
 
     engine = db.create_engine(integration.conftest.SQLITE_DB)
-    with engine.connect() as _:
+    with engine.connect():
         metadata = db.MetaData()
         metadata.reflect(bind=engine)
         # drop them, if they exist
@@ -266,7 +266,7 @@ def create_sql_table(schema, table_name, sql_db_path, key):
     import sqlalchemy as db
 
     engine = db.create_engine(sql_db_path)
-    with engine.connect() as _:
+    with engine.connect():
         metadata = db.MetaData()
         columns = []
         for col, col_type in schema.items():
@@ -283,7 +283,7 @@ def create_sql_table(schema, table_name, sql_db_path, key):
             elif col_type == float:
                 col_type = db.Float
             else:
-                raise TypeError(f"Unsupported type '{col_type}'")
+                raise TypeError(f"Column '{col}' has unsupported type '{col_type}'")
             columns.append(db.Column(col, col_type, primary_key=(col in key)))
 
         db.Table(table_name, metadata, *columns)

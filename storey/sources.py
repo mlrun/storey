@@ -981,9 +981,7 @@ class ParquetSource(DataframeSource):
 class SQLSource(_IterableSource, WithUUID):
     """Use SQL table as input source for a flow.
 
-
     :parameter key_field: the primary key of the table.
-    :parameter time_field: column to be used as time for events.
     :parameter id_field: column to be used as ID for events.
     :parameter db_path: url string connection to sql database.
     :parameter table_name: the name of the table to access, from the current database
@@ -994,15 +992,12 @@ class SQLSource(_IterableSource, WithUUID):
         db_path: str,
         table_name: str,
         key_field: Union[None, str, List[str]] = None,
-        time_field: str = None,
         id_field: str = None,
         **kwargs,
     ):
 
         if key_field is not None:
             kwargs["key_field"] = key_field
-        if time_field is not None:
-            kwargs["time_field"] = time_field
         if id_field is not None:
             kwargs["id_field"] = id_field
         _IterableSource.__init__(self, **kwargs)
@@ -1012,7 +1007,6 @@ class SQLSource(_IterableSource, WithUUID):
         self.db_path = db_path
 
         self._key_field = key_field
-        self._time_field = time_field
         self._id_field = id_field
 
     async def _run_loop(self):
@@ -1024,8 +1018,8 @@ class SQLSource(_IterableSource, WithUUID):
             table = db.Table(self.table_name, metadata, autoload=True, autoload_with=engine)
             results = conn.execute(db.select([table])).fetchall()
 
-        for namedtuple in results:
-            body = namedtuple._asdict()
+        for row in results:
+            body = row._asdict()
             key = None
             if self._key_field:
                 if isinstance(self._key_field, list):
@@ -1038,16 +1032,13 @@ class SQLSource(_IterableSource, WithUUID):
                             break
                         key.append(body[key_field])
                 else:
-                    key = body[self._key_field]
+                    key = body.get(self._key_field, None)
                     if key is None:
                         self.context.logger.error(f"For {body} value there is no {self._key_field} field (key_field)")
-            time = None
-            if self._time_field:
-                time = body[self._time_field]
             if self._id_field:
-                _id = body[self._id_field]
+                event_id = body[self._id_field]
             else:
-                _id = self._get_uuid()
-            event = Event(body, key=key, id=_id, processing_time=time)
+                event_id = self._get_uuid()
+            event = Event(body, key=key, id=event_id)
             await self._do_downstream(event)
         return await self._do_downstream(_termination_obj)

@@ -24,7 +24,7 @@ from storey.drivers import Driver
 class SQLDriver(Driver):
     """
     SQL database connector.
-    :param primary_key: the primary key of the table, format <str>.<str>..
+    :param primary_key: the primary key of the table, format <str>.<str>... or [<str>, <str>,..]
     :param db_path: database url
     """
 
@@ -98,7 +98,7 @@ class SQLDriver(Driver):
             my_query = f"SELECT {','.join(attributes)} FROM {table} where {where_clause}"
             results = self._sql_connection.execute(my_query).fetchall()
         except Exception as e:
-            raise RuntimeError(f"Failed to get key {key}. Response error was: {e}")
+            raise RuntimeError(f"Failed to get key '{key}'") from e
 
         return results[0]._mapping
 
