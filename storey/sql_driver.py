@@ -24,7 +24,7 @@ from storey.drivers import Driver
 class SQLDriver(Driver):
     """
     SQL database connector.
-    :param primary_key: the primary key of the table, format <str>.<str>... or [<str>, <str>,..]
+    :param primary_key: the primary key of the table, format <str>.<str>... or [<str>, <str>,...]
     :param db_path: database url
     """
 
@@ -105,13 +105,16 @@ class SQLDriver(Driver):
     def supports_aggregations(self):
         return False
 
-    def _get_where_clause(self, key):
+    def _get_where_clause(self, key, sql_table):
         where_clause = ""
         key = self._extract_list_of_keys(key)
         for i in range(len(self._primary_key)):
             if i != 0:
                 where_clause += " and "
-            where_clause += f'{self._primary_key[i]}="{key[i]}"'
+            if sql_table.columns[self._primary_key[i]].type.python_type == str:
+                where_clause += f'{self._primary_key[i]}="{key[i]}"'
+            else:
+                where_clause += f"{self._primary_key[i]}={key[i]}"
         return where_clause
 
     @staticmethod

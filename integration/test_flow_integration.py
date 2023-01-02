@@ -124,15 +124,6 @@ def _get_sql_by_key_all_attrs(
 ):
     import sqlalchemy as db
 
-    where_statement = ""
-    if isinstance(key, str):
-        key = key.split(".")
-    if isinstance(key, list):
-        for i in range(len(key_name)):
-            if i != 0:
-                where_statement += " and "
-            where_statement += f'{key_name[i]}="{key[i]}"'
-
     table_name = setup_teardown_test._sql_table_name
     engine = db.create_engine(setup_teardown_test.sql_db_path)
     metadata = db.MetaData()
@@ -142,6 +133,18 @@ def _get_sql_by_key_all_attrs(
         autoload=True,
         autoload_with=engine,
     )
+
+    where_statement = ""
+    if isinstance(key, str):
+        key = key.split(".")
+    if isinstance(key, list):
+        for i in range(len(key_name)):
+            if i != 0:
+                where_statement += " and "
+            if sql_table.columns[key_name[i]].type.python_type == str:
+                where_statement += f'{key_name[i]}="{key[i]}"'
+            else:
+                where_statement += f"{key_name[i]}={key[i]}"
     my_query = f"SELECT * FROM {sql_table} where ({where_statement})"
     with engine.connect() as conn:
         results = conn.execute(my_query).fetchall()
@@ -1023,7 +1026,7 @@ def test_writing_timedelta_key(setup_teardown_test):
 
 def test_write_two_keys_to_v3io_from_df(setup_teardown_test):
     keys = ["first_name", "last_name"]
-    table = _get_table(setup_teardown_test, {"first_name": int, "last_name": str, "city": str}, keys)
+    table = _get_table(setup_teardown_test, {"first_name": str, "last_name": str, "city": str}, keys)
     data = pd.DataFrame(
         {
             "first_name": ["moshe", "yosi"],
@@ -1175,10 +1178,8 @@ def test_write_multiple_keys_to_v3io(setup_teardown_test):
 
 
 def test_write_none_time(setup_teardown_test):
-    if setup_teardown_test.driver_name == "SQLDriver":
-        pytest.skip("test_write_none_time not testing over SQLDriver")
-    else:
-        table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
+    keys = ["first_name"]
+    table = _get_table(setup_teardown_test, {"first_name": str, "color": str, "time": str}, keys)
 
     data = pd.DataFrame(
         {
@@ -1204,11 +1205,15 @@ def test_write_none_time(setup_teardown_test):
     controller.await_termination()
 
     expected = {"first_name": "yosi", "color": "yellow"}
-    actual = get_key_all_attrs_test_helper(setup_teardown_test, "yosi", "first_name")
+    if setup_teardown_test.driver_name == "SQLDriver":
+        expected = {"first_name": "yosi", "color": "yellow", "time": None}
+    actual = get_key_all_attrs_test_helper(setup_teardown_test, "yosi", keys)
     assert actual == expected
 
     expected = {"first_name": "moshe", "color": "blue"}
-    actual = get_key_all_attrs_test_helper(setup_teardown_test, "moshe", "first_name")
+    if setup_teardown_test.driver_name == "SQLDriver":
+        expected = {"first_name": "moshe", "color": "blue", "time": None}
+    actual = get_key_all_attrs_test_helper(setup_teardown_test, "moshe", keys)
     assert actual == expected
 
 
