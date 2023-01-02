@@ -1050,7 +1050,7 @@ def test_write_two_keys_to_v3io_from_df(setup_teardown_test):
 # ML-775
 def test_write_three_keys_to_v3io_from_df(setup_teardown_test):
     if setup_teardown_test.driver_name == "SQLDriver":
-        pytest.skip("test_write_three_keys_to_v3io_from_df not testing over SQLDriver")
+        pytest.skip("test_write_three_keys_to_v3io_from_df not tested over SQLDriver")
     else:
         table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
 
@@ -1219,7 +1219,7 @@ def test_write_none_time(setup_teardown_test):
 
 def test_cache_flushing(setup_teardown_test):
     if setup_teardown_test.driver_name == "SQLDriver":
-        pytest.skip("test_cache_flushing not testing over SQLDriver, SQL is not kv")
+        pytest.skip("test_cache_flushing is not tested over SQLDriver since SQL is not kv")
     else:
         table = Table(setup_teardown_test.table_name, setup_teardown_test.driver(), flush_interval_secs=3)
     controller = build_flow(
