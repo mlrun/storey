@@ -86,14 +86,14 @@ class SQLDriver(Driver):
             self._sql_connection = None
 
     async def _get_all_fields(self, key, table):
-        where_clause = self._get_where_clause(key)
+        where_clause = self._get_where_clause(key, table)
         my_query = f"SELECT * FROM {table} where {where_clause}"
         results = self._sql_connection.execute(my_query).fetchall()
 
         return results[0]._mapping
 
     async def _get_specific_fields(self, key: str, table, attributes: List[str]):
-        where_clause = self._get_where_clause(key)
+        where_clause = self._get_where_clause(key, table)
         try:
             my_query = f"SELECT {','.join(attributes)} FROM {table} where {where_clause}"
             results = self._sql_connection.execute(my_query).fetchall()
