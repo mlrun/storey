@@ -136,7 +136,7 @@ class ContextForTests:
         def supports_aggregations(self):
             return False
 
-    def driver(self, *args, primary_key=None, is_aggregationless_driver=False, **kwargs):
+    def driver(self, *args, primary_key=None, is_aggregationless_driver=False, time_fields=None, **kwargs):
         if self.driver_name == "V3ioDriver":
             v3io_driver_class = ContextForTests.AggregationlessV3ioDriver if is_aggregationless_driver else V3ioDriver
             return v3io_driver_class(*args, **kwargs)
@@ -153,7 +153,7 @@ class ContextForTests:
         elif self.driver_name == "SQLDriver":
             if is_aggregationless_driver:
                 sql_driver_class = SQLDriver
-                return sql_driver_class(db_path=SQLITE_DB, primary_key=primary_key, time_fields=kwargs["time_fields"])
+                return sql_driver_class(db_path=SQLITE_DB, primary_key=primary_key, time_fields=time_fields)
             else:
                 pytest.skip("SQLDriver does not support aggregation")
         else:
