@@ -1260,7 +1260,7 @@ def test_write_none_time(setup_teardown_test):
         {
             "first_name": ["moshe", "yosi"],
             "color": ["blue", "yellow"],
-            "time": [test_base_time, None],
+            "time": [setup_teardown_test.test_base_time, None],
         }
     )
 
