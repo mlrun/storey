@@ -1001,6 +1001,7 @@ class SQLSource(_IterableSource, WithUUID):
         table_name: str,
         key_field: Union[None, str, List[str]] = None,
         id_field: str = None,
+        time_fields: List[str] = None,
         **kwargs,
     ):
 
@@ -1013,6 +1014,7 @@ class SQLSource(_IterableSource, WithUUID):
 
         self.table_name = table_name
         self.db_path = db_path
+        self.time_fields = time_fields
 
         self._key_field = key_field
         self._id_field = id_field
@@ -1022,14 +1024,12 @@ class SQLSource(_IterableSource, WithUUID):
 
         engine = db.create_engine(self.db_path)
         with engine.connect() as conn:
-            metadata = db.MetaData()
-            table = db.Table(self.table_name, metadata, autoload=True, autoload_with=engine)
-            cursor = conn.execute(db.select([table]))
+            query = f"SELECT * FROM {self.table_name}"
+            cursor = pandas.read_sql(query, con=conn, parse_dates=self.time_fields, chunksize=100)
 
-            results = cursor.fetchmany(100)
-            while results:
-                for row in results:
-                    body = row._asdict()
+            for df in cursor:
+                for row in df.itertuples(index=False):
+                    body = dict(row._asdict())
                     key = None
                     if self._key_field:
                         if isinstance(self._key_field, list):
@@ -1053,5 +1053,4 @@ class SQLSource(_IterableSource, WithUUID):
                         event_id = self._get_uuid()
                     event = Event(body, key=key, id=event_id)
                     await self._do_downstream(event)
-                results = cursor.fetchmany(100)
         return await self._do_downstream(_termination_obj)

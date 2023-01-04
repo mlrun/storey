@@ -3995,20 +3995,20 @@ def test_read_sql_db():
                 "string": ["hello", "world"],
                 "int": [1, 2],
                 "float": [1.5, 2.5],
-                "time": [datetime.fromisoformat("2020-07-21T21:40:00"), datetime.fromisoformat("2020-07-21T21:41:00")],
+                "time": [pd.Timestamp(2017, 1, 1, 12), pd.Timestamp(2017, 1, 1, 12)],
             }
         )
         origin_df.to_sql("table_1", conn, if_exists="replace", index=False)
     controller = build_flow(
         [
-            SQLSource("sqlite:///test.db", "table_1", "string", id_field="int"),
+            SQLSource("sqlite:///test.db", "table_1", "string", id_field="int", time_fields=["time"]),
             Reduce([], append_and_return),
         ]
     ).run()
 
     actual = controller.await_termination()
     expected = [
-        {"string": "hello", "int": 1, "float": 1.5, "time": datetime.fromisoformat("2020-07-21T21:40:00")},
-        {"string": "world", "int": 2, "float": 2.5, "time": datetime.fromisoformat("2020-07-21T21:41:00")},
+        {"string": "hello", "int": 1, "float": 1.5, "time": pd.Timestamp(2017, 1, 1, 12)},
+        {"string": "world", "int": 2, "float": 2.5, "time": pd.Timestamp(2017, 1, 1, 12)},
     ]
     assert actual == expected

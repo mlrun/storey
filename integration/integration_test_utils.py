@@ -278,7 +278,7 @@ def create_sql_table(schema, table_name, sql_db_path, key):
             elif col_type == timedelta or col_type == pd.Timedelta:
                 col_type = db.Interval
             elif col_type == datetime or col_type == pd.Timestamp:
-                col_type = db.TIMESTAMP(timezone=True)
+                col_type = db.DATETIME
             elif col_type == bool:
                 col_type = db.Boolean
             elif col_type == float:
