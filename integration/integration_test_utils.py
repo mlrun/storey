@@ -31,8 +31,6 @@ from storey.flow import V3ioError
 from storey.redis_driver import RedisDriver
 
 _non_int_char_pattern = re.compile(r"[^-0-9]")
-test_base_time = datetime.fromisoformat("2020-07-21T21:40:00+00:00")
-test_base_time_sqlite = datetime.fromisoformat("2020-07-21T21:40:00")  # sqlite cant save time zone
 
 
 class V3ioHeaders(NeedsV3ioAccess):

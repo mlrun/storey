@@ -993,6 +993,7 @@ class SQLSource(_IterableSource, WithUUID):
     :parameter id_field: column to be used as ID for events.
     :parameter db_path: url string connection to sql database.
     :parameter table_name: the name of the table to access, from the current database
+    :parameter time_fields: list of all fields that are timestamps
     """
 
     def __init__(

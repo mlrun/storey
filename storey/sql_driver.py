@@ -26,7 +26,7 @@ class SQLDriver(Driver):
     SQL database connector.
     :param primary_key: the primary key of the table, format <str>.<str>... or [<str>, <str>,...]
     :param db_path: database url
-    :param time_fields:
+    :param time_fields: list of all fields that are timestamps
     """
 
     def __init__(self, primary_key: Union[str, List[str]], db_path: str, time_fields: List[str] = None):

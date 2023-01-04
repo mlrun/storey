@@ -55,8 +55,6 @@ from .integration_test_utils import (
     append_return,
     create_sql_table,
     create_stream,
-    test_base_time,
-    test_base_time_sqlite,
 )
 
 
@@ -164,11 +162,8 @@ def get_key_all_attrs_test_helper(
         result = _get_sql_by_key_all_attrs(setup_teardown_test, key, key_name)
         if time_fields is not None:
             for time_field in time_fields:
-                result[time_field] = (
-                    result[time_field]
-                    if result[time_field] is None
-                    else datetime.strptime(result[time_field], "%Y-%m-%d %H:%M:%S.%f")
-                )
+                if result[time_field] is not None:
+                    result[time_field] = datetime.strptime(result[time_field], "%Y-%m-%d %H:%M:%S.%f")
     else:
         response = asyncio.run(get_kv_item(setup_teardown_test.table_name, key))
         assert response.status_code == 200
@@ -724,12 +719,12 @@ def test_write_table_specific_columns(setup_teardown_test):
         time_fields,
     )
 
-    test_base_time_ = test_base_time if setup_teardown_test.driver_name != "SQLDriver" else test_base_time_sqlite
+    test_base_time = setup_teardown_test.test_base_time
     table["tal"] = {
         "color": "blue",
         "age": 41,
         "iss": True,
-        "sometime": test_base_time_,
+        "sometime": test_base_time,
         "min": 1,
         "Avg": 3,
     }
@@ -757,7 +752,7 @@ def test_write_table_specific_columns(setup_teardown_test):
 
     items_in_ingest_batch = 10
     for i in range(items_in_ingest_batch):
-        data = {"col1": i, "sometime": test_base_time_ + timedelta(minutes=25 * i)}
+        data = {"col1": i, "sometime": test_base_time + timedelta(minutes=25 * i)}
         controller.emit(data, "tal")
 
     controller.terminate()
@@ -833,9 +828,9 @@ def test_write_table_specific_columns(setup_teardown_test):
         "color": "blue",
         "age": 41,
         "iss": True,
-        "sometime": test_base_time_,
-        "first_activity": test_base_time_,
-        "last_event": test_base_time_ + timedelta(minutes=25 * (items_in_ingest_batch - 1)),
+        "sometime": test_base_time,
+        "first_activity": test_base_time,
+        "last_event": test_base_time + timedelta(minutes=25 * (items_in_ingest_batch - 1)),
         "total_activities": 10,
         "twice_total_activities": 20,
         "min": 1,
@@ -862,7 +857,7 @@ def test_write_table_specific_columns(setup_teardown_test):
 
     items_in_ingest_batch = 10
     for i in range(items_in_ingest_batch):
-        data = {"col1": i, "sometime": test_base_time_ + timedelta(minutes=25 * i)}
+        data = {"col1": i, "sometime": test_base_time + timedelta(minutes=25 * i)}
         controller.emit(data, "tal")
 
     controller.terminate()
@@ -895,8 +890,8 @@ def test_write_table_metadata_columns(setup_teardown_test):
         time_fields,
     )
 
-    test_base_time_ = test_base_time if setup_teardown_test.driver_name != "SQLDriver" else test_base_time_sqlite
-    table["tal"] = {"color": "blue", "age": 41, "iss": True, "sometime": test_base_time_}
+    test_base_time = setup_teardown_test.test_base_time
+    table["tal"] = {"color": "blue", "age": 41, "iss": True, "sometime": test_base_time}
 
     def enrich(event, state):
         if "first_activity" not in state:
@@ -921,7 +916,7 @@ def test_write_table_metadata_columns(setup_teardown_test):
 
     items_in_ingest_batch = 10
     for i in range(items_in_ingest_batch):
-        data = {"col1": i, "sometime": test_base_time_ + timedelta(minutes=25 * i)}
+        data = {"col1": i, "sometime": test_base_time + timedelta(minutes=25 * i)}
         controller.emit(data, "tal")
 
     controller.terminate()
@@ -997,9 +992,9 @@ def test_write_table_metadata_columns(setup_teardown_test):
         "color": "blue",
         "age": 41,
         "iss": True,
-        "sometime": test_base_time_,
-        "first_activity": test_base_time_,
-        "last_event": test_base_time_ + timedelta(minutes=25 * (items_in_ingest_batch - 1)),
+        "sometime": test_base_time,
+        "first_activity": test_base_time,
+        "last_event": test_base_time + timedelta(minutes=25 * (items_in_ingest_batch - 1)),
         "total_activities": 10,
         "twice_total_activities": 20,
         "my_key": "tal",
@@ -1023,7 +1018,7 @@ def test_write_table_metadata_columns(setup_teardown_test):
 
     items_in_ingest_batch = 10
     for i in range(items_in_ingest_batch):
-        data = {"col1": i, "sometime": test_base_time_ + timedelta(minutes=25 * i)}
+        data = {"col1": i, "sometime": test_base_time + timedelta(minutes=25 * i)}
         controller.emit(data, "tal")
 
     controller.terminate()
