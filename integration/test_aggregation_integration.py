@@ -43,7 +43,7 @@ from storey.dtypes import (
 from storey.flow import DropColumns
 from storey.utils import _split_path
 
-from .integration_test_utils import append_return, test_base_time
+from .integration_test_utils import append_return
 
 
 @pytest.mark.parametrize(
@@ -86,7 +86,7 @@ def test_aggregate_with_fixed_windows_and_query_past_and_future_times(
 
     items_in_ingest_batch = 10
     for i in range(items_in_ingest_batch):
-        data = {"col1": items_in_ingest_batch, "time": test_base_time + timedelta(minutes=25 * i)}
+        data = {"col1": items_in_ingest_batch, "time": setup_teardown_test.test_base_time + timedelta(minutes=25 * i)}
         controller.emit(data, "tal")
 
     controller.terminate()
@@ -544,7 +544,7 @@ def test_aggregate_with_fixed_windows_and_query_past_and_future_times(
     ).run()
 
     for i in range(-items_in_ingest_batch, 2 * items_in_ingest_batch):
-        data = {"col1": items_in_ingest_batch, "time": test_base_time + timedelta(minutes=25 * i)}
+        data = {"col1": items_in_ingest_batch, "time": setup_teardown_test.test_base_time + timedelta(minutes=25 * i)}
         controller.emit(data, "tal")
 
     controller.terminate()
@@ -586,7 +586,7 @@ def test_aggregate_and_query_with_different_sliding_windows(setup_teardown_test,
 
     items_in_ingest_batch = 10
     for i in range(items_in_ingest_batch):
-        data = {"col1": i, "time": test_base_time + timedelta(minutes=25 * i)}
+        data = {"col1": i, "time": setup_teardown_test.test_base_time + timedelta(minutes=25 * i)}
         controller.emit(data, "tal")
 
     controller.terminate()
@@ -828,7 +828,7 @@ def test_aggregate_and_query_with_different_sliding_windows(setup_teardown_test,
             ]
         ).run()
 
-        base_time = test_base_time + timedelta(minutes=25 * items_in_ingest_batch)
+        base_time = setup_teardown_test.test_base_time + timedelta(minutes=25 * items_in_ingest_batch)
         data = {"col1": items_in_ingest_batch, "time": base_time}
         controller.emit(data, "tal")
         data = {"col1": items_in_ingest_batch, "time": base_time + timedelta(minutes=25)}
@@ -874,7 +874,7 @@ def test_aggregate_and_query_with_different_fixed_windows(setup_teardown_test, p
 
     items_in_ingest_batch = 10
     for i in range(items_in_ingest_batch):
-        data = {"col1": i, "time": test_base_time + timedelta(minutes=25 * i)}
+        data = {"col1": i, "time": setup_teardown_test.test_base_time + timedelta(minutes=25 * i)}
         controller.emit(data, "tal")
 
     controller.terminate()
@@ -1125,7 +1125,7 @@ def test_aggregate_and_query_with_different_fixed_windows(setup_teardown_test, p
             ]
         ).run()
 
-        base_time = test_base_time + timedelta(minutes=25 * items_in_ingest_batch)
+        base_time = setup_teardown_test.test_base_time + timedelta(minutes=25 * items_in_ingest_batch)
         data = {"col1": items_in_ingest_batch, "time": base_time}
         controller.emit(data, "tal")
         data = {"col1": items_in_ingest_batch, "time": base_time + timedelta(minutes=25)}
@@ -1166,7 +1166,7 @@ def test_query_virtual_aggregations_flow(setup_teardown_test, use_parallel_opera
 
     items_in_ingest_batch = 10
     for i in range(items_in_ingest_batch):
-        data = {"col1": i, "time": test_base_time + timedelta(minutes=25 * i)}
+        data = {"col1": i, "time": setup_teardown_test.test_base_time + timedelta(minutes=25 * i)}
         controller.emit(data, "dina")
 
     controller.terminate()
@@ -1268,7 +1268,7 @@ def test_query_virtual_aggregations_flow(setup_teardown_test, use_parallel_opera
         ]
     ).run()
 
-    base_time = test_base_time + timedelta(minutes=25 * items_in_ingest_batch)
+    base_time = setup_teardown_test.test_base_time + timedelta(minutes=25 * items_in_ingest_batch)
     data = {"col1": items_in_ingest_batch, "time": base_time}
     controller.emit(data, "dina")
     data = {"col1": items_in_ingest_batch, "time": base_time + timedelta(minutes=25)}
@@ -1330,7 +1330,7 @@ def test_query_aggregate_by_key(setup_teardown_test, partitioned_by_key, flush_i
 
     items_in_ingest_batch = 10
     for i in range(items_in_ingest_batch):
-        data = {"col1": i, "time": test_base_time + timedelta(minutes=25 * i)}
+        data = {"col1": i, "time": setup_teardown_test.test_base_time + timedelta(minutes=25 * i)}
         controller.emit(data, "tal")
 
     controller.terminate()
@@ -1558,7 +1558,7 @@ def test_query_aggregate_by_key(setup_teardown_test, partitioned_by_key, flush_i
         ]
     ).run()
 
-    base_time = test_base_time + timedelta(minutes=25 * items_in_ingest_batch)
+    base_time = setup_teardown_test.test_base_time + timedelta(minutes=25 * items_in_ingest_batch)
     data = {"col1": items_in_ingest_batch, "time": base_time}
     controller.emit(data, "tal")
 
@@ -1620,7 +1620,7 @@ def test_aggregate_and_query_with_dependent_aggrs_different_windows(setup_teardo
 
     items_in_ingest_batch = 10
     for i in range(items_in_ingest_batch):
-        data = {"col1": i, "time": test_base_time + timedelta(minutes=25 * i)}
+        data = {"col1": i, "time": setup_teardown_test.test_base_time + timedelta(minutes=25 * i)}
         controller.emit(data, "tal")
 
     controller.terminate()
@@ -1721,7 +1721,7 @@ def test_aggregate_and_query_with_dependent_aggrs_different_windows(setup_teardo
         ]
     ).run()
 
-    base_time = test_base_time + timedelta(minutes=25 * items_in_ingest_batch)
+    base_time = setup_teardown_test.test_base_time + timedelta(minutes=25 * items_in_ingest_batch)
     data = {"col1": items_in_ingest_batch, "time": base_time}
     controller.emit(data, "tal")
 
@@ -1845,7 +1845,10 @@ def test_aggregate_by_key_one_underlying_window(setup_teardown_test, partitioned
         ).run()
 
         for _ in range(items_in_ingest_batch):
-            data = {"col1": current_index, "time": test_base_time + timedelta(minutes=1 * current_index)}
+            data = {
+                "col1": current_index,
+                "time": setup_teardown_test.test_base_time + timedelta(minutes=1 * current_index),
+            }
             controller.emit(data, "tal")
             current_index = current_index + 1
 
@@ -1958,7 +1961,10 @@ def test_aggregate_by_key_two_underlying_windows(setup_teardown_test, partitione
         ).run()
 
         for _ in range(items_in_ingest_batch):
-            data = {"col1": current_index, "time": test_base_time + timedelta(minutes=25 * current_index)}
+            data = {
+                "col1": current_index,
+                "time": setup_teardown_test.test_base_time + timedelta(minutes=25 * current_index),
+            }
             controller.emit(data, "tal")
             current_index = current_index + 1
 
@@ -1973,7 +1979,7 @@ def test_aggregate_by_key_two_underlying_windows(setup_teardown_test, partitione
 def test_aggregate_by_key_with_extra_aliases(setup_teardown_test):
     table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
 
-    table["tal"] = {"color": "blue", "age": 41, "iss": True, "sometime": test_base_time}
+    table["tal"] = {"color": "blue", "age": 41, "iss": True, "sometime": setup_teardown_test.test_base_time}
 
     def enrich(event, state):
         if "first_activity" not in state:
@@ -2008,7 +2014,7 @@ def test_aggregate_by_key_with_extra_aliases(setup_teardown_test):
 
     items_in_ingest_batch = 10
     for i in range(items_in_ingest_batch):
-        data = {"col1": i, "sometime": test_base_time + timedelta(minutes=25 * i)}
+        data = {"col1": i, "sometime": setup_teardown_test.test_base_time + timedelta(minutes=25 * i)}
         controller.emit(data, "tal")
 
     controller.terminate()
@@ -2136,7 +2142,7 @@ def test_aggregate_by_key_with_extra_aliases(setup_teardown_test):
         ]
     ).run()
 
-    base_time = test_base_time + timedelta(minutes=25 * items_in_ingest_batch)
+    base_time = setup_teardown_test.test_base_time + timedelta(minutes=25 * items_in_ingest_batch)
     data = {"col1": items_in_ingest_batch, "sometime": base_time}
     controller.emit(data, "tal")
 
@@ -2167,7 +2173,7 @@ def test_write_cache_with_aggregations(setup_teardown_test, flush_interval):
         flush_interval_secs=flush_interval,
     )
 
-    table["tal"] = {"color": "blue", "age": 41, "iss": True, "sometime": test_base_time}
+    table["tal"] = {"color": "blue", "age": 41, "iss": True, "sometime": setup_teardown_test.test_base_time}
 
     def enrich(event, state):
         if "first_activity" not in state:
@@ -2202,7 +2208,7 @@ def test_write_cache_with_aggregations(setup_teardown_test, flush_interval):
 
     items_in_ingest_batch = 10
     for i in range(items_in_ingest_batch):
-        data = {"col1": i, "sometime": test_base_time + timedelta(minutes=25 * i)}
+        data = {"col1": i, "sometime": setup_teardown_test.test_base_time + timedelta(minutes=25 * i)}
         controller.emit(data, "tal")
 
     controller.terminate()
@@ -2329,7 +2335,7 @@ def test_write_cache_with_aggregations(setup_teardown_test, flush_interval):
         ]
     ).run()
 
-    base_time = test_base_time + timedelta(minutes=25 * items_in_ingest_batch)
+    base_time = setup_teardown_test.test_base_time + timedelta(minutes=25 * items_in_ingest_batch)
     data = {"col1": items_in_ingest_batch, "sometime": base_time}
     controller.emit(data, "tal")
 
@@ -2360,7 +2366,7 @@ def test_write_cache(setup_teardown_test, flush_interval):
         flush_interval_secs=flush_interval,
     )
 
-    table["tal"] = {"color": "blue", "age": 41, "iss": True, "sometime": test_base_time}
+    table["tal"] = {"color": "blue", "age": 41, "iss": True, "sometime": setup_teardown_test.test_base_time}
 
     def enrich(event, state):
         if "first_activity" not in state:
@@ -2383,7 +2389,7 @@ def test_write_cache(setup_teardown_test, flush_interval):
 
     items_in_ingest_batch = 10
     for i in range(items_in_ingest_batch):
-        data = {"col1": i, "sometime": test_base_time + timedelta(minutes=25 * i)}
+        data = {"col1": i, "sometime": setup_teardown_test.test_base_time + timedelta(minutes=25 * i)}
         controller.emit(data, "tal")
 
     controller.terminate()
@@ -2475,7 +2481,7 @@ def test_write_cache(setup_teardown_test, flush_interval):
         ]
     ).run()
 
-    base_time = test_base_time + timedelta(minutes=25 * items_in_ingest_batch)
+    base_time = setup_teardown_test.test_base_time + timedelta(minutes=25 * items_in_ingest_batch)
     data = {"col1": items_in_ingest_batch, "sometime": base_time}
     controller.emit(data, "tal")
 
@@ -2523,7 +2529,7 @@ def test_aggregate_with_string_table(setup_teardown_test):
 
     items_in_ingest_batch = 10
     for i in range(items_in_ingest_batch):
-        data = {"col1": i, "time": test_base_time + timedelta(minutes=25 * i)}
+        data = {"col1": i, "time": setup_teardown_test.test_base_time + timedelta(minutes=25 * i)}
         controller.emit(data, "tal")
 
     controller.terminate()
@@ -2769,7 +2775,7 @@ def test_modify_schema(setup_teardown_test):
 
     items_in_ingest_batch = 10
     for i in range(items_in_ingest_batch):
-        data = {"col1": i, "time": test_base_time + timedelta(minutes=25 * i)}
+        data = {"col1": i, "time": setup_teardown_test.test_base_time + timedelta(minutes=25 * i)}
         controller.emit(data, "tal")
 
     controller.terminate()
@@ -2967,7 +2973,7 @@ def test_modify_schema(setup_teardown_test):
         ]
     ).run()
 
-    base_time = test_base_time + timedelta(minutes=25 * items_in_ingest_batch)
+    base_time = setup_teardown_test.test_base_time + timedelta(minutes=25 * items_in_ingest_batch)
     data = {"col1": items_in_ingest_batch, "time": base_time}
     controller.emit(data, "tal")
 
@@ -3034,7 +3040,7 @@ def test_invalid_modify_schema(setup_teardown_test):
 
     items_in_ingest_batch = 10
     for i in range(items_in_ingest_batch):
-        data = {"col1": i, "time": test_base_time + timedelta(minutes=25 * i)}
+        data = {"col1": i, "time": setup_teardown_test.test_base_time + timedelta(minutes=25 * i)}
         controller.emit(data, "tal")
 
     controller.terminate()
@@ -3237,7 +3243,7 @@ def test_invalid_modify_schema(setup_teardown_test):
             ]
         ).run()
 
-        base_time = test_base_time + timedelta(minutes=25 * items_in_ingest_batch)
+        base_time = setup_teardown_test.test_base_time + timedelta(minutes=25 * items_in_ingest_batch)
         data = {"col1": items_in_ingest_batch, "time": base_time}
         controller.emit(data, "tal")
 
@@ -3274,7 +3280,7 @@ def test_query_aggregate_by_key_sliding_window_new_time_exceeds_stored_window(
 
     items_in_ingest_batch = 3
     for i in range(items_in_ingest_batch):
-        data = {"col1": i, "time": test_base_time + timedelta(hours=i)}
+        data = {"col1": i, "time": setup_teardown_test.test_base_time + timedelta(hours=i)}
         controller.emit(data, "tal")
 
     controller.terminate()
@@ -3313,7 +3319,7 @@ def test_query_aggregate_by_key_sliding_window_new_time_exceeds_stored_window(
         ]
     ).run()
 
-    base_time = test_base_time + timedelta(hours=items_in_ingest_batch)
+    base_time = setup_teardown_test.test_base_time + timedelta(hours=items_in_ingest_batch)
     data = {"col1": items_in_ingest_batch, "time": base_time}
     controller.emit(data, "tal")
 
@@ -3360,7 +3366,7 @@ def test_query_aggregate_by_key_fixed_window_new_time_exceeds_stored_window(
 
     items_in_ingest_batch = 3
     for i in range(items_in_ingest_batch):
-        data = {"col1": i, "time": test_base_time + timedelta(minutes=45 * i)}
+        data = {"col1": i, "time": setup_teardown_test.test_base_time + timedelta(minutes=45 * i)}
         controller.emit(data, "tal")
 
     controller.terminate()
@@ -3399,7 +3405,7 @@ def test_query_aggregate_by_key_fixed_window_new_time_exceeds_stored_window(
         ]
     ).run()
 
-    base_time = test_base_time + timedelta(hours=items_in_ingest_batch)
+    base_time = setup_teardown_test.test_base_time + timedelta(hours=items_in_ingest_batch)
     data = {"col1": items_in_ingest_batch, "time": base_time}
     controller.emit(data, "tal")
 
@@ -3446,7 +3452,7 @@ def test_sliding_query_time_exceeds_stored_window_by_more_than_window(
 
     items_in_ingest_batch = 3
     for i in range(items_in_ingest_batch):
-        data = {"col1": i, "time": test_base_time + timedelta(hours=i)}
+        data = {"col1": i, "time": setup_teardown_test.test_base_time + timedelta(hours=i)}
         controller.emit(data, "tal")
 
     controller.terminate()
@@ -3485,7 +3491,7 @@ def test_sliding_query_time_exceeds_stored_window_by_more_than_window(
         ]
     ).run()
 
-    base_time = test_base_time + timedelta(days=10)
+    base_time = setup_teardown_test.test_base_time + timedelta(days=10)
     data = {"col1": items_in_ingest_batch, "time": base_time}
     controller.emit(data, "tal")
 
@@ -3532,7 +3538,7 @@ def test_fixed_query_time_exceeds_stored_window_by_more_than_window(
 
     items_in_ingest_batch = 3
     for i in range(items_in_ingest_batch):
-        data = {"col1": i, "time": test_base_time + timedelta(minutes=45 * i)}
+        data = {"col1": i, "time": setup_teardown_test.test_base_time + timedelta(minutes=45 * i)}
         controller.emit(data, "tal")
 
     controller.terminate()
@@ -3575,7 +3581,7 @@ def test_fixed_query_time_exceeds_stored_window_by_more_than_window(
         ]
     ).run()
 
-    base_time = test_base_time + timedelta(days=10)
+    base_time = setup_teardown_test.test_base_time + timedelta(days=10)
     data = {"col1": items_in_ingest_batch, "time": base_time}
     controller.emit(data, "tal")
 
@@ -3677,7 +3683,7 @@ def test_write_to_table_reuse(setup_teardown_test):
     for iteration in range(2):
         controller = flow.run()
         for i in range(items_in_ingest_batch):
-            data = {"col1": i, "time": test_base_time + timedelta(minutes=45 * i)}
+            data = {"col1": i, "time": setup_teardown_test.test_base_time + timedelta(minutes=45 * i)}
             controller.emit(data, "tal")
 
         controller.terminate()
@@ -3686,7 +3692,7 @@ def test_write_to_table_reuse(setup_teardown_test):
 
 
 def test_aggregate_multiple_keys(setup_teardown_test):
-    t0 = pd.Timestamp(test_base_time)
+    t0 = pd.Timestamp(setup_teardown_test.test_base_time)
     data = pd.DataFrame(
         {
             "first_name": ["moshe", "yosi", "yosi"],
@@ -3736,15 +3742,15 @@ def test_aggregate_multiple_keys(setup_teardown_test):
     ).run()
 
     controller.emit(
-        {"first_name": "moshe", "last_name": "cohen", "some_data": 4, "time": test_base_time},
+        {"first_name": "moshe", "last_name": "cohen", "some_data": 4, "time": setup_teardown_test.test_base_time},
         ["moshe", "cohen"],
     )
     controller.emit(
-        {"first_name": "moshe", "last_name": "levi", "some_data": 5, "time": test_base_time},
+        {"first_name": "moshe", "last_name": "levi", "some_data": 5, "time": setup_teardown_test.test_base_time},
         ["moshe", "levi"],
     )
     controller.emit(
-        {"first_name": "yosi", "last_name": "levi", "some_data": 6, "time": test_base_time},
+        {"first_name": "yosi", "last_name": "levi", "some_data": 6, "time": setup_teardown_test.test_base_time},
         ["yosi", "levi"],
     )
 
@@ -3779,7 +3785,7 @@ def test_aggregate_multiple_keys(setup_teardown_test):
 
 
 def test_aggregate_multiple_keys_and_aggregationless_query(setup_teardown_test):
-    t0 = pd.Timestamp(test_base_time)
+    t0 = pd.Timestamp(setup_teardown_test.test_base_time)
     data = pd.DataFrame(
         {
             "first_name": ["moshe", "yosi", "yosi"],
@@ -3830,15 +3836,15 @@ def test_aggregate_multiple_keys_and_aggregationless_query(setup_teardown_test):
     ).run()
 
     controller.emit(
-        {"first_name": "moshe", "last_name": "cohen", "some_data": 4, "time": test_base_time},
+        {"first_name": "moshe", "last_name": "cohen", "some_data": 4, "time": setup_teardown_test.test_base_time},
         ["moshe", "cohen"],
     )
     controller.emit(
-        {"first_name": "moshe", "last_name": "levi", "some_data": 5, "time": test_base_time},
+        {"first_name": "moshe", "last_name": "levi", "some_data": 5, "time": setup_teardown_test.test_base_time},
         ["moshe", "levi"],
     )
     controller.emit(
-        {"first_name": "yosi", "last_name": "levi", "some_data": 6, "time": test_base_time},
+        {"first_name": "yosi", "last_name": "levi", "some_data": 6, "time": setup_teardown_test.test_base_time},
         ["yosi", "levi"],
     )
 
@@ -3881,9 +3887,9 @@ def test_read_non_existing_key(setup_teardown_test):
             "last_name": ["cohen", "levi", "levi"],
             "some_data": [1, 2, 3],
             "time": [
-                test_base_time - pd.Timedelta(minutes=25),
-                test_base_time - pd.Timedelta(minutes=30),
-                test_base_time - pd.Timedelta(minutes=35),
+                setup_teardown_test.test_base_time - pd.Timedelta(minutes=25),
+                setup_teardown_test.test_base_time - pd.Timedelta(minutes=30),
+                setup_teardown_test.test_base_time - pd.Timedelta(minutes=35),
             ],
         }
     )
@@ -3968,8 +3974,8 @@ def test_concurrent_updates_to_kv_table(setup_teardown_test):
 
     try:
         for i in range(10):
-            controller1.emit({"attr1": i, "time": test_base_time}, key="onekey")
-            controller2.emit({"attr2": i, "time": test_base_time}, key="onekey")
+            controller1.emit({"attr1": i, "time": setup_teardown_test.test_base_time}, key="onekey")
+            controller2.emit({"attr2": i, "time": setup_teardown_test.test_base_time}, key="onekey")
     finally:
         controller1.terminate()
         controller2.terminate()
@@ -3985,7 +3991,7 @@ def test_concurrent_updates_to_kv_table(setup_teardown_test):
         ]
     ).run()
 
-    controller.emit({"mykey": "onekey", "time": test_base_time})
+    controller.emit({"mykey": "onekey", "time": setup_teardown_test.test_base_time})
 
     controller.terminate()
     result = controller.await_termination()
@@ -4005,7 +4011,7 @@ def test_separate_aggregate_steps(setup_teardown_test):
         x["some_data"] = x["some_data"] * 10
         return x
 
-    t0 = pd.Timestamp(test_base_time)
+    t0 = pd.Timestamp(setup_teardown_test.test_base_time)
     data = pd.DataFrame(
         {
             "first_name": ["moshe", "yosi", "katya"],
@@ -4068,7 +4074,7 @@ def test_separate_aggregate_steps(setup_teardown_test):
         ]
     ).run()
 
-    controller.emit({"first_name": "moshe", "time": test_base_time}, ["moshe"])
+    controller.emit({"first_name": "moshe", "time": setup_teardown_test.test_base_time}, ["moshe"])
 
     controller.terminate()
     actual = controller.await_termination()
@@ -4108,11 +4114,11 @@ def test_write_read_first_last(setup_teardown_test):
     try:
         for i in range(1, 10):
             controller.emit(
-                {"attr": i, "time": test_base_time + timedelta(minutes=i)},
+                {"attr": i, "time": setup_teardown_test.test_base_time + timedelta(minutes=i)},
                 key="onekey",
             )
             controller.emit(
-                {"attr": i * 10, "time": test_base_time + timedelta(hours=1, minutes=i)},
+                {"attr": i * 10, "time": setup_teardown_test.test_base_time + timedelta(hours=1, minutes=i)},
                 key="onekey",
             )
     finally:
@@ -4128,8 +4134,8 @@ def test_write_read_first_last(setup_teardown_test):
         ]
     ).run()
 
-    controller.emit({"mykey": "onekey", "time": test_base_time + timedelta(minutes=10)})
-    controller.emit({"mykey": "onekey", "time": test_base_time + timedelta(hours=1, minutes=10)})
+    controller.emit({"mykey": "onekey", "time": setup_teardown_test.test_base_time + timedelta(minutes=10)})
+    controller.emit({"mykey": "onekey", "time": setup_teardown_test.test_base_time + timedelta(hours=1, minutes=10)})
 
     controller.terminate()
     result = controller.await_termination()
@@ -4178,7 +4184,7 @@ def test_non_existing_key_query_by_key_from_v3io_key_is_list(setup_teardown_test
 
 
 def test_multiple_keys_int(setup_teardown_test):
-    t0 = pd.Timestamp(test_base_time)
+    t0 = pd.Timestamp(setup_teardown_test.test_base_time)
     data = pd.DataFrame(
         {
             "key_column1": [10, 20],
@@ -4224,7 +4230,13 @@ def test_multiple_keys_int(setup_teardown_test):
     ).run()
 
     controller.emit(
-        {"key_column1": 10, "key_column2": 30, "key_column3": 5, "key_column4": 50, "time": test_base_time},
+        {
+            "key_column1": 10,
+            "key_column2": 30,
+            "key_column3": 5,
+            "key_column4": 50,
+            "time": setup_teardown_test.test_base_time,
+        },
         key=[10, 30, 5, 50],
     )
 
@@ -4247,7 +4259,7 @@ def test_multiple_keys_int(setup_teardown_test):
 
 
 def test_column_begin_t(setup_teardown_test):
-    t0 = pd.Timestamp(test_base_time)
+    t0 = pd.Timestamp(setup_teardown_test.test_base_time)
     data = pd.DataFrame(
         {
             "key_column": ["a", "b"],
@@ -4290,7 +4302,7 @@ def test_column_begin_t(setup_teardown_test):
         ]
     ).run()
 
-    controller.emit({"key_column": "a", "time": test_base_time}, key=["a"])
+    controller.emit({"key_column": "a", "time": setup_teardown_test.test_base_time}, key=["a"])
 
     controller.terminate()
     actual = controller.await_termination()
@@ -4309,7 +4321,7 @@ def test_column_begin_t(setup_teardown_test):
 
 
 def test_aggregate_float_key(setup_teardown_test):
-    t0 = pd.Timestamp(test_base_time)
+    t0 = pd.Timestamp(setup_teardown_test.test_base_time)
     data = pd.DataFrame(
         {
             "key_column2": [5.6, 8.6],
@@ -4351,7 +4363,7 @@ def test_aggregate_float_key(setup_teardown_test):
         ]
     ).run()
 
-    controller.emit({"key_column2": 8.6, "time": test_base_time}, key=[8.6])
+    controller.emit({"key_column2": 8.6, "time": setup_teardown_test.test_base_time}, key=[8.6])
 
     controller.terminate()
     actual = controller.await_termination()
@@ -4390,7 +4402,7 @@ def test_aggregate_and_query_persist_before_advancing_window(setup_teardown_test
     ).run()
 
     for i in range(22, -1, -1):
-        data = {"number": i, "sample": "U235", "time": test_base_time - timedelta(minutes=3 * i)}
+        data = {"number": i, "sample": "U235", "time": setup_teardown_test.test_base_time - timedelta(minutes=3 * i)}
         controller.emit(data, "tal")
 
     controller.terminate()
@@ -4554,7 +4566,7 @@ def test_aggregate_and_query_persist_before_advancing_window(setup_teardown_test
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
     ).run()
-    data = {"sample": "U235", "time": test_base_time}
+    data = {"sample": "U235", "time": setup_teardown_test.test_base_time}
     controller.emit(data, "tal")
 
     controller.terminate()
@@ -4601,11 +4613,11 @@ def test_aggregate_and_query_by_key_with_holes(setup_teardown_test):
 
     items_in_ingest_batch = 5
     for i in range(items_in_ingest_batch):
-        data = {"col1": i, "time": test_base_time + timedelta(minutes=25 * i)}
+        data = {"col1": i, "time": setup_teardown_test.test_base_time + timedelta(minutes=25 * i)}
         controller.emit(data, "tal")
 
-    controller.emit({"col1": 8, "time": test_base_time + timedelta(minutes=25 * 8)}, "tal")
-    controller.emit({"col1": 9, "time": test_base_time + timedelta(minutes=25 * 9)}, "tal")
+    controller.emit({"col1": 8, "time": setup_teardown_test.test_base_time + timedelta(minutes=25 * 8)}, "tal")
+    controller.emit({"col1": 9, "time": setup_teardown_test.test_base_time + timedelta(minutes=25 * 9)}, "tal")
 
     controller.terminate()
     actual = controller.await_termination()
@@ -4660,7 +4672,7 @@ def test_aggregate_and_query_by_key_with_holes(setup_teardown_test):
         ]
     ).run()
 
-    base_time = test_base_time + timedelta(minutes=25 * 10)
+    base_time = setup_teardown_test.test_base_time + timedelta(minutes=25 * 10)
     data = {"col1": 10, "time": base_time}
     controller.emit(data, "tal")
 
@@ -4680,7 +4692,7 @@ def test_aggregate_and_query_by_key_with_holes(setup_teardown_test):
 
 
 def test_float_format(setup_teardown_test):
-    t0 = pd.Timestamp(test_base_time)
+    t0 = pd.Timestamp(setup_teardown_test.test_base_time)
     floats_array = [1.5089695129344164e05, 1, 1.071743290547756e-05]
     data = pd.DataFrame(
         {
@@ -4722,7 +4734,7 @@ def test_float_format(setup_teardown_test):
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
     ).run()
-    controller.emit({"key_column2": 8.6, "time": test_base_time}, key=[8.6])
+    controller.emit({"key_column2": 8.6, "time": setup_teardown_test.test_base_time}, key=[8.6])
     controller.terminate()
     actual = controller.await_termination()
 
