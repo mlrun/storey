@@ -153,7 +153,7 @@ class ContextForTests:
         elif self.driver_name == "SQLDriver":
             if is_aggregationless_driver:
                 sql_driver_class = SQLDriver
-                return sql_driver_class(db_path=SQLITE_DB, primary_key=primary_key)
+                return sql_driver_class(db_path=SQLITE_DB, primary_key=primary_key, time_fields=kwargs["time_fields"])
             else:
                 pytest.skip("SQLDriver does not support aggregation")
         else:

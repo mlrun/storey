@@ -56,6 +56,7 @@ from .integration_test_utils import (
     create_sql_table,
     create_stream,
     test_base_time,
+    test_base_time_sqlite,
 )
 
 
@@ -163,7 +164,11 @@ def get_key_all_attrs_test_helper(
         result = _get_sql_by_key_all_attrs(setup_teardown_test, key, key_name)
         if time_fields is not None:
             for time_field in time_fields:
-                result[time_field] = datetime.strptime(result[time_field] + " UTC-0000", "%Y-%m-%d %H:%M:%S.%f UTC%z")
+                result[time_field] = (
+                    result[time_field]
+                    if result[time_field] is None
+                    else datetime.strptime(result[time_field], "%Y-%m-%d %H:%M:%S.%f")
+                )
     else:
         response = asyncio.run(get_kv_item(setup_teardown_test.table_name, key))
         assert response.status_code == 200
@@ -171,11 +176,12 @@ def get_key_all_attrs_test_helper(
     return result
 
 
-def _get_table(setup_teardown_test, schema, keys):
+def _get_table(setup_teardown_test, schema, keys, time_fields=None):
     if setup_teardown_test.driver_name == "SQLDriver":
         create_sql_table(schema, setup_teardown_test._sql_table_name, setup_teardown_test.sql_db_path, keys)
         table = Table(
-            setup_teardown_test.table_name, setup_teardown_test.driver(primary_key=keys, is_aggregationless_driver=True)
+            setup_teardown_test.table_name,
+            setup_teardown_test.driver(primary_key=keys, is_aggregationless_driver=True, time_fields=time_fields),
         )
     else:
         table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
@@ -698,6 +704,7 @@ def test_inner_join_by_key(setup_kv_teardown_test):
 
 def test_write_table_specific_columns(setup_teardown_test):
     keys = ["my_key"]
+    time_fields = ["sometime", "first_activity", "last_event"]
     table = _get_table(
         setup_teardown_test,
         {
@@ -714,13 +721,15 @@ def test_write_table_specific_columns(setup_teardown_test):
             "Avg": int,
         },
         keys,
+        time_fields,
     )
 
+    test_base_time_ = test_base_time if setup_teardown_test.driver_name != "SQLDriver" else test_base_time_sqlite
     table["tal"] = {
         "color": "blue",
         "age": 41,
         "iss": True,
-        "sometime": test_base_time,
+        "sometime": test_base_time_,
         "min": 1,
         "Avg": 3,
     }
@@ -748,7 +757,7 @@ def test_write_table_specific_columns(setup_teardown_test):
 
     items_in_ingest_batch = 10
     for i in range(items_in_ingest_batch):
-        data = {"col1": i, "sometime": test_base_time + timedelta(minutes=25 * i)}
+        data = {"col1": i, "sometime": test_base_time_ + timedelta(minutes=25 * i)}
         controller.emit(data, "tal")
 
     controller.terminate()
@@ -824,9 +833,9 @@ def test_write_table_specific_columns(setup_teardown_test):
         "color": "blue",
         "age": 41,
         "iss": True,
-        "sometime": test_base_time,
-        "first_activity": test_base_time,
-        "last_event": test_base_time + timedelta(minutes=25 * (items_in_ingest_batch - 1)),
+        "sometime": test_base_time_,
+        "first_activity": test_base_time_,
+        "last_event": test_base_time_ + timedelta(minutes=25 * (items_in_ingest_batch - 1)),
         "total_activities": 10,
         "twice_total_activities": 20,
         "min": 1,
@@ -834,14 +843,41 @@ def test_write_table_specific_columns(setup_teardown_test):
         "my_key": "tal",
     }
 
-    actual_cache = get_key_all_attrs_test_helper(
-        setup_teardown_test, "tal", keys, ["sometime", "first_activity", "last_event"]
-    )
+    actual_cache = get_key_all_attrs_test_helper(setup_teardown_test, "tal", keys, time_fields)
     assert expected_cache == actual_cache
+
+    # delete cache - testing load__by_key from driver
+    table._attrs_cache = {}
+    table._changed_keys = set()
+
+    controller = build_flow(
+        [
+            SyncEmitSource(),
+            MapWithState(table, enrich, group_by_key=True),
+            DropColumns("sometime"),
+            NoSqlTarget(table, columns=["twice_total_activities", "my_key=$key"]),
+            Reduce([], lambda acc, x: append_return(acc, x)),
+        ]
+    ).run()
+
+    items_in_ingest_batch = 10
+    for i in range(items_in_ingest_batch):
+        data = {"col1": i, "sometime": test_base_time_ + timedelta(minutes=25 * i)}
+        controller.emit(data, "tal")
+
+    controller.terminate()
+    actual = controller.await_termination()
+
+    for dic in expected_results:
+        dic["twice_total_activities"] += 20
+    assert (
+        actual == expected_results
+    ), f"actual did not match expected. \n actual: {actual} \n expected: {expected_results}"
 
 
 def test_write_table_metadata_columns(setup_teardown_test):
     keys = ["my_key"]
+    time_fields = ["sometime", "first_activity", "last_event"]
     table = _get_table(
         setup_teardown_test,
         {
@@ -856,9 +892,11 @@ def test_write_table_metadata_columns(setup_teardown_test):
             "my_key": str,
         },
         keys,
+        time_fields,
     )
 
-    table["tal"] = {"color": "blue", "age": 41, "iss": True, "sometime": test_base_time}
+    test_base_time_ = test_base_time if setup_teardown_test.driver_name != "SQLDriver" else test_base_time_sqlite
+    table["tal"] = {"color": "blue", "age": 41, "iss": True, "sometime": test_base_time_}
 
     def enrich(event, state):
         if "first_activity" not in state:
@@ -883,7 +921,7 @@ def test_write_table_metadata_columns(setup_teardown_test):
 
     items_in_ingest_batch = 10
     for i in range(items_in_ingest_batch):
-        data = {"col1": i, "sometime": test_base_time + timedelta(minutes=25 * i)}
+        data = {"col1": i, "sometime": test_base_time_ + timedelta(minutes=25 * i)}
         controller.emit(data, "tal")
 
     controller.terminate()
@@ -959,17 +997,43 @@ def test_write_table_metadata_columns(setup_teardown_test):
         "color": "blue",
         "age": 41,
         "iss": True,
-        "sometime": test_base_time,
-        "first_activity": test_base_time,
-        "last_event": test_base_time + timedelta(minutes=25 * (items_in_ingest_batch - 1)),
+        "sometime": test_base_time_,
+        "first_activity": test_base_time_,
+        "last_event": test_base_time_ + timedelta(minutes=25 * (items_in_ingest_batch - 1)),
         "total_activities": 10,
         "twice_total_activities": 20,
         "my_key": "tal",
     }
-    actual_cache = get_key_all_attrs_test_helper(
-        setup_teardown_test, "tal", keys, ["sometime", "first_activity", "last_event"]
-    )
+    actual_cache = get_key_all_attrs_test_helper(setup_teardown_test, "tal", keys, time_fields)
     assert expected_cache == actual_cache
+
+    # delete cache - testing load__by_key from driver
+    table._attrs_cache = {}
+    table._changed_keys = set()
+
+    controller = build_flow(
+        [
+            SyncEmitSource(),
+            MapWithState(table, enrich, group_by_key=True),
+            DropColumns("sometime"),
+            NoSqlTarget(table, columns=["twice_total_activities", "my_key=$key"]),
+            Reduce([], lambda acc, x: append_return(acc, x)),
+        ]
+    ).run()
+
+    items_in_ingest_batch = 10
+    for i in range(items_in_ingest_batch):
+        data = {"col1": i, "sometime": test_base_time_ + timedelta(minutes=25 * i)}
+        controller.emit(data, "tal")
+
+    controller.terminate()
+    actual = controller.await_termination()
+
+    for dic in expected_results:
+        dic["twice_total_activities"] += 20
+    assert (
+        actual == expected_results
+    ), f"actual did not match expected. \n actual: {actual} \n expected: {expected_results}"
 
 
 async def get_kv_item(full_path, key):
@@ -1089,9 +1153,18 @@ def test_write_three_keys_to_v3io_from_df(setup_teardown_test):
 
 def test_write_string_as_time_via_time_field(setup_teardown_test):
     keys = ["name"]
-    table = _get_table(setup_teardown_test, {"name": str, "time": datetime}, keys)
-    t1 = datetime.fromisoformat("2020-03-16T05:00:00+00:00")
-    t2 = datetime.fromisoformat("2020-03-15T18:00:00+00:00")
+    time_fields = ["time"]
+    table = _get_table(setup_teardown_test, {"name": str, "time": datetime}, keys, time_fields)
+    t1 = (
+        datetime.fromisoformat("2020-03-16T05:00:00+00:00")
+        if setup_teardown_test.driver_name != "SQLDriver"
+        else datetime.fromisoformat("2020-03-16T05:00:00")
+    )
+    t2 = (
+        datetime.fromisoformat("2020-03-15T18:00:00+00:00")
+        if setup_teardown_test.driver_name != "SQLDriver"
+        else datetime.fromisoformat("2020-03-15T18:00:00")
+    )
     df = pd.DataFrame(
         {
             "name": ["jack", "tuna"],
@@ -1101,22 +1174,23 @@ def test_write_string_as_time_via_time_field(setup_teardown_test):
 
     controller = build_flow(
         [
-            DataframeSource(df, key_field="name"),
+            DataframeSource(df, key_field=keys),
             NoSqlTarget(table, columns=["name", "time"]),
         ]
     ).run()
     controller.await_termination()
 
     expected = {"name": "tuna", "time": t2}
-    actual = get_key_all_attrs_test_helper(setup_teardown_test, "tuna", keys, time_fields=["time"])
+    actual = get_key_all_attrs_test_helper(setup_teardown_test, "tuna", keys, time_fields=time_fields)
     assert actual == expected
 
 
 def test_write_string_as_time_via_schema(setup_teardown_test):
     keys = ["name"]
-    table = _get_table(setup_teardown_test, {"name": str, "time": datetime}, keys)
-    t1 = "2020-03-16T05:00:00+00:00"
-    t2 = "2020-03-15T18:00:00+00:00"
+    time_fields = ["time"]
+    table = _get_table(setup_teardown_test, {"name": str, "time": datetime}, keys, time_fields)
+    t1 = "2020-03-16T05:00:00+00:00" if setup_teardown_test.driver_name != "SQLDriver" else "2020-03-16T05:00:00"
+    t2 = "2020-03-15T18:00:00+00:00" if setup_teardown_test.driver_name != "SQLDriver" else "2020-03-15T18:00:00"
     df = pd.DataFrame(
         {
             "name": ["jack", "tuna"],
@@ -1126,14 +1200,14 @@ def test_write_string_as_time_via_schema(setup_teardown_test):
 
     controller = build_flow(
         [
-            DataframeSource(df, key_field="name"),
+            DataframeSource(df, key_field=keys),
             NoSqlTarget(table, columns=[("name", "str"), ("time", "datetime")]),
         ]
     ).run()
     controller.await_termination()
 
     expected = {"name": "tuna", "time": datetime.fromisoformat(t2)}
-    actual = get_key_all_attrs_test_helper(setup_teardown_test, "tuna", keys, time_fields=["time"])
+    actual = get_key_all_attrs_test_helper(setup_teardown_test, "tuna", keys, time_fields=time_fields)
     assert actual == expected
 
 
@@ -1184,7 +1258,8 @@ def test_write_multiple_keys_to_v3io(setup_teardown_test):
 
 def test_write_none_time(setup_teardown_test):
     keys = ["first_name"]
-    table = _get_table(setup_teardown_test, {"first_name": str, "color": str, "time": str}, keys)
+    time_fields = ["time"]
+    table = _get_table(setup_teardown_test, {"first_name": str, "color": str, "time": datetime}, keys, time_fields)
 
     data = pd.DataFrame(
         {
@@ -1201,7 +1276,7 @@ def test_write_none_time(setup_teardown_test):
 
     controller = build_flow(
         [
-            DataframeSource(data, key_field="first_name"),
+            DataframeSource(data, key_field=keys),
             NoSqlTarget(table),
             Map(set_moshe_time_to_none),
             NoSqlTarget(table),
@@ -1212,13 +1287,13 @@ def test_write_none_time(setup_teardown_test):
     expected = {"first_name": "yosi", "color": "yellow"}
     if setup_teardown_test.driver_name == "SQLDriver":
         expected = {"first_name": "yosi", "color": "yellow", "time": None}
-    actual = get_key_all_attrs_test_helper(setup_teardown_test, "yosi", keys)
+    actual = get_key_all_attrs_test_helper(setup_teardown_test, "yosi", keys, time_fields)
     assert actual == expected
 
     expected = {"first_name": "moshe", "color": "blue"}
     if setup_teardown_test.driver_name == "SQLDriver":
         expected = {"first_name": "moshe", "color": "blue", "time": None}
-    actual = get_key_all_attrs_test_helper(setup_teardown_test, "moshe", keys)
+    actual = get_key_all_attrs_test_helper(setup_teardown_test, "moshe", keys, time_fields)
     assert actual == expected
 
 
@@ -1257,7 +1332,9 @@ def test_cache_flushing(setup_teardown_test):
 def test_write_empty_df(setup_teardown_test):
     table = Table(
         setup_teardown_test.table_name,
-        setup_teardown_test.driver(is_aggregationless_driver=setup_teardown_test.driver_name == "SQLDriver"),
+        setup_teardown_test.driver(
+            is_aggregationless_driver=setup_teardown_test.driver_name == "SQLDriver", time_fields=None
+        ),
     )
     df = pd.DataFrame({})
 

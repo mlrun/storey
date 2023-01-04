@@ -26,16 +26,14 @@ class SQLDriver(Driver):
     SQL database connector.
     :param primary_key: the primary key of the table, format <str>.<str>... or [<str>, <str>,...]
     :param db_path: database url
+    :param time_fields:
     """
 
-    def __init__(
-        self,
-        primary_key: Union[str, List[str]],
-        db_path: str,
-    ):
+    def __init__(self, primary_key: Union[str, List[str]], db_path: str, time_fields: List[str] = None):
         self._db_path = db_path
         self._sql_connection = None
         self._primary_key = primary_key if isinstance(primary_key, list) else self._extract_list_of_keys(primary_key)
+        self._time_fields = time_fields
 
     def _lazy_init(self):
 
@@ -87,20 +85,22 @@ class SQLDriver(Driver):
 
     async def _get_all_fields(self, key, table):
         where_clause = self._get_where_clause(key, table)
-        my_query = f"SELECT * FROM {table} where {where_clause}"
-        results = self._sql_connection.execute(my_query).fetchall()
+        query = f"SELECT * FROM {table} where {where_clause}"
+        results = pd.read_sql(query, con=self._sql_connection, parse_dates=self._time_fields).to_dict(orient="records")
 
-        return results[0]._mapping
+        return results[0]
 
     async def _get_specific_fields(self, key: str, table, attributes: List[str]):
         where_clause = self._get_where_clause(key, table)
         try:
-            my_query = f"SELECT {','.join(attributes)} FROM {table} where {where_clause}"
-            results = self._sql_connection.execute(my_query).fetchall()
+            query = f"SELECT {','.join(attributes)} FROM {table} where {where_clause}"
+            results = pd.read_sql(query, con=self._sql_connection, parse_dates=self._time_fields).to_dict(
+                orient="records"
+            )
         except Exception as e:
             raise RuntimeError(f"Failed to get key '{key}'") from e
 
-        return results[0]._mapping
+        return results[0]
 
     def supports_aggregations(self):
         return False
