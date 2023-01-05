@@ -58,7 +58,10 @@ class SQLDriver(Driver):
             additional_data[self._primary_key[i]] = key[i]
         table = self._table(table_path)
         df = pd.DataFrame(additional_data, index=[0])
-        df.to_sql(table.name, con=self._sql_connection, if_exists="append", index=False)
+        try:
+            df.to_sql(table.name, con=self._sql_connection, if_exists="append", index=False)
+        except db.exc.IntegrityError:
+            self._update_by_key(key, additional_data, table)
 
     async def _load_aggregates_by_key(self, container, table_path, key):
         self._lazy_init()
@@ -116,6 +119,12 @@ class SQLDriver(Driver):
             else:
                 where_clause += f"{self._primary_key[i]}={key[i]}"
         return where_clause
+
+    def _update_by_key(self, key, data, table):
+        where_clause = self._get_where_clause(key, table)
+        update_clause = " ,".join([f'{key}="{value}"' for key, value in data.items() if key not in self._primary_key])
+        sql_statement = f"UPDATE {table} SET {update_clause} where {where_clause}"
+        self._sql_connection.execute(sql_statement)
 
     @staticmethod
     def _extract_list_of_keys(key):

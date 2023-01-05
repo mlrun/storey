@@ -119,7 +119,10 @@ def _get_redis_kv_all_attrs(setup_teardown_test: ContextForTests, key: str):
 
 
 def _get_sql_by_key_all_attrs(
-    setup_teardown_test: ContextForTests, key: Union[str, List[str]], key_name: Union[str, List[str]]
+    setup_teardown_test: ContextForTests,
+    key: Union[str, List[str]],
+    key_name: Union[str, List[str]],
+    time_fields: List[str] = None,
 ):
     import sqlalchemy as db
 
@@ -144,10 +147,9 @@ def _get_sql_by_key_all_attrs(
                 where_statement += f'{key_name[i]}="{key[i]}"'
             else:
                 where_statement += f"{key_name[i]}={key[i]}"
-    my_query = f"SELECT * FROM {sql_table} where ({where_statement})"
+    query = f"SELECT * FROM {sql_table} where ({where_statement})"
     with engine.connect() as conn:
-        results = conn.execute(my_query).fetchall()
-    return results[0]._asdict()
+        return pd.read_sql(query, con=conn, parse_dates=time_fields).to_dict(orient="records")[0]
 
 
 def get_key_all_attrs_test_helper(
@@ -159,11 +161,7 @@ def get_key_all_attrs_test_helper(
     if setup_teardown_test.driver_name == "RedisDriver":
         result = _get_redis_kv_all_attrs(setup_teardown_test, key)
     elif setup_teardown_test.driver_name == "SQLDriver":
-        result = _get_sql_by_key_all_attrs(setup_teardown_test, key, key_name)
-        if time_fields is not None:
-            for time_field in time_fields:
-                if result[time_field] is not None:
-                    result[time_field] = datetime.strptime(result[time_field], "%Y-%m-%d %H:%M:%S.%f")
+        result = _get_sql_by_key_all_attrs(setup_teardown_test, key, key_name, time_fields)
     else:
         response = asyncio.run(get_kv_item(setup_teardown_test.table_name, key))
         assert response.status_code == 200
@@ -842,8 +840,7 @@ def test_write_table_specific_columns(setup_teardown_test):
     assert expected_cache == actual_cache
 
     # delete cache - testing load__by_key from driver
-    table._attrs_cache = {}
-    table._changed_keys = set()
+    table = Table(setup_teardown_test.table_name, table._storage)
 
     controller = build_flow(
         [
@@ -868,6 +865,12 @@ def test_write_table_specific_columns(setup_teardown_test):
     assert (
         actual == expected_results
     ), f"actual did not match expected. \n actual: {actual} \n expected: {expected_results}"
+
+    # check the update processes
+    expected_cache["total_activities"] = 20
+    expected_cache["twice_total_activities"] = 40
+    actual_cache = get_key_all_attrs_test_helper(setup_teardown_test, "tal", keys, time_fields)
+    assert expected_cache == actual_cache
 
 
 def test_write_table_metadata_columns(setup_teardown_test):
