@@ -1263,7 +1263,7 @@ def test_write_none_time(setup_teardown_test):
         {
             "first_name": ["moshe", "yosi"],
             "color": ["blue", "yellow"],
-            "time": [setup_teardown_test.test_base_time, None],
+            "time": [setup_teardown_test.test_base_time, pd.NaT],
         }
     )
 
@@ -1284,13 +1284,13 @@ def test_write_none_time(setup_teardown_test):
 
     expected = {"first_name": "yosi", "color": "yellow"}
     if setup_teardown_test.driver_name == "SQLDriver":
-        expected = {"first_name": "yosi", "color": "yellow", "time": None}
+        expected = {"first_name": "yosi", "color": "yellow", "time": pd.NaT}
     actual = get_key_all_attrs_test_helper(setup_teardown_test, "yosi", keys, time_fields)
     assert actual == expected
 
     expected = {"first_name": "moshe", "color": "blue"}
     if setup_teardown_test.driver_name == "SQLDriver":
-        expected = {"first_name": "moshe", "color": "blue", "time": None}
+        expected = {"first_name": "moshe", "color": "blue", "time": pd.NaT}
     actual = get_key_all_attrs_test_helper(setup_teardown_test, "moshe", keys, time_fields)
     assert actual == expected
 
