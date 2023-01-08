@@ -14,6 +14,7 @@
 #
 import asyncio
 import os
+from datetime import datetime
 
 import fakeredis
 import pytest
@@ -100,6 +101,12 @@ class ContextForTests:
     def __init__(self, driver_name: str, table_name: str):
         self._driver_name = driver_name
         self._table_name = table_name
+        # sqlite cant save time zone
+        self.test_base_time = (
+            datetime.fromisoformat("2020-07-21T21:40:00+00:00")
+            if driver_name != "SQLDriver"
+            else datetime.fromisoformat("2020-07-21T21:40:00")
+        )
 
         self._redis_fake_server = None
         if driver_name == "RedisDriver":
@@ -136,7 +143,7 @@ class ContextForTests:
         def supports_aggregations(self):
             return False
 
-    def driver(self, *args, primary_key=None, is_aggregationless_driver=False, **kwargs):
+    def driver(self, *args, primary_key=None, is_aggregationless_driver=False, time_fields=None, **kwargs):
         if self.driver_name == "V3ioDriver":
             v3io_driver_class = ContextForTests.AggregationlessV3ioDriver if is_aggregationless_driver else V3ioDriver
             return v3io_driver_class(*args, **kwargs)
@@ -153,7 +160,7 @@ class ContextForTests:
         elif self.driver_name == "SQLDriver":
             if is_aggregationless_driver:
                 sql_driver_class = SQLDriver
-                return sql_driver_class(db_path=SQLITE_DB, primary_key=primary_key)
+                return sql_driver_class(db_path=SQLITE_DB, primary_key=primary_key, time_fields=time_fields)
             else:
                 pytest.skip("SQLDriver does not support aggregation")
         else:

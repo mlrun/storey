@@ -31,7 +31,6 @@ from storey.flow import V3ioError
 from storey.redis_driver import RedisDriver
 
 _non_int_char_pattern = re.compile(r"[^-0-9]")
-test_base_time = datetime.fromisoformat("2020-07-21T21:40:00+00:00")
 
 
 class V3ioHeaders(NeedsV3ioAccess):
@@ -277,7 +276,7 @@ def create_sql_table(schema, table_name, sql_db_path, key):
             elif col_type == timedelta or col_type == pd.Timedelta:
                 col_type = db.Interval
             elif col_type == datetime or col_type == pd.Timestamp:
-                col_type = db.DateTime
+                col_type = db.DATETIME
             elif col_type == bool:
                 col_type = db.Boolean
             elif col_type == float:
