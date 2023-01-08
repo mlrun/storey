@@ -35,8 +35,6 @@ from storey.redis_driver import RedisDriver
 from storey.sql_driver import SQLDriver
 
 SQLITE_DB = "sqlite:///test.db"
-test_base_time = datetime.fromisoformat("2020-07-21T21:40:00+00:00")
-test_base_time_sqlite = datetime.fromisoformat("2020-07-21T21:40:00")  # sqlite cant save time zone
 
 
 @pytest.fixture(params=drivers_list)
@@ -103,7 +101,12 @@ class ContextForTests:
     def __init__(self, driver_name: str, table_name: str):
         self._driver_name = driver_name
         self._table_name = table_name
-        self.test_base_time = test_base_time if driver_name != "SQLDriver" else test_base_time_sqlite
+        # sqlite cant save time zone
+        self.test_base_time = (
+            datetime.fromisoformat("2020-07-21T21:40:00+00:00")
+            if driver_name != "SQLDriver"
+            else datetime.fromisoformat("2020-07-21T21:40:00")
+        )
 
         self._redis_fake_server = None
         if driver_name == "RedisDriver":
