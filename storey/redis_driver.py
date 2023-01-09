@@ -100,11 +100,19 @@ class RedisDriver(NeedsRedisAccess, Driver):
         return self._redis
 
     @staticmethod
-    def make_key(key_prefix, *parts):
+    def __build_key_key(key_prefix, *parts):
         return f"{{{key_prefix}{''.join([str(p) for p in parts])}}}"
 
-    def _make_key(self, *parts):
-        return RedisDriver.make_key(self._key_prefix, *parts)
+    @staticmethod
+    def make_key(key_prefix, container_and_table, key):
+        return RedisDriver.__build_key_key(
+            key_prefix, "" if container_and_table.startswith("/") else "/", container_and_table, ":", key
+        )
+
+    def _make_key(self, container, table, key):
+        return RedisDriver.__build_key_key(
+            self._key_prefix, "" if container.startswith("/") else "/", container, table, ":", key
+        )
 
     @staticmethod
     def _static_data_key(redis_key_prefix):
