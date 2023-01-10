@@ -555,7 +555,7 @@ def test_write_to_tsdb(timestamp):
             SyncEmitSource(),
             TSDBTarget(
                 path=tsdb_path,
-                time_col="time",
+                time_col="my_time",
                 time_format=time_format,
                 index_cols="node",
                 columns=["cpu", "disk"],

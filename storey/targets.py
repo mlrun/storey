@@ -747,7 +747,7 @@ class TSDBTarget(_Batching, _Writer):
             df_columns.extend(self._index_cols)
         df_columns.extend(self._columns)
         df = pd.DataFrame(batch, columns=df_columns)
-        df["time"] = pd.to_datetime(df["time"], format=self._time_format)
+        df[self._time_col] = pd.to_datetime(df[self._time_col], format=self._time_format)
         df.set_index(keys=self._index_cols, inplace=True)
         if not self._created and self._rate:
             self._created = True
