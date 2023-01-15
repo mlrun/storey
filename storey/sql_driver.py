@@ -45,7 +45,7 @@ class SQLDriver(Driver):
         metadata = db.MetaData()
 
         return db.Table(
-            table_path.split("/")[2],
+            table_path.split("/")[-1],
             metadata,
             autoload=True,
             autoload_with=self._engine,
