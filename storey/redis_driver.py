@@ -51,14 +51,15 @@ class RedisDriver(NeedsRedisAccess, Driver):
     DATETIME_FIELD_PREFIX = "_dt:"
     TIMEDELTA_FIELD_PREFIX = "_td:"
     DEFAULT_KEY_PREFIX = "storey:"
+    AGGREGATION_ATTRIBUTE_PREFIX = "aggr_"
+    AGGREGATION_TIME_ATTRIBUTE_PREFIX = "_"
+    AGGREGATION_PREFIXES = (AGGREGATION_ATTRIBUTE_PREFIX, AGGREGATION_TIME_ATTRIBUTE_PREFIX)
 
     def __init__(
         self,
         redis_client: Optional[Union[redis.Redis, redis.cluster.RedisCluster]] = None,
         key_prefix: str = None,
         redis_url: Optional[str] = None,
-        aggregation_attribute_prefix: str = "aggr_",
-        aggregation_time_attribute_prefix: str = "_",
         use_parallel_operations: bool = True,  # unused
     ):
         # if client provided a redis-client object, use it. otherwise store the redis url, and create redis-client
@@ -71,13 +72,6 @@ class RedisDriver(NeedsRedisAccess, Driver):
 
         self._key_prefix = key_prefix if key_prefix is not None else self.DEFAULT_KEY_PREFIX
         self._mtime_name = "$_mtime_"
-
-        self._aggregation_attribute_prefix = aggregation_attribute_prefix
-        self._aggregation_time_attribute_prefix = aggregation_time_attribute_prefix
-        self._aggregation_prefixes = (
-            self._aggregation_attribute_prefix,
-            self._aggregation_time_attribute_prefix,
-        )
 
     @staticmethod
     def asyncify(fn):
@@ -131,7 +125,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
         The `redis_key_prefix` string should be the Redis key prefix used to store
         data for a Storey container, table path, and key combination.
         """
-        return f"{redis_key_prefix}:{self._aggregation_time_attribute_prefix}{feature_name}"
+        return f"{redis_key_prefix}:{RedisDriver.AGGREGATION_TIME_ATTRIBUTE_PREFIX}{feature_name}"
 
     @staticmethod
     def _list_key(redis_key_prefix, list_attribute_name):
@@ -309,7 +303,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
                             aggregation_value,
                         ) in aggregation_values.items():
                             list_attribute_name = (
-                                f"{self._aggregation_attribute_prefix}{name}_{aggregation}_{feature_attr}"
+                                f"{RedisDriver.AGGREGATION_ATTRIBUTE_PREFIX}{name}_{aggregation}_{feature_attr}"
                             )
                             list_attribute_key = self._list_key(redis_key_prefix, list_attribute_name)
                             if list_attribute_key not in redis_keys_involved:
@@ -422,12 +416,12 @@ class RedisDriver(NeedsRedisAccess, Driver):
         res = {
             RedisDriver.convert_to_str(key): RedisDriver.convert_redis_value_to_python_obj(val)
             for key, val in values.items()
-            if not str(key).startswith(self._aggregation_prefixes)
+            if not str(key).startswith(RedisDriver.AGGREGATION_PREFIXES)
         }
         return res
 
     async def _get_specific_fields(self, redis_key: str, attributes: List[str]):
-        non_aggregation_attrs = [name for name in attributes if not name.startswith(self._aggregation_prefixes)]
+        non_aggregation_attrs = [name for name in attributes if not name.startswith(RedisDriver.AGGREGATION_PREFIXES)]
         try:
             values = await RedisDriver.asyncify(self.redis.hmget)(redis_key, non_aggregation_attrs)
         except redis.ResponseError as e:
@@ -474,7 +468,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
         # Return a form of the time attribute that Storey expects. This should include
         # name of the feature but not the aggregation name (min, max) or relevant
         # attribute (_a, _b).
-        associated_time_attr = f"{self._aggregation_time_attribute_prefix}" f"{feature_with_relevant_attr}"
+        associated_time_attr = f"{RedisDriver.AGGREGATION_TIME_ATTRIBUTE_PREFIX}" f"{feature_with_relevant_attr}"
 
         return associated_time_attr, time_in_millis
 
@@ -491,7 +485,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
         aggregations = {}
         # Aggregation Redis keys start with the Redis key prefix for this Storey container, table
         # path, and "key," followed by ":aggr_"
-        aggr_key_prefix = f"{redis_key_prefix}:{self._aggregation_attribute_prefix}"
+        aggr_key_prefix = f"{redis_key_prefix}:{RedisDriver.AGGREGATION_ATTRIBUTE_PREFIX}"
         # We can't use `async for` here...
         for aggr_key in self.redis.scan_iter(f"{aggr_key_prefix}*"):
             aggr_key = RedisDriver.convert_to_str(aggr_key)
@@ -529,7 +523,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
         aggregations = {}
 
         redis_key_prefix = self._make_key(container, table_path, key)
-        aggr_key_prefix = f"{redis_key_prefix}:{self._aggregation_attribute_prefix}"
+        aggr_key_prefix = f"{redis_key_prefix}:{RedisDriver.AGGREGATION_ATTRIBUTE_PREFIX}"
         # We can't use `async for` here...
         for aggr_key in self.redis.scan_iter(f"{aggr_key_prefix}*"):
             aggr_key = RedisDriver.convert_to_str(aggr_key)
@@ -557,8 +551,8 @@ class RedisDriver(NeedsRedisAccess, Driver):
     def _get_time_attributes_from_aggregations(self, aggregation_element):
         attributes = {}
         for bucket in aggregation_element.aggregation_buckets.values():
-            attributes[f"{bucket.name}_a"] = f"{self._aggregation_time_attribute_prefix}{bucket.name}_a"
-            attributes[f"{bucket.name}_b"] = f"{self._aggregation_time_attribute_prefix}{bucket.name}_b"
+            attributes[f"{bucket.name}_a"] = f"{RedisDriver.AGGREGATION_TIME_ATTRIBUTE_PREFIX}{bucket.name}_a"
+            attributes[f"{bucket.name}_b"] = f"{RedisDriver.AGGREGATION_TIME_ATTRIBUTE_PREFIX}{bucket.name}_b"
         return list(attributes.values())
 
     async def _save_schema(self, container, table_path, schema):
