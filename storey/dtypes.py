@@ -1,12 +1,29 @@
+# Copyright 2020 Iguazio
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Union, Optional, Callable, List
+from typing import Callable, List, Optional, Union
 
-from .aggregation_utils import get_all_raw_aggregates
-from .utils import parse_duration, bucketPerWindow, get_one_unit_of_duration
 import numpy
 
+from .aggregation_utils import get_all_raw_aggregates
+from .utils import bucketPerWindow, get_one_unit_of_duration, parse_duration
+
 _termination_obj = object()
+
+known_driver_schemes = ["v3io", "redis", "rediss"]
 
 
 class Event:
@@ -14,7 +31,7 @@ class Event:
 
     :param body: the event payload, or data
     :param key: Event key. Used by steps that aggregate events by key, such as AggregateByKey. (Optional). Can be list
-    :param time: Event time. Defaults to the time the event was created, UTC. (Optional)
+    :param processing_time: Event processing time. Defaults to the time the event was created, UTC. (Optional)
     :param id: Event identifier. Usually a unique identifier. (Optional)
     :param headers: Request headers (HTTP only) (Optional)
     :param method: Request method (HTTP only) (Optional)
@@ -24,19 +41,34 @@ class Event:
     :type awaitable_result: AwaitableResult (Optional)
     """
 
-    def __init__(self, body: object, key: Optional[Union[str, List[str]]] = None, time: Optional[datetime] = None, id: Optional[str] = None,
-                 headers: Optional[dict] = None, method: Optional[str] = None, path: Optional[str] = '/',
-                 content_type=None, awaitable_result=None):
+    _serialize_event_marker = "full_event_wrapper"
+    _serialize_fields = ["key", "id"]
+
+    def __init__(
+        self,
+        body: object,
+        key: Optional[Union[str, List[str]]] = None,
+        processing_time: Union[None, datetime, int, float] = None,
+        id: Optional[str] = None,
+        headers: Optional[dict] = None,
+        method: Optional[str] = None,
+        path: Optional[str] = "/",
+        content_type=None,
+        awaitable_result=None,
+    ):
         self.body = body
         self.key = key
-        if time is not None and not isinstance(time, datetime):
-            if isinstance(time, str):
-                time = datetime.fromisoformat(time)
-            elif isinstance(time, int):
-                time = datetime.utcfromtimestamp(time)
+        if processing_time is not None and not isinstance(processing_time, datetime):
+            if isinstance(processing_time, str):
+                processing_time = datetime.fromisoformat(processing_time)
+            elif isinstance(processing_time, (int, float)):
+                processing_time = datetime.utcfromtimestamp(processing_time)
             else:
-                raise TypeError(f'Event time parameter must be a datetime, string, or int. Got {type(time)} instead.')
-        self.time = time or datetime.now(timezone.utc)
+                raise TypeError(
+                    f"Event processing_time parameter must be a datetime, string, or int. "
+                    f"Got {type(processing_time)} instead."
+                )
+        self.processing_time = processing_time or datetime.now(timezone.utc)
         self.id = id
         self.headers = headers
         self.method = method
@@ -49,14 +81,35 @@ class Event:
         if not isinstance(other, Event):
             return False
 
-        return self.body == other.body and self.time == other.time and self.id == other.id and self.headers == other.headers and \
-               self.method == other.method and self.path == other.path and self.content_type == other.content_type  # noqa: E127
+        return (
+            self.body == other.body
+            and self.id == other.id
+            and self.headers == other.headers
+            and self.method == other.method
+            and self.path == other.path
+            and self.content_type == other.content_type
+        )  # noqa: E127
 
     def __str__(self):
-        return f'Event(id={self.id}, key={str(self.key)}, time={self.time}, body={self.body})'
+        return f"Event(id={self.id}, key={str(self.key)}, time={self.time}, body={self.body})"
+
+    @staticmethod
+    def wrap_for_serialization(event, record):
+        record = {Event._serialize_event_marker: True, "body": record}
+        for field in Event._serialize_fields:
+            val = getattr(event, field)
+            if val is not None:
+                if isinstance(val, datetime):
+                    val = datetime.isoformat(val)
+                record[field] = val
+        return record
 
 
 class V3ioError(Exception):
+    pass
+
+
+class RedisError(Exception):
     pass
 
 
@@ -106,7 +159,7 @@ class SlidingWindow(WindowBase):
     def __init__(self, window: str, period: str):
         window_millis, period_millis = parse_duration(window), parse_duration(period)
         if not window_millis % period_millis == 0:
-            raise ValueError('period must be a divider of the window')
+            raise ValueError("period must be a divider of the window")
 
         WindowBase.__init__(self, window_millis, period_millis, window)
 
@@ -142,7 +195,7 @@ class WindowsBase:
 
     def merge(self, new):
         if self.period_millis != new.period_millis:
-            raise ValueError('Cannot use different periods for same aggregation')
+            raise ValueError("Cannot use different periods for same aggregation")
         found_new_window = False
         for window in new.windows:
             if window not in self.windows:
@@ -160,7 +213,7 @@ class WindowsBase:
 
 def sort_windows_and_convert_to_millis(windows):
     if len(windows) == 0:
-        raise ValueError('Windows list can not be empty')
+        raise ValueError("Windows list can not be empty")
 
     if isinstance(windows[0], str):
         # Validate windows order
@@ -189,8 +242,10 @@ class FixedWindows(WindowsBase):
         WindowsBase.__init__(self, period, windows_tuples)
 
     def round_up_time_to_window(self, timestamp):
-        return int(
-            timestamp / self.smallest_window_unit_millis) * self.smallest_window_unit_millis + self.smallest_window_unit_millis
+        return (
+            int(timestamp / self.smallest_window_unit_millis) * self.smallest_window_unit_millis
+            + self.smallest_window_unit_millis
+        )
 
     def get_period_by_time(self, timestamp):
         return int(timestamp / self.period_millis) * self.period_millis
@@ -224,7 +279,8 @@ class SlidingWindows(WindowsBase):
             for window in windows_tuples:
                 if not window[0] % period_millis == 0:
                     raise ValueError(
-                        f'Period must be a divisor of every window, but period {period} does not divide {window}')
+                        f"Period must be a divisor of every window, but period {period} does not divide {window}"
+                    )
         else:
             # The period should be a divisor of the unit of the smallest window,
             # for example if the smallest request window is 2h, the period will be 1h / `bucketPerWindow`
@@ -260,7 +316,7 @@ class EmitAfterPeriod(EmitPolicy):
 
     @staticmethod
     def name():
-        return 'afterPeriod'
+        return "afterPeriod"
 
 
 class EmitAfterWindow(EmitPolicy):
@@ -276,7 +332,7 @@ class EmitAfterWindow(EmitPolicy):
 
     @staticmethod
     def name():
-        return 'afterWindow'
+        return "afterWindow"
 
 
 class EmitAfterMaxEvent(EmitPolicy):
@@ -287,14 +343,19 @@ class EmitAfterMaxEvent(EmitPolicy):
     :param timeout_secs: Emit event after timeout expires even if it didn't reach max_events event (Optional)
     """
 
-    def __init__(self, max_events: int, timeout_secs: Optional[int] = None, emission_type=EmissionType.All):
+    def __init__(
+        self,
+        max_events: int,
+        timeout_secs: Optional[int] = None,
+        emission_type=EmissionType.All,
+    ):
         self.max_events = max_events
         self.timeout_secs = timeout_secs
         EmitPolicy.__init__(self, emission_type)
 
     @staticmethod
     def name():
-        return 'maxEvents'
+        return "maxEvents"
 
 
 class EmitAfterDelay(EmitPolicy):
@@ -304,7 +365,7 @@ class EmitAfterDelay(EmitPolicy):
 
     @staticmethod
     def name():
-        return 'afterDelay'
+        return "afterDelay"
 
 
 class EmitEveryEvent(EmitPolicy):
@@ -314,33 +375,33 @@ class EmitEveryEvent(EmitPolicy):
 
     @staticmethod
     def name():
-        return 'everyEvent'
+        return "everyEvent"
 
     pass
 
 
 def _dict_to_emit_policy(policy_dict):
-    mode = policy_dict.pop('mode')
+    mode = policy_dict.pop("mode")
     if mode == EmitEveryEvent.name():
         policy = EmitEveryEvent()
     elif mode == EmitAfterMaxEvent.name():
-        if 'maxEvents' not in policy_dict:
-            raise ValueError('maxEvents parameter must be specified for maxEvents emit policy')
-        policy = EmitAfterMaxEvent(policy_dict.pop('maxEvents'))
+        if "maxEvents" not in policy_dict:
+            raise ValueError("maxEvents parameter must be specified for maxEvents emit policy")
+        policy = EmitAfterMaxEvent(policy_dict.pop("maxEvents"))
     elif mode == EmitAfterDelay.name():
-        if 'delay' not in policy_dict:
-            raise ValueError('delay parameter must be specified for afterDelay emit policy')
+        if "delay" not in policy_dict:
+            raise ValueError("delay parameter must be specified for afterDelay emit policy")
 
-        policy = EmitAfterDelay(policy_dict.pop('delay'))
+        policy = EmitAfterDelay(policy_dict.pop("delay"))
     elif mode == EmitAfterWindow.name():
-        policy = EmitAfterWindow(delay_in_seconds=policy_dict.pop('delay', 0))
+        policy = EmitAfterWindow(delay_in_seconds=policy_dict.pop("delay", 0))
     elif mode == EmitAfterPeriod.name():
-        policy = EmitAfterPeriod(delay_in_seconds=policy_dict.pop('delay', 0))
+        policy = EmitAfterPeriod(delay_in_seconds=policy_dict.pop("delay", 0))
     else:
-        raise TypeError(f'unsupported emit policy type: {mode}')
+        raise TypeError(f"unsupported emit policy type: {mode}")
 
     if policy_dict:
-        raise ValueError(f'got unexpected arguments for emit policy: {policy_dict}')
+        raise ValueError(f"got unexpected arguments for emit policy: {policy_dict}")
 
     return policy
 
@@ -356,17 +417,24 @@ class FieldAggregator:
 
     :param name: Name for the feature.
     :param field: Field in the event body to aggregate.
-    :param aggr: List of aggregates to apply. Valid values are: [count, sum, sqr, avg, max, min, last, first, sttdev, stdvar]
+    :param aggr: List of aggregates to apply.
+        Valid values are: [count, sum, sqr, avg, max, min, last, first, sttdev, stdvar]
     :param windows: Time windows to aggregate the data by.
     :param aggr_filter: Filter specifying which events to aggregate. (Optional)
     :param max_value: Maximum value for the aggregation (Optional)
     """
 
-    def __init__(self, name: str, field: Union[str, Callable[[Event], object], None], aggr: List[str],
-                 windows: Union[FixedWindows, SlidingWindows], aggr_filter: Optional[Callable[[Event], bool]] = None,
-                 max_value: Optional[float] = None):
+    def __init__(
+        self,
+        name: str,
+        field: Union[str, Callable[[Event], object], None],
+        aggr: List[str],
+        windows: Union[FixedWindows, SlidingWindows],
+        aggr_filter: Optional[Callable[[Event], bool]] = None,
+        max_value: Optional[float] = None,
+    ):
         if aggr_filter is not None and not callable(aggr_filter):
-            raise TypeError(f'aggr_filter expected to be callable, got {type(aggr_filter)}')
+            raise TypeError(f"aggr_filter expected to be callable, got {type(aggr_filter)}")
 
         if callable(field):
             self.value_extractor = field

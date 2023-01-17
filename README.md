@@ -58,31 +58,32 @@ The following example reads user data, creates features using Storey's aggregate
 from storey import build_flow, SyncEmitSource, Table, V3ioDriver, AggregateByKey, FieldAggregator, NoSqlTarget
 from storey.dtypes import SlidingWindows
 
-v3io_web_api = 'https://webapi.change-me.com'
-v3io_acceess_key = '1284ne83-i262-46m6-9a23-810n41f169ea'
-table_object = Table('/projects/my_features', V3ioDriver(v3io_web_api, v3io_acceess_key))
+v3io_web_api = "https://webapi.change-me.com"
+v3io_acceess_key = "1284ne83-i262-46m6-9a23-810n41f169ea"
+table_object = Table("/projects/my_features", V3ioDriver(v3io_web_api, v3io_acceess_key))
 
 def enrich(event, state):
-    if 'first_activity' not in state:
-        state['first_activity'] = event.time
-    event.body['time_since_activity'] = (event.time - state['first_activity']).seconds
-    state['last_event'] = event.time
-    event.body['total_activities'] = state['total_activities'] = state.get('total_activities', 0) + 1
+    if "first_activity" not in state:
+        state["first_activity"] = event.time
+    event.body["time_since_activity"] = (event.body["time"] - state["first_activity"]).seconds
+    state["last_event"] = event.time
+    event.body["total_activities"] = state["total_activities"] = state.get("total_activities", 0) + 1
     return event, state
 
 controller = build_flow([
     SyncEmitSource(),
     MapWithState(table_object, enrich, group_by_key=True, full_event=True),
     AggregateByKey([FieldAggregator("number_of_clicks", "click", ["count"],
-                                    SlidingWindows(['1h','2h', '24h'], '10m')),
+                                    SlidingWindows(["1h","2h", "24h"], "10m")),
                     FieldAggregator("purchases", "purchase_amount", ["avg", "min", "max"],
-                                    SlidingWindows(['1h','2h', '24h'], '10m')),
+                                    SlidingWindows(["1h","2h", "24h"], "10m")),
                     FieldAggregator("failed_activities", "activity", ["count"],
-                                    SlidingWindows(['1h'], '10m'),
-                                    aggr_filter=lambda element: element['activity_status'] == 'fail'))],
-                   table_object),
+                                    SlidingWindows(["1h"], "10m"),
+                                    aggr_filter=lambda element: element["activity_status"] == "fail"))],
+                   table_object,
+                   time_field="time"),
     NoSqlTarget(table_object),
-    StreamTarget(V3ioDriver(v3io_web_api, v3io_acceess_key), 'features_stream')
+    StreamTarget(V3ioDriver(v3io_web_api, v3io_acceess_key), "features_stream")
 ]).run()
 ```
 
@@ -92,12 +93,13 @@ We can also create a serving function, which sole purpose is to read data from t
 controller = build_flow([
     SyncEmitSource(),
     QueryAggregationByKey([FieldAggregator("number_of_clicks", "click", ["count"],
-                                           SlidingWindows(['1h','2h', '24h'], '10m')),
+                                           SlidingWindows(["1h","2h", "24h"], "10m")),
                            FieldAggregator("purchases", "purchase_amount", ["avg", "min", "max"],
-                                           SlidingWindows(['1h','2h', '24h'], '10m')),
+                                           SlidingWindows(["1h","2h", "24h"], "10m")),
                            FieldAggregator("failed_activities", "activity", ["count"],
-                                           SlidingWindows(['1h'], '10m'),
-                                           aggr_filter=lambda element: element['activity_status'] == 'fail'))],
-                           table_object)
+                                           SlidingWindows(["1h"], "10m"),
+                                           aggr_filter=lambda element: element["activity_status"] == "fail"))],
+                           table_object,
+                           time_field="time")
 ]).run()
 ```

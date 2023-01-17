@@ -1,3 +1,17 @@
+# Copyright 2020 Iguazio
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
 import asyncio
 import copy
 import datetime
@@ -6,33 +20,48 @@ import time
 import traceback
 from asyncio import Task
 from collections import defaultdict
-from typing import Optional, Union, Callable, List, Dict, Any, Set, Iterable
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Union
 
 import aiohttp
 
-from .dtypes import _termination_obj, Event, FlowError, V3ioError
+from .dtypes import Event, FlowError, V3ioError, _termination_obj, known_driver_schemes
 from .queue import AsyncQueue
 from .table import Table
-from .utils import _split_path, get_in, update_in, stringify_key
+from .utils import _split_path, get_in, stringify_key, update_in
 
 
 class Flow:
     _legal_first_step = False
 
-    def __init__(self, recovery_step=None, termination_result_fn=lambda x, y: x if x is not None else y, context=None, **kwargs):
+    def __init__(
+        self,
+        recovery_step=None,
+        termination_result_fn=lambda x, y: x if x is not None else y,
+        context=None,
+        **kwargs,
+    ):
         self._outlets = []
+        self._inlets = []
+
         self._recovery_step = recovery_step
+        if recovery_step:
+            if isinstance(recovery_step, dict):
+                for step in recovery_step.values():
+                    step._inlets.append(self)
+            else:
+                recovery_step._inlets.append(self)
+
         self._termination_result_fn = termination_result_fn
         self.context = context
-        self.verbose = context and getattr(context, 'verbose', False)
-        self.logger = getattr(self.context, 'logger', None) if self.context else None
+        self.verbose = context and getattr(context, "verbose", False)
+        self.logger = getattr(self.context, "logger", None) if self.context else None
 
         self._kwargs = kwargs
-        self._full_event = kwargs.get('full_event')
-        self._input_path = kwargs.get('input_path')
-        self._result_path = kwargs.get('result_path')
+        self._full_event = kwargs.get("full_event")
+        self._input_path = kwargs.get("input_path")
+        self._result_path = kwargs.get("result_path")
         self._runnable = False
-        name = kwargs.get('name', None)
+        name = kwargs.get("name", None)
         if name:
             self.name = name
         else:
@@ -41,7 +70,8 @@ class Flow:
         self._closeables = []
 
     def _init(self):
-        pass
+        self._termination_received = 0
+        self._termination_result = None
 
     def to_dict(self, fields=None, exclude=None):
         """convert the step object to a python dictionary"""
@@ -51,11 +81,16 @@ class Flow:
         if exclude:
             fields = [field for field in fields if field not in exclude]
 
-        meta_keys = ["context", "name", "input_path", "result_path", "full_event", "kwargs"]
+        meta_keys = [
+            "context",
+            "name",
+            "input_path",
+            "result_path",
+            "full_event",
+            "kwargs",
+        ]
         args = {
-            key: getattr(self, key)
-            for key in fields
-            if getattr(self, key, None) is not None and key not in meta_keys
+            key: getattr(self, key) for key in fields if getattr(self, key, None) is not None and key not in meta_keys
         }
         # add storey kwargs or extra kwargs
         if "kwargs" in fields and (hasattr(self, "kwargs") or hasattr(self, "_kwargs")):
@@ -74,7 +109,12 @@ class Flow:
             "class_args": args,
         }
 
-        for parameter_name in [("kind", "_STEP_KIND"), "input_path", "result_path", "full_event"]:
+        for parameter_name in [
+            ("kind", "_STEP_KIND"),
+            "input_path",
+            "result_path",
+            "full_event",
+        ]:
             if isinstance(parameter_name, tuple):
                 parameter_name, field_name = parameter_name
             else:
@@ -87,14 +127,14 @@ class Flow:
 
     def _to_code(self, taken: Set[str]):
         class_name = type(self).__name__
-        base_var_name = ''
+        base_var_name = ""
         for c in class_name:
             if c.isupper() and base_var_name:
-                base_var_name += '_'
+                base_var_name += "_"
             base_var_name += c.lower()
         i = 0
         while True:
-            var_name = f'{base_var_name}{i}'
+            var_name = f"{base_var_name}{i}"
             if var_name not in taken:
                 taken.add(var_name)
                 break
@@ -104,15 +144,15 @@ class Flow:
         for key, value in self._kwargs.items():
             if isinstance(value, str):
                 value = f"'{value}'"
-            param_list.append(f'{key}={value}')
-        param_str = ', '.join(param_list)
-        step = f'{var_name} = {class_name}({param_str})'
+            param_list.append(f"{key}={value}")
+        param_str = ", ".join(param_list)
+        step = f"{var_name} = {class_name}({param_str})"
         steps = [step]
         tos = []
         for outlet in self._outlets:
             outlet_var_name, outlet_steps, outlet_tos = outlet._to_code(taken)
             steps.extend(outlet_steps)
-            tos.append(f'{var_name}.to({outlet_var_name})')
+            tos.append(f"{var_name}.to({outlet_var_name})")
             tos.extend(outlet_tos)
         return var_name, steps, tos
 
@@ -126,8 +166,9 @@ class Flow:
 
     def to(self, outlet):
         if outlet._legal_first_step:
-            raise ValueError(f'{outlet.name} can only appear as the first step of a flow')
+            raise ValueError(f"{outlet.name} can only appear as the first step of a flow")
         self._outlets.append(outlet)
+        outlet._inlets.append(self)
         return outlet
 
     def set_recovery_step(self, outlet):
@@ -142,19 +183,23 @@ class Flow:
 
     def run(self):
         if not self._legal_first_step and not self._runnable:
-            raise ValueError('Flow must start with a source')
+            raise ValueError("Flow must start with a source")
         self._init()
         outlets = []
         outlets.extend(self._outlets)
-        if self._recovery_step:
-            if isinstance(self._recovery_step, dict):
-                outlets.extend(self._recovery_step.values())
-            else:
-                outlets.append(self._recovery_step)
+        outlets.extend(self._get_recovery_steps())
         for outlet in outlets:
             outlet._runnable = True
             self._closeables.extend(outlet.run())
         return self._closeables
+
+    def _get_recovery_steps(self):
+        if self._recovery_step:
+            if isinstance(self._recovery_step, dict):
+                return list(self._recovery_step.values())
+            else:
+                return [self._recovery_step]
+        return []
 
     async def run_async(self):
         raise NotImplementedError
@@ -166,19 +211,19 @@ class Flow:
         try:
             return await self._do(event)
         except BaseException as ex:
-            if getattr(ex, '_raised_by_storey_step', None) is not None:
+            if getattr(ex, "_raised_by_storey_step", None) is not None:
                 raise ex
             ex._raised_by_storey_step = self
             recovery_step = self._get_recovery_step(ex)
             if recovery_step is None:
-                if self.context and hasattr(self.context, 'push_error'):
+                if self.context and hasattr(self.context, "push_error"):
                     message = traceback.format_exc()
                     if event._awaitable_result:
                         none_or_coroutine = event._awaitable_result._set_error(ex)
                         if none_or_coroutine:
                             await none_or_coroutine
                     if self.logger:
-                        self.logger.error(f'Pushing error to error stream: {ex}\n{message}')
+                        self.logger.error(f"Pushing error to error stream: {ex}\n{message}")
                     self.context.push_error(event, f"{ex}\n{message}", source=self.name)
                     return
                 else:
@@ -189,27 +234,36 @@ class Flow:
 
     @staticmethod
     def _event_string(event):
-        result = 'Event('
+        result = "Event("
         if event.id:
-            result += f'id={event.id}, '
-        if getattr(event, 'key', None):
-            result += f'key={event.key}, '
-        if getattr(event, 'time', None):
-            result += f'time={event.time}, '
-        if getattr(event, 'path', None):
-            result += f'path={event.path}, '
-        result += f'body={event.body})'
+            result += f"id={event.id}, "
+        if getattr(event, "key", None):
+            result += f"key={event.key}, "
+        if getattr(event, "time", None):
+            result += f"processing_time={event.processing_time}, "
+        if getattr(event, "path", None):
+            result += f"path={event.path}, "
+        result += f"body={event.body})"
         return result
+
+    def _should_terminate(self):
+        return self._termination_received == len(self._inlets)
 
     async def _do_downstream(self, event):
         if not self._outlets:
             return
         if event is _termination_obj:
-            termination_result = await self._outlets[0]._do(_termination_obj)
-            for i in range(1, len(self._outlets)):
-                termination_result = self._termination_result_fn(termination_result,
-                                                                 await self._outlets[i]._do(_termination_obj))
-            return termination_result
+            # Only propagate the termination object once we received one per inlet
+            self._outlets[0]._termination_received += 1
+            if self._outlets[0]._should_terminate():
+                self._termination_result = await self._outlets[0]._do(_termination_obj)
+            for outlet in self._outlets[1:] + self._get_recovery_steps():
+                outlet._termination_received += 1
+                if outlet._should_terminate():
+                    self._termination_result = self._termination_result_fn(
+                        self._termination_result, await outlet._do(_termination_obj)
+                    )
+            return self._termination_result
         # If there is more than one outlet, allow concurrent execution.
         tasks = []
         if len(self._outlets) > 1:
@@ -226,18 +280,18 @@ class Flow:
         if self.verbose and self.logger:
             step_name = self.name
             event_string = self._event_string(event)
-            self.logger.debug(f'{step_name} -> {self._outlets[0].name} | {event_string}')
+            self.logger.debug(f"{step_name} -> {self._outlets[0].name} | {event_string}")
         await self._outlets[0]._do_and_recover(event)  # Optimization - avoids creating a task for the first outlet.
         for i, task in enumerate(tasks, start=1):
             if self.verbose and self.logger:
-                self.logger.debug(f'{step_name} -> {self._outlets[i].name} | {event_string}')
+                self.logger.debug(f"{step_name} -> {self._outlets[i].name} | {event_string}")
             await task
 
     def _get_event_or_body(self, event):
         if self._full_event:
             return event
         elif self._input_path:
-            if not hasattr(event.body, '__getitem__'):
+            if not hasattr(event.body, "__getitem__"):
                 raise TypeError("input_path parameter supports only dict-like event bodies")
             return get_in(event.body, self._input_path)
         else:
@@ -249,7 +303,7 @@ class Flow:
         else:
             mapped_event = copy.copy(event)
             if self._result_path:
-                if not hasattr(event.body, '__getitem__'):
+                if not hasattr(event.body, "__getitem__"):
                     raise TypeError("result_path parameter supports only dict-like event bodies")
                 update_in(mapped_event.body, self._result_path, fn_result)
             else:
@@ -275,17 +329,17 @@ class Flow:
 class Choice(Flow):
     """Redirects each input element into at most one of multiple downstreams.
 
-    :param choice_array: a list of (downstream, condition) tuples, where downstream is a step and condition is a function. The first
-        condition in the list to evaluate as true for an input element causes that element to be redirected to that downstream step.
+    :param choice_array: a list of (downstream, condition) tuples, where downstream is a step and condition is a
+        function. The first condition in the list to evaluate as true for an input element causes that element to
+        be redirected to that downstream step.
     :type choice_array: tuple of (Flow, Function (Event=>boolean))
-
-    :param default: a default step for events that did not match any condition in choice_array. If not set, elements that don't match any
-        condition will be discarded.
+    :param default: a default step for events that did not match any condition in choice_array. If not set, elements
+        that don't match any condition will be discarded.
     :type default: Flow
     :param name: Name of this step, as it should appear in logs. Defaults to class name (Choice).
     :type name: string
-    :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
-        Defaults to False.
+    :param full_event: Whether user functions should receive and/or return Event objects (when True),
+        or only the payload (when False). Defaults to False.
     :type full_event: boolean
     """
 
@@ -294,10 +348,10 @@ class Choice(Flow):
 
         self._choice_array = choice_array
         for outlet, _ in choice_array:
-            self._outlets.append(outlet)
+            self.to(outlet)
 
         if default:
-            self._outlets.append(default)
+            self.to(default)
         self._default = default
 
     async def _do(self, event):
@@ -339,10 +393,10 @@ class _UnaryFunctionFlow(Flow):
     def __init__(self, fn, long_running=None, **kwargs):
         super().__init__(**kwargs)
         if not callable(fn):
-            raise TypeError(f'Expected a callable, got {type(fn)}')
+            raise TypeError(f"Expected a callable, got {type(fn)}")
         self._is_async = asyncio.iscoroutinefunction(fn)
         if self._is_async and long_running:
-            raise ValueError('long_running=True cannot be used in conjunction with a coroutine')
+            raise ValueError("long_running=True cannot be used in conjunction with a coroutine")
         self._long_running = long_running
         self._fn = fn
 
@@ -367,18 +421,34 @@ class _UnaryFunctionFlow(Flow):
             await self._do_internal(event, fn_result)
 
 
+class DropColumns(Flow):
+    def __init__(self, columns, **kwargs):
+        super().__init__(**kwargs)
+        if not isinstance(columns, list):
+            columns = [columns]
+        self._columns = columns
+
+    async def _do(self, event):
+        if event is not _termination_obj:
+            new_body = copy.copy(event.body)
+            for column in self._columns:
+                new_body.pop(column, None)
+            event.body = new_body
+        return await self._do_downstream(event)
+
+
 class Map(_UnaryFunctionFlow):
     """Maps, or transforms, incoming events using a user-provided function.
 
     :param fn: Function to apply to each event
     :type fn: Function (Event=>Event)
-    :param long_running: Whether fn is a long-running function. Long-running functions are run in an executor to avoid blocking other
-    concurrent processing. Default is False.
+    :param long_running: Whether fn is a long-running function. Long-running functions are run in an executor to
+        avoid blocking other concurrent processing. Default is False.
     :type long_running: boolean
     :param name: Name of this step, as it should appear in logs. Defaults to class name (Map).
     :type name: string
-    :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
-        Defaults to False.
+    :param full_event: Whether user functions should receive and/or return Event objects (when True),
+        or only the payload (when False). Defaults to False.
     :type full_event: boolean
     """
 
@@ -392,13 +462,13 @@ class Filter(_UnaryFunctionFlow):
 
     :param fn: Function to decide whether to keep each event.
     :type fn: Function (Event=>boolean)
-    :param long_running: Whether fn is a long-running function. Long-running functions are run in an executor to avoid blocking other
-    concurrent processing. Default is False.
+    :param long_running: Whether fn is a long-running function. Long-running functions are run in an executor to
+        avoid blocking other concurrent processing. Default is False.
     :type long_running: boolean
     :param name: Name of this step, as it should appear in logs. Defaults to class name (Filter).
     :type name: string
-    :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
-        Defaults to False.
+    :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the
+        payload (when False). Defaults to False.
     :type full_event: boolean
     """
 
@@ -412,13 +482,13 @@ class FlatMap(_UnaryFunctionFlow):
 
     :param fn: Function to transform each event to a list of events.
     :type fn: Function (Event=>list of Event)
-    :param long_running: Whether fn is a long-running function. Long-running functions are run in an executor to avoid blocking other
-    concurrent processing. Default is False.
+    :param long_running: Whether fn is a long-running function. Long-running functions are run in an executor
+        to avoid blocking other concurrent processing. Default is False.
     :type long_running: boolean
     :param name: Name of this step, as it should appear in logs. Defaults to class name (FlatMap).
     :type name: string
-    :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
-        Defaults to False.
+    :param full_event: Whether user functions should receive and/or return Event objects (when True), or only
+        the payload (when False). Defaults to False.
     :type full_event: boolean
     """
 
@@ -431,15 +501,16 @@ class FlatMap(_UnaryFunctionFlow):
 class Extend(_UnaryFunctionFlow):
     """Adds fields to each incoming event.
 
-    :param fn: Function to transform each event to a dictionary. The fields in the returned dictionary are then added to the original event.
+    :param fn: Function to transform each event to a dictionary. The fields in the returned dictionary are then added
+        to the original event.
     :type fn: Function (Event=>Dict)
-    :param long_running: Whether fn is a long-running function. Long-running functions are run in an executor to avoid blocking other
-    concurrent processing. Default is False.
+    :param long_running: Whether fn is a long-running function. Long-running functions are run in an executor to avoid
+        blocking other concurrent processing. Default is False.
     :type long_running: boolean
     :param name: Name of this step, as it should appear in logs. Defaults to class name (Extend).
     :type name: string
-    :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
-        Defaults to False.
+    :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the
+        payload (when False). Defaults to False.
     :type full_event: boolean
     """
 
@@ -453,17 +524,23 @@ class _FunctionWithStateFlow(Flow):
     def __init__(self, initial_state, fn, group_by_key=False, **kwargs):
         super().__init__(**kwargs)
         if not callable(fn):
-            raise TypeError(f'Expected a callable, got {type(fn)}')
+            raise TypeError(f"Expected a callable, got {type(fn)}")
         self._is_async = asyncio.iscoroutinefunction(fn)
         self._state = initial_state
-        if isinstance(self._state, str) and self._state.startswith('v3io://'):
-            if not self.context:
-                raise TypeError("Table can not be string if no context was provided to the step")
-            self._state = self.context.get_table(self._state)
+        if isinstance(self._state, str):
+            should_get_from_context = False
+            for known_scheme in known_driver_schemes:
+                if self._state.startswith(f"{known_scheme}://"):
+                    should_get_from_context = True
+                    break
+            if should_get_from_context:
+                if not self.context:
+                    raise TypeError("Table can not be string if no context was provided to the step")
+                self._state = self.context.get_table(self._state)
         self._fn = fn
         self._group_by_key = group_by_key
-        if hasattr(initial_state, 'close'):
-            self._closeables = [initial_state]
+        if hasattr(self._state, "close"):
+            self._closeables = [self._state]
 
     async def _call(self, event):
         element = self._get_event_or_body(event)
@@ -495,16 +572,18 @@ class _FunctionWithStateFlow(Flow):
 
 
 class MapWithState(_FunctionWithStateFlow):
-    """Maps, or transforms, incoming events using a stateful user-provided function, and an initial state, which may be a database table.
+    """Maps, or transforms, incoming events using a stateful user-provided function, and an initial state,
+        which may be a database table.
 
-    :param initial_state: Initial state for the computation. If group_by_key is True, this must be a dictionary or a Table object.
+    :param initial_state: Initial state for the computation. If group_by_key is True, this must be a dictionary or
+        a Table object.
     :type initial_state: dictionary or Table if group_by_key is True. Any object otherwise.
     :param fn: A function to run on each event and the current state. Must yield an event and an updated state.
     :type fn: Function ((Event, state)=>(Event, state))
     :param group_by_key: Whether the state is computed by key. Optional. Default to False.
     :type group_by_key: boolean
-    :param full_event: Whether fn will receive and return an Event object or only the body (payload). Optional. Defaults to
-        False (body only).
+    :param full_event: Whether fn will receive and return an Event object or only the body (payload).
+        Optional. Defaults to False (body only).
     :type full_event: boolean
     """
 
@@ -514,13 +593,14 @@ class MapWithState(_FunctionWithStateFlow):
 
 
 class MapClass(Flow):
-    """Similar to Map, but instead of a function argument, this class should be extended and its do() method overridden."""
+    """Similar to Map, but instead of a function argument, this class should be extended and its do()
+    method overridden."""
 
     def __init__(self, long_running=None, **kwargs):
         super().__init__(**kwargs)
         self._is_async = asyncio.iscoroutinefunction(self.do)
         if self._is_async and long_running:
-            raise ValueError('long_running=True cannot be used in conjunction with a coroutine do()')
+            raise ValueError("long_running=True cannot be used in conjunction with a coroutine do()")
         self._long_running = long_running
         self._filter = False
 
@@ -577,8 +657,9 @@ class Rename(Flow):
 class ReifyMetadata(Flow):
     """
     Inserts event metadata into the event body.
-    :param mapping: Dictionary from event attribute name to entry key in the event body (which must be a dictionary). Alternatively,
-    an iterable of names may be provided, and these will be used as both attribute name and entry key.
+    :param mapping: Dictionary from event attribute name to entry key in the event body (which must be a
+        dictionary). Alternatively, an iterable of names may be provided, and these will be used as both
+        attribute name and entry key.
     :param name: Name of this step, as it should appear in logs. Defaults to class name (ReifyMetadata).
     :type name: string
     """
@@ -603,7 +684,8 @@ class Complete(Flow):
     Completes the AwaitableResult associated with incoming events.
     :param name: Name of this step, as it should appear in logs. Defaults to class name (Complete).
     :type name: string
-    :param full_event: Whether to complete with an Event object (when True) or only the payload (when False). Default to False.
+    :param full_event: Whether to complete with an Event object (when True) or only the payload
+        (when False). Default to False.
     :type full_event: boolean
     """
 
@@ -622,27 +704,29 @@ class Reduce(Flow):
     """
     Reduces incoming events into a single value which is returned upon the successful termination of the flow.
 
-    :param initial_value: Starting value. When the first event is received, fn will be appled to the initial_value and that event.
+    :param initial_value: Starting value. When the first event is received, fn will be applied to the
+        initial_value and that event.
     :type initial_value: object
     :param fn: Function to apply to the current value and each event.
     :type fn: Function ((object, Event) => object)
     :param name: Name of this step, as it should appear in logs. Defaults to class name (Reduce).
     :type name: string
-    :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
-        Defaults to False.
+    :param full_event: Whether user functions should receive and/or return Event objects (when True),
+        or only the payload (when False). Defaults to False.
     :type full_event: boolean
     """
 
     def __init__(self, initial_value, fn, **kwargs):
-        kwargs['initial_value'] = initial_value
+        kwargs["initial_value"] = initial_value
         super().__init__(**kwargs)
         if not callable(fn):
-            raise TypeError(f'Expected a callable, got {type(fn)}')
+            raise TypeError(f"Expected a callable, got {type(fn)}")
         self._is_async = asyncio.iscoroutinefunction(fn)
         self._fn = fn
         self._initial_value = initial_value
 
     def _init(self):
+        super()._init()
         self._result = self._initial_value
 
     def to(self, outlet):
@@ -704,7 +788,7 @@ class _ConcurrentJobExecution(Flow):
     def __init__(self, max_in_flight=None, retries=None, backoff_factor=None, **kwargs):
         Flow.__init__(self, **kwargs)
         if max_in_flight is not None and max_in_flight < 1:
-            raise ValueError(f'max_in_flight may not be less than 1 (got {max_in_flight})')
+            raise ValueError(f"max_in_flight may not be less than 1 (got {max_in_flight})")
         self.max_in_flight = max_in_flight
         self.retries = retries
         self.backoff_factor = backoff_factor
@@ -712,6 +796,7 @@ class _ConcurrentJobExecution(Flow):
         self._queue_size = max_in_flight - 1 if max_in_flight else 8
 
     def _init(self):
+        super()._init()
         self._q = None
         self._lazy_init_complete = False
 
@@ -744,10 +829,10 @@ class _ConcurrentJobExecution(Flow):
                                 none_or_coroutine = event._awaitable_result._set_error(ex)
                                 if none_or_coroutine:
                                     await none_or_coroutine
-                            if self.context and hasattr(self.context, 'push_error'):
+                            if self.context and hasattr(self.context, "push_error"):
                                 message = traceback.format_exc()
                                 if self.logger:
-                                    self.logger.error(f'Pushing error to error stream: {ex}\n{message}')
+                                    self.logger.error(f"Pushing error to error stream: {ex}\n{message}")
                                 self.context.push_error(event, f"{ex}\n{message}", source=self.name)
                             else:
                                 raise ex
@@ -780,7 +865,7 @@ class _ConcurrentJobExecution(Flow):
                 times_attempted += 1
                 attempts_left = max_attempts - times_attempted
                 if self.logger:
-                    self.logger.warn(f'{self.name} failed to process event ({attempts_left} retries left): {ex}')
+                    self.logger.warn(f"{self.name} failed to process event ({attempts_left} retries left): {ex}")
                 if attempts_left <= 0:
                     raise ex
                 backoff_value = (self.backoff_factor or 1) * (2 ** (times_attempted - 1))
@@ -829,8 +914,8 @@ class SendToHttp(_ConcurrentJobExecution):
     :type join_from_response: Function ((Event, HttpResponse)=>Event)
     :param name: Name of this step, as it should appear in logs. Defaults to class name (SendToHttp).
     :type name: string
-    :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
-        Defaults to False.
+    :param full_event: Whether user functions should receive and/or return Event objects (when True),
+        or only the payload (when False). Defaults to False.
     :type full_event: boolean
     """
 
@@ -866,29 +951,30 @@ class _Batching(Flow):
     _do_downstream_per_event = True
 
     def __init__(
-            self,
-            max_events: Optional[int] = None,
-            flush_after_seconds: Optional[int] = None,
-            key: Optional[Union[str, Callable[[Event], str]]] = None,
-            **kwargs,
+        self,
+        max_events: Optional[int] = None,
+        flush_after_seconds: Optional[int] = None,
+        key_field: Optional[Union[str, Callable[[Event], str]]] = None,
+        **kwargs,
     ):
         if max_events:
-            kwargs['max_events'] = max_events
+            kwargs["max_events"] = max_events
         if flush_after_seconds is not None:
-            kwargs['flush_after_seconds'] = flush_after_seconds
-        if isinstance(key, str):
-            kwargs['key'] = key
+            kwargs["flush_after_seconds"] = flush_after_seconds
+        if isinstance(key_field, str):
+            kwargs["key_field"] = key_field
         super().__init__(**kwargs)
 
         self._max_events = max_events
         self._flush_after_seconds = flush_after_seconds
 
         if self._flush_after_seconds is not None and self._flush_after_seconds < 0:
-            raise ValueError('flush_after_seconds cannot be negative')
+            raise ValueError("flush_after_seconds cannot be negative")
 
-        self._extract_key: Optional[Callable[[Event], str]] = self._create_key_extractor(key)
+        self._extract_key: Optional[Callable[[Event], str]] = self._create_key_extractor(key_field)
 
     def _init(self):
+        super()._init()
         self._batch: Dict[Optional[str], List[Any]] = defaultdict(list)
         # Keep the original events that make up each batch
         self._batch_events: Dict[Optional[str], List[Any]] = defaultdict(list)
@@ -899,18 +985,18 @@ class _Batching(Flow):
         self._timeout_task_ex: Optional[Exception] = None
 
     @staticmethod
-    def _create_key_extractor(key) -> Callable:
-        if key is None:
+    def _create_key_extractor(key_field) -> Callable:
+        if key_field is None:
             return lambda event: None
-        elif callable(key):
-            return key
-        elif isinstance(key, str):
-            if key == '$key':
+        elif callable(key_field):
+            return key_field
+        elif isinstance(key_field, str):
+            if key_field == "$key":
                 return lambda event: event.key
             else:
-                return lambda event: event.body[key]
+                return lambda event: event.body[key_field]
         else:
-            raise ValueError(f'Unsupported key type {type(key)}')
+            raise ValueError(f"Unsupported key_field type {type(key_field)}")
 
     async def _emit(self, batch, batch_key, batch_time, last_event_time=None):
         raise NotImplementedError
@@ -926,12 +1012,17 @@ class _Batching(Flow):
 
         key = self._extract_key(event)
 
+        if hasattr(self, "_get_event_time"):
+            event_time = self._get_event_time(event)
+        else:
+            event_time = event.processing_time
+
         if len(self._batch[key]) == 0:
-            self._batch_first_event_time[key] = event.time
+            self._batch_first_event_time[key] = event_time
             self._batch_start_time[key] = time.monotonic()
-            self._batch_last_event_time[key] = event.time
-        elif self._batch_last_event_time[key] < event.time:
-            self._batch_last_event_time[key] = event.time
+            self._batch_last_event_time[key] = event_time
+        elif self._batch_last_event_time[key] < event_time:
+            self._batch_last_event_time[key] = event_time
 
         if self._timeout_task_ex:
             raise self._timeout_task_ex
@@ -981,8 +1072,8 @@ class _Batching(Flow):
 
 class Batch(_Batching):
     """Batches events into lists of up to max_events events. Each emitted list contained max_events events, unless
-    flush_after_seconds seconds have passed since the first event in the batch was received, at which the batch is emitted with
-    potentially fewer than max_events event.
+    flush_after_seconds seconds have passed since the first event in the batch was received, at which the batch is
+    emitted with potentially fewer than max_events event.
 
     :param max_events: Maximum number of events per emitted batch. Set to None to emit all events in one batch on flow
         termination.
@@ -993,10 +1084,11 @@ class Batch(_Batching):
         set a 'str' key to group events by Event.body[str].
         set a Callable[Any, Any] to group events by a a custom key extractor.
     """
+
     _do_downstream_per_event = False
 
     async def _emit(self, batch, batch_key, batch_time, last_event_time=None):
-        event = Event(batch, time=batch_time)
+        event = Event(batch)
         return await self._do_downstream(event)
 
 
@@ -1011,18 +1103,27 @@ class JoinWithV3IOTable(_ConcurrentJobExecution):
     :type join_function: Function ((Event, dict)=>Event)
     :param table_path: Path to the table in V3IO.
     :type table_path: string
-    :param attributes: A comma-separated list of attributes to be requested from V3IO. Defaults to '*' (all user attributes).
+    :param attributes: A comma-separated list of attributes to be requested from V3IO.
+        Defaults to '*' (all user attributes).
     :type attributes: string
     :param name: Name of this step, as it should appear in logs. Defaults to class name (JoinWithV3IOTable).
     :type name: string
-    :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
-        Defaults to False.
+    :param full_event: Whether user functions should receive and/or return Event objects (when True), or only
+        the payload (when False). Defaults to False.
     :type full_event: boolean
     """
 
-    def __init__(self, storage, key_extractor, join_function, table_path, attributes='*', **kwargs):
-        kwargs['table_path'] = table_path
-        kwargs['attributes'] = attributes
+    def __init__(
+        self,
+        storage,
+        key_extractor,
+        join_function,
+        table_path,
+        attributes="*",
+        **kwargs,
+    ):
+        kwargs["table_path"] = table_path
+        kwargs["attributes"] = attributes
         super().__init__(**kwargs)
 
         self._storage = storage
@@ -1047,7 +1148,7 @@ class JoinWithV3IOTable(_ConcurrentJobExecution):
         elif response.status_code == 404:
             return None
         else:
-            raise V3ioError(f'Failed to get item. Response status code was {response.status_code}: {response.body}')
+            raise V3ioError(f"Failed to get item. Response status code was {response.status_code}: {response.body}")
 
     async def _cleanup(self):
         await self._storage.close()
@@ -1059,26 +1160,32 @@ class JoinWithTable(_ConcurrentJobExecution):
     :param table: A Table object or name to join with. If a table name is provided, it will be looked up in the context.
     :param key_extractor: Key's column name or a function for extracting the key, for table access from an event.
     :param attributes: A comma-separated list of attributes to be queried for. Defaults to all attributes.
-    :param inner_join: Whether to drop events when the table does not have a matching entry (join_function won't be called in such a case).
-        Defaults to False.
-    :param join_function: Joins the original event with relevant data received from the storage. Event is dropped when this function returns
-        None. Defaults to assume the event's body is a dict-like object and updating it.
+    :param inner_join: Whether to drop events when the table does not have a matching entry (join_function won't be
+        called in such a case). Defaults to False.
+    :param join_function: Joins the original event with relevant data received from the storage. Event is dropped when
+        this function returns None. Defaults to assume the event's body is a dict-like object and updating it.
     :param name: Name of this step, as it should appear in logs. Defaults to class name (JoinWithTable).
-    :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the payload (when False).
-        Defaults to False.
+    :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the
+        payload (when False). Defaults to False.
     :param context: Context object that holds global configurations and secrets.
     """
 
-    def __init__(self, table: Union[Table, str], key_extractor: Union[str, Callable[[Event], str]],
-                 attributes: Optional[List[str]] = None, inner_join: bool = False,
-                 join_function: Optional[Callable[[Any, Dict[str, object]], Any]] = None, **kwargs):
+    def __init__(
+        self,
+        table: Union[Table, str],
+        key_extractor: Union[str, Callable[[Event], str]],
+        attributes: Optional[List[str]] = None,
+        inner_join: bool = False,
+        join_function: Optional[Callable[[Any, Dict[str, object]], Any]] = None,
+        **kwargs,
+    ):
         if isinstance(table, str):
-            kwargs['table'] = table
+            kwargs["table"] = table
         if isinstance(key_extractor, str):
-            kwargs['key_extractor'] = key_extractor
+            kwargs["key_extractor"] = key_extractor
         if attributes:
-            kwargs['attributes'] = attributes
-        kwargs['inner_join'] = inner_join
+            kwargs["attributes"] = attributes
+        kwargs["inner_join"] = inner_join
 
         super().__init__(**kwargs)
 
@@ -1097,7 +1204,7 @@ class JoinWithTable(_ConcurrentJobExecution):
                 else:
                     self._key_extractor = lambda element: element[key_extractor]
             else:
-                raise TypeError(f'key is expected to be either a callable or string but got {type(key_extractor)}')
+                raise TypeError(f"key is expected to be either a callable or string but got {type(key_extractor)}")
 
         def default_join_fn(event, join_res):
             event.update(join_res)
@@ -1110,7 +1217,7 @@ class JoinWithTable(_ConcurrentJobExecution):
         self._inner_join = inner_join
         self._join_function = join_function or (default_join_fn_full_event if self._full_event else default_join_fn)
 
-        self._attributes = attributes or '*'
+        self._attributes = attributes or "*"
 
     def _init(self):
         super()._init()
@@ -1150,7 +1257,7 @@ def build_flow(steps):
     :rtype: Flow
     """
     if len(steps) == 0:
-        raise ValueError('Cannot build an empty flow')
+        raise ValueError("Cannot build an empty flow")
     first_step = steps[0]
     if isinstance(first_step, list):
         first_step = build_flow(first_step)
@@ -1173,9 +1280,12 @@ class Context:
     :param initial_tables: Initial dict of tables.
     """
 
-    def __init__(self, initial_secrets: Optional[Dict[str, str]] = None,
-                 initial_parameters: Optional[Dict[str, object]] = None,
-                 initial_tables: Optional[Dict[str, Table]] = None):
+    def __init__(
+        self,
+        initial_secrets: Optional[Dict[str, str]] = None,
+        initial_parameters: Optional[Dict[str, object]] = None,
+        initial_tables: Optional[Dict[str, Table]] = None,
+    ):
         self._secrets = initial_secrets or {}
         self._parameters = initial_parameters or {}
         self._tables = initial_tables or {}

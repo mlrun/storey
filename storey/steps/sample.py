@@ -1,8 +1,22 @@
+# Copyright 2020 Iguazio
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
 from enum import Enum
+from typing import Callable, Optional, Union
 
 from storey import Flow
 from storey.dtypes import Event, _termination_obj
-from typing import Optional, Union, Callable
 
 
 class EmitPeriod(Enum):
@@ -12,7 +26,8 @@ class EmitPeriod(Enum):
 
 class SampleWindow(Flow):
     """
-    Emits a single event in a window of `window_size` events, in accordance with `emit_period` and `emit_before_termination`.
+    Emits a single event in a window of `window_size` events, in accordance with `emit_period` and
+    `emit_before_termination`.
 
     :param window_size: The size of the window we want to sample a single event from.
     :param emit_period: What event should this step emit for each `window_size` (default: EmitPeriod.First).
@@ -62,12 +77,12 @@ class SampleWindow(Flow):
         elif callable(key):
             return key
         elif isinstance(key, str):
-            if key == '$key':
+            if key == "$key":
                 return lambda event: event.key
             else:
                 return lambda event: event.body[key]
         else:
-            raise ValueError(f'Unsupported key type {type(key)}')
+            raise ValueError(f"Unsupported key type {type(key)}")
 
     async def _do(self, event):
         if event is _termination_obj:
