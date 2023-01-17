@@ -60,6 +60,8 @@ class AggregateByKey(Flow):
         and added to every event. (Optional)
     :param aliases: Dictionary specifying aliases for enriched or aggregate columns, of the
      format `{'col_name': 'new_col_name'}`. (Optional)
+    :param time_format: If the value of the time field is of type string, use this format, as defined in
+        datetime.strptime(), to parse it. Otherwise, ISO-8601 will be used.
     """
 
     def __init__(
@@ -73,6 +75,7 @@ class AggregateByKey(Flow):
         enrich_with: Optional[List[str]] = None,
         aliases: Optional[Dict[str, str]] = None,
         use_windows_from_schema: bool = False,
+        time_format: Optional[str] = None,
         **kwargs,
     ):
         Flow.__init__(self, **kwargs)
@@ -133,6 +136,8 @@ class AggregateByKey(Flow):
             else:
                 raise TypeError(f"time_field is expected to be either a callable or string but got {type(time_field)}")
 
+        self._time_format = time_format
+
     def _init(self):
         super()._init()
         self._events_in_batch = {}
@@ -178,6 +183,11 @@ class AggregateByKey(Flow):
 
     def _get_timestamp(self, event):
         event_timestamp = self._time_extractor(event)
+        if isinstance(event_timestamp, str):
+            if self._time_format:
+                event_timestamp = datetime.strptime(event_timestamp, self._time_format)
+            else:
+                event_timestamp = datetime.fromisoformat(event_timestamp)
         if isinstance(event_timestamp, datetime):
             if isinstance(event_timestamp, pd.Timestamp) and event_timestamp.tzinfo is None:
                 # timestamp for pandas timestamp gives the wrong result in case there is no timezone (ML-313)

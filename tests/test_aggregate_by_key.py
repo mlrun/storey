@@ -3784,24 +3784,31 @@ def test_aggregation_unique_fields():
         ).run()
 
 
-def test_fixed_window_aggregation_with_first_and_last_aggregates():
+@pytest.mark.parametrize("timestamp", [True, False])
+def test_fixed_window_aggregation_with_first_and_last_aggregates(timestamp):
+
+    timestamps = [
+        "2021-07-13 06:43:01.084587+0000",
+        "2021-07-13 06:46:01.084587+0000",
+        "2021-07-13 06:49:01.084587+0000",
+        "2021-07-13 06:52:01.084587+0000",
+        "2021-07-13 06:55:01.084587+0000",
+        "2021-07-13 06:58:01.084587+0000",
+        "2021-07-13 07:01:01.084587+0000",
+        "2021-07-13 07:04:01.084587+0000",
+        "2021-07-13 07:07:01.084587+0000",
+        "2021-07-13 07:10:01.084587+0000",
+        "2021-07-13 07:13:01.084587+0000",
+        "2021-07-13 07:16:01.084587+0000",
+        "2021-07-13 07:19:01.084587+0000",
+    ]
+
+    for i in range(len(timestamps)):
+        timestamps[i] = pd.Timestamp(timestamps[i], tz="UTC")
+
     df = pd.DataFrame(
         {
-            "timestamp": [
-                pd.Timestamp("2021-07-13 06:43:01.084587+0000", tz="UTC"),
-                pd.Timestamp("2021-07-13 06:46:01.084587+0000", tz="UTC"),
-                pd.Timestamp("2021-07-13 06:49:01.084587+0000", tz="UTC"),
-                pd.Timestamp("2021-07-13 06:52:01.084587+0000", tz="UTC"),
-                pd.Timestamp("2021-07-13 06:55:01.084587+0000", tz="UTC"),
-                pd.Timestamp("2021-07-13 06:58:01.084587+0000", tz="UTC"),
-                pd.Timestamp("2021-07-13 07:01:01.084587+0000", tz="UTC"),
-                pd.Timestamp("2021-07-13 07:04:01.084587+0000", tz="UTC"),
-                pd.Timestamp("2021-07-13 07:07:01.084587+0000", tz="UTC"),
-                pd.Timestamp("2021-07-13 07:10:01.084587+0000", tz="UTC"),
-                pd.Timestamp("2021-07-13 07:13:01.084587+0000", tz="UTC"),
-                pd.Timestamp("2021-07-13 07:16:01.084587+0000", tz="UTC"),
-                pd.Timestamp("2021-07-13 07:19:01.084587+0000", tz="UTC"),
-            ],
+            "timestamp": timestamps,
             "emission": [
                 16.44200,
                 64807.90231,
@@ -3849,6 +3856,7 @@ def test_fixed_window_aggregation_with_first_and_last_aggregates():
                 ],
                 Table("MyTable", NoopDriver()),
                 time_field="timestamp",
+                time_format="%Y-%m-%d %H:%M:%S.%f%z",
             ),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
