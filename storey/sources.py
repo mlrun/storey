@@ -286,12 +286,15 @@ class SyncEmitSource(Flow):
         self._termination_future = loop.create_future()
         committer = None
         num_events_handled_without_commit = 0
-        if hasattr(self.context, 'platform') and hasattr(self.context.platform, 'explicit_ack'):
+        if hasattr(self.context, "platform") and hasattr(self.context.platform, "explicit_ack"):
             committer = self.context.platform.explicit_ack
         while True:
             event = None
-            if num_events_handled_without_commit > 0 and self._q.empty() or \
-                    num_events_handled_without_commit >= self._max_events_before_commit:
+            if (
+                num_events_handled_without_commit > 0
+                and self._q.empty()
+                or num_events_handled_without_commit >= self._max_events_before_commit
+            ):
                 num_events_handled_without_commit = 0
                 can_block = await _commit_handled_events(self._outstanding_offsets, committer)
                 # In case we can't block because there are outstanding events
@@ -304,7 +307,7 @@ class SyncEmitSource(Flow):
                     can_block = await _commit_handled_events(self._outstanding_offsets, committer)
             if not event:
                 event = await loop.run_in_executor(None, self._q.get)
-            if committer and hasattr(event, 'path') and hasattr(event, 'shard_id') and hasattr(event, 'offset'):
+            if committer and hasattr(event, "path") and hasattr(event, "shard_id") and hasattr(event, "offset"):
                 qualified_shard = (event.path, event.shard_id)
                 offsets = self._outstanding_offsets[qualified_shard]
                 offsets.append(_EventOffset(event))
@@ -312,7 +315,8 @@ class SyncEmitSource(Flow):
             try:
                 termination_result = await self._do_downstream(event)
                 if event is _termination_obj:
-                    # We can commit all at this point because termination of all downstream steps completed successfully.
+                    # We can commit all at this point because termination of
+                    # all downstream steps completed successfully.
                     await _commit_handled_events(self._outstanding_offsets, committer, commit_all=True)
                     self._termination_future.set_result(termination_result)
             except BaseException as ex:
@@ -506,7 +510,7 @@ async def _commit_handled_events(outstanding_offsets_by_qualified_shard, committ
                 if not offset.is_ready_to_commit():
                     all_offsets_handled = False
                     break
-                print(f'Offset {qualified_shard}:{offset.offset} is ready')
+                print(f"Offset {qualified_shard}:{offset.offset} is ready")
                 last_handled_offset = offset.offset
                 num_to_clear += 1
         if last_handled_offset:
@@ -558,12 +562,15 @@ class AsyncEmitSource(Flow):
     async def _run_loop(self):
         committer = None
         num_events_handled_without_commit = 0
-        if hasattr(self.context, 'platform') and hasattr(self.context.platform, 'explicit_ack'):
+        if hasattr(self.context, "platform") and hasattr(self.context.platform, "explicit_ack"):
             committer = self.context.platform.explicit_ack
         while True:
             event = None
-            if num_events_handled_without_commit > 0 and self._q.empty() or \
-                    num_events_handled_without_commit >= self._max_events_before_commit:
+            if (
+                num_events_handled_without_commit > 0
+                and self._q.empty()
+                or num_events_handled_without_commit >= self._max_events_before_commit
+            ):
                 num_events_handled_without_commit = 0
                 can_block = await _commit_handled_events(self._outstanding_offsets, committer)
                 # In case we can't block because there are outstanding events
@@ -575,7 +582,7 @@ class AsyncEmitSource(Flow):
                     can_block = await _commit_handled_events(self._outstanding_offsets, committer)
             if not event:
                 event = await self._q.get()
-            if committer and hasattr(event, 'path') and hasattr(event, 'shard_id') and hasattr(event, 'offset'):
+            if committer and hasattr(event, "path") and hasattr(event, "shard_id") and hasattr(event, "offset"):
                 qualified_shard = (event.path, event.shard_id)
                 offsets = self._outstanding_offsets[qualified_shard]
                 offsets.append(_EventOffset(event))
@@ -583,7 +590,8 @@ class AsyncEmitSource(Flow):
             try:
                 termination_result = await self._do_downstream(event)
                 if event is _termination_obj:
-                    # We can commit all at this point because termination of all downstream steps completed successfully.
+                    # We can commit all at this point because termination of
+                    # all downstream steps completed successfully.
                     await _commit_handled_events(self._outstanding_offsets, committer, commit_all=True)
                     return termination_result
             except BaseException as ex:
