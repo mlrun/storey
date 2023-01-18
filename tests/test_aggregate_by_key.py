@@ -3803,8 +3803,9 @@ def test_fixed_window_aggregation_with_first_and_last_aggregates(timestamp):
         "2021-07-13 07:19:01.084587+0000",
     ]
 
-    for i in range(len(timestamps)):
-        timestamps[i] = pd.Timestamp(timestamps[i], tz="UTC")
+    if timestamp:
+        for i in range(len(timestamps)):
+            timestamps[i] = pd.Timestamp(timestamps[i], tz="UTC")
 
     df = pd.DataFrame(
         {
@@ -3863,12 +3864,17 @@ def test_fixed_window_aggregation_with_first_and_last_aggregates(timestamp):
     ).run()
     termination_result = controller.await_termination()
 
+    if timestamp:
+        maybe_parse = lambda t: pd.Timestamp(t, tz="UTC")
+    else:
+        maybe_parse = lambda t: t
+
     expected = [
         {
             "samples_last_10m": 16.442,
             "samples_count_10m": 1.0,
             "samples_first_10m": 16.442,
-            "timestamp": pd.Timestamp("2021-07-13 06:43:01.084587+0000", tz="UTC"),
+            "timestamp": maybe_parse("2021-07-13 06:43:01.084587+0000"),
             "emission": 16.442,
             "sensor_id": "0654-329-05",
         },
@@ -3876,7 +3882,7 @@ def test_fixed_window_aggregation_with_first_and_last_aggregates(timestamp):
             "samples_last_10m": 64807.90231,
             "samples_count_10m": 2.0,
             "samples_first_10m": 16.442,
-            "timestamp": pd.Timestamp("2021-07-13 06:46:01.084587+0000", tz="UTC"),
+            "timestamp": maybe_parse("2021-07-13 06:46:01.084587+0000"),
             "emission": 64807.90231,
             "sensor_id": "0654-329-05",
         },
@@ -3884,7 +3890,7 @@ def test_fixed_window_aggregation_with_first_and_last_aggregates(timestamp):
             "samples_last_10m": 413.901,
             "samples_count_10m": 3.0,
             "samples_first_10m": 16.442,
-            "timestamp": pd.Timestamp("2021-07-13 06:49:01.084587+0000", tz="UTC"),
+            "timestamp": maybe_parse("2021-07-13 06:49:01.084587+0000"),
             "emission": 413.901,
             "sensor_id": "0654-329-05",
         },
@@ -3892,7 +3898,7 @@ def test_fixed_window_aggregation_with_first_and_last_aggregates(timestamp):
             "samples_last_10m": 73621.21551,
             "samples_count_10m": 1.0,
             "samples_first_10m": 73621.21551,
-            "timestamp": pd.Timestamp("2021-07-13 06:52:01.084587+0000", tz="UTC"),
+            "timestamp": maybe_parse("2021-07-13 06:52:01.084587+0000"),
             "emission": 73621.21551,
             "sensor_id": "0654-329-05",
         },
@@ -3900,7 +3906,7 @@ def test_fixed_window_aggregation_with_first_and_last_aggregates(timestamp):
             "samples_last_10m": 53936.62158,
             "samples_count_10m": 2.0,
             "samples_first_10m": 73621.21551,
-            "timestamp": pd.Timestamp("2021-07-13 06:55:01.084587+0000", tz="UTC"),
+            "timestamp": maybe_parse("2021-07-13 06:55:01.084587+0000"),
             "emission": 53936.62158,
             "sensor_id": "0654-329-05",
         },
@@ -3908,7 +3914,7 @@ def test_fixed_window_aggregation_with_first_and_last_aggregates(timestamp):
             "samples_last_10m": 13582.52318,
             "samples_count_10m": 3.0,
             "samples_first_10m": 73621.21551,
-            "timestamp": pd.Timestamp("2021-07-13 06:58:01.084587+0000", tz="UTC"),
+            "timestamp": maybe_parse("2021-07-13 06:58:01.084587+0000"),
             "emission": 13582.52318,
             "sensor_id": "0654-329-05",
         },
@@ -3916,7 +3922,7 @@ def test_fixed_window_aggregation_with_first_and_last_aggregates(timestamp):
             "samples_last_10m": 966.804,
             "samples_count_10m": 1.0,
             "samples_first_10m": 966.804,
-            "timestamp": pd.Timestamp("2021-07-13 07:01:01.084587+0000", tz="UTC"),
+            "timestamp": maybe_parse("2021-07-13 07:01:01.084587+0000"),
             "emission": 966.804,
             "sensor_id": "0654-329-05",
         },
@@ -3924,7 +3930,7 @@ def test_fixed_window_aggregation_with_first_and_last_aggregates(timestamp):
             "samples_last_10m": 450.407,
             "samples_count_10m": 2.0,
             "samples_first_10m": 966.804,
-            "timestamp": pd.Timestamp("2021-07-13 07:04:01.084587+0000", tz="UTC"),
+            "timestamp": maybe_parse("2021-07-13 07:04:01.084587+0000"),
             "emission": 450.407,
             "sensor_id": "0654-329-05",
         },
@@ -3932,7 +3938,7 @@ def test_fixed_window_aggregation_with_first_and_last_aggregates(timestamp):
             "samples_last_10m": 4965.2876,
             "samples_count_10m": 3.0,
             "samples_first_10m": 966.804,
-            "timestamp": pd.Timestamp("2021-07-13 07:07:01.084587+0000", tz="UTC"),
+            "timestamp": maybe_parse("2021-07-13 07:07:01.084587+0000"),
             "emission": 4965.2876,
             "sensor_id": "0654-329-05",
         },
@@ -3940,7 +3946,7 @@ def test_fixed_window_aggregation_with_first_and_last_aggregates(timestamp):
             "samples_last_10m": 42982.57194,
             "samples_count_10m": 1.0,
             "samples_first_10m": 42982.57194,
-            "timestamp": pd.Timestamp("2021-07-13 07:10:01.084587+0000", tz="UTC"),
+            "timestamp": maybe_parse("2021-07-13 07:10:01.084587+0000"),
             "emission": 42982.57194,
             "sensor_id": "0654-329-05",
         },
@@ -3948,7 +3954,7 @@ def test_fixed_window_aggregation_with_first_and_last_aggregates(timestamp):
             "samples_last_10m": 1594.4046,
             "samples_count_10m": 2.0,
             "samples_first_10m": 42982.57194,
-            "timestamp": pd.Timestamp("2021-07-13 07:13:01.084587+0000", tz="UTC"),
+            "timestamp": maybe_parse("2021-07-13 07:13:01.084587+0000"),
             "emission": 1594.4046,
             "sensor_id": "0654-329-05",
         },
@@ -3956,7 +3962,7 @@ def test_fixed_window_aggregation_with_first_and_last_aggregates(timestamp):
             "samples_last_10m": 69601.73368,
             "samples_count_10m": 3.0,
             "samples_first_10m": 42982.57194,
-            "timestamp": pd.Timestamp("2021-07-13 07:16:01.084587+0000", tz="UTC"),
+            "timestamp": maybe_parse("2021-07-13 07:16:01.084587+0000"),
             "emission": 69601.73368,
             "sensor_id": "0654-329-05",
         },
@@ -3964,7 +3970,7 @@ def test_fixed_window_aggregation_with_first_and_last_aggregates(timestamp):
             "samples_last_10m": 48038.65572,
             "samples_count_10m": 4.0,
             "samples_first_10m": 42982.57194,
-            "timestamp": pd.Timestamp("2021-07-13 07:19:01.084587+0000", tz="UTC"),
+            "timestamp": maybe_parse("2021-07-13 07:19:01.084587+0000"),
             "emission": 48038.65572,
             "sensor_id": "0654-329-05",
         },
