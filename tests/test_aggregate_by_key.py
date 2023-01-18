@@ -3864,15 +3864,8 @@ def test_fixed_window_aggregation_with_first_and_last_aggregates(timestamp):
     ).run()
     termination_result = controller.await_termination()
 
-    if timestamp:
-
-        def maybe_parse(t):
-            return pd.Timestamp(t, tz="UTC")
-
-    else:
-
-        def maybe_parse(t):
-            return t
+    def maybe_parse(t):
+        return pd.Timestamp(t, tz="UTC") if timestamp else t
 
     expected = [
         {
