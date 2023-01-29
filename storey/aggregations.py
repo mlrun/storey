@@ -108,7 +108,8 @@ class AggregateByKey(Flow):
         if not augmentation_fn:
 
             def f(element, features):
-                features.update(element)
+                if len(features) > 0:
+                    features.update(element)
                 return features
 
             self._augmentation_fn = f
