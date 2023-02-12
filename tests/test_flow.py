@@ -3831,6 +3831,11 @@ def test_concurrent_execution_max_in_flight_push_error():
     controller.await_termination()
 
 
+def test_event_to_string():
+    event = Event("body", "key")
+    assert str(event) == "Event(id=None, key=key, body=body)"
+
+
 class MockLogger:
     def __init__(self):
         self.logs = []
