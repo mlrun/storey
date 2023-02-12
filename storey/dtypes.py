@@ -91,7 +91,7 @@ class Event:
         )  # noqa: E127
 
     def __str__(self):
-        return f"Event(id={self.id}, key={str(self.key)}, time={self.time}, body={self.body})"
+        return f"Event(id={self.id}, key={str(self.key)}, body={self.body})"
 
     @staticmethod
     def wrap_for_serialization(event, record):
