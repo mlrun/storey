@@ -42,7 +42,7 @@ _default_emit_policy = EmitEveryEvent()
 class AggregateByKey(Flow):
     """
     Aggregates the data into the table object provided for later persistence,
-        and outputs an event enriched with the requested aggregation features.
+    and outputs an event enriched with the requested aggregation features.
     Persistence is done via the `NoSqlTarget` step and based on the Cache object persistence settings.
 
     :param aggregates: List of aggregates to apply for each event.
