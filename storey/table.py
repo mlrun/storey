@@ -18,6 +18,7 @@ import math
 from asyncio import Lock
 from typing import List, Optional
 
+from . import utils
 from .aggregation_utils import (
     get_all_raw_aggregates,
     get_all_raw_aggregates_with_hidden,
@@ -241,8 +242,8 @@ class Table:
                         elif window_type == "FixedWindow":
                             aggr.windows = FixedWindows(aggr.windows.windows)
                             aggr.windows.period_millis = schema_aggr["period_millis"]
-                            aggr.windows.total_number_of_buckets = int(
-                                aggr.windows.max_window_millis / aggr.windows.period_millis
+                            aggr.windows.total_number_of_buckets = max(
+                                int(aggr.windows.max_window_millis / aggr.windows.period_millis), utils.bucketPerWindow
                             )
                         else:
                             raise TypeError(f'"{window_type}" unknown window type')
@@ -869,7 +870,7 @@ class ReadOnlyAggregationBuckets:
                 first_bucket_start_time = self.buckets[0].time
                 current_time_bucket_index = int((timestamp - first_bucket_start_time) / self.period_millis)
                 window_indexes = int(window_millis / self.period_millis)
-                start_index = int(current_time_bucket_index / window_indexes) * window_indexes
+                start_index = int(current_time_bucket_index / window_indexes) * window_indexes if window_indexes else 0
                 last_index = start_index + window_indexes - 1
                 if self.fixed_window_type == FixedWindowType.LastClosedWindow:
                     last_index -= window_indexes

@@ -477,7 +477,7 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
 
                     array_time_attribute_name = f"{self._aggregation_time_attribute_prefix}{bucket.name}_{feature_attr}"
 
-                    cached_time = bucket.storage_specific_cache.get(array_time_attribute_name, 0)
+                    cached_time = bucket.storage_specific_cache.get(array_time_attribute_name, -1)
 
                     expected_time = int(bucket_start_time / bucket.max_window_millis) * bucket.max_window_millis
                     expected_time_expr = self._convert_python_obj_to_expression_value(
@@ -501,7 +501,7 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
                                 }
                         # Possibly initiating the array
                         if cached_time < expected_time:
-                            if not initialized_attributes.get(array_attribute_name, 0) == expected_time:
+                            if not initialized_attributes.get(array_attribute_name, -1) == expected_time:
                                 initialized_attributes[array_attribute_name] = expected_time
                                 expressions.append(
                                     f"{array_attribute_name}=init_array({bucket.total_number_of_buckets},'double',"
