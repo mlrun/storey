@@ -59,7 +59,7 @@ class AggregateByKey(Flow):
     :param enrich_with: List of attributes names from the associated storage object to be fetched
         and added to every event. (Optional)
     :param aliases: Dictionary specifying aliases for enriched or aggregate columns, of the
-     format `{'col_name': 'new_col_name'}`. (Optional)
+        format `{'col_name': 'new_col_name'}`. (Optional)
     :param time_format: If the value of the time field is of type string, this format will be used to parse it, as
         defined in datetime.strptime(). By default, parsing will follow ISO-8601.
     """
