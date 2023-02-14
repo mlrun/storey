@@ -31,11 +31,11 @@ class SampleWindow(Flow):
 
     :param window_size: The size of the window we want to sample a single event from.
     :param emit_period: What event should this step emit for each `window_size` (default: EmitPeriod.First).
-    Available options:
+        Available options:
         1.1) EmitPeriod.FIRST - will emit the first event in a window `window_size` events.
         1.2) EmitPeriod.LAST - will emit the last event in a window of `window_size` events.
     :param emit_before_termination: On termination signal, should the step emit the last event it seen (default: False).
-    Available options:
+        Available options:
         2.1) True - The last event seen will be emitted downstream.
         2.2) False - The last event seen will NOT be emitted downstream.
     :param key: The key by which events are sampled. By default (None), events are not sampled by key.
