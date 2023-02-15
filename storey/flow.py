@@ -633,6 +633,7 @@ class MapClass(Flow):
 class Rename(Flow):
     """
     Rename fields in event body.
+
     :param mapping: Dictionary from old name to new name.
     :param name: Name of this step, as it should appear in logs. Defaults to class name (Rename).
     :type name: string
@@ -654,6 +655,7 @@ class Rename(Flow):
 class ReifyMetadata(Flow):
     """
     Inserts event metadata into the event body.
+
     :param mapping: Dictionary from event attribute name to entry key in the event body (which must be a
         dictionary). Alternatively, an iterable of names may be provided, and these will be used as both
         attribute name and entry key.
@@ -679,6 +681,7 @@ class ReifyMetadata(Flow):
 class Complete(Flow):
     """
     Completes the AwaitableResult associated with incoming events.
+
     :param name: Name of this step, as it should appear in logs. Defaults to class name (Complete).
     :type name: string
     :param full_event: Whether to complete with an Event object (when True) or only the payload
