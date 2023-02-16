@@ -4753,8 +4753,6 @@ def test_float_format(setup_teardown_test):
 
 # ML-3378
 def test_huge_fixed_window_starting_at_epoch(setup_teardown_test):
-    if setup_teardown_test.driver_name == "RedisDriver":
-        pytest.skip("Currently fails due to ML-3413")
 
     table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
 
