@@ -4749,3 +4749,83 @@ def test_float_format(setup_teardown_test):
     assert (
         actual == expected_results
     ), f"actual did not match expected. \n actual: {actual} \n expected: {expected_results}"
+
+
+# ML-3378
+def test_huge_fixed_window_starting_at_epoch(setup_teardown_test):
+    if setup_teardown_test.driver_name == "RedisDriver":
+        pytest.skip("Currently fails due to ML-3413")
+
+    table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
+
+    controller = build_flow(
+        [
+            SyncEmitSource(),
+            AggregateByKey(
+                [
+                    FieldAggregator(
+                        "number_of_stuff",
+                        "col1",
+                        ["count"],
+                        FixedWindows(["30000d"]),
+                    )
+                ],
+                table,
+                time_field="time",
+            ),
+            NoSqlTarget(table),
+        ]
+    ).run()
+
+    for i in range(10):
+        data = {"col1": i, "time": setup_teardown_test.test_base_time + timedelta(minutes=25 * i)}
+        controller.emit(data, "tal")
+
+    controller.terminate()
+    controller.await_termination()
+
+    query1_table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
+    controller = build_flow(
+        [
+            SyncEmitSource(),
+            QueryByKey(["number_of_stuff_count_30000d"], query1_table, key_field=["key"], time_field="time"),
+            Reduce([], lambda acc, x: append_return(acc, x)),
+        ]
+    ).run()
+    controller.emit({"key": "tal", "time": setup_teardown_test.test_base_time}, key=[8.6])
+    controller.terminate()
+    actual = controller.await_termination()
+
+    expected_results = [
+        {
+            "key": "tal",
+            "number_of_stuff_count_30000d": 10,
+            "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
+        }
+    ]
+    assert (
+        actual == expected_results
+    ), f"actual did not match expected. \n actual: {actual} \n expected: {expected_results}"
+
+    query2_table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
+    controller = build_flow(
+        [
+            SyncEmitSource(),
+            QueryByKey(["number_of_stuff_count_1h"], query2_table, key_field=["key"], time_field="time"),
+            Reduce([], lambda acc, x: append_return(acc, x)),
+        ]
+    ).run()
+    controller.emit({"key": "tal", "time": setup_teardown_test.test_base_time}, key=[8.6])
+    controller.terminate()
+    actual = controller.await_termination()
+
+    expected_results = [
+        {
+            "key": "tal",
+            "number_of_stuff_count_1h": 0,
+            "time": datetime.datetime(2020, 7, 21, 21, 40, tzinfo=datetime.timezone.utc),
+        }
+    ]
+    assert (
+        actual == expected_results
+    ), f"actual did not match expected. \n actual: {actual} \n expected: {expected_results}"
