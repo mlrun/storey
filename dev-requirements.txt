@@ -8,4 +8,4 @@ pytest-benchmark~=3.2.3
 lupa~=1.13
 fakeredis~=1.9
 redis~=4.3
-sqlalchemy~=1.3
+sqlalchemy~=1.4 # in 2.0 there is changes in some classes (like Table) attributes
