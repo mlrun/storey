@@ -1331,15 +1331,15 @@ class AggregatedStoreElement:
                 initial_data_by_feature[feature_name][aggr] = value
 
         for aggregation_metadata in aggregates:
-            explicit_raw_aggregates = set()
-            hidden_raw_aggregates = set()
+            explicit_raw_aggregates = []
+            hidden_raw_aggregates = []
             virtual_aggregates = []
             for aggregation in aggregation_metadata.aggregations:
                 if is_raw_aggregate(aggregation):
-                    explicit_raw_aggregates.add(aggregation)
+                    explicit_raw_aggregates.append(aggregation)
                 else:
                     dependant_aggregate_names = get_implied_aggregates(aggregation)
-                    hidden_raw_aggregates.update(dependant_aggregate_names)
+                    hidden_raw_aggregates.extend(dependant_aggregate_names)
                     virtual_aggregates.append(VirtualAggregation(aggregation, dependant_aggregate_names))
             initial_column_data = None
             if initial_data_by_feature and aggregation_metadata.name in initial_data_by_feature:
@@ -1404,9 +1404,10 @@ class AggregationBuckets:
         self.name = name
         self._explicit_raw_aggregations = explicit_raw_aggregations
         self._hidden_raw_aggregations = hidden_raw_aggregations
-        self._all_raw_aggregates = set()
-        self._all_raw_aggregates.update(self._explicit_raw_aggregations)
-        self._all_raw_aggregates.update(self._hidden_raw_aggregations)
+        self._all_raw_aggregates = self._explicit_raw_aggregations.copy()
+        for hidden_aggr in self._hidden_raw_aggregations:
+            if hidden_aggr not in self._all_raw_aggregates:
+                self._all_raw_aggregates.append(hidden_aggr)
         self._virtual_aggregations = virtual_aggregations
         self.explicit_windows = explicit_windows
         self.max_value = max_value
