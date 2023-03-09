@@ -176,8 +176,8 @@ class _Writer:
 
     def _get_event_time(self, event):
         event_time = event.processing_time
-        if self._time_field is not None:
-            time_field = self._time_field
+        time_field = self._time_field
+        if time_field is not None and time_field != "":
             if isinstance(event.body, list) and isinstance(time_field, str):
                 time_field = self._col_to_index[time_field]
             event_time = event.body[time_field]

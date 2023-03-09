@@ -2177,7 +2177,8 @@ def test_write_to_parquet_string_as_datetime(tmpdir):
     controller = build_flow(
         [
             SyncEmitSource(),
-            ParquetTarget(out_dir, partition_cols=[], columns=columns_with_type, max_events=1),
+            # set time_field="" to test for ML-3544 regression
+            ParquetTarget(out_dir, partition_cols=[], columns=columns_with_type, time_field="", max_events=1),
         ]
     ).run()
 
