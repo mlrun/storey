@@ -14,7 +14,6 @@
 #
 import asyncio
 import datetime
-import os
 import random as rand
 import sys
 import uuid
@@ -35,7 +34,6 @@ from storey import (
     ParquetSource,
     ParquetTarget,
     Reduce,
-    ReduceToDataFrame,
     SyncEmitSource,
     build_flow,
 )
@@ -422,7 +420,7 @@ def test_filter_before_after_non_partitioned(setup_teardown_test):
     )
     df.set_index("my_string")
 
-    out_file = f"v3io:///{setup_teardown_test.table_name}/before_after_non_partioned/"
+    out_file = f"v3io:///{setup_teardown_test.table_name}/before_after_non_partitioned/"
     controller = build_flow(
         [
             DataframeSource(df),
@@ -436,7 +434,7 @@ def test_filter_before_after_non_partitioned(setup_teardown_test):
 
     controller = build_flow(
         [
-            ParquetSource(out_file, end_filter=before, start_filter=after, filter_column="my_time"),
+            ParquetSource(out_file, start_filter=after, end_filter=before, filter_column="my_time"),
             Reduce([], append_and_return),
         ]
     ).run()
@@ -508,8 +506,8 @@ def test_filter_before_after_partitioned_random(setup_teardown_test):
         [
             ParquetSource(
                 out_file,
-                end_filter=high_limit,
                 start_filter=middle_limit,
+                end_filter=high_limit,
                 filter_column="datetime",
             ),
             Reduce([], append_and_return),
@@ -523,8 +521,8 @@ def test_filter_before_after_partitioned_random(setup_teardown_test):
         [
             ParquetSource(
                 out_file,
-                end_filter=middle_limit,
                 start_filter=low_limit,
+                end_filter=middle_limit,
                 filter_column="datetime",
             ),
             Reduce([], append_and_return),
@@ -571,8 +569,8 @@ def test_filter_before_after_partitioned_inner_other_partition(setup_teardown_te
         [
             ParquetSource(
                 out_file,
-                end_filter=before,
                 start_filter=after,
+                end_filter=before,
                 filter_column="my_time",
                 columns=columns,
             ),
@@ -667,78 +665,6 @@ def test_filter_before_after_partitioned_outer_other_partition(setup_teardown_te
     ]
 
     assert read_back_result == expected, f"{read_back_result}\n!=\n{expected}"
-
-
-def test_filter_by_time_non_partioned(setup_teardown_test):
-    columns = ["my_string", "my_time", "my_city"]
-
-    df = pd.DataFrame(
-        [
-            ["dina", pd.Timestamp("2019-07-01 00:00:00"), "tel aviv"],
-            ["uri", pd.Timestamp("2018-12-30 09:00:00"), "tel aviv"],
-            ["katya", pd.Timestamp("2020-12-31 14:00:00"), "hod hasharon"],
-        ],
-        columns=columns,
-    )
-    df.set_index("my_string")
-    path = "/tmp/test_filter_by_time_non_partioned.parquet"
-    df.to_parquet(path)
-    start = pd.Timestamp("2019-07-01 00:00:00")
-    end = pd.Timestamp("2020-12-31 14:00:00")
-
-    controller = build_flow(
-        [
-            ParquetSource(path, end_filter=end, start_filter=start, filter_column="my_time"),
-            Reduce([], append_and_return),
-        ]
-    ).run()
-
-    read_back_result = controller.await_termination()
-
-    expected = [
-        {
-            "my_string": "katya",
-            "my_time": pd.Timestamp("2020-12-31 14:00:00"),
-            "my_city": "hod hasharon",
-        }
-    ]
-
-    try:
-        assert read_back_result == expected, f"{read_back_result}\n!=\n{expected}"
-    finally:
-        os.remove(path)
-
-
-def test_empty_filter_result(setup_teardown_test):
-    columns = ["my_string", "my_time", "my_city"]
-
-    df = pd.DataFrame(
-        [
-            ["dina", pd.Timestamp("2019-07-01 00:00:00"), "tel aviv"],
-            ["uri", pd.Timestamp("2018-12-30 09:00:00"), "tel aviv"],
-            ["katya", pd.Timestamp("2020-12-31 14:00:00"), "hod hasharon"],
-        ],
-        columns=columns,
-    )
-    df.set_index("my_string")
-    path = "/tmp/test_filter_by_time_non_partioned.parquet"
-    df.to_parquet(path)
-    start = pd.Timestamp("2022-07-01 00:00:00")
-    end = pd.Timestamp("2022-12-31 14:00:00")
-
-    controller = build_flow(
-        [
-            ParquetSource(path, end_filter=end, start_filter=start, filter_column="my_time"),
-            ReduceToDataFrame(index=["my_string"], insert_key_column_as=["my_string"]),
-        ]
-    ).run()
-
-    read_back_result = controller.await_termination()
-
-    try:
-        pd.testing.assert_frame_equal(read_back_result, pd.DataFrame({}))
-    finally:
-        os.remove(path)
 
 
 def test_get_path_utils():

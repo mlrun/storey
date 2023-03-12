@@ -25,6 +25,7 @@ from datetime import datetime, timezone
 from typing import Callable, Coroutine, Iterable, List, Optional, Union
 
 import pandas
+import pyarrow
 import pytz
 
 from .dtypes import Event, _termination_obj
@@ -960,9 +961,18 @@ class ParquetSource(DataframeSource):
         filter_column: Optional[str] = None,
         **kwargs,
     ):
-        if end_filter or start_filter:
-            start_filter = datetime.min if start_filter is None else start_filter
-            end_filter = datetime.max if end_filter is None else end_filter
+        if start_filter or end_filter:
+            if start_filter is None:
+                start_filter = datetime.min
+                if end_filter.tzinfo:
+                    start_filter = start_filter.replace(tzinfo=pytz.utc)
+            if end_filter is None:
+                end_filter = datetime.max
+                if start_filter.tzinfo:
+                    end_filter = end_filter.replace(tzinfo=pytz.utc)
+            if (start_filter.tzinfo is None) ^ (end_filter.tzinfo is None):
+                raise ValueError("Start and end filters must either both have a time zone or both be naive timestamps")
+
             if filter_column is None:
                 raise TypeError("Filter column is required when passing start/end filters")
 
@@ -988,12 +998,39 @@ class ParquetSource(DataframeSource):
             filters,
             self._filter_column,
         )
-        return pandas.read_parquet(
-            path,
-            columns=self._columns,
-            filters=filters,
-            storage_options=self._storage_options,
-        )
+        try:
+            return pandas.read_parquet(
+                path,
+                columns=self._columns,
+                filters=filters,
+                storage_options=self._storage_options,
+            )
+        except pyarrow.lib.ArrowInvalid as ex:
+            if not str(ex).startswith("Cannot compare timestamp with timezone to timestamp without timezone"):
+                raise ex
+
+            if self._start_filter.tzinfo:
+                start_filter = self._start_filter.replace(tzinfo=None)
+                end_filter = self._end_filter.replace(tzinfo=None)
+            else:
+                start_filter = self._start_filter.replace(tzinfo=pytz.utc)
+                end_filter = self._end_filter.replace(tzinfo=pytz.utc)
+
+            filters = []
+            find_filters(
+                partitions_time_attributes,
+                start_filter,
+                end_filter,
+                filters,
+                self._filter_column,
+            )
+
+            return pandas.read_parquet(
+                path,
+                columns=self._columns,
+                filters=filters,
+                storage_options=self._storage_options,
+            )
 
     def _init(self):
         super()._init()
