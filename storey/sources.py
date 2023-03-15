@@ -239,6 +239,9 @@ class _EventOffset:
     def is_ready_to_commit(self):
         return self.event_weakref() is None
 
+    def __repr__(self):
+        return f"_EventOffset({self.offset})"
+
 
 class SyncEmitSource(Flow):
     """Synchronous entry point into a flow. Produces a FlowController when run, for use from inside a synchronous
@@ -582,7 +585,7 @@ class AsyncEmitSource(Flow):
                     if event:
                         break
                     # Wait to avoid busy-wait
-                    await asyncio.sleep(1)
+                    await asyncio.sleep(0.2)
                     can_block = await _commit_handled_events(self._outstanding_offsets, committer)
             if not event:
                 event = await self._q.get()
