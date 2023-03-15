@@ -18,6 +18,7 @@ import math
 from asyncio import Lock
 from typing import List, Optional
 
+from . import utils
 from .aggregation_utils import (
     get_all_raw_aggregates,
     get_all_raw_aggregates_with_hidden,
@@ -241,8 +242,8 @@ class Table:
                         elif window_type == "FixedWindow":
                             aggr.windows = FixedWindows(aggr.windows.windows)
                             aggr.windows.period_millis = schema_aggr["period_millis"]
-                            aggr.windows.total_number_of_buckets = int(
-                                aggr.windows.max_window_millis / aggr.windows.period_millis
+                            aggr.windows.total_number_of_buckets = max(
+                                int(aggr.windows.max_window_millis / aggr.windows.period_millis), utils.bucketPerWindow
                             )
                         else:
                             raise TypeError(f'"{window_type}" unknown window type')
@@ -869,7 +870,7 @@ class ReadOnlyAggregationBuckets:
                 first_bucket_start_time = self.buckets[0].time
                 current_time_bucket_index = int((timestamp - first_bucket_start_time) / self.period_millis)
                 window_indexes = int(window_millis / self.period_millis)
-                start_index = int(current_time_bucket_index / window_indexes) * window_indexes
+                start_index = int(current_time_bucket_index / window_indexes) * window_indexes if window_indexes else 0
                 last_index = start_index + window_indexes - 1
                 if self.fixed_window_type == FixedWindowType.LastClosedWindow:
                     last_index -= window_indexes
@@ -1330,15 +1331,15 @@ class AggregatedStoreElement:
                 initial_data_by_feature[feature_name][aggr] = value
 
         for aggregation_metadata in aggregates:
-            explicit_raw_aggregates = set()
-            hidden_raw_aggregates = set()
+            explicit_raw_aggregates = []
+            hidden_raw_aggregates = []
             virtual_aggregates = []
             for aggregation in aggregation_metadata.aggregations:
                 if is_raw_aggregate(aggregation):
-                    explicit_raw_aggregates.add(aggregation)
+                    explicit_raw_aggregates.append(aggregation)
                 else:
                     dependant_aggregate_names = get_implied_aggregates(aggregation)
-                    hidden_raw_aggregates.update(dependant_aggregate_names)
+                    hidden_raw_aggregates.extend(dependant_aggregate_names)
                     virtual_aggregates.append(VirtualAggregation(aggregation, dependant_aggregate_names))
             initial_column_data = None
             if initial_data_by_feature and aggregation_metadata.name in initial_data_by_feature:
@@ -1403,9 +1404,10 @@ class AggregationBuckets:
         self.name = name
         self._explicit_raw_aggregations = explicit_raw_aggregations
         self._hidden_raw_aggregations = hidden_raw_aggregations
-        self._all_raw_aggregates = set()
-        self._all_raw_aggregates.update(self._explicit_raw_aggregations)
-        self._all_raw_aggregates.update(self._hidden_raw_aggregations)
+        self._all_raw_aggregates = self._explicit_raw_aggregations.copy()
+        for hidden_aggr in self._hidden_raw_aggregations:
+            if hidden_aggr not in self._all_raw_aggregates:
+                self._all_raw_aggregates.append(hidden_aggr)
         self._virtual_aggregations = virtual_aggregations
         self.explicit_windows = explicit_windows
         self.max_value = max_value

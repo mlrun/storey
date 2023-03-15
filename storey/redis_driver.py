@@ -94,19 +94,15 @@ class RedisDriver(NeedsRedisAccess, Driver):
         return self._redis
 
     @staticmethod
-    def __build_key_key(key_prefix, *parts):
+    def __build_key(key_prefix, *parts):
         return f"{{{key_prefix}{''.join([str(p) for p in parts])}}}"
 
     @staticmethod
     def make_key(key_prefix, container_and_table, key):
-        return RedisDriver.__build_key_key(
-            key_prefix, "" if container_and_table.startswith("/") else "/", container_and_table, ":", key
-        )
+        return RedisDriver.__build_key(key_prefix, container_and_table, ":", key)
 
     def _make_key(self, container, table, key):
-        return RedisDriver.__build_key_key(
-            self._key_prefix, "" if container.startswith("/") else "/", container, table, ":", key
-        )
+        return RedisDriver.__build_key(self._key_prefix, container, table, ":", key)
 
     @staticmethod
     def _static_data_key(redis_key_prefix):
@@ -290,7 +286,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
                             redis_key_prefix, aggr_time_attribute_name
                         )
 
-                        cached_time = bucket.storage_specific_cache.get(array_time_attribute_key, 0)
+                        cached_time = bucket.storage_specific_cache.get(array_time_attribute_key, -1)
 
                         expected_time = int(bucket_start_time / bucket.max_window_millis) * bucket.max_window_millis
                         expected_time_expr = self._convert_python_obj_to_lua_value(
@@ -311,7 +307,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
                             lua_script = f'{lua_script}list_attribute_key="{list_attribute_key}";\n'
 
                             if cached_time < expected_time:
-                                if not initialized_attributes.get(list_attribute_key, 0) == expected_time:
+                                if not initialized_attributes.get(list_attribute_key, -1) == expected_time:
                                     initialized_attributes[list_attribute_key] = expected_time
                                     lua_script = (
                                         f'{lua_script}local t=redis.call("GET","{array_time_attribute_key}");\n'

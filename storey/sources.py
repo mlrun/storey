@@ -27,6 +27,7 @@ from datetime import datetime, timezone
 from typing import Callable, Coroutine, Iterable, List, Optional, Union
 
 import pandas
+import pyarrow
 import pytz
 
 from .dtypes import Event, _termination_obj
@@ -855,72 +856,91 @@ class CSVSource(_IterableSource, WithUUID):
                             if header[i] == self._time_field or (self._parse_dates and header[i] in self._parse_dates):
                                 self._dates_indices.append(i)
                     for line in f:
-                        create_event = True
-                        parsed_line = next(csv.reader([line]))
-                        if self._type_inference:
-                            if not self._types:
-                                for index, field in enumerate(parsed_line):
-                                    if index in self._dates_indices:
-                                        self._types.append("t")
-                                    else:
-                                        type_field = self._infer_type(field)
-                                        self._types.append(type_field)
-                                        if type_field == "n":
-                                            self._none_columns.add(index)
-                            else:
-                                for index in copy.copy(self._none_columns):
-                                    type_field = self._infer_type(parsed_line[index])
-                                    if type_field != "n":
-                                        self._types[index] = type_field
-                                        self._none_columns.remove(index)
-                            for i in range(len(parsed_line)):
-                                parsed_line[i] = self._parse_field(parsed_line[i], i)
-                        element = parsed_line
-                        key = None
-                        if header:
-                            if len(parsed_line) != len(header):
-                                raise ValueError(
-                                    f"CSV line with {len(parsed_line)} fields did not match header "
-                                    f"with {len(header)} fields"
-                                )
-                            if self._build_dict:
-                                element = {}
+                        try:
+                            create_event = True
+                            event = None
+                            parsed_line = None
+                            parsed_line = next(csv.reader([line]))
+                            if self._type_inference:
+                                if not self._types:
+                                    for index, field in enumerate(parsed_line):
+                                        if index in self._dates_indices:
+                                            self._types.append("t")
+                                        else:
+                                            type_field = self._infer_type(field)
+                                            self._types.append(type_field)
+                                            if type_field == "n":
+                                                self._none_columns.add(index)
+                                else:
+                                    for index in copy.copy(self._none_columns):
+                                        type_field = self._infer_type(parsed_line[index])
+                                        if type_field != "n":
+                                            self._types[index] = type_field
+                                            self._none_columns.remove(index)
                                 for i in range(len(parsed_line)):
-                                    element[header[i]] = parsed_line[i]
-                        if self._key_field:
-                            if isinstance(self._key_field, list):
-                                key = []
-                                for single_key_field in self._key_field:
+                                    parsed_line[i] = self._parse_field(parsed_line[i], i)
+                            element = parsed_line
+                            key = None
+                            if header:
+                                if len(parsed_line) != len(header):
+                                    raise ValueError(
+                                        f"CSV line with {len(parsed_line)} fields did not match header "
+                                        f"with {len(header)} fields"
+                                    )
+                                if self._build_dict:
+                                    element = {}
+                                    for i in range(len(parsed_line)):
+                                        element[header[i]] = parsed_line[i]
+                            if self._key_field:
+                                if isinstance(self._key_field, list):
+                                    key = []
+                                    for single_key_field in self._key_field:
+                                        if self._with_header and isinstance(single_key_field, str):
+                                            single_key_field_index = field_name_to_index[single_key_field]
+                                        else:
+                                            single_key_field_index = single_key_field
+                                        if parsed_line[single_key_field_index] is None:
+                                            create_event = False
+                                            break
+                                        key.append(parsed_line[single_key_field_index])
+                                else:
+                                    single_key_field = self._key_field
                                     if self._with_header and isinstance(single_key_field, str):
                                         single_key_field_index = field_name_to_index[single_key_field]
                                     else:
                                         single_key_field_index = single_key_field
-                                    if parsed_line[single_key_field_index] is None:
+                                    key = parsed_line[single_key_field_index]
+                                    if key is None:
                                         create_event = False
-                                        break
-                                    key.append(parsed_line[single_key_field_index])
-                            else:
-                                single_key_field = self._key_field
-                                if self._with_header and isinstance(single_key_field, str):
-                                    single_key_field_index = field_name_to_index[single_key_field]
+                            if create_event:
+                                if self._id_field:
+                                    id_field = self._id_field
+                                    if self._with_header and isinstance(id_field, str):
+                                        id_field = field_name_to_index[id_field]
+                                    id = parsed_line[id_field]
                                 else:
-                                    single_key_field_index = single_key_field
-                                key = parsed_line[single_key_field_index]
-                                if key is None:
-                                    create_event = False
-                        if create_event:
-                            if self._id_field:
-                                id_field = self._id_field
-                                if self._with_header and isinstance(id_field, str):
-                                    id_field = field_name_to_index[id_field]
-                                id = parsed_line[id_field]
+                                    id = self._get_uuid()
+                                event = Event(element, key=key, id=id)
+                                self._event_buffer.put(event)
                             else:
-                                id = self._get_uuid()
-                            event = Event(element, key=key, id=id)
-                            self._event_buffer.put(event)
-                        else:
-                            if self.context:
-                                self.context.logger.error(f"For {parsed_line} value of key {single_key_field} is None")
+                                if self.context:
+                                    self.context.logger.error(
+                                        f"For {parsed_line} value of key {single_key_field} is None"
+                                    )
+                        except BaseException as ex:
+                            ex._raised_by_storey_step = self
+                            if self.context and hasattr(self.context, "push_error"):
+                                message = traceback.format_exc()
+                                if self.logger:
+                                    self.logger.error(f"Pushing error to error stream: {ex}\n{message}")
+                                if not event:
+                                    if parsed_line is not None:
+                                        event = Event(parsed_line)
+                                    else:
+                                        event = Event(line)
+                                self.context.push_error(event, f"{ex}\n{message}", source=self.name)
+                            else:
+                                raise ex
                 if self._with_header:
                     self._dates_indices = []
 
@@ -1041,9 +1061,18 @@ class ParquetSource(DataframeSource):
         filter_column: Optional[str] = None,
         **kwargs,
     ):
-        if end_filter or start_filter:
-            start_filter = datetime.min if start_filter is None else start_filter
-            end_filter = datetime.max if end_filter is None else end_filter
+        if start_filter or end_filter:
+            if start_filter is None:
+                start_filter = datetime.min
+                if end_filter.tzinfo:
+                    start_filter = start_filter.replace(tzinfo=pytz.utc)
+            if end_filter is None:
+                end_filter = datetime.max
+                if start_filter.tzinfo:
+                    end_filter = end_filter.replace(tzinfo=pytz.utc)
+            if (start_filter.tzinfo is None) ^ (end_filter.tzinfo is None):
+                raise ValueError("Start and end filters must either both have a time zone or both be naive timestamps")
+
             if filter_column is None:
                 raise TypeError("Filter column is required when passing start/end filters")
 
@@ -1069,12 +1098,39 @@ class ParquetSource(DataframeSource):
             filters,
             self._filter_column,
         )
-        return pandas.read_parquet(
-            path,
-            columns=self._columns,
-            filters=filters,
-            storage_options=self._storage_options,
-        )
+        try:
+            return pandas.read_parquet(
+                path,
+                columns=self._columns,
+                filters=filters,
+                storage_options=self._storage_options,
+            )
+        except pyarrow.lib.ArrowInvalid as ex:
+            if not str(ex).startswith("Cannot compare timestamp with timezone to timestamp without timezone"):
+                raise ex
+
+            if self._start_filter.tzinfo:
+                start_filter = self._start_filter.replace(tzinfo=None)
+                end_filter = self._end_filter.replace(tzinfo=None)
+            else:
+                start_filter = self._start_filter.replace(tzinfo=pytz.utc)
+                end_filter = self._end_filter.replace(tzinfo=pytz.utc)
+
+            filters = []
+            find_filters(
+                partitions_time_attributes,
+                start_filter,
+                end_filter,
+                filters,
+                self._filter_column,
+            )
+
+            return pandas.read_parquet(
+                path,
+                columns=self._columns,
+                filters=filters,
+                storage_options=self._storage_options,
+            )
 
     def _init(self):
         super()._init()

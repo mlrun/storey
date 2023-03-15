@@ -2380,7 +2380,8 @@ def test_write_to_parquet_string_as_datetime(tmpdir):
     controller = build_flow(
         [
             SyncEmitSource(),
-            ParquetTarget(out_dir, partition_cols=[], columns=columns_with_type, max_events=1),
+            # set time_field="" to test for ML-3544 regression
+            ParquetTarget(out_dir, partition_cols=[], columns=columns_with_type, time_field="", max_events=1),
         ]
     ).run()
 
@@ -3115,6 +3116,37 @@ def test_csv_reader_parquet_write_nanosecs(tmpdir):
     read_back_df = pd.read_parquet(out_file, columns=columns)
 
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+
+
+def test_csv_reader_type_inference(tmpdir):
+    class PushErrorContext:
+        def __init__(self):
+            self.errors = []
+
+        def push_error(self, event, message, source):
+            self.errors.append({"event": event, "message": message, "source": source})
+
+    context = PushErrorContext()
+
+    controller = build_flow(
+        [
+            CSVSource(
+                "tests/test-type-inference.csv",
+                header=True,
+                context=context,
+            ),
+            Reduce([], append_and_return),
+        ]
+    ).run()
+
+    result = controller.await_termination()
+
+    assert result == [[1, "x", 1], [3, "z", 3]]
+    assert len(context.errors) == 1
+    error = context.errors[0]
+    assert error["event"] == Event([2, "y", "x"])
+    assert error["message"].startswith("invalid literal for int() with base 10: 'x'")
+    assert error["source"].startswith("CSVSource")
 
 
 def test_error_in_table_persist():
@@ -4034,6 +4066,11 @@ def test_concurrent_execution_max_in_flight_push_error():
     controller.await_termination()
 
 
+def test_event_to_string():
+    event = Event("body", "key")
+    assert str(event) == "Event(id=None, key=key, body=body)"
+
+
 class MockLogger:
     def __init__(self):
         self.logs = []
@@ -4215,3 +4252,81 @@ def test_read_sql_db():
         {"string": "world", "int": 2, "float": 2.5, "time": pd.Timestamp(2017, 1, 1, 12)},
     ]
     assert actual == expected
+
+
+# Time zone related parameterization is to test for ML-3566
+@pytest.mark.parametrize(
+    ["data_with_timezone", "filter_with_timezone"], [[True, True], [True, False], [False, True], [False, False]]
+)
+def test_filter_by_time_non_partitioned(data_with_timezone, filter_with_timezone):
+    columns = ["my_string", "my_time", "my_city"]
+
+    data_timezone_suffix = "Z" if data_with_timezone else ""
+
+    df = pd.DataFrame(
+        [
+            ["dina", pd.Timestamp(f"2019-07-01 00:00:00{data_timezone_suffix}"), "tel aviv"],
+            ["uri", pd.Timestamp(f"2018-12-30 09:00:00{data_timezone_suffix}"), "tel aviv"],
+            ["katya", pd.Timestamp(f"2020-12-31 14:00:00{data_timezone_suffix}"), "hod hasharon"],
+        ],
+        columns=columns,
+    )
+    df.set_index("my_string")
+    path = "/tmp/test_filter_by_time_non_partitioned.parquet"
+    df.to_parquet(path)
+    start = datetime.fromisoformat("2019-07-01 00:00:00" + ("+00:00" if data_with_timezone else ""))
+    end = pd.Timestamp("2020-12-31 14:00:00" + ("Z" if data_with_timezone else ""))
+
+    controller = build_flow(
+        [
+            ParquetSource(path, start_filter=start, end_filter=end, filter_column="my_time"),
+            Reduce([], append_and_return),
+        ]
+    ).run()
+
+    read_back_result = controller.await_termination()
+
+    expected = [
+        {
+            "my_string": "katya",
+            "my_time": pd.Timestamp(f"2020-12-31 14:00:00{data_timezone_suffix}"),
+            "my_city": "hod hasharon",
+        }
+    ]
+
+    try:
+        assert read_back_result == expected, f"{read_back_result}\n!=\n{expected}"
+    finally:
+        os.remove(path)
+
+
+def test_empty_filter_result():
+    columns = ["my_string", "my_time", "my_city"]
+
+    df = pd.DataFrame(
+        [
+            ["dina", pd.Timestamp("2019-07-01 00:00:00"), "tel aviv"],
+            ["uri", pd.Timestamp("2018-12-30 09:00:00"), "tel aviv"],
+            ["katya", pd.Timestamp("2020-12-31 14:00:00"), "hod hasharon"],
+        ],
+        columns=columns,
+    )
+    df.set_index("my_string")
+    path = "/tmp/test_empty_filter_result.parquet"
+    df.to_parquet(path)
+    start = pd.Timestamp("2022-07-01 00:00:00")
+    end = pd.Timestamp("2022-12-31 14:00:00")
+
+    controller = build_flow(
+        [
+            ParquetSource(path, start_filter=start, end_filter=end, filter_column="my_time"),
+            ReduceToDataFrame(index=["my_string"], insert_key_column_as=["my_string"]),
+        ]
+    ).run()
+
+    read_back_result = controller.await_termination()
+
+    try:
+        pd.testing.assert_frame_equal(read_back_result, pd.DataFrame({}))
+    finally:
+        os.remove(path)

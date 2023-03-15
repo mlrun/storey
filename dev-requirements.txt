@@ -8,4 +8,5 @@ pytest-benchmark~=3.2.3
 lupa~=1.13
 fakeredis~=1.9
 redis~=4.3
-sqlalchemy~=1.3
+# in sqlalchemy>=2.0 there is breaking changes (such as in Table class autoload argument is removed)
+sqlalchemy~=1.4
