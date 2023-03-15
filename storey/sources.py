@@ -511,7 +511,6 @@ async def _commit_handled_events(outstanding_offsets_by_qualified_shard, committ
                 if not offset.is_ready_to_commit():
                     all_offsets_handled = False
                     break
-                print(f"Offset {qualified_shard}:{offset.offset} is ready")
                 last_handled_offset = offset.offset
                 num_to_clear += 1
         if last_handled_offset:
@@ -576,9 +575,13 @@ class AsyncEmitSource(Flow):
                 can_block = await _commit_handled_events(self._outstanding_offsets, committer)
                 # In case we can't block because there are outstanding events
                 while not can_block:
-                    event = await self._q.get_nowait()
+                    # Yield to allow the queue to fill if possible
+                    await asyncio.sleep(0)
+                    if not self._q.empty():
+                        event = self._q.get_nowait()
                     if event:
                         break
+                    # Wait to avoid busy-wait
                     await asyncio.sleep(1)
                     can_block = await _commit_handled_events(self._outstanding_offsets, committer)
             if not event:
