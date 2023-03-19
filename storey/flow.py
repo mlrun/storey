@@ -553,6 +553,7 @@ class _FunctionWithStateFlow(Flow):
             res, new_state = self._fn(element, key_data)
             async with self._state._get_lock(safe_key):
                 self._state._update_static_attrs(safe_key, new_state)
+                self._state._pending_events.append(event)
             self._state._init_flush_task()
         else:
             res, self._state = self._fn(element, self._state)

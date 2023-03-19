@@ -854,9 +854,13 @@ class StreamTarget(Flow, _Writer):
 
         return record_list_for_json
 
-    def _send_batch(self, buffers, in_flight_reqs, shard_id):
+    def _send_batch(self, buffers, in_flight_reqs, buffer_events, in_flight_events, shard_id):
         buffer = buffers[shard_id]
+        if not buffer:
+            return
         buffers[shard_id] = []
+        in_flight_events[shard_id] = buffer_events[shard_id]
+        buffer_events[shard_id] = []
         request_body = self._build_request_put_records(shard_id, buffer)
         request = self._storage._put_records(self._container, self._stream_path, request_body)
         in_flight_reqs[shard_id] = asyncio.get_running_loop().create_task(request)
@@ -865,9 +869,17 @@ class StreamTarget(Flow, _Writer):
         try:
             buffers = []
             in_flight_reqs = []
+
+            # We keep the original events before sending and then while in flight, to avoid them being marked as
+            # completed and ready to commit at the source
+            buffer_events = []
+            in_flight_events = []
+
             for _ in range(self._shards):
                 buffers.append([])
+                buffer_events.append([])
                 in_flight_reqs.append(None)
+                in_flight_events.append(None)
             while True:
                 try:
                     for shard_id in range(self._shards):
@@ -875,14 +887,14 @@ class StreamTarget(Flow, _Writer):
                             req = in_flight_reqs[shard_id]
                             in_flight_reqs[shard_id] = None
                             await self._handle_response(req)
-                            self._send_batch(buffers, in_flight_reqs, shard_id)
+                            in_flight_events[shard_id] = None
+                            self._send_batch(buffers, in_flight_reqs, buffer_events, in_flight_events, shard_id)
                     event = await self._q.get()
                     if event is _termination_obj:  # handle outstanding batches and in flight requests on termination
                         for req in in_flight_reqs:
                             await self._handle_response(req)
                         for shard_id in range(self._shards):
-                            if buffers[shard_id]:
-                                self._send_batch(buffers, in_flight_reqs, shard_id)
+                            self._send_batch(buffers, in_flight_reqs, buffer_events, in_flight_events, shard_id)
                         for req in in_flight_reqs:
                             await self._handle_response(req)
                         break
@@ -898,12 +910,14 @@ class StreamTarget(Flow, _Writer):
                     if self._full_event:
                         record = Event.wrap_for_serialization(event, record)
                     buffers[shard_id].append(record)
+                    buffer_events[shard_id].append(event)
                     if len(buffers[shard_id]) >= self._batch_size:
                         if in_flight_reqs[shard_id]:
                             req = in_flight_reqs[shard_id]
                             in_flight_reqs[shard_id] = None
                             await self._handle_response(req)
-                        self._send_batch(buffers, in_flight_reqs, shard_id)
+                            in_flight_events[shard_id] = None
+                        self._send_batch(buffers, in_flight_reqs, buffer_events, in_flight_events, shard_id)
                 except BaseException as ex:
                     ex._raised_by_storey_step = self
                     if self.context and hasattr(self.context, "push_error"):
@@ -913,6 +927,8 @@ class StreamTarget(Flow, _Writer):
                         self.context.push_error(event, f"{ex}\n{message}", source=self.name)
                     else:
                         raise ex
+            del buffer_events
+            del in_flight_events
         finally:
             self._worker_exited = True
             await self._storage.close()
@@ -1121,5 +1137,6 @@ class NoSqlTarget(_Writer, Flow):
             data_to_persist = self._event_to_writer_entry(event)
             async with self._table._get_lock(key):
                 self._table._update_static_attrs(key, data_to_persist)
+                self._table._pending_events.append(event)
             self._table._init_flush_task()
             await self._do_downstream(event)

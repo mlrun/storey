@@ -218,7 +218,7 @@ class AggregateByKey(Flow):
 
             safe_key = stringify_key(key)
             await self._table._lazy_load_key_with_aggregates(safe_key, event_timestamp)
-            await self._table._aggregate(safe_key, element, event_timestamp)
+            await self._table._aggregate(safe_key, event, element, event_timestamp)
 
             if isinstance(self._emit_policy, EmitEveryEvent):
                 await self._emit_event(key, event)
