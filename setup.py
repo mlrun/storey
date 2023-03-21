@@ -20,7 +20,7 @@ def version():
         for line in fp:
             if line.startswith("__version__"):
                 _, version = line.split("=")
-                return version.replace("'", "").strip()
+                return version.replace('"', "").strip()
 
 
 def load_deps(file_name):
