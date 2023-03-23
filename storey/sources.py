@@ -938,6 +938,74 @@ class DataframeSource(_IterableSource, WithUUID):
         return await self._do_downstream(_termination_obj)
 
 
+class PandasCsv(DataframeSource):
+    """Reads Csv files as input source for a flow.
+
+    :parameter paths: paths to Parquet files
+    :parameter columns : list, default=None. If not None, only these columns will be read from the file.
+    :parameter start_filter: datetime. If not None, the results will be filtered by partitions and
+        'filter_column' > start_filter. Default is None.
+    :parameter end_filter: datetime. If not None, the results will be filtered by partitions
+        'filter_column' <= end_filter. Default is None.
+    :parameter filter_column: Optional. if not None, the results will be filtered by this column and before and/or after
+    :param key_field: column to be used as key for events. can be list of columns
+    :param id_field: column to be used as ID for events.
+    """
+
+    def __init__(
+            self,
+            paths: Union[List[str], str],
+            header: bool = False,
+            #  build_dict: bool = False, TODO is needed?
+            key_field: Union[int, str, List[int], List[str], None] = None,
+            time_field: Union[int, str, None] = None,
+            timestamp_format: Optional[str] = None,
+            id_field: Union[str, int, None] = None,
+            type_inference: bool = True,
+            parse_dates: Optional[Union[int, str, List[int], List[str]]] = None,
+            **kwargs,
+    ):
+
+        self._paths = paths
+        if isinstance(paths, str):
+            self._paths = [paths]
+        kwargs["paths"] = paths
+        kwargs["header"] = header
+        #  kwargs["build_dict"] = build_dict
+        if key_field is not None:
+            kwargs["key_field"] = key_field
+        if time_field is not None:
+            kwargs["time_field"] = time_field
+        if id_field is not None:
+            kwargs["id_field"] = id_field
+        if timestamp_format is not None:
+            kwargs["timestamp_format"] = timestamp_format
+        kwargs["type_inference"] = type_inference
+        self._storage_options = kwargs.get("storage_options")
+        self._paths = paths
+        self._with_header = header
+        # self._build_dict = build_dict
+        self._key_field = key_field
+        self._time_field = time_field
+        self._timestamp_format = timestamp_format
+        self._id_field = id_field
+        self._type_inference = type_inference
+        self._storage_options = kwargs.get("storage_options")
+        self._parse_dates = parse_dates
+        self._dates_indices = []
+
+        super().__init__([], **kwargs)
+
+    def _init(self):
+        #  TODO
+        super()._init()
+        self._dfs = []
+        for path in self._paths:
+            if self._start_filter or self._end_filter:
+                df = self._read_filtered_parquet(path)
+            else:
+                df = pandas.read_parquet(path, columns=self._columns, storage_options=self._storage_options)
+            self._dfs.append(df)
 class ParquetSource(DataframeSource):
     """Reads Parquet files as input source for a flow.
 
