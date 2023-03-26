@@ -228,9 +228,9 @@ class Flow:
                 return
             elif self.context and hasattr(self.context, "push_error"):
                 if event._awaitable_result:
-                    # set event as result to prevent double push to error stream
-                    none_or_coroutine = event._awaitable_result._set_result(
-                        Event(body={"error_msg": message, "origin_body": event.body})
+                    # set event as result to prevent double push to error stream ?
+                    none_or_coroutine = event._awaitable_result._set_error(
+                        ex
                     )
                     if none_or_coroutine:
                         await none_or_coroutine
