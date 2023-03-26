@@ -215,22 +215,30 @@ class Flow:
                 raise ex
             ex._raised_by_storey_step = self
             recovery_step = self._get_recovery_step(ex)
-            if recovery_step is None:
-                if self.context and hasattr(self.context, "push_error"):
-                    message = traceback.format_exc()
-                    if event._awaitable_result:
-                        none_or_coroutine = event._awaitable_result._set_error(ex)
-                        if none_or_coroutine:
-                            await none_or_coroutine
-                    if self.logger:
-                        self.logger.error(f"Pushing error to error stream: {ex}\n{message}")
-                    self.context.push_error(event, f"{ex}\n{message}", source=self.name)
-                    return
-                else:
-                    raise ex
-            event.origin_state = self.name
-            event.error = ex
-            return await recovery_step._do(event)
+            message = traceback.format_exc()
+            if recovery_step:
+                event.origin_state = self.name
+                if event._awaitable_result:
+                    event._awaitable_result._set_result(Event(body={"error_msg": message, "origin_body": event.body}))
+                if self.logger:
+                    self.logger.error(
+                        f"step {self.name} got error {ex} when processing an event:\n {event.body}\n" f"{message}"
+                    )
+                await recovery_step._do(event)
+                return
+            elif self.context and hasattr(self.context, "push_error"):
+                if event._awaitable_result:
+                    # set event as result to prevent double push to error stream
+                    none_or_coroutine = event._awaitable_result._set_result(
+                        Event(body={"error_msg": message, "origin_body": event.body})
+                    )
+                    if none_or_coroutine:
+                        await none_or_coroutine
+                if self.logger:
+                    self.logger.error(f"Pushing error to error stream: {ex}\n{message}")
+                self.context.push_error(event, f"{ex}\n{message}", source=self.name)
+                return
+            raise ex
 
     @staticmethod
     def _event_string(event):
