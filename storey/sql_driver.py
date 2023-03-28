@@ -96,7 +96,7 @@ class SQLDriver(Driver):
     async def _get_specific_fields(self, key: str, table, attributes: List[str]):
         where_clause = self._get_where_clause(key, table)
         try:
-            query = f"SELECT {','.join(attributes)} FROM {table} where {where_clause}"
+            query = f"SELECT {','.join(attributes)} FROM {table} as {table.name} where {where_clause}"
             results = pd.read_sql(query, con=self._sql_connection, parse_dates=self._time_fields).to_dict(
                 orient="records"
             )
@@ -115,15 +115,15 @@ class SQLDriver(Driver):
             if i != 0:
                 where_clause += " and "
             if sql_table.columns[self._primary_key[i]].type.python_type == str:
-                where_clause += f'{self._primary_key[i]}="{key[i]}"'
+                where_clause += f'{sql_table.name}.{self._primary_key[i]}="{key[i]}"'
             else:
-                where_clause += f"{self._primary_key[i]}={key[i]}"
+                where_clause += f"{sql_table.name}.{self._primary_key[i]}={key[i]}"
         return where_clause
 
     def _update_by_key(self, key, data, table):
         where_clause = self._get_where_clause(key, table)
-        update_clause = " ,".join([f'{key}="{value}"' for key, value in data.items() if key not in self._primary_key])
-        sql_statement = f"UPDATE {table} SET {update_clause} where {where_clause}"
+        update_clause = " ,".join([f'{table.name}.{key}="{value}"' for key, value in data.items() if key not in self._primary_key])
+        sql_statement = f"UPDATE {table} as {table.name} SET {update_clause} where {where_clause}"
         self._sql_connection.execute(sql_statement)
 
     @staticmethod
