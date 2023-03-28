@@ -994,17 +994,32 @@ class PandasCsv(DataframeSource):
         self._parse_dates = parse_dates
         self._dates_indices = []
 
+        self._dates_indices = []
+        if parse_dates:
+            if not isinstance(parse_dates, List):
+                parse_dates = [parse_dates]
+            if isinstance(parse_dates, List):
+                if self._with_header and any([isinstance(f, int) for f in self._parse_dates]):
+                    raise ValueError("parse_dates can be list of int only when there is no header")
+                if not self._with_header and all([isinstance(f, int) for f in self._parse_dates]):
+                    self._dates_indices = parse_dates
+        if isinstance(self._time_field, int):
+            if self._with_header:
+                raise ValueError("time field can be int only when there is no header")
+            self._dates_indices.append(self._time_field)
+
         super().__init__([], **kwargs)
 
     def _init(self):
-        #  TODO
         super()._init()
         self._dfs = []
         for path in self._paths:
-            if self._start_filter or self._end_filter:
-                df = self._read_filtered_parquet(path)
+            if self._with_header:
+                df = pandas.read_csv(path, parse_dates=self._dates_indices,
+                                     date_parser=lambda x: pandas.datetime.strptime(x, self._timestamp_format),
+                                     storage_options=self._storage_options)
             else:
-                df = pandas.read_parquet(path, columns=self._columns, storage_options=self._storage_options)
+
             self._dfs.append(df)
 class ParquetSource(DataframeSource):
     """Reads Parquet files as input source for a flow.
