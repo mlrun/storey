@@ -1019,7 +1019,10 @@ class PandasCsv(DataframeSource):
                                      date_parser=lambda x: pandas.datetime.strptime(x, self._timestamp_format),
                                      storage_options=self._storage_options)
             else:
-
+                #  with 'header = None' it will automatically put indexes as columns.
+                df = pandas.read_csv(path, parse_dates=self._dates_indices,header=None,
+                                     date_parser=lambda x: pandas.datetime.strptime(x, self._timestamp_format),
+                                     storage_options=self._storage_options)
             self._dfs.append(df)
 class ParquetSource(DataframeSource):
     """Reads Parquet files as input source for a flow.
