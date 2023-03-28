@@ -123,7 +123,7 @@ class SQLDriver(Driver):
     def _update_by_key(self, key, data, table):
         where_clause = self._get_where_clause(key, table)
         update_clause = " ,".join(
-            [f'{key}="{value}"' for key, value in data.items() if key not in self._primary_key]
+            [f'[{key}]="{value}"' for key, value in data.items() if key not in self._primary_key]
         )
         sql_statement = f"UPDATE {table} as {table.name} SET {update_clause} where {where_clause}"
         self._sql_connection.execute(sql_statement)
