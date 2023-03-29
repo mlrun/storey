@@ -117,13 +117,13 @@ class SQLDriver(Driver):
             if sql_table.columns[self._primary_key[i]].type.python_type == str:
                 where_clause += (
                     f'{sql_table.name}.[{self._primary_key[i]}]="{key[i]}"'
-                    if 'mysql' not in sql_table.dialect_options
+                    if "mysql" not in sql_table.dialect_options
                     else f'{sql_table.name}.{self._primary_key[i]}="{key[i]}"'
                 )
             else:
                 where_clause += (
                     f"{sql_table.name}.[{self._primary_key[i]}]={key[i]}"
-                    if 'mysql' not in sql_table.dialect_options
+                    if "mysql" not in sql_table.dialect_options
                     else f"{sql_table.name}.{self._primary_key[i]}={key[i]}"
                 )
         return where_clause
