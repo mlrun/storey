@@ -1027,6 +1027,7 @@ class CSVSource(DataframeSource):
                     date_parser=lambda x: self._datetime_from_timestamp(x),
                     storage_options=self._storage_options,
                 )
+                df.columns = range(df.shape[1])
             self._dfs.append(df)
 
     def _datetime_from_timestamp(self, timestamp):
