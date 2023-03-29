@@ -272,11 +272,11 @@ def create_sql_table(schema, table_name, sql_db_path, key):
             if col_type == int:
                 col_type = db.Integer
             elif col_type == str:
-                col_type = db.String
+                col_type = db.String(50)
             elif col_type == timedelta or col_type == pd.Timedelta:
                 col_type = db.Interval
             elif col_type == datetime or col_type == pd.Timestamp:
-                col_type = db.DATETIME
+                col_type = db.dialects.mysql.DATETIME(fsp=6)
             elif col_type == bool:
                 col_type = db.Boolean
             elif col_type == float:
@@ -287,3 +287,4 @@ def create_sql_table(schema, table_name, sql_db_path, key):
 
         db.Table(table_name, metadata, *columns)
         metadata.create_all(engine)
+

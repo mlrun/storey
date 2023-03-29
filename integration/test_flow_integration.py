@@ -144,10 +144,10 @@ def _get_sql_by_key_all_attrs(
             if i != 0:
                 where_statement += " and "
             if sql_table.columns[key_name[i]].type.python_type == str:
-                where_statement += f'{key_name[i]}="{key[i]}"'
+                where_statement += f'test_table.{key_name[i]}="{key[i]}"'
             else:
-                where_statement += f"{key_name[i]}={key[i]}"
-    query = f"SELECT * FROM {sql_table} where ({where_statement})"
+                where_statement += f"test_table.{key_name[i]}={key[i]}"
+    query = f"SELECT * FROM {sql_table.name} as test_table where {where_statement}"
     with engine.connect() as conn:
         return pd.read_sql(query, con=conn, parse_dates=time_fields).to_dict(orient="records")[0]
 
@@ -1255,20 +1255,20 @@ def test_write_multiple_keys_to_v3io(setup_teardown_test):
 
 
 def test_write_none_time(setup_teardown_test):
-    keys = ["first_name"]
+    keys = ["index"]
     time_fields = ["time"]
-    table = _get_table(setup_teardown_test, {"first_name": str, "color": str, "time": datetime}, keys, time_fields)
+    table = _get_table(setup_teardown_test, {"index": str, "color": str, "time": datetime}, keys, time_fields)
 
     data = pd.DataFrame(
         {
-            "first_name": ["moshe", "yosi"],
+            "index": ["moshe", "yosi"],
             "color": ["blue", "yellow"],
             "time": [setup_teardown_test.test_base_time, pd.NaT],
         }
     )
 
     def set_moshe_time_to_none(data):
-        if data["first_name"] == "moshe":
+        if data["index"] == "moshe":
             data["time"] = pd.NaT
         return data
 
@@ -1282,15 +1282,15 @@ def test_write_none_time(setup_teardown_test):
     ).run()
     controller.await_termination()
 
-    expected = {"first_name": "yosi", "color": "yellow"}
+    expected = {"index": "yosi", "color": "yellow"}
     if setup_teardown_test.driver_name == "SQLDriver":
-        expected = {"first_name": "yosi", "color": "yellow", "time": pd.NaT}
+        expected = {"index": "yosi", "color": "yellow", "time": pd.NaT}
     actual = get_key_all_attrs_test_helper(setup_teardown_test, "yosi", keys, time_fields)
     assert actual == expected
 
-    expected = {"first_name": "moshe", "color": "blue"}
+    expected = {"index": "moshe", "color": "blue"}
     if setup_teardown_test.driver_name == "SQLDriver":
-        expected = {"first_name": "moshe", "color": "blue", "time": pd.NaT}
+        expected = {"index": "moshe", "color": "blue", "time": pd.NaT}
     actual = get_key_all_attrs_test_helper(setup_teardown_test, "moshe", keys, time_fields)
     assert actual == expected
 

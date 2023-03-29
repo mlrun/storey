@@ -35,6 +35,7 @@ from storey.redis_driver import RedisDriver
 from storey.sql_driver import SQLDriver
 
 SQLITE_DB = "sqlite:///test.db"
+MYSQL_DB = "mysql+pymysql://root:password@192.168.224.244:3306/test_db"
 
 
 @pytest.fixture(params=drivers_list)
@@ -115,9 +116,9 @@ class ContextForTests:
                 # if we are using fakeredis, create fake-server to support tests involving multiple clients
                 self._redis_fake_server = fakeredis.FakeServer()
         if driver_name == "SQLDriver":
-            self._sql_db_path = SQLITE_DB
+            self._sql_db_path = MYSQL_DB
             self._sql_table_name = table_name.split("/")[-2]
-            self._table_name = f"{SQLITE_DB}/{self._sql_table_name}"
+            self._table_name = f"{MYSQL_DB}/{self._sql_table_name}"
 
     @property
     def table_name(self):
@@ -160,7 +161,7 @@ class ContextForTests:
         elif self.driver_name == "SQLDriver":
             if is_aggregationless_driver:
                 sql_driver_class = SQLDriver
-                return sql_driver_class(db_path=SQLITE_DB, primary_key=primary_key, time_fields=time_fields)
+                return sql_driver_class(db_path=MYSQL_DB, primary_key=primary_key, time_fields=time_fields)
             else:
                 pytest.skip("SQLDriver does not support aggregation")
         else:
