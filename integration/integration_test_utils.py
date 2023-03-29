@@ -287,4 +287,3 @@ def create_sql_table(schema, table_name, sql_db_path, key):
 
         db.Table(table_name, metadata, *columns)
         metadata.create_all(engine)
-
