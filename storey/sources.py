@@ -1024,6 +1024,27 @@ class PandasCsv(DataframeSource):
                                      date_parser=lambda x: pandas.datetime.strptime(x, self._timestamp_format),
                                      storage_options=self._storage_options)
             self._dfs.append(df)
+
+    def _init(self):
+        super()._init()
+        self._dfs = []
+        for path in self._paths:
+            if self._with_header:
+                df = pandas.read_csv(path, parse_dates=self._dates_indices,
+                                     date_parser=lambda x: self._datetime_from_timestamp(x),
+                                     storage_options=self._storage_options)
+            else:
+                #  with 'header = None' it will automatically put indexes as columns.
+                df = pandas.read_csv(path, parse_dates=self._dates_indices, header=None,
+                                     date_parser=lambda x: self._datetime_from_timestamp(x),
+                                     storage_options=self._storage_options)
+            self._dfs.append(df)
+
+    def _datetime_from_timestamp(self, timestamp):
+        if self._timestamp_format:
+            return pandas.to_datetime(timestamp, format=self._timestamp_format).floor("u").to_pydatetime()
+        else:
+            return datetime.fromisoformat(timestamp)
 class ParquetSource(DataframeSource):
     """Reads Parquet files as input source for a flow.
 
