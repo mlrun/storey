@@ -953,7 +953,6 @@ class CSVSource(DataframeSource):
         self,
         paths: Union[List[str], str],
         header: bool = False,
-        #  build_dict: bool = False, TODO is needed?
         key_field: Union[int, str, List[int], List[str], None] = None,
         time_field: Union[int, str, None] = None,
         timestamp_format: Optional[str] = None,
