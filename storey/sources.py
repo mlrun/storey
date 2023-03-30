@@ -917,7 +917,6 @@ class DataframeSource(_IterableSource, WithUUID):
     async def _run_loop(self):
         for df in self._dfs:
             for namedtuple in df.itertuples():
-                create_event = True
                 body = OrderedDict(namedtuple._asdict())
                 index = body.pop("Index")
                 if len(df.index.names) > 1:
