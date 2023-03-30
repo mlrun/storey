@@ -122,7 +122,7 @@ class SQLDriver(Driver):
                 )
             else:
                 where_clause += (
-                    f"{sql_table.name}.[{self._primary_key[i]}]={key[i]}"
+                    f"""{sql_table.name}.\"{self._primary_key[i]}\"={key[i]}"""
                     if "mysql" not in sql_table.dialect_options
                     else f"{sql_table.name}.{self._primary_key[i]}={key[i]}"
                 )
@@ -130,7 +130,14 @@ class SQLDriver(Driver):
 
     def _update_by_key(self, key, data, table):
         where_clause = self._get_where_clause(key, table)
-        update_clause = " ,".join([f'[{key}]="{value}"' for key, value in data.items() if key not in self._primary_key])
+        if "mysql" not in table.dialect_options:
+            update_clause = " ,".join(
+                [f"""\"{key}\"=\"{value}\"""" for key, value in data.items() if key not in self._primary_key]
+            )
+        else:
+            update_clause = " ,".join(
+                [f'[{key}]="{value}"' for key, value in data.items() if key not in self._primary_key]
+            )
         sql_statement = f"UPDATE {table} as {table.name} SET {update_clause} where {where_clause}"
         self._sql_connection.execute(sql_statement)
 
