@@ -899,6 +899,21 @@ class DataframeSource(_IterableSource, WithUUID):
         self._key_field = key_field
         self._id_field = id_field
 
+    def prepare_key_values(self, body):
+        key = None
+        if self._key_field:
+            if isinstance(self._key_field, list):
+                key = []
+                for key_field in self._key_field:
+                    if key_field not in body or pandas.isna(body[key_field]):
+                        return None, False
+                    key.append(body[key_field])
+            else:
+                key = body[self._key_field]
+                if key is None:
+                    return None, False
+        return key, True
+
     async def _run_loop(self):
         for df in self._dfs:
             for namedtuple in df.itertuples():
@@ -911,19 +926,7 @@ class DataframeSource(_IterableSource, WithUUID):
                 elif df.index.names[0] is not None:
                     body[df.index.names[0]] = index
 
-                key = None
-                if self._key_field:
-                    if isinstance(self._key_field, list):
-                        key = []
-                        for key_field in self._key_field:
-                            if key_field not in body or pandas.isna(body[key_field]):
-                                create_event = False
-                                break
-                            key.append(body[key_field])
-                    else:
-                        key = body[self._key_field]
-                        if key is None:
-                            create_event = False
+                key, create_event = self.prepare_key_values(body=body)
                 if create_event:
                     if self._id_field:
                         id = body[self._id_field]
