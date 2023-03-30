@@ -1053,9 +1053,13 @@ class CSVSource(DataframeSource):
             if isinstance(self._key_field, list):
                 key = []
                 for key_field in self._key_field:
-                    if key_field not in body or pandas.isna(body[key_field]):
-                        raise self.NoneKeyException(f"For {body} value of key {self._key_field} is None")
-                    key.append(body[key_field])
+                    self.get_by_field_or_index(field=key_field,body=body,field_type='key',raise_exception=True)
+                    # if isinstance(key_field, str):
+                    #     if key_field not in body or pandas.isna(body[key_field]):
+                    #         raise self.NoneKeyException(f"For {body} value of key {self._key_field} is None")
+                    #     key.append(body[key_field])
+                    # else:
+                    #     key.append(list(body.items())[key_field][1])
             else:
                 key = body[self._key_field]
                 if key is None:
@@ -1069,7 +1073,28 @@ class CSVSource(DataframeSource):
             return dict(body)
         return list(body.values())
 
-
+    def get_by_field_or_index(self,field, body:OrderedDict, field_type:str,raise_exception=False):
+        returned_value = None
+        if self._with_header and isinstance(field, str):
+            if field not in body:
+                if raise_exception:
+                    # TODO change error messge.
+                    raise self.NoneKeyException(f"For {body} value of {self._key_field} is None,"
+                                                f" field_type: {field_type}")
+            returned_value = body[field]
+        else:
+            if field < len(body):
+                returned_value = list(body.items())[field][1]
+            else:
+                #TODO change error messge.
+                raise self.NoneKeyException(f"For {body} value of {self._key_field} is None,"
+                                            f" field_type: {field_type}")
+        if pandas.isna(returned_value) or returned_value is None:
+            if raise_exception:
+                raise self.NoneKeyException(f"For {body} value of {self._key_field} is None,"
+                                            f" field_type: {field_type}")
+        else:
+            return returned_value
 class ParquetSource(DataframeSource):
     """Reads Parquet files as input source for a flow.
 
