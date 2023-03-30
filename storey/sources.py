@@ -916,6 +916,8 @@ class DataframeSource(_IterableSource, WithUUID):
 
     def get_id_by_id_field(self,body):
         return body[self._id_field]
+    def get_element(self,body):
+        return dict(body)
     async def _run_loop(self):
         for df in self._dfs:
             for namedtuple in df.itertuples():
@@ -932,13 +934,15 @@ class DataframeSource(_IterableSource, WithUUID):
                         line_id = self.get_id_by_id_field(body=body)
                     else:
                         line_id = self._get_uuid()
-                    event = Event(body, key=key, id=line_id)
+                    element = self.get_element(body=body)
+                    event = Event(element, key=key, id=line_id)
                     await self._do_downstream(event)
                 except self.NoneKeyException as key_error:
                     if self.context:
                         self.context.logger.error(str(key_error))
 
         return await self._do_downstream(_termination_obj)
+
 
     class NoneKeyException(Exception):
         pass
