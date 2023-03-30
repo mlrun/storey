@@ -914,7 +914,7 @@ class DataframeSource(_IterableSource, WithUUID):
                     return None, False
         return key, True
 
-    def line_id(self,body):
+    def get_id_by_id_field(self,body):
         return body[self._id_field]
     async def _run_loop(self):
         for df in self._dfs:
