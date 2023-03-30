@@ -29,6 +29,8 @@ from .dtypes import Event, _termination_obj
 from .flow import Complete, Flow
 from .utils import find_filters, find_partitions, url_to_file_system
 
+from collections import OrderedDict
+
 
 class AwaitableResult:
     """
@@ -901,7 +903,7 @@ class DataframeSource(_IterableSource, WithUUID):
         for df in self._dfs:
             for namedtuple in df.itertuples():
                 create_event = True
-                body = namedtuple._asdict()
+                body = OrderedDict(namedtuple._asdict())
                 index = body.pop("Index")
                 if len(df.index.names) > 1:
                     for i, index_column in enumerate(df.index.names):
