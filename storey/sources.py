@@ -1047,6 +1047,26 @@ class CSVSource(DataframeSource):
         else:
             return datetime.fromisoformat(timestamp)
 
+    def get_key(self, body):
+        key = None
+        if self._key_field:
+            if isinstance(self._key_field, list):
+                key = []
+                for key_field in self._key_field:
+                    if key_field not in body or pandas.isna(body[key_field]):
+                        raise self.NoneKeyException(f"For {body} value of key {self._key_field} is None")
+                    key.append(body[key_field])
+            else:
+                key = body[self._key_field]
+                if key is None:
+                    self.NoneKeyException(f"For {body} value of key {self._key_field} is None")
+        return key
+
+    def get_id_by_id_field(self,body):
+        return body[self._id_field]
+    def get_element(self,body):
+        return dict(body)
+
 
 class ParquetSource(DataframeSource):
     """Reads Parquet files as input source for a flow.
