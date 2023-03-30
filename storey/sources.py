@@ -953,7 +953,7 @@ class CSVSource(DataframeSource):
         self,
         paths: Union[List[str], str],
         header: bool = False,
-        #  build_dict: bool = False, TODO is needed?
+        build_dict: bool = False,
         key_field: Union[int, str, List[int], List[str], None] = None,
         time_field: Union[int, str, None] = None,
         timestamp_format: Optional[str] = None,
@@ -968,7 +968,7 @@ class CSVSource(DataframeSource):
             self._paths = [paths]
         kwargs["paths"] = paths
         kwargs["header"] = header
-        #  kwargs["build_dict"] = build_dict
+        kwargs["build_dict"] = build_dict
         if key_field is not None:
             kwargs["key_field"] = key_field
         if time_field is not None:
@@ -981,7 +981,7 @@ class CSVSource(DataframeSource):
         self._storage_options = kwargs.get("storage_options")
         self._paths = paths
         self._with_header = header
-        # self._build_dict = build_dict
+        self._build_dict = build_dict
         self._key_field = key_field
         self._time_field = time_field
         self._timestamp_format = timestamp_format
