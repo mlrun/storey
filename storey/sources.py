@@ -1054,16 +1054,8 @@ class CSVSource(DataframeSource):
                 key = []
                 for key_field in self._key_field:
                     self.get_by_field_or_index(field=key_field,body=body,field_type='key',raise_exception=True)
-                    # if isinstance(key_field, str):
-                    #     if key_field not in body or pandas.isna(body[key_field]):
-                    #         raise self.NoneKeyException(f"For {body} value of key {self._key_field} is None")
-                    #     key.append(body[key_field])
-                    # else:
-                    #     key.append(list(body.items())[key_field][1])
             else:
-                key = body[self._key_field]
-                if key is None:
-                    self.NoneKeyException(f"For {body} value of key {self._key_field} is None")
+                self.get_by_field_or_index(field=self._key_field,body=body,field_type='key',raise_exception=True)
         return key
 
     def get_id_by_id_field(self,body):
