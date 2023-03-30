@@ -899,20 +899,20 @@ class DataframeSource(_IterableSource, WithUUID):
         self._key_field = key_field
         self._id_field = id_field
 
-    def prepare_key_values(self, body):
+    def get_key(self, body):
         key = None
         if self._key_field:
             if isinstance(self._key_field, list):
                 key = []
                 for key_field in self._key_field:
                     if key_field not in body or pandas.isna(body[key_field]):
-                        return None, False
+                        raise self.NoneKeyException(f"For {body} value of key {self._key_field} is None")
                     key.append(body[key_field])
             else:
                 key = body[self._key_field]
                 if key is None:
-                    return None, False
-        return key, True
+                    self.NoneKeyException(f"For {body} value of key {self._key_field} is None")
+        return key
 
     def get_id_by_id_field(self,body):
         return body[self._id_field]
@@ -926,21 +926,22 @@ class DataframeSource(_IterableSource, WithUUID):
                         body[index_column] = index[i]
                 elif df.index.names[0] is not None:
                     body[df.index.names[0]] = index
-
-                key, create_event = self.prepare_key_values(body=body)
-                if create_event:
+                try:
+                    key = self.get_key(body=body)
                     if self._id_field:
                         line_id = self.get_id_by_id_field(body=body)
                     else:
                         line_id = self._get_uuid()
                     event = Event(body, key=key, id=line_id)
                     await self._do_downstream(event)
-                else:
+                except self.NoneKeyException as key_error:
                     if self.context:
-                        self.context.logger.error(f"For {body} value of key {self._key_field} is None")
+                        self.context.logger.error(str(key_error))
+
         return await self._do_downstream(_termination_obj)
 
-
+    class NoneKeyException(Exception):
+        pass
 class CSVSource(DataframeSource):
     """Reads Csv files as input source for a flow.
 
