@@ -914,6 +914,8 @@ class DataframeSource(_IterableSource, WithUUID):
                     return None, False
         return key, True
 
+    def line_id(self,body):
+        return body[self._id_field]
     async def _run_loop(self):
         for df in self._dfs:
             for namedtuple in df.itertuples():
@@ -928,10 +930,10 @@ class DataframeSource(_IterableSource, WithUUID):
                 key, create_event = self.prepare_key_values(body=body)
                 if create_event:
                     if self._id_field:
-                        id = body[self._id_field]
+                        line_id = self.get_id_by_id_field(body=body)
                     else:
-                        id = self._get_uuid()
-                    event = Event(body, key=key, id=id)
+                        line_id = self._get_uuid()
+                    event = Event(body, key=key, id=line_id)
                     await self._do_downstream(event)
                 else:
                     if self.context:
