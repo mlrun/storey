@@ -916,7 +916,7 @@ class DataframeSource(_IterableSource, WithUUID):
 
     def get_id_by_id_field(self,body):
         return body[self._id_field]
-    def get_element(self,body):
+    def get_element(self,body:OrderedDict):
         return dict(body)
     async def _run_loop(self):
         for df in self._dfs:
@@ -1064,8 +1064,10 @@ class CSVSource(DataframeSource):
 
     def get_id_by_id_field(self,body):
         return body[self._id_field]
-    def get_element(self,body):
-        return dict(body)
+    def get_element(self, body:OrderedDict):
+        if self._build_dict:
+            return dict(body)
+        return list(body.values())
 
 
 class ParquetSource(DataframeSource):
