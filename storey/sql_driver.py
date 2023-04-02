@@ -88,7 +88,7 @@ class SQLDriver(Driver):
 
     async def _get_all_fields(self, key, table):
         where_clause = self._get_where_clause(key, table)
-        query = f"SELECT * FROM {table} where {where_clause}"
+        query = fr"SELECT * FROM {table} where {where_clause}"
         results = pd.read_sql(query, con=self._sql_connection, parse_dates=self._time_fields).to_dict(orient="records")
 
         return results[0]
@@ -96,7 +96,7 @@ class SQLDriver(Driver):
     async def _get_specific_fields(self, key: str, table, attributes: List[str]):
         where_clause = self._get_where_clause(key, table)
         try:
-            query = f"SELECT {','.join(attributes)} FROM {table} as {table.name} where {where_clause}"
+            query = fr"SELECT {','.join(attributes)} FROM {table} as {table.name} where {where_clause}"
             results = pd.read_sql(query, con=self._sql_connection, parse_dates=self._time_fields).to_dict(
                 orient="records"
             )
@@ -116,15 +116,15 @@ class SQLDriver(Driver):
                 where_clause += " and "
             if sql_table.columns[self._primary_key[i]].type.python_type == str:
                 where_clause += (
-                    f'{sql_table.name}.[{self._primary_key[i]}]="{key[i]}"'
+                    fr'{sql_table.name}.[{self._primary_key[i]}]="{key[i]}"'
                     if "mysql" not in sql_table.dialect_options
-                    else f'{sql_table.name}.{self._primary_key[i]}="{key[i]}"'
+                    else fr'{sql_table.name}.{self._primary_key[i]}="{key[i]}"'
                 )
             else:
                 where_clause += (
-                    f"""{sql_table.name}.\"{self._primary_key[i]}\"={key[i]}"""
+                    fr"""{sql_table.name}."{self._primary_key[i]}"={key[i]}"""
                     if "mysql" not in sql_table.dialect_options
-                    else f"{sql_table.name}.{self._primary_key[i]}={key[i]}"
+                    else fr"{sql_table.name}.{self._primary_key[i]}={key[i]}"
                 )
         return where_clause
 
@@ -132,13 +132,13 @@ class SQLDriver(Driver):
         where_clause = self._get_where_clause(key, table)
         if "mysql" not in table.dialect_options:
             update_clause = " ,".join(
-                [f"""\"{key}\"=\"{value}\"""" for key, value in data.items() if key not in self._primary_key]
+                [fr'"{key}"="{value}"'for key, value in data.items() if key not in self._primary_key]
             )
         else:
             update_clause = " ,".join(
-                [f'[{key}]="{value}"' for key, value in data.items() if key not in self._primary_key]
+                [fr'[{key}]="{value}"' for key, value in data.items() if key not in self._primary_key]
             )
-        sql_statement = f"UPDATE {table} as {table.name} SET {update_clause} where {where_clause}"
+        sql_statement = fr"UPDATE {table} as {table.name} SET {update_clause} where {where_clause}"
         self._sql_connection.execute(sql_statement)
 
     @staticmethod
