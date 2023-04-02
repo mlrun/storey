@@ -905,13 +905,11 @@ class DataframeSource(_IterableSource, WithUUID):
             if isinstance(self._key_field, list):
                 key = []
                 for key_field in self._key_field:
-                    if key_field not in body or pandas.isna(body[key_field]):
-                        raise self.NoneKeyException(f"For {body} value of key {self._key_field} is None")
-                    key.append(body[key_field])
+                    key.append(
+                        self.get_by_field_or_index(field=key_field, body=body, field_type='key', raise_exception=True))
             else:
-                key = body[self._key_field]
-                if key is None:
-                    self.NoneKeyException(f"For {body} value of key {self._key_field} is None")
+                key = self.get_by_field_or_index(field=self._key_field, body=body, field_type='key',
+                                                 raise_exception=True)
         return key
 
     def get_id_by_id_field(self,body):
@@ -942,6 +940,21 @@ class DataframeSource(_IterableSource, WithUUID):
                         self.context.logger.error(str(key_error))
 
         return await self._do_downstream(_termination_obj)
+
+
+    def get_by_field_or_index(self, field, body:OrderedDict, field_type:str,raise_exception=False):
+        if field not in body:
+            if raise_exception:
+                # TODO change error messge.
+                raise self.NoneKeyException(f"For {body} value of {self._key_field} is None,"
+                                            f" field_type: {field_type}")
+        returned_value = body[field]
+        if pandas.isna(returned_value) or returned_value is None:
+            if raise_exception:
+                raise self.NoneKeyException(f"For {body} value of {self._key_field} is None,"
+                                            f" field_type: {field_type}")
+        else:
+            return returned_value
 
 
     class NoneKeyException(Exception):
