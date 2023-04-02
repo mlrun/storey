@@ -1037,7 +1037,7 @@ class CSVSource(DataframeSource):
                 df = pandas.read_csv(
                     path,
                     parse_dates=self._dates_indices,
-                    date_parser=lambda x: self._datetime_from_timestamp(x),
+                    date_parser=lambda x: self._datetime_from_timestamp(x) if x != "" else None,
                     storage_options=self._storage_options,
                 )
             else:
@@ -1046,7 +1046,7 @@ class CSVSource(DataframeSource):
                     path,
                     parse_dates=self._dates_indices,
                     header=None,
-                    date_parser=lambda x: self._datetime_from_timestamp(x),
+                    date_parser=lambda x: self._datetime_from_timestamp(x) if x != "" else None,
                     storage_options=self._storage_options,
                 )
                 df.columns = range(df.shape[1])
