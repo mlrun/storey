@@ -1053,9 +1053,9 @@ class CSVSource(DataframeSource):
             if isinstance(self._key_field, list):
                 key = []
                 for key_field in self._key_field:
-                    self.get_by_field_or_index(field=key_field,body=body,field_type='key',raise_exception=True)
+                    key.append(self.get_by_field_or_index(field=key_field,body=body,field_type='key',raise_exception=True))
             else:
-                self.get_by_field_or_index(field=self._key_field,body=body,field_type='key',raise_exception=True)
+                key = self.get_by_field_or_index(field=self._key_field,body=body,field_type='key',raise_exception=True)
         return key
 
     def get_id_by_id_field(self,body):
