@@ -147,7 +147,7 @@ def _get_sql_by_key_all_attrs(
                 where_statement += fr'test_table."{key_name[i]}"="{key[i]}"'
             else:
                 where_statement += fr'test_table."{key_name[i]}"={key[i]}'
-    query = fr"SELECT * FROM {sql_table.name} as test_table where {where_statement}"
+    query = rf"SELECT * FROM {sql_table.name} as test_table where {where_statement}"
     with engine.connect() as conn:
         return pd.read_sql(query, con=conn, parse_dates=time_fields).to_dict(orient="records")[0]
 
