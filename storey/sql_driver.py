@@ -116,9 +116,9 @@ class SQLDriver(Driver):
                 where_clause += " and "
             if sql_table.columns[self._primary_key[i]].type.python_type == str:
                 where_clause += (
-                    fr'{sql_table.name}.[{self._primary_key[i]}]="{key[i]}"'
+                    rf'{sql_table.name}.[{self._primary_key[i]}]="{key[i]}"'
                     if "mysql" not in sql_table.dialect_options
-                    else fr'{sql_table.name}.{self._primary_key[i]}="{key[i]}"'
+                    else rf'{sql_table.name}.{self._primary_key[i]}="{key[i]}"'
                 )
             else:
                 where_clause += (
