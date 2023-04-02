@@ -1052,6 +1052,8 @@ class CSVSource(DataframeSource):
             self._dfs.append(df)
 
     def _datetime_from_timestamp(self, timestamp):
+        if timestamp == '' or timestamp is None:
+            return None
         if self._timestamp_format:
             return pandas.to_datetime(timestamp, format=self._timestamp_format).floor("u").to_pydatetime()
         else:
