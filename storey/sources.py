@@ -912,8 +912,10 @@ class DataframeSource(_IterableSource, WithUUID):
                                                  raise_exception=True)
         return key
 
-    def get_id_by_id_field(self,body):
-        return body[self._id_field]
+    def get_id_by_id_field(self, body):
+        if self._id_field:
+            return self.get_by_field_or_index(field=self._id_field, body=body,field_type='id',raise_exception=False)
+        return self._get_uuid()
     def get_element(self,body:OrderedDict):
         return dict(body)
     async def _run_loop(self):
