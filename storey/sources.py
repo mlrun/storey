@@ -928,9 +928,9 @@ class DataframeSource(_IterableSource, WithUUID):
                     key = self.get_key(body=body)
                     if self._id_field:
                         line_id = self.get_by_field_or_index(field=self._id_field, body=body, field_type='id',
-                    else:                                      raise_exception=False)
+                                                             raise_exception=False)
+                    else:
                         line_id = self._get_uuid()
-                    line_id = self.get_id_by_id_field(body=body)
                     element = self.get_element(body=body)
                     event = Event(element, key=key, id=line_id)
                     await self._do_downstream(event)
