@@ -1060,17 +1060,6 @@ class CSVSource(DataframeSource):
         else:
             return datetime.fromisoformat(timestamp)
 
-    def get_key(self, body):
-        key = None
-        if self._key_field:
-            if isinstance(self._key_field, list):
-                key = []
-                for key_field in self._key_field:
-                    key.append(self.get_by_field_or_index(field=key_field,body=body,field_type='key',raise_exception=True))
-            else:
-                key = self.get_by_field_or_index(field=self._key_field,body=body,field_type='key',raise_exception=True)
-        return key
-
     def get_id_by_id_field(self,body):
         return body[self._id_field]
     def get_element(self, body:OrderedDict):
