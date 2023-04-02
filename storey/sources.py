@@ -985,9 +985,9 @@ class CSVSource(DataframeSource):
         **kwargs,
     ):
 
-        self._paths = paths
         if isinstance(paths, str):
-            self._paths = [paths]
+            paths = [paths]
+        self._paths = paths
         kwargs["paths"] = paths
         kwargs["header"] = header
         kwargs["build_dict"] = build_dict
