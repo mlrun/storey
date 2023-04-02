@@ -912,10 +912,6 @@ class DataframeSource(_IterableSource, WithUUID):
                                                  raise_exception=True)
         return key
 
-    def get_id_by_id_field(self, body):
-        if self._id_field:
-            return self.get_by_field_or_index(field=self._id_field, body=body,field_type='id',raise_exception=False)
-        return self._get_uuid()
     def get_element(self,body:OrderedDict):
         return dict(body)
     async def _run_loop(self):
@@ -930,6 +926,10 @@ class DataframeSource(_IterableSource, WithUUID):
                     body[df.index.names[0]] = index
                 try:
                     key = self.get_key(body=body)
+                    if self._id_field:
+                        line_id = self.get_by_field_or_index(field=self._id_field, body=body, field_type='id',
+                    else:                                      raise_exception=False)
+                        line_id = self._get_uuid()
                     line_id = self.get_id_by_id_field(body=body)
                     element = self.get_element(body=body)
                     event = Event(element, key=key, id=line_id)
@@ -1058,8 +1058,6 @@ class CSVSource(DataframeSource):
         else:
             return datetime.fromisoformat(timestamp)
 
-    def get_id_by_id_field(self,body):
-        return body[self._id_field]
     def get_element(self, body:OrderedDict):
         if self._build_dict:
             return dict(body)
