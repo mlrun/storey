@@ -953,8 +953,7 @@ class DataframeSource(_IterableSource, WithUUID):
             if raise_exception:
                 raise self.NoneKeyException(f"For {body} value of {self._key_field} is None,"
                                             f" field_type: {field_type}")
-        else:
-            return returned_value
+        return returned_value
 
 
     class NoneKeyException(Exception):
@@ -1087,8 +1086,7 @@ class CSVSource(DataframeSource):
             if raise_exception:
                 raise self.NoneKeyException(f"For {body} value of {self._key_field} is None,"
                                             f" field_type: {field_type}")
-        else:
-            return returned_value
+        return returned_value
 class ParquetSource(DataframeSource):
     """Reads Parquet files as input source for a flow.
 
