@@ -1061,7 +1061,7 @@ class CSVSource(DataframeSource):
             return datetime.fromisoformat(timestamp)
 
     def get_element(self, body:OrderedDict):
-        if self._build_dict:
+        if self._build_dict and self._with_header:
             return dict(body)
         return list(body.values())
 
