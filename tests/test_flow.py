@@ -240,15 +240,15 @@ def test_csv_reader():
 
 
 def test_csv_reader_error_on_file_not_found():
-    controller = build_flow(
+    flow = build_flow(
         [
             CSVSource("tests/idontexist.csv", header=True),
         ]
-    ).run()
-
-    with pytest.raises(FileNotFoundError):
-        controller.await_termination()
-
+    )
+    with pytest.raises(
+            FileNotFoundError,
+    ):
+        flow.run()
 
 def test_csv_reader_as_dict():
     controller = build_flow(
