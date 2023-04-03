@@ -945,11 +945,12 @@ class DataframeSource(_IterableSource, WithUUID):
                             self.context.logger.error(str(key_error))
             except (self.SourceKeyError, self.SourceIndexError) as source_error:
                 if self.context:
-                    self.context.logger.error(f'{str(source_error)}. \n Dataframe details:\n'
-                                          f' columns: {str(list(df.columns))}'
-                                          f' len: {len(df)}'
-                                          f' hash by hash(df.to_numpy().tobytes()):{hash(df.to_numpy().tobytes())}')
-
+                    self.context.logger.error(
+                        f"{str(source_error)}. \n Dataframe details:\n"
+                        f" columns: {str(list(df.columns))}"
+                        f" len: {len(df)}"
+                        f" hash by hash(df.to_numpy().tobytes()):{hash(df.to_numpy().tobytes())}"
+                    )
 
         return await self._do_downstream(_termination_obj)
 
@@ -957,7 +958,7 @@ class DataframeSource(_IterableSource, WithUUID):
         try:
             result = body[field]
         except KeyError as key_error:
-            raise self.SourceKeyError(f'KeyError occurred: {str(key_error)}')
+            raise self.SourceKeyError(f"KeyError occurred: {str(key_error)}")
         if raise_exception:
             self.is_nan_validator(result=result, body=body, field_type=field_type, field=field)
         return result
@@ -967,8 +968,10 @@ class DataframeSource(_IterableSource, WithUUID):
 
     class SourceKeyError(KeyError):
         pass
+
     class SourceIndexError(IndexError):
         pass
+
     def is_nan_validator(self, result, body, field_type, field):
         if pandas.isna(result) or result is None:
             raise self.NoneKeyException(f"For {body} value of {field_type} {field} is None")
@@ -1092,7 +1095,7 @@ class CSVSource(DataframeSource):
             try:
                 result = list(body.items())[field][1]
             except IndexError as index_error:
-                raise self.SourceIndexError(f'IndexError occurred: {str(index_error)}, index: {field}.')
+                raise self.SourceIndexError(f"IndexError occurred: {str(index_error)}, index: {field}.")
             if raise_exception:
                 self.is_nan_validator(result=result, body=body, field_type=field_type, field=field)
         return result

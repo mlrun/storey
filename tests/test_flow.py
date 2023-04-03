@@ -389,6 +389,7 @@ def test_csv_reader_none_in_keyfield_should_send_error_log():
     assert "error" == logger.logs[0][0]
     assert "value of key k is None" in logger.logs[0][1][0]
 
+
 def test_csv_reader_source_key_error():
     logger = MockLogger()
     context = MockContext(logger, True)
