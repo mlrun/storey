@@ -988,10 +988,10 @@ class CSVSource(DataframeSource):
         **kwargs,
     ):
 
+        kwargs["paths"] = paths
         if isinstance(paths, str):
             paths = [paths]
         self._paths = paths
-        kwargs["paths"] = paths
         kwargs["header"] = header
         kwargs["build_dict"] = build_dict
         if key_field is not None:
