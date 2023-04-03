@@ -950,11 +950,11 @@ class DataframeSource(_IterableSource, WithUUID):
             if raise_exception:
                 # TODO change error messge.
                 raise self.NoneKeyException(f"For {body} value of {field_type} {self._key_field} is None")
-        returned_value = body[field]
-        if pandas.isna(returned_value) or returned_value is None:
+        result = body[field]
+        if pandas.isna(result) or result is None:
             if raise_exception:
                 raise self.NoneKeyException(f"For {body} value of {field_type} {self._key_field} is None")
-        return returned_value
+        return result
 
     class NoneKeyException(Exception):
         pass
@@ -1069,23 +1069,23 @@ class CSVSource(DataframeSource):
         return list(body.values())
 
     def get_by_field_or_index(self, field, body: OrderedDict, field_type: str, raise_exception=False):
-        returned_value = None
+        result = None
         if self._with_header and isinstance(field, str):
             if field not in body:
                 if raise_exception:
                     # TODO change error messge.
                     raise self.NoneKeyException(f"For {body} value of {field_type} {self._key_field} is None")
-            returned_value = body[field]
+            result = body[field]
         else:
             if field < len(body):
-                returned_value = list(body.items())[field][1]
+                result = list(body.items())[field][1]
             else:
                 # TODO change error messge.
                 raise self.NoneKeyException(f"For {body} value of {field_type} {self._key_field} is None")
-        if pandas.isna(returned_value) or returned_value is None:
+        if pandas.isna(result) or result is None:
             if raise_exception:
                 raise self.NoneKeyException(f"For {body} value of {field_type} {self._key_field} is None")
-        return returned_value
+        return result
 
 
 class ParquetSource(DataframeSource):
