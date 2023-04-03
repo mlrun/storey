@@ -957,7 +957,7 @@ class DataframeSource(_IterableSource, WithUUID):
         try:
             result = body[field]
         except KeyError as key_error:
-            raise self.SourceKeyError(f'KeyError occurred: {str(key_error)} field:{field}')
+            raise self.SourceKeyError(f'KeyError occurred: {str(key_error)}')
         if raise_exception:
             self.is_nan_validator(result=result, body=body, field_type=field_type, field=field)
         return result
@@ -1092,7 +1092,7 @@ class CSVSource(DataframeSource):
             try:
                 result = list(body.items())[field][1]
             except IndexError as index_error:
-                raise self.SourceIndexError(f'{str(index_error)} field:{field}')
+                raise self.SourceIndexError(f'{str(index_error)}')
             if raise_exception:
                 self.is_nan_validator(result=result, body=body, field_type=field_type, field=field)
         return result

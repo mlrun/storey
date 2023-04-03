@@ -402,7 +402,7 @@ def test_csv_reader_source_key_error():
     controller.await_termination()
 
     assert "error" == logger.logs[0][0]
-    assert "KeyError occurred: value of key k is None" in logger.logs[0][1][0]
+    assert "KeyError occurred: 'not_exist'" in logger.logs[0][1][0]
 
 def test_dataframe_source():
     df = pd.DataFrame([["hello", 1, 1.5], ["world", 2, 2.5]], columns=["string", "int", "float"])
