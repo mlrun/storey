@@ -951,9 +951,8 @@ class DataframeSource(_IterableSource, WithUUID):
                 # TODO change error messge.
                 raise self.NoneKeyException(f"For {body} value of {field_type} {field} is None")
         result = body[field]
-        if pandas.isna(result) or result is None:
-            if raise_exception:
-                raise self.NoneKeyException(f"For {body} value of {field_type} {field} is None")
+        if raise_exception:
+            self.is_nan_validator(result=result,body=body,field_type=field_type,field=field)
         return result
 
     class NoneKeyException(Exception):
