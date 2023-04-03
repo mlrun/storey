@@ -137,7 +137,7 @@ class SQLDriver(Driver):
         update_clause = " ,".join(
             [f'{left_wrap}{key}{right_wrap}="{value}"' for key, value in data.items() if key not in self._primary_key]
         )
-        sql_statement = rf"UPDATE {table} as {table.name} SET {update_clause} where {where_clause}"
+        sql_statement = f"UPDATE {table} as {table.name} SET {update_clause} where {where_clause}"
         self._sql_connection.execute(sql_statement)
 
     @staticmethod
