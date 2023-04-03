@@ -960,7 +960,9 @@ class DataframeSource(_IterableSource, WithUUID):
     class NoneKeyException(Exception):
         pass
 
-    class KeyOrIndexError(IndexError, KeyError):
+    class SourceKeyError(KeyError):
+        pass
+    class SourceIndexError(IndexError):
         pass
     def is_nan_validator(self, result, body, field_type, field):
         if pandas.isna(result) or result is None:
