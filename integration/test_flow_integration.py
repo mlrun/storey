@@ -144,7 +144,7 @@ def _get_sql_by_key_all_attrs(
             if i != 0:
                 where_statement += " and "
             if sql_table.columns[key_name[i]].type.python_type == str:
-                where_statement += rf'test_table."{key_name[i]}"="{key[i]}"'
+                where_statement += f'test_table."{key_name[i]}"="{key[i]}"'
             else:
                 where_statement += rf'test_table."{key_name[i]}"={key[i]}'
     query = rf"SELECT * FROM {sql_table.name} as test_table where {where_statement}"
