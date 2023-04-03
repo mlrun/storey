@@ -943,12 +943,12 @@ class DataframeSource(_IterableSource, WithUUID):
                     except self.NoneKeyException as key_error:
                         if self.context:
                             self.context.logger.error(str(key_error))
-            except self.SourceKeyError as source_key_error:
+            except (self.SourceKeyError, self.SourceIndexError) as source_error:
                 if self.context:
-                    self.context.logger.error(f'{str(source_key_error)}. \n Dataframe details:\n'
-                                              f' columns: {str(list(df.columns))}'
-                                              f' len: {len(df)}'
-                                              f' hash by hash(df.to_numpy().tobytes()):{hash(df.to_numpy().tobytes())}')
+                    self.context.logger.error(f'{str(source_error)}. \n Dataframe details:\n'
+                                          f' columns: {str(list(df.columns))}'
+                                          f' len: {len(df)}'
+                                          f' hash by hash(df.to_numpy().tobytes()):{hash(df.to_numpy().tobytes())}')
 
 
         return await self._do_downstream(_termination_obj)
