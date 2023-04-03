@@ -1089,7 +1089,10 @@ class CSVSource(DataframeSource):
                 field=field, body=body, field_type=field_type, raise_exception=raise_exception
             )
         else:
-            result = list(body.items())[field][1]
+            try:
+                result = list(body.items())[field][1]
+            except IndexError as index_error:
+                raise self.SourceIndexError(f'{str(index_error)} field:{field}')
             if raise_exception:
                 self.is_nan_validator(result=result, body=body, field_type=field_type, field=field)
         return result
