@@ -945,13 +945,11 @@ class DataframeSource(_IterableSource, WithUUID):
         if field not in body:
             if raise_exception:
                 # TODO change error messge.
-                raise self.NoneKeyException(f"For {body} value of {self._key_field} is None,"
-                                            f" field_type: {field_type}")
+                raise self.NoneKeyException(f"For {body} value of {field_type} {self._key_field} is None")
         returned_value = body[field]
         if pandas.isna(returned_value) or returned_value is None:
             if raise_exception:
-                raise self.NoneKeyException(f"For {body} value of {self._key_field} is None,"
-                                            f" field_type: {field_type}")
+                raise self.NoneKeyException(f"For {body} value of {field_type} {self._key_field} is None")
         return returned_value
 
 
@@ -1071,20 +1069,17 @@ class CSVSource(DataframeSource):
             if field not in body:
                 if raise_exception:
                     # TODO change error messge.
-                    raise self.NoneKeyException(f"For {body} value of {self._key_field} is None,"
-                                                f" field_type: {field_type}")
+                    raise self.NoneKeyException(f"For {body} value of {field_type} {self._key_field} is None")
             returned_value = body[field]
         else:
             if field < len(body):
                 returned_value = list(body.items())[field][1]
             else:
                 #TODO change error messge.
-                raise self.NoneKeyException(f"For {body} value of {self._key_field} is None,"
-                                            f" field_type: {field_type}")
+                raise self.NoneKeyException(f"For {body} value of {field_type} {self._key_field} is None")
         if pandas.isna(returned_value) or returned_value is None:
             if raise_exception:
-                raise self.NoneKeyException(f"For {body} value of {self._key_field} is None,"
-                                            f" field_type: {field_type}")
+                raise self.NoneKeyException(f"For {body} value of {field_type} {self._key_field} is None")
         return returned_value
 class ParquetSource(DataframeSource):
     """Reads Parquet files as input source for a flow.
