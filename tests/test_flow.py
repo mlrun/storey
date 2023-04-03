@@ -418,7 +418,7 @@ def test_csv_reader_source_index_error():
     controller.await_termination()
 
     assert "error" == logger.logs[0][0]
-    assert "IndexError occurred: 3" in logger.logs[0][1][0]
+    assert "IndexError occurred: list index out of range, index: 3" in logger.logs[0][1][0]
 
 
 def test_dataframe_source():
