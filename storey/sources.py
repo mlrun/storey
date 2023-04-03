@@ -957,7 +957,7 @@ class DataframeSource(_IterableSource, WithUUID):
         try:
             result = body[field]
         except KeyError as key_error:
-            raise self.SourceKeyError(f'{str(key_error)} field:{field}')
+            raise self.SourceKeyError(f'KeyError occurred: {str(key_error)} field:{field}')
         if raise_exception:
             self.is_nan_validator(result=result, body=body, field_type=field_type, field=field)
         return result

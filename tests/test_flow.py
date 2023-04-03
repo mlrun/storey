@@ -389,6 +389,20 @@ def test_csv_reader_none_in_keyfield_should_send_error_log():
     assert "error" == logger.logs[0][0]
     assert "value of key k is None" in logger.logs[0][1][0]
 
+def test_csv_reader_source_key_error():
+    logger = MockLogger()
+    context = MockContext(logger, True)
+
+    controller = build_flow(
+        [
+            CSVSource("tests/test.csv", header=True, key_field="not_exist", context=context),
+        ]
+    ).run()
+
+    controller.await_termination()
+
+    assert "error" == logger.logs[0][0]
+    assert "KeyError occurred: value of key k is None" in logger.logs[0][1][0]
 
 def test_dataframe_source():
     df = pd.DataFrame([["hello", 1, 1.5], ["world", 2, 2.5]], columns=["string", "int", "float"])
