@@ -943,7 +943,10 @@ class DataframeSource(_IterableSource, WithUUID):
                     except self.NoneKeyException as key_error:
                         if self.context:
                             self.context.logger.error(str(key_error))
-            except :
+            except self.SourceKeyError as source_key_error:
+                if self.context:
+                    self.context.logger.error(f'{str(source_key_error)}. \n Dataframe details:\n columns: {} len: {} hash:{}')
+
 
         return await self._do_downstream(_termination_obj)
 
@@ -951,7 +954,7 @@ class DataframeSource(_IterableSource, WithUUID):
         try:
             result = body[field]
         except KeyError as key_error:
-            raise self.SourceKeyError(key_error for df)
+            raise self.SourceKeyError(f'{str(key_error)} field:{field}')
         if raise_exception:
             self.is_nan_validator(result=result, body=body, field_type=field_type, field=field)
         return result
