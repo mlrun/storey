@@ -130,14 +130,10 @@ class SQLDriver(Driver):
 
     def _update_by_key(self, key, data, table):
         where_clause = self._get_where_clause(key, table)
-        if "mysql" not in table.dialect_options:
-            update_clause = " ,".join(
-                [rf'"{key}"="{value}"' for key, value in data.items() if key not in self._primary_key]
-            )
-        else:
-            update_clause = " ,".join(
-                [rf'[{key}]="{value}"' for key, value in data.items() if key not in self._primary_key]
-            )
+        quote = "" if "mysql" in table.dialect_options else '"'
+        update_clause = " ,".join(
+            [f'[{quote}{key}{quote}]="{value}"' for key, value in data.items() if key not in self._primary_key]
+        )
         sql_statement = rf"UPDATE {table} as {table.name} SET {update_clause} where {where_clause}"
         self._sql_connection.execute(sql_statement)
 
