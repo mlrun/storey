@@ -949,11 +949,11 @@ class DataframeSource(_IterableSource, WithUUID):
         if field not in body:
             if raise_exception:
                 # TODO change error messge.
-                raise self.NoneKeyException(f"For {body} value of {field_type} {self._key_field} is None")
+                raise self.NoneKeyException(f"For {body} value of {field_type} {field} is None")
         result = body[field]
         if pandas.isna(result) or result is None:
             if raise_exception:
-                raise self.NoneKeyException(f"For {body} value of {field_type} {self._key_field} is None")
+                raise self.NoneKeyException(f"For {body} value of {field_type} {field} is None")
         return result
 
     class NoneKeyException(Exception):
@@ -1074,17 +1074,17 @@ class CSVSource(DataframeSource):
             if field not in body:
                 if raise_exception:
                     # TODO change error messge.
-                    raise self.NoneKeyException(f"For {body} value of {field_type} {self._key_field} is None")
+                    raise self.NoneKeyException(f"For {body} value of {field_type} {field} is None")
             result = body[field]
         else:
             if field < len(body):
                 result = list(body.items())[field][1]
             else:
                 # TODO change error messge.
-                raise self.NoneKeyException(f"For {body} value of {field_type} {self._key_field} is None")
+                raise self.NoneKeyException(f"For {body} value of {field_type} {field} is None")
         if pandas.isna(result) or result is None:
             if raise_exception:
-                raise self.NoneKeyException(f"For {body} value of {field_type} {self._key_field} is None")
+                raise self.NoneKeyException(f"For {body} value of {field_type} {field} is None")
         return result
 
 
