@@ -88,7 +88,7 @@ class SQLDriver(Driver):
 
     async def _get_all_fields(self, key, table):
         where_clause = self._get_where_clause(key, table)
-        query = rf"SELECT * FROM {table} where {where_clause}"
+        query = f"SELECT * FROM {table} where {where_clause}"
         results = pd.read_sql(query, con=self._sql_connection, parse_dates=self._time_fields).to_dict(orient="records")
 
         return results[0]
