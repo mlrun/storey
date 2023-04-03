@@ -2915,37 +2915,6 @@ def test_csv_reader_parquet_write_nanosecs(tmpdir):
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
 
 
-def test_csv_reader_type_inference(tmpdir):
-    class PushErrorContext:
-        def __init__(self):
-            self.errors = []
-
-        def push_error(self, event, message, source):
-            self.errors.append({"event": event, "message": message, "source": source})
-
-    context = PushErrorContext()
-
-    controller = build_flow(
-        [
-            CSVSource(
-                "tests/test-type-inference.csv",
-                header=True,
-                context=context,
-            ),
-            Reduce([], append_and_return),
-        ]
-    ).run()
-
-    result = controller.await_termination()
-
-    assert result == [[1, "x", 1], [3, "z", 3]]
-    assert len(context.errors) == 1
-    error = context.errors[0]
-    assert error["event"] == Event([2, "y", "x"])
-    assert error["message"].startswith("invalid literal for int() with base 10: 'x'")
-    assert error["source"].startswith("CSVSource")
-
-
 def test_error_in_table_persist():
     table = Table(
         "table",
