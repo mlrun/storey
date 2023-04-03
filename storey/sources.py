@@ -952,15 +952,16 @@ class DataframeSource(_IterableSource, WithUUID):
                 raise self.NoneKeyException(f"For {body} value of {field_type} {field} is None")
         result = body[field]
         if raise_exception:
-            self.is_nan_validator(result=result,body=body,field_type=field_type,field=field)
+            self.is_nan_validator(result=result, body=body, field_type=field_type, field=field)
         return result
 
     class NoneKeyException(Exception):
         pass
 
-    def is_nan_validator(self, result,body,field_type,field):
+    def is_nan_validator(self, result, body, field_type, field):
         if pandas.isna(result) or result is None:
             raise self.NoneKeyException(f"For {body} value of {field_type} {field} is None")
+
 
 class CSVSource(DataframeSource):
     """Reads Csv files as input source for a flow.
@@ -1073,11 +1074,9 @@ class CSVSource(DataframeSource):
     def get_by_field_or_index(self, field, body: OrderedDict, field_type: str, raise_exception=False):
         result = None
         if self._with_header and isinstance(field, str):
-            if field not in body:
-                if raise_exception:
-                    # TODO change error messge.
-                    raise self.NoneKeyException(f"For {body} value of {field_type} {field} is None")
-            result = body[field]
+            result = super().get_by_field_or_index(
+                field=field, body=body, field_type=field_type, raise_exception=raise_exception
+            )
         else:
             if field < len(body):
                 result = list(body.items())[field][1]
