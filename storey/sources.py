@@ -1083,8 +1083,8 @@ class CSVSource(DataframeSource):
             else:
                 # TODO change error messge.
                 raise self.NoneKeyException(f"For {body} value of {field_type} {field} is None")
-        if raise_exception:
-            self.is_nan_validator(result=result, body=body, field_type=field_type, field=field)
+            if raise_exception:
+                self.is_nan_validator(result=result, body=body, field_type=field_type, field=field)
         return result
 
 
