@@ -18,6 +18,7 @@ import queue
 import threading
 import uuid
 import warnings
+from collections import OrderedDict
 from datetime import datetime, timezone
 from typing import Callable, Coroutine, Iterable, List, Optional, Union
 
@@ -28,8 +29,6 @@ import pytz
 from .dtypes import Event, _termination_obj
 from .flow import Complete, Flow
 from .utils import find_filters, find_partitions, url_to_file_system
-
-from collections import OrderedDict
 
 
 class AwaitableResult:
@@ -606,7 +605,8 @@ class _IterableSource(Flow):
 #         list). Default to False.
 #     :parameter key_field: the CSV field to be used as the key for events. May be an int (field index) or string (field
 #         name) if with_header is True. Defaults to None (no key). Can be a list of keys
-#     :parameter time_field: the CSV field to be parsed as the timestamp for events. May be an int (field index) or string
+#     :parameter time_field: the CSV field to be parsed as the timestamp for events.
+#     May be an int (field index) or string
 #         (field name) if with_header is True. Defaults to None (no timestamp field).
 #     :parameter timestamp_format: timestamp format as defined in datetime.strptime(). Default to ISO-8601 as defined in
 #         datetime.fromisoformat().
@@ -752,7 +752,8 @@ class _IterableSource(Flow):
 #                         field_name_to_index = {}
 #                         for i in range(len(header)):
 #                             field_name_to_index[header[i]] = i
-#                             if header[i] == self._time_field or (self._parse_dates and header[i] in self._parse_dates):
+#                             if header[i] == self._time_field or (self._parse_dates and header[i]
+#                             in self._parse_dates):
 #                                 self._dates_indices.append(i)
 #                     for line in f:
 #                         try:
@@ -906,14 +907,17 @@ class DataframeSource(_IterableSource, WithUUID):
                 key = []
                 for key_field in self._key_field:
                     key.append(
-                        self.get_by_field_or_index(field=key_field, body=body, field_type='key', raise_exception=True))
+                        self.get_by_field_or_index(field=key_field, body=body, field_type="key", raise_exception=True)
+                    )
             else:
-                key = self.get_by_field_or_index(field=self._key_field, body=body, field_type='key',
-                                                 raise_exception=True)
+                key = self.get_by_field_or_index(
+                    field=self._key_field, body=body, field_type="key", raise_exception=True
+                )
         return key
 
-    def get_element(self,body:OrderedDict):
+    def get_element(self, body: OrderedDict):
         return dict(body)
+
     async def _run_loop(self):
         for df in self._dfs:
             for namedtuple in df.itertuples():
@@ -927,8 +931,9 @@ class DataframeSource(_IterableSource, WithUUID):
                 try:
                     key = self.get_key(body=body)
                     if self._id_field:
-                        line_id = self.get_by_field_or_index(field=self._id_field, body=body, field_type='id',
-                                                             raise_exception=False)
+                        line_id = self.get_by_field_or_index(
+                            field=self._id_field, body=body, field_type="id", raise_exception=False
+                        )
                     else:
                         line_id = self._get_uuid()
                     element = self.get_element(body=body)
@@ -940,8 +945,7 @@ class DataframeSource(_IterableSource, WithUUID):
 
         return await self._do_downstream(_termination_obj)
 
-
-    def get_by_field_or_index(self, field, body:OrderedDict, field_type:str,raise_exception=False):
+    def get_by_field_or_index(self, field, body: OrderedDict, field_type: str, raise_exception=False):
         if field not in body:
             if raise_exception:
                 # TODO change error messge.
@@ -952,9 +956,10 @@ class DataframeSource(_IterableSource, WithUUID):
                 raise self.NoneKeyException(f"For {body} value of {field_type} {self._key_field} is None")
         return returned_value
 
-
     class NoneKeyException(Exception):
         pass
+
+
 class CSVSource(DataframeSource):
     """Reads Csv files as input source for a flow.
 
@@ -1051,19 +1056,19 @@ class CSVSource(DataframeSource):
             self._dfs.append(df)
 
     def _datetime_from_timestamp(self, timestamp):
-        if timestamp == '' or timestamp is None:
+        if timestamp == "" or timestamp is None:
             return None
         if self._timestamp_format:
             return pandas.to_datetime(timestamp, format=self._timestamp_format).floor("u").to_pydatetime()
         else:
             return datetime.fromisoformat(timestamp)
 
-    def get_element(self, body:OrderedDict):
+    def get_element(self, body: OrderedDict):
         if self._build_dict and self._with_header:
             return dict(body)
         return list(body.values())
 
-    def get_by_field_or_index(self,field, body:OrderedDict, field_type:str,raise_exception=False):
+    def get_by_field_or_index(self, field, body: OrderedDict, field_type: str, raise_exception=False):
         returned_value = None
         if self._with_header and isinstance(field, str):
             if field not in body:
@@ -1075,12 +1080,14 @@ class CSVSource(DataframeSource):
             if field < len(body):
                 returned_value = list(body.items())[field][1]
             else:
-                #TODO change error messge.
+                # TODO change error messge.
                 raise self.NoneKeyException(f"For {body} value of {field_type} {self._key_field} is None")
         if pandas.isna(returned_value) or returned_value is None:
             if raise_exception:
                 raise self.NoneKeyException(f"For {body} value of {field_type} {self._key_field} is None")
         return returned_value
+
+
 class ParquetSource(DataframeSource):
     """Reads Parquet files as input source for a flow.
 

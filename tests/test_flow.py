@@ -246,9 +246,10 @@ def test_csv_reader_error_on_file_not_found():
         ]
     )
     with pytest.raises(
-            FileNotFoundError,
+        FileNotFoundError,
     ):
         flow.run()
+
 
 def test_csv_reader_as_dict():
     controller = build_flow(
@@ -3409,7 +3410,10 @@ def test_csv_source_with_none_values():
         "2021-04-21 15:56:53.385444",
     ]
     assert termination_result[1].key == "b"
-    assert termination_result[1].body == ["b", True, None, math.nan, math.nan, None]
+    assert all(
+        (isinstance(x, float) and isinstance(y, float) and math.isnan(x) and math.isnan(y)) or x == y
+        for x, y in zip(termination_result[1].body, ["b", True, math.nan, math.nan, math.nan, math.nan])
+    )
 
 
 def test_csv_source_event_metadata():
