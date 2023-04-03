@@ -959,6 +959,9 @@ class DataframeSource(_IterableSource, WithUUID):
     class NoneKeyException(Exception):
         pass
 
+    def is_nan_validator(self, result,body,field_type,field):
+        if pandas.isna(result) or result is None:
+            raise self.NoneKeyException(f"For {body} value of {field_type} {field} is None")
 
 class CSVSource(DataframeSource):
     """Reads Csv files as input source for a flow.
