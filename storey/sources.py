@@ -920,28 +920,30 @@ class DataframeSource(_IterableSource, WithUUID):
 
     async def _run_loop(self):
         for df in self._dfs:
-            for namedtuple in df.itertuples():
-                body = OrderedDict(namedtuple._asdict())
-                index = body.pop("Index")
-                if len(df.index.names) > 1:
-                    for i, index_column in enumerate(df.index.names):
-                        body[index_column] = index[i]
-                elif df.index.names[0] is not None:
-                    body[df.index.names[0]] = index
-                try:
-                    key = self.get_key(body=body)
-                    if self._id_field:
-                        line_id = self.get_by_field_or_index(
-                            field=self._id_field, body=body, field_type="id", raise_exception=False
-                        )
-                    else:
-                        line_id = self._get_uuid()
-                    element = self.get_element(body=body)
-                    event = Event(element, key=key, id=line_id)
-                    await self._do_downstream(event)
-                except self.NoneKeyException as key_error:
-                    if self.context:
-                        self.context.logger.error(str(key_error))
+            try:
+                for namedtuple in df.itertuples():
+                    body = OrderedDict(namedtuple._asdict())
+                    index = body.pop("Index")
+                    if len(df.index.names) > 1:
+                        for i, index_column in enumerate(df.index.names):
+                            body[index_column] = index[i]
+                    elif df.index.names[0] is not None:
+                        body[df.index.names[0]] = index
+                    try:
+                        key = self.get_key(body=body)
+                        if self._id_field:
+                            line_id = self.get_by_field_or_index(
+                                field=self._id_field, body=body, field_type="id", raise_exception=False
+                            )
+                        else:
+                            line_id = self._get_uuid()
+                        element = self.get_element(body=body)
+                        event = Event(element, key=key, id=line_id)
+                        await self._do_downstream(event)
+                    except self.NoneKeyException as key_error:
+                        if self.context:
+                            self.context.logger.error(str(key_error))
+            except :
 
         return await self._do_downstream(_termination_obj)
 
