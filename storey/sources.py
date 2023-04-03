@@ -945,7 +945,7 @@ class DataframeSource(_IterableSource, WithUUID):
                             self.context.logger.error(str(key_error))
             except self.SourceKeyError as source_key_error:
                 if self.context:
-                    self.context.logger.error(f'{str(source_key_error)}. \n Dataframe details:\n columns: {} len: {} hash:{}')
+                    self.context.logger.error(f'{str(source_key_error)}. \n Dataframe details:\n columns: {str(list(df.columns))} len: {} hash:{}')
 
 
         return await self._do_downstream(_termination_obj)
