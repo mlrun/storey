@@ -948,11 +948,10 @@ class DataframeSource(_IterableSource, WithUUID):
         return await self._do_downstream(_termination_obj)
 
     def get_by_field_or_index(self, field, body: OrderedDict, field_type: str, raise_exception=False):
-        if field not in body:
-            if raise_exception:
-                # TODO change error messge.
-                raise self.NoneKeyException(f"For {body} value of {field_type} {field} is None")
-        result = body[field]
+        try:
+            result = body[field]
+        except KeyError as key_error:
+            raise self.SourceKeyError(key_error for df)
         if raise_exception:
             self.is_nan_validator(result=result, body=body, field_type=field_type, field=field)
         return result
