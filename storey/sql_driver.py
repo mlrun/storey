@@ -124,7 +124,7 @@ class SQLDriver(Driver):
                 where_clause += (
                     f'{sql_table.name}."{self._primary_key[i]}"={key[i]}'
                     if "mysql" not in sql_table.dialect_options
-                    else rf"{sql_table.name}.{self._primary_key[i]}={key[i]}"
+                    else f"{sql_table.name}.{self._primary_key[i]}={key[i]}"
                 )
         return where_clause
 
