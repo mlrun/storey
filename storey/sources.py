@@ -759,10 +759,9 @@ class CSVSource(DataframeSource):
         if parse_dates:
             if not isinstance(parse_dates, List):
                 parse_dates = [parse_dates]
-            if isinstance(parse_dates, List):
-                if self._with_header and any([isinstance(f, int) for f in self._parse_dates]):
-                    raise ValueError("parse_dates can be list of int only when there is no header")
-                self._dates_indices = parse_dates
+            if self._with_header and any([isinstance(f, int) for f in self._parse_dates]):
+                raise ValueError("parse_dates can be list of int only when there is no header")
+            self._dates_indices = parse_dates
         if self._time_field is not None:
             if isinstance(self._time_field, int):
                 if self._with_header:
