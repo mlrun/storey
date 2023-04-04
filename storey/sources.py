@@ -756,8 +756,6 @@ class CSVSource(DataframeSource):
         self._storage_options = kwargs.get("storage_options")
         self._parse_dates = parse_dates
         self._dates_indices = []
-
-        self._dates_indices = []
         if parse_dates:
             if not isinstance(parse_dates, List):
                 parse_dates = [parse_dates]
