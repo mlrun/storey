@@ -775,8 +775,8 @@ class CSVSource(DataframeSource):
         self._dfs = []
         for path in self._paths:
             if self._with_header:
-                existing_dates_indices = set(pandas.read_csv(path, nrows=0).columns).intersection(
-                    self._dates_indices)
+                existing_dates_indices = list(set(pandas.read_csv(path, nrows=0).columns).intersection(
+                    self._dates_indices))
                 df = pandas.read_csv(
                     path,
                     parse_dates=existing_dates_indices,
