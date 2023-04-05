@@ -763,11 +763,11 @@ class CSVSource(DataframeSource):
                 raise ValueError("parse_dates can be list of str only when there is header")
             self._dates_indices = parse_dates
         if self._time_field is not None:
-            if isinstance(self._time_field, str):
-                if not self._with_header:
-                    raise ValueError("time field can be str only when there is header")
+            if not header and isinstance(self._time_field, str):
+                raise ValueError("time_field can only be set to an string when with_header is false")
             self._dates_indices.append(self._time_field)
-
+        if not header and isinstance(key_field, str):
+            raise ValueError("key_field can only be set to an integer when with_header is false")
         super().__init__([], **kwargs)
 
     def _init(self):
