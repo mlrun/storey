@@ -3613,9 +3613,9 @@ def test_csv_multiple_time_columns(tmpdir):
             [
                 CSVSource(
                     "tests/test-multiple-time-columns.csv",
-                    header=True,
+                    header=False,
                     time_field="t1",
-                    parse_dates=[2],
+                    parse_dates=["t2"],
                 ),
                 Reduce([], append_and_return),
             ]
