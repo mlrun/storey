@@ -764,9 +764,12 @@ class CSVSource(DataframeSource):
             self._dates_indices = parse_dates
         if self._time_field is not None:
             if not header and isinstance(self._time_field, str):
-                raise ValueError("time_field can only be set to an string when with_header is false")
+                raise ValueError("time_field can only be set to an integer when with_header is false")
             self._dates_indices.append(self._time_field)
-        if not header and isinstance(key_field, str):
+        if not header and (
+            isinstance(key_field, str)
+            or (isinstance(key_field, list) and any([isinstance(key, str) for key in key_field]))
+        ):
             raise ValueError("key_field can only be set to an integer when with_header is false")
         super().__init__([], **kwargs)
 
@@ -775,8 +778,9 @@ class CSVSource(DataframeSource):
         self._dfs = []
         for path in self._paths:
             if self._with_header:
-                existing_dates_indices = list(set(pandas.read_csv(path, nrows=0).columns).intersection(
-                    self._dates_indices))
+                existing_dates_indices = list(
+                    set(pandas.read_csv(path, nrows=0).columns).intersection(self._dates_indices)
+                )
                 df = pandas.read_csv(
                     path,
                     parse_dates=existing_dates_indices,
