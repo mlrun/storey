@@ -88,7 +88,8 @@ class SQLDriver(Driver):
 
     async def _get_all_fields(self, key, table):
         key = self._extract_list_of_keys(key)
-        select_object = db.select(table).where(db.and_(getattr(table.c, self._primary_key[i]) == key[i]                                            for i in range(len(self._primary_key))))
+        select_object = db.select(table).where(db.and_(getattr(table.c, self._primary_key[i]) == key[i]
+                                                       for i in range(len(self._primary_key))))
         results = pd.read_sql(select_object, con=self._sql_connection, parse_dates=self._time_fields)\
             .to_dict(orient="records")
         return results[0]
