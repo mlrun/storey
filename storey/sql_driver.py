@@ -88,19 +88,24 @@ class SQLDriver(Driver):
 
     async def _get_all_fields(self, key, table):
         key = self._extract_list_of_keys(key)
-        select_object = db.select(table).where(db.and_(getattr(table.c, self._primary_key[i]) == key[i]
-                                                       for i in range(len(self._primary_key))))
-        results = pd.read_sql(select_object, con=self._sql_connection, parse_dates=self._time_fields)\
-            .to_dict(orient="records")
+        select_object = db.select(table).where(
+          db.and_(getattr(table.c, self._primary_key[i]) == key[i] for i in range(len(self._primary_key)))
+        )
+        results = pd.read_sql(select_object, con=self._sql_connection, parse_dates=self._time_fields).to_dict(
+           orient="records"
+        )
+
         return results[0]
 
     async def _get_specific_fields(self, key: str, table, attributes: List[str]):
         key = self._extract_list_of_keys(key)
         try:
-            select_object = db.select(*[getattr(table.c, atr) for atr in attributes])\
-                .where(db.and_(getattr(table.c, self._primary_key[i]) == key[i] for i in range(len(self._primary_key))))
-            results = pd.read_sql(select_object, con=self._sql_connection, parse_dates=self._time_fields)\
-                .to_dict(orient="records")
+            select_object = db.select(*[getattr(table.c, atr) for atr in attributes]).where(
+                db.and_(getattr(table.c, self._primary_key[i]) == key[i] for i in range(len(self._primary_key)))
+            )
+            results = pd.read_sql(select_object, con=self._sql_connection, parse_dates=self._time_fields).to_dict(
+                orient="records"
+            )
         except Exception as e:
             raise RuntimeError(f"Failed to get key '{key}'") from e
 
@@ -110,11 +115,11 @@ class SQLDriver(Driver):
         return False
 
     def _update_by_key(self, key, data, sql_table):
-        self._sql_connection.execute(db.update(sql_table)
-                                     .values({getattr(sql_table.c, k): v
-                                              for k, v in data.items() if k not in self._primary_key})
-                                     .where(db.and_(getattr(sql_table.c, self._primary_key[i]) == key[i]
-                                                    for i in range(len(self._primary_key)))))
+        self._sql_connection.execute(
+            db.update(sql_table)
+                .values({getattr(sql_table.c, k): v for k, v in data.items() if k not in self._primary_key})
+                .where(db.and_(getattr(sql_table.c, self._primary_key[i]) == key[i] for i in range(len(self._primary_key))))
+        )
 
     @staticmethod
     def _extract_list_of_keys(key):
