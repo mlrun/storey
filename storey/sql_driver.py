@@ -117,8 +117,8 @@ class SQLDriver(Driver):
     def _update_by_key(self, key, data, sql_table):
         self._sql_connection.execute(
             db.update(sql_table)
-                .values({getattr(sql_table.c, k): v for k, v in data.items() if k not in self._primary_key})
-                .where(db.and_(getattr(sql_table.c, self._primary_key[i]) == key[i] for i in range(len(self._primary_key))))
+            .values({getattr(sql_table.c, k): v for k, v in data.items() if k not in self._primary_key})
+            .where(db.and_(getattr(sql_table.c, self._primary_key[i]) == key[i] for i in range(len(self._primary_key))))
         )
 
     @staticmethod
