@@ -309,10 +309,9 @@ class QueryByKey(AggregateByKey):
     :param table: A Table object or name for persistence of aggregations.
         If a table name is provided, it will be looked up in the context object passed in kwargs.
     :param key_field: Key field to query by, accepts either a string representing the key field or a key
-        extracting function. Defaults to the key in the event's metadata. (Optional)
+        extracting function. Defaults to the key in the event's metadata. Can be list of keys (Optional)
     :param time_field: Time field to query by, accepts either a string representing the time field or a time
         extracting function. Defaults to the processing time in the event's metadata. (Optional)
-     Defaults to the key in the event's metadata. (Optional). Can be list of keys
     :param augmentation_fn: Function that augments the features into the event's body.
         Defaults to updating a dict. (Optional)
     :param aliases: Dictionary specifying aliases for enriched or aggregate columns, of the
