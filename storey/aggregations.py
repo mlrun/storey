@@ -316,7 +316,7 @@ class QueryByKey(AggregateByKey):
     :param augmentation_fn: Function that augments the features into the event's body.
         Defaults to updating a dict. (Optional)
     :param aliases: Dictionary specifying aliases for enriched or aggregate columns, of the
-     format `{'col_name': 'new_col_name'}`. (Optional)
+        format `{'col_name': 'new_col_name'}`. (Optional)
     :param options: Enum flags specifying query options. (Optional)
     """
 
