@@ -1268,7 +1268,7 @@ def test_write_none_time(setup_teardown_test):
     )
 
     def set_moshe_time_to_none(data):
-        if data["index"] == "moshe":
+        if data["first_name"] == "moshe":
             data["time"] = pd.NaT
         return data
 
