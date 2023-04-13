@@ -87,19 +87,19 @@ class SQLDriver(Driver):
             self._sql_connection = None
 
     async def _get_all_fields(self, key, table):
-        where_clause = self._get_where_clause(key, table)
-        query = f"SELECT * FROM {table} where {where_clause}"
-        results = pd.read_sql(query, con=self._sql_connection, parse_dates=self._time_fields).to_dict(orient="records")
-
+        key = self._extract_list_of_keys(key)
+        select_object = db.select(table).where(db.and_(getattr(table.c, self._primary_key[i]) == key[i]                                            for i in range(len(self._primary_key))))
+        results = pd.read_sql(select_object, con=self._sql_connection, parse_dates=self._time_fields)\
+            .to_dict(orient="records")
         return results[0]
 
     async def _get_specific_fields(self, key: str, table, attributes: List[str]):
-        where_clause = self._get_where_clause(key, table)
+        key = self._extract_list_of_keys(key)
         try:
-            query = f"SELECT {','.join(attributes)} FROM {table} where {where_clause}"
-            results = pd.read_sql(query, con=self._sql_connection, parse_dates=self._time_fields).to_dict(
-                orient="records"
-            )
+            select_object = db.select(*[getattr(table.c, atr) for atr in attributes])\
+                .where(db.and_(getattr(table.c, self._primary_key[i]) == key[i] for i in range(len(self._primary_key))))
+            results = pd.read_sql(select_object, con=self._sql_connection, parse_dates=self._time_fields)\
+                .to_dict(orient="records")
         except Exception as e:
             raise RuntimeError(f"Failed to get key '{key}'") from e
 
@@ -108,23 +108,12 @@ class SQLDriver(Driver):
     def supports_aggregations(self):
         return False
 
-    def _get_where_clause(self, key, sql_table):
-        where_clause = ""
-        key = self._extract_list_of_keys(key)
-        for i in range(len(self._primary_key)):
-            if i != 0:
-                where_clause += " and "
-            if sql_table.columns[self._primary_key[i]].type.python_type == str:
-                where_clause += f'{self._primary_key[i]}="{key[i]}"'
-            else:
-                where_clause += f"{self._primary_key[i]}={key[i]}"
-        return where_clause
-
-    def _update_by_key(self, key, data, table):
-        where_clause = self._get_where_clause(key, table)
-        update_clause = " ,".join([f'{key}="{value}"' for key, value in data.items() if key not in self._primary_key])
-        sql_statement = f"UPDATE {table} SET {update_clause} where {where_clause}"
-        self._sql_connection.execute(sql_statement)
+    def _update_by_key(self, key, data, sql_table):
+        self._sql_connection.execute(db.update(sql_table)
+                                     .values({getattr(sql_table.c, k): v
+                                              for k, v in data.items() if k not in self._primary_key})
+                                     .where(db.and_(getattr(sql_table.c, self._primary_key[i]) == key[i]
+                                                    for i in range(len(self._primary_key)))))
 
     @staticmethod
     def _extract_list_of_keys(key):
