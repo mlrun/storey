@@ -796,6 +796,7 @@ class CSVSource(DataframeSource):
                 date_parser=lambda x: self._datetime_from_timestamp(x),
                 storage_options=self._storage_options,
             )
+            self.field_validator(df=df,key_field=self._key_field,id_field=self._id_field,path=path)
             self._dfs.append(df)
 
     def _datetime_from_timestamp(self, timestamp):
