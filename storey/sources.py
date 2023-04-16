@@ -675,7 +675,7 @@ class DataframeSource(_IterableSource, WithUUID):
     def _get_by_field_or_index(self, field, body: OrderedDict, field_type: str, raise_exception=False):
         result = body[field]
         if raise_exception:
-            self.is_nan_validator(result=result, body=body, field_type=field_type, field=field)
+            self._is_nan_validator(result=result, body=body, field_type=field_type, field=field)
         return result
 
     def field_validator(self, df, key_field, id_field, path="file path was not provided."):
@@ -689,7 +689,7 @@ class DataframeSource(_IterableSource, WithUUID):
     class NoneKeyException(Exception):
         pass
 
-    def is_nan_validator(self, result, body, field_type, field):
+    def _is_nan_validator(self, result, body, field_type, field):
         if pandas.isna(result) or result is None:
             raise self.NoneKeyException(f"For {body} value of {field_type} {field} is None")
 
@@ -804,7 +804,7 @@ class CSVSource(DataframeSource):
         else:
             result = list(body.items())[field][1]
             if raise_exception:
-                self.is_nan_validator(result=result, body=body, field_type=field_type, field=field)
+                self._is_nan_validator(result=result, body=body, field_type=field_type, field=field)
         return result
 
     def field_validator(self, df, key_field, id_field, path="file path was not provided."):
