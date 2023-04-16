@@ -690,9 +690,6 @@ class DataframeSource(_IterableSource, WithUUID):
     class NoneKeyException(Exception):
         pass
 
-    class SourceIndexError(IndexError):
-        pass
-
     def is_nan_validator(self, result, body, field_type, field):
         if pandas.isna(result) or result is None:
             raise self.NoneKeyException(f"For {body} value of {field_type} {field} is None")
@@ -806,10 +803,7 @@ class CSVSource(DataframeSource):
                 field=field, body=body, field_type=field_type, raise_exception=raise_exception
             )
         else:
-            try:
-                result = list(body.items())[field][1]
-            except IndexError as index_error:
-                raise self.SourceIndexError(f"IndexError occurred: {str(index_error)}, index: {field}.")
+            result = list(body.items())[field][1]
             if raise_exception:
                 self.is_nan_validator(result=result, body=body, field_type=field_type, field=field)
         return result
