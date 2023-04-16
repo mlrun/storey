@@ -686,9 +686,9 @@ class DataframeSource(_IterableSource, WithUUID):
         if raise_exception:
             self.is_nan_validator(result=result, body=body, field_type=field_type, field=field)
         return result
-    def field_validator(self,path,df,key_fields,id_field):
-        if key_fields:
-            missing_keys = set(key_fields) - set(df.columns)
+    def field_validator(self,path,df,key_field,id_field):
+        if key_field:
+            missing_keys = set(key_field) - set(df.columns)
             if missing_keys:
                 raise KeyError(f'KeyError: keys {missing_keys} missing from df. Df path: {path}')
         if id_field and id_field not in df.columns:
@@ -925,6 +925,8 @@ class ParquetSource(DataframeSource):
                 df = self._read_filtered_parquet(path)
             else:
                 df = pandas.read_parquet(path, columns=self._columns, storage_options=self._storage_options)
+                self.field_validator(path=path, df=df, key_fields=self._key_field, )
+
             self._dfs.append(df)
 
 
