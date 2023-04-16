@@ -686,7 +686,13 @@ class DataframeSource(_IterableSource, WithUUID):
         if raise_exception:
             self.is_nan_validator(result=result, body=body, field_type=field_type, field=field)
         return result
-
+    def field_validator(self,path,df,key_fields,id_field):
+        if key_fields:
+            missing_keys = set(key_fields) - set(df.columns)
+            if missing_keys:
+                raise KeyError(f'KeyError: keys {missing_keys} missing from df. Df path: {path}')
+        if id_field and id_field not in df.columns:
+            raise KeyError(f'KeyError: id field {id_field} missing from df. Df path: {path}')
     class NoneKeyException(Exception):
         pass
 
