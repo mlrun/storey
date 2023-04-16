@@ -925,8 +925,7 @@ class ParquetSource(DataframeSource):
                 df = self._read_filtered_parquet(path)
             else:
                 df = pandas.read_parquet(path, columns=self._columns, storage_options=self._storage_options)
-                self.field_validator(path=path, df=df, key_fields=self._key_field, )
-
+                self.field_validator(path=path, df=df, key_field=self._key_field, id_field=self._id_field)
             self._dfs.append(df)
 
 
