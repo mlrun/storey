@@ -682,7 +682,7 @@ class DataframeSource(_IterableSource, WithUUID):
         df = df.reset_index()
         if key_field:
             key_field = [key_field] if not isinstance(key_field, list) else key_field
-            missing_keys = set(key_field) - set(df.columns)
+            missing_keys = list(set(key_field) - set(df.columns))
             if missing_keys:
                 raise KeyError(f"KeyError occurred: keys {missing_keys} missing from df. Df path: {path}")
         if id_field and id_field not in df.columns:
