@@ -670,10 +670,7 @@ class DataframeSource(_IterableSource, WithUUID):
         return await self._do_downstream(_termination_obj)
 
     def get_by_field_or_index(self, field, body: OrderedDict, field_type: str, raise_exception=False):
-        try:
-            result = body[field]
-        except KeyError as key_error:
-            raise self.SourceKeyError(f"KeyError occurred: {str(key_error)}")
+        result = body[field]
         if raise_exception:
             self.is_nan_validator(result=result, body=body, field_type=field_type, field=field)
         return result
@@ -691,9 +688,6 @@ class DataframeSource(_IterableSource, WithUUID):
             self.field_validator(df=df, key_field=key_field, id_field=id_field)
 
     class NoneKeyException(Exception):
-        pass
-
-    class SourceKeyError(KeyError):
         pass
 
     class SourceIndexError(IndexError):
