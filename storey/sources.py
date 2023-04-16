@@ -642,7 +642,7 @@ class DataframeSource(_IterableSource, WithUUID):
                 )
         return key
 
-    def get_element(self, body: OrderedDict):
+    def _get_element(self, body: OrderedDict):
         return dict(body)
 
     async def _run_loop(self):
@@ -790,7 +790,7 @@ class CSVSource(DataframeSource):
         else:
             return datetime.fromisoformat(timestamp)
 
-    def get_element(self, body: OrderedDict):
+    def _get_element(self, body: OrderedDict):
         if self._build_dict and self._with_header:
             return dict(body)
         return list(body.values())
