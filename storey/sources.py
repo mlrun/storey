@@ -622,7 +622,7 @@ class DataframeSource(_IterableSource, WithUUID):
             dfs = [dfs]
         if dfs:
             for df in dfs:
-                self.field_validator(df=df, key_field=key_field, id_field=id_field)
+                self._field_validator(df=df, key_field=key_field, id_field=id_field)
         self._dfs = dfs
         self._key_field = key_field
         self._id_field = id_field
@@ -678,7 +678,7 @@ class DataframeSource(_IterableSource, WithUUID):
             self._is_nan_validator(result=result, body=body, field_type=field_type, field=field)
         return result
 
-    def field_validator(self, df, key_field, id_field, path="file path was not provided."):
+    def _field_validator(self, df, key_field, id_field, path="file path was not provided."):
         if key_field:
             missing_keys = set(key_field) - set(df.columns)
             if missing_keys:
@@ -779,7 +779,7 @@ class CSVSource(DataframeSource):
                 date_parser=lambda x: self._datetime_from_timestamp(x),
                 storage_options=self._storage_options,
             )
-            self.field_validator(df=df, key_field=self._key_field, id_field=self._id_field, path=path)
+            self._field_validator(df=df, key_field=self._key_field, id_field=self._id_field, path=path)
             self._dfs.append(df)
 
     def _datetime_from_timestamp(self, timestamp):
@@ -807,7 +807,7 @@ class CSVSource(DataframeSource):
                 self._is_nan_validator(result=result, body=body, field_type=field_type, field=field)
         return result
 
-    def field_validator(self, df, key_field, id_field, path="file path was not provided."):
+    def _field_validator(self, df, key_field, id_field, path="file path was not provided."):
         str_key_field = []
         str_id_field = None
         if id_field is not None:
@@ -824,7 +824,7 @@ class CSVSource(DataframeSource):
                     f"IndexError: keys {out_of_range_keys} are int and isn't in df index range. Df path: {path}"
                 )
 
-        super().field_validator(df=df, key_field=str_key_field, id_field=str_id_field, path=path)
+        super()._field_validator(df=df, key_field=str_key_field, id_field=str_id_field, path=path)
 
 
 class ParquetSource(DataframeSource):
@@ -929,7 +929,7 @@ class ParquetSource(DataframeSource):
                 df = self._read_filtered_parquet(path)
             else:
                 df = pandas.read_parquet(path, columns=self._columns, storage_options=self._storage_options)
-            self.field_validator(df=df, key_field=self._key_field, id_field=self._id_field, path=path)
+            self._field_validator(df=df, key_field=self._key_field, id_field=self._id_field, path=path)
             self._dfs.append(df)
 
 
