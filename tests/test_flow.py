@@ -393,10 +393,10 @@ def test_csv_reader_none_in_keyfield_should_send_error_log():
 def test_csv_reader_source_key_error():
     logger = MockLogger()
     context = MockContext(logger, True)
+    error_keys = ['not_exist']
     with pytest.raises(
-            KeyError,
-            match=f"^KeyError occurred: keys ['not_exist'] missing from df. Df path: tests/test.csv$",
-    ):
+            KeyError
+    ) as value_error:
         controller = build_flow(
             [
                 CSVSource("tests/test.csv", header=True, key_field="not_exist", context=context),
@@ -404,6 +404,9 @@ def test_csv_reader_source_key_error():
         ).run()
 
         controller.await_termination()
+    assert str(value_error.value) == '"KeyError occurred: keys [\'not_exist\'' \
+                                     '] missing from df. Df path: tests/test.csv"'
+
 
 
 def test_csv_reader_source_index_error():
