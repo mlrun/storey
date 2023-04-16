@@ -777,26 +777,15 @@ class CSVSource(DataframeSource):
         super()._init()
         self._dfs = []
         for path in self._paths:
-            if self._with_header:
-                existing_dates_indices = list(
-                    set(pandas.read_csv(path, nrows=0).columns).intersection(self._dates_indices)
-                )
-                df = pandas.read_csv(
-                    path,
-                    parse_dates=existing_dates_indices,
-                    date_parser=lambda x: self._datetime_from_timestamp(x),
-                    storage_options=self._storage_options,
-                )
-            else:
-                #  with 'header = None' it will automatically put indexes as columns.
-                df = pandas.read_csv(
-                    path,
-                    parse_dates=self._dates_indices,
-                    header=None,
-                    date_parser=lambda x: self._datetime_from_timestamp(x),
-                    storage_options=self._storage_options,
-                )
-                df.columns = range(df.shape[1])
+            header = 0 if self._with_header else None
+            #  with 'header = None' it will automatically put indexes as columns.
+            df = pandas.read_csv(
+                path,
+                header=header,
+                parse_dates=self._dates_indices,
+                date_parser=lambda x: self._datetime_from_timestamp(x),
+                storage_options=self._storage_options,
+            )
             self._dfs.append(df)
 
     def _datetime_from_timestamp(self, timestamp):
