@@ -620,6 +620,9 @@ class DataframeSource(_IterableSource, WithUUID):
         WithUUID.__init__(self)
         if isinstance(dfs, pandas.DataFrame):
             dfs = [dfs]
+        if dfs:
+            for df in dfs:
+                self.field_validator(df=df, key_field=key_field, id_field=id_field)
         self._dfs = dfs
         self._key_field = key_field
         self._id_field = id_field
@@ -682,10 +685,6 @@ class DataframeSource(_IterableSource, WithUUID):
                 raise KeyError(f"KeyError: keys {missing_keys} missing from df. Df path: {path}")
         if id_field and id_field not in df.columns:
             raise KeyError(f"KeyError: id field {id_field} missing from df. Df path: {path}")
-
-    def dfs_field_validator(self, dfs: List[pandas.DataFrame], key_field, id_field):
-        for df in dfs:
-            self.field_validator(df=df, key_field=key_field, id_field=id_field)
 
     class NoneKeyException(Exception):
         pass
