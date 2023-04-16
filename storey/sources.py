@@ -634,10 +634,10 @@ class DataframeSource(_IterableSource, WithUUID):
                 key = []
                 for key_field in self._key_field:
                     key.append(
-                        self.get_by_field_or_index(field=key_field, body=body, field_type="key", raise_exception=True)
+                        self._get_by_field_or_index(field=key_field, body=body, field_type="key", raise_exception=True)
                     )
             else:
-                key = self.get_by_field_or_index(
+                key = self._get_by_field_or_index(
                     field=self._key_field, body=body, field_type="key", raise_exception=True
                 )
         return key
@@ -658,12 +658,12 @@ class DataframeSource(_IterableSource, WithUUID):
                 try:
                     key = self.get_key(body=body)
                     if self._id_field:
-                        line_id = self.get_by_field_or_index(
+                        line_id = self._get_by_field_or_index(
                             field=self._id_field, body=body, field_type="id", raise_exception=False
                         )
                     else:
                         line_id = self._get_uuid()
-                    element = self.get_element(body=body)
+                    element = self._get_element(body=body)
                     event = Event(element, key=key, id=line_id)
                     await self._do_downstream(event)
                 except self.NoneKeyException as key_error:
@@ -672,7 +672,7 @@ class DataframeSource(_IterableSource, WithUUID):
 
         return await self._do_downstream(_termination_obj)
 
-    def get_by_field_or_index(self, field, body: OrderedDict, field_type: str, raise_exception=False):
+    def _get_by_field_or_index(self, field, body: OrderedDict, field_type: str, raise_exception=False):
         result = body[field]
         if raise_exception:
             self.is_nan_validator(result=result, body=body, field_type=field_type, field=field)
@@ -795,10 +795,10 @@ class CSVSource(DataframeSource):
             return dict(body)
         return list(body.values())
 
-    def get_by_field_or_index(self, field, body: OrderedDict, field_type: str, raise_exception=False):
+    def _get_by_field_or_index(self, field, body: OrderedDict, field_type: str, raise_exception=False):
         result = None
         if self._with_header and isinstance(field, str):
-            result = super().get_by_field_or_index(
+            result = super()._get_by_field_or_index(
                 field=field, body=body, field_type=field_type, raise_exception=raise_exception
             )
         else:
