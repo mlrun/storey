@@ -679,6 +679,7 @@ class DataframeSource(_IterableSource, WithUUID):
         return result
 
     def _field_validator(self, df, key_field, id_field, path="file path was not provided."):
+        df = df.reset_index()
         if key_field:
             key_field = [key_field] if not isinstance(key_field, list) else key_field
             missing_keys = set(key_field) - set(df.columns)
