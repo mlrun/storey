@@ -412,16 +412,17 @@ def test_csv_reader_source_index_error():
     logger = MockLogger()
     context = MockContext(logger, True)
 
-    controller = build_flow(
-        [
-            CSVSource("tests/test.csv", header=True, key_field=3, context=context),
-        ]
-    ).run()
+    with pytest.raises(
+            IndexError,
+            match="^IndexError: keys [3] are int and isn\'t in df index range. Df path: tests/test.csv$",
+    ):
+        controller = build_flow(
+            [
+                CSVSource("tests/test.csv", header=True, key_field=3, context=context),
+            ]
+        ).run()
 
     controller.await_termination()
-
-    assert "error" == logger.logs[0][0]
-    assert "IndexError occurred: list index out of range, index: 3." in logger.logs[0][1][0]
 
 
 def test_dataframe_source():
