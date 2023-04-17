@@ -393,9 +393,7 @@ def test_csv_reader_none_in_keyfield_should_send_error_log():
 def test_csv_reader_source_key_error():
     logger = MockLogger()
     context = MockContext(logger, True)
-    with pytest.raises(
-            KeyError
-    ) as value_error:
+    with pytest.raises(KeyError) as value_error:
         controller = build_flow(
             [
                 CSVSource("tests/test.csv", header=True, key_field="not_exist", context=context),
@@ -403,26 +401,27 @@ def test_csv_reader_source_key_error():
         ).run()
 
         controller.await_termination()
-    assert str(value_error.value) == '"KeyError occurred: keys [\'not_exist\'' \
-                                     '] missing from df. Df path: tests/test.csv"'
-
+    assert (
+        str(value_error.value) == "\"KeyError occurred: keys ['not_exist'" '] missing from df. Df path: tests/test.csv"'
+    )
 
 
 def test_csv_reader_source_index_error():
     logger = MockLogger()
     context = MockContext(logger, True)
-
+    controller = build_flow(
+        [
+            CSVSource("tests/test.csv", header=True, key_field=3, context=context),
+        ]
+    )
     with pytest.raises(
-            IndexError,
-            match="^IndexError: keys [3] are int and isn\'t in df index range. Df path: tests/test.csv$",
-    ):
-        controller = build_flow(
-            [
-                CSVSource("tests/test.csv", header=True, key_field=3, context=context),
-            ]
-        ).run()
-
-    controller.await_termination()
+        IndexError,
+    ) as index_error:
+        controller = controller.run()
+        controller.await_termination()
+    assert (
+        str(index_error.value) == "IndexError: keys [3] are int and are not in df index range. Df path: tests/test.csv"
+    )
 
 
 def test_dataframe_source():

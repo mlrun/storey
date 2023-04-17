@@ -824,7 +824,7 @@ class CSVSource(DataframeSource):
             out_of_range_keys = [int_key for int_key in int_key_field if int_key < 0 or int_key >= len(df.columns)]
             if out_of_range_keys:
                 raise IndexError(
-                    f"IndexError: keys {out_of_range_keys} are int and isn't in df index range. Df path: {path}"
+                    f"IndexError: keys {out_of_range_keys} are int and are not in df index range. Df path: {path}"
                 )
 
         super()._field_validator(df=df, key_field=str_key_field, id_field=str_id_field, path=path)
