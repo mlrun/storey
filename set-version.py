@@ -26,7 +26,7 @@ def set_version():
     with open(init_py) as fp:
         for line in fp:
             if "__version__" in line:
-                line = f"__version__ = '{version}'\n"
+                line = f'__version__ = "{version}"\n'
             lines.append(line)
 
     with open(init_py, "w") as out:
