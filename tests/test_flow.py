@@ -4039,7 +4039,9 @@ def test_read_sql_db():
         origin_df.to_sql("table_1; DROP DATABASE test;", conn, if_exists="replace", index=False)
     controller = build_flow(
         [
-            SQLSource("sqlite:///test.db", "table_1; DROP DATABASE test;", "string", id_field="int", time_fields=["time"]),
+            SQLSource(
+                "sqlite:///test.db", "table_1; DROP DATABASE test;", "string", id_field="int", time_fields=["time"]
+            ),
             Reduce([], append_and_return),
         ]
     ).run()
