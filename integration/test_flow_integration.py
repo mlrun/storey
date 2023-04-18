@@ -688,7 +688,7 @@ def test_inner_join_by_key(setup_kv_teardown_test):
 
 
 def test_write_table_specific_columns(setup_teardown_test):
-    keys = ["drop table;"]
+    keys = ["drop table;"]  # using 'drop table;' as key for testing SQL injection
     time_fields = ["sometime", "first_activity", "last_event"]
     table = _get_table(
         setup_teardown_test,
