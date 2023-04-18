@@ -393,7 +393,6 @@ def test_parse_dates_index_error(datetime_field):
                 )
             ]
         ).run()
-
         controller.await_termination()
 
 
