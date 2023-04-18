@@ -688,12 +688,12 @@ def test_inner_join_by_key(setup_kv_teardown_test):
 
 
 def test_write_table_specific_columns(setup_teardown_test):
-    keys = ["index"]
+    keys = ["drop table;"]
     time_fields = ["sometime", "first_activity", "last_event"]
     table = _get_table(
         setup_teardown_test,
         {
-            "index": str,
+            "drop table;": str,
             "color": str,
             "age": int,
             "iss": bool,
@@ -735,7 +735,7 @@ def test_write_table_specific_columns(setup_teardown_test):
             SyncEmitSource(),
             MapWithState(table, enrich, group_by_key=True),
             DropColumns("sometime"),
-            NoSqlTarget(table, columns=["twice_total_activities", "index=$key"]),
+            NoSqlTarget(table, columns=["twice_total_activities", "drop table;=$key"]),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
     ).run()
@@ -825,7 +825,7 @@ def test_write_table_specific_columns(setup_teardown_test):
         "twice_total_activities": 20,
         "min": 1,
         "Avg": 3,
-        "index": "tal",
+        "drop table;": "tal",
     }
 
     actual_cache = get_key_all_attrs_test_helper(setup_teardown_test, "tal", keys, time_fields)
@@ -839,7 +839,7 @@ def test_write_table_specific_columns(setup_teardown_test):
             SyncEmitSource(),
             MapWithState(table, enrich, group_by_key=True),
             DropColumns("sometime"),
-            NoSqlTarget(table, columns=["twice_total_activities", "index=$key"]),
+            NoSqlTarget(table, columns=["twice_total_activities", "drop table;=$key"]),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
     ).run()
