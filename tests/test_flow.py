@@ -391,12 +391,10 @@ def test_csv_reader_none_in_keyfield_should_send_error_log():
 
 
 def test_csv_reader_key_error():
-    logger = MockLogger()
-    context = MockContext(logger, True)
     with pytest.raises(KeyError) as value_error:
         controller = build_flow(
             [
-                CSVSource("tests/test.csv", header=True, key_field="not_exist", context=context),
+                CSVSource("tests/test.csv", header=True, key_field="not_exist"),
             ]
         ).run()
 
@@ -407,11 +405,9 @@ def test_csv_reader_key_error():
 
 
 def test_csv_reader_index_error():
-    logger = MockLogger()
-    context = MockContext(logger, True)
     controller = build_flow(
         [
-            CSVSource("tests/test.csv", header=True, key_field=3, context=context),
+            CSVSource("tests/test.csv", header=True, key_field=3),
         ]
     )
     with pytest.raises(
