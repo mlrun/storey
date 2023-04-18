@@ -434,6 +434,20 @@ def test_csv_reader_index_error():
     )
 
 
+def test_csv_reader_id_index_error():
+    controller = build_flow(
+        [
+            CSVSource("tests/test.csv", header=True, id_field=3),
+        ]
+    )
+    with pytest.raises(
+        IndexError,
+    ) as index_error:
+        controller = controller.run()
+        controller.await_termination()
+    assert str(index_error.value) == "IndexError: id 3 is int and isn't in df index range. Df path: tests/test.csv"
+
+
 def test_dataframe_source():
     df = pd.DataFrame([["hello", 1, 1.5], ["world", 2, 2.5]], columns=["string", "int", "float"])
     controller = build_flow(
