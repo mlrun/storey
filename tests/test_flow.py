@@ -363,7 +363,7 @@ def test_csv_reader_with_key_and_timestamp():
 @pytest.mark.parametrize(
     "datetime_field", [{"parse_dates": ["t", "non_existent_column"]}, {"time_field": "non_existent_column"}]
 )
-def test_parse_dates_not_exists(datetime_field):
+def test_parse_dates_key_error(datetime_field):
     with pytest.raises(ValueError) as value_error:
         controller = build_flow(
             [
