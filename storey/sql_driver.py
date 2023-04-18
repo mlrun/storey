@@ -125,6 +125,6 @@ class SQLDriver(Driver):
     def _extract_list_of_keys(key):
         if isinstance(key, str):
             key = key.split(".")
-        if isinstance(key, int):
+        elif not isinstance(key, list):
             key = [key]
         return key
