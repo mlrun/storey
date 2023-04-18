@@ -378,7 +378,8 @@ def test_parse_dates_not_exists():
     assert str(value_error.value) == "Missing column provided to 'parse_dates': 'not_exist_column'"
 
 
-def test_parse_dates_index_error():
+@pytest.mark.parametrize("datetime_field", [{'parse_dates': ["t", 10]}, {'time_field': 10}])
+def test_parse_dates_index_error(datetime_field):
     with pytest.raises(IndexError):
         controller = build_flow(
             [
@@ -386,8 +387,9 @@ def test_parse_dates_index_error():
                     "tests/test-with-timestamp.csv",
                     header=True,
                     key_field="k",
-                    parse_dates=["t", 10],
+                    **datetime_field,
                     timestamp_format="%d/%m/%Y %H:%M:%S",
+
                 )
             ]
         ).run()
