@@ -376,7 +376,6 @@ def test_parse_dates_not_exists(datetime_field):
                 )
             ]
         ).run()
-
         controller.await_termination()
     assert str(value_error.value) == "Missing column provided to 'parse_dates': 'non_existent_column'"
 
