@@ -135,21 +135,13 @@ def _get_sql_by_key_all_attrs(
         autoload=True,
         autoload_with=engine,
     )
-
-    where_statement = ""
     if isinstance(key, str):
         key = key.split(".")
-    if isinstance(key, list):
-        for i in range(len(key_name)):
-            if i != 0:
-                where_statement += " and "
-            if sql_table.columns[key_name[i]].type.python_type == str:
-                where_statement += f'{key_name[i]}="{key[i]}"'
-            else:
-                where_statement += f"{key_name[i]}={key[i]}"
-    query = f"SELECT * FROM {sql_table} where ({where_statement})"
+    select_object = db.select(sql_table).where(
+        db.and_(getattr(sql_table.c, key_name[i]) == key[i] for i in range(len(key_name)))
+    )
     with engine.connect() as conn:
-        return pd.read_sql(query, con=conn, parse_dates=time_fields).to_dict(orient="records")[0]
+        return pd.read_sql(select_object, con=conn, parse_dates=time_fields).to_dict(orient="records")[0]
 
 
 def get_key_all_attrs_test_helper(
@@ -696,12 +688,12 @@ def test_inner_join_by_key(setup_kv_teardown_test):
 
 
 def test_write_table_specific_columns(setup_teardown_test):
-    keys = ["my_key"]
+    keys = ["index"]
     time_fields = ["sometime", "first_activity", "last_event"]
     table = _get_table(
         setup_teardown_test,
         {
-            "my_key": str,
+            "index": str,
             "color": str,
             "age": int,
             "iss": bool,
@@ -743,7 +735,7 @@ def test_write_table_specific_columns(setup_teardown_test):
             SyncEmitSource(),
             MapWithState(table, enrich, group_by_key=True),
             DropColumns("sometime"),
-            NoSqlTarget(table, columns=["twice_total_activities", "my_key=$key"]),
+            NoSqlTarget(table, columns=["twice_total_activities", "index=$key"]),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
     ).run()
@@ -833,7 +825,7 @@ def test_write_table_specific_columns(setup_teardown_test):
         "twice_total_activities": 20,
         "min": 1,
         "Avg": 3,
-        "my_key": "tal",
+        "index": "tal",
     }
 
     actual_cache = get_key_all_attrs_test_helper(setup_teardown_test, "tal", keys, time_fields)
@@ -847,7 +839,7 @@ def test_write_table_specific_columns(setup_teardown_test):
             SyncEmitSource(),
             MapWithState(table, enrich, group_by_key=True),
             DropColumns("sometime"),
-            NoSqlTarget(table, columns=["twice_total_activities", "my_key=$key"]),
+            NoSqlTarget(table, columns=["twice_total_activities", "index=$key"]),
             Reduce([], lambda acc, x: append_return(acc, x)),
         ]
     ).run()

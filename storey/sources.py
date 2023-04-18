@@ -1081,8 +1081,16 @@ class SQLSource(_IterableSource, WithUUID):
 
         engine = db.create_engine(self.db_path)
         with engine.connect() as conn:
-            query = f"SELECT * FROM {self.table_name}"
-            cursor = pandas.read_sql(query, con=conn, parse_dates=self.time_fields, chunksize=100)
+            metadata = db.MetaData()
+
+            table = db.Table(
+                self.table_name,
+                metadata,
+                autoload=True,
+                autoload_with=engine,
+            )
+            select_object = db.select(table)
+            cursor = pandas.read_sql(select_object, con=conn, parse_dates=self.time_fields, chunksize=100)
 
             for df in cursor:
                 for row in df.itertuples(index=False):
