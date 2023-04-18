@@ -378,6 +378,23 @@ def test_parse_dates_not_exists():
     assert str(value_error.value) == "Missing column provided to 'parse_dates': 'not_exist_column'"
 
 
+def test_parse_dates_index_error():
+    with pytest.raises(IndexError):
+        controller = build_flow(
+            [
+                CSVSource(
+                    "tests/test-with-timestamp.csv",
+                    header=True,
+                    key_field="k",
+                    parse_dates=["t", 10],
+                    timestamp_format="%d/%m/%Y %H:%M:%S",
+                )
+            ]
+        ).run()
+
+        controller.await_termination()
+
+
 def test_csv_reader_as_dict_no_header():
     controller = build_flow(
         [
