@@ -135,21 +135,13 @@ def _get_sql_by_key_all_attrs(
         autoload=True,
         autoload_with=engine,
     )
-
-    where_statement = ""
     if isinstance(key, str):
         key = key.split(".")
-    if isinstance(key, list):
-        for i in range(len(key_name)):
-            if i != 0:
-                where_statement += " and "
-            if sql_table.columns[key_name[i]].type.python_type == str:
-                where_statement += f'test_table."{key_name[i]}"="{key[i]}"'
-            else:
-                where_statement += f'test_table."{key_name[i]}"={key[i]}'
-    query = f"SELECT * FROM {sql_table.name} as test_table where {where_statement}"
+    select_object = db.select(sql_table).where(
+        db.and_(getattr(sql_table.c, key_name[i]) == key[i] for i in range(len(key_name)))
+    )
     with engine.connect() as conn:
-        return pd.read_sql(query, con=conn, parse_dates=time_fields).to_dict(orient="records")[0]
+        return pd.read_sql(select_object, con=conn, parse_dates=time_fields).to_dict(orient="records")[0]
 
 
 def get_key_all_attrs_test_helper(
