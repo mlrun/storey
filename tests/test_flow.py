@@ -368,7 +368,7 @@ def test_parse_dates_not_exists():
                     "tests/test-with-timestamp.csv",
                     header=True,
                     key_field="t",
-                    parse_dates=["k", "not_exist_column"],
+                    parse_dates=["t", "not_exist_column"],
                     timestamp_format="%d/%m/%Y %H:%M:%S",
                 )
             ]
