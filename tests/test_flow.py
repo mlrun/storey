@@ -360,6 +360,24 @@ def test_csv_reader_with_key_and_timestamp():
     assert termination_result[1].body == ["m2", datetime(2020, 2, 16, 2, 0), 14, False]
 
 
+def test_parse_dates_not_exists():
+    with pytest.raises(ValueError) as value_error:
+        controller = build_flow(
+            [
+                CSVSource(
+                    "tests/test-with-timestamp.csv",
+                    header=True,
+                    key_field="k",
+                    parse_dates=["k", "not_exist_column"],
+                    timestamp_format="%d/%m/%Y %H:%M:%S",
+                )
+            ]
+        ).run()
+
+        controller.await_termination()
+    assert str(value_error.value) == "Missing column provided to 'parse_dates': 'not_exist_column'"
+
+
 def test_csv_reader_as_dict_no_header():
     controller = build_flow(
         [
