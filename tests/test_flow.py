@@ -436,9 +436,7 @@ def test_csv_reader_key_error():
         ).run()
 
         controller.await_termination()
-    assert (
-        str(value_error.value) == "keys ['not_exist'] missing from df. Df path: tests/test.csv"
-    )
+    assert str(value_error.value) == "keys ['not_exist'] missing from df. Df path: tests/test.csv"
 
 
 def test_csv_reader_id_key_error():
@@ -450,9 +448,7 @@ def test_csv_reader_id_key_error():
         ).run()
 
         controller.await_termination()
-    assert (
-        str(value_error.value) == "id field 'not_exist' missing from df. Df path: tests/test.csv"
-    )
+    assert str(value_error.value) == "id field 'not_exist' missing from df. Df path: tests/test.csv"
 
 
 def test_csv_reader_index_error():
@@ -3597,8 +3593,7 @@ def test_field_validator_key():
         controller.await_termination()
 
     assert (
-        str(value_error.value)
-        == "keys ['non_existent_column'] missing from df. Df path: file path was not provided."
+        str(value_error.value) == "keys ['non_existent_column'] missing from df. Df path: file path was not provided."
     )
 
 
@@ -3614,8 +3609,7 @@ def test_field_validator_id():
         controller.await_termination()
 
     assert (
-        str(value_error.value)
-        == "id field 'non_existent_column' missing from df. Df path: file path was not provided."
+        str(value_error.value) == "id field 'non_existent_column' missing from df. Df path: file path was not provided."
     )
 
 
