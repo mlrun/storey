@@ -428,7 +428,7 @@ def test_csv_reader_none_in_keyfield_should_send_error_log():
 
 
 def test_csv_reader_key_error():
-    with pytest.raises(KeyError) as value_error:
+    with pytest.raises(ValueError) as value_error:
         controller = build_flow(
             [
                 CSVSource("tests/test.csv", header=True, key_field="not_exist"),
@@ -437,7 +437,7 @@ def test_csv_reader_key_error():
 
         controller.await_termination()
     assert (
-        str(value_error.value) == "\"KeyError occurred: keys ['not_exist'" '] missing from df. Df path: tests/test.csv"'
+        str(value_error.value) == "keys ['not_exist'] missing from df. Df path: tests/test.csv"
     )
 
 
