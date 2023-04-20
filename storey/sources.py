@@ -716,6 +716,7 @@ class CSVSource(DataframeSource):
     :parameter type_inference: Whether to infer data types from the data (when True), or read all fields in as strings
         (when False). Defaults to True.
     :parameter parse_dates: list of columns (names or integers) that will be attempted to parse as date column
+
     for additional params, see documentation of  :class:`~storey.flow.Flow`
     """
 
