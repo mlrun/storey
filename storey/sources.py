@@ -698,17 +698,24 @@ class DataframeSource(_IterableSource, WithUUID):
 
 
 class CSVSource(DataframeSource):
-    """Reads Csv files as input source for a flow.
-
-    :parameter paths: paths to Parquet files
-    :parameter columns : list, default=None. If not None, only these columns will be read from the file.
-    :parameter start_filter: datetime. If not None, the results will be filtered by partitions and
-        'filter_column' > start_filter. Default is None.
-    :parameter end_filter: datetime. If not None, the results will be filtered by partitions
-        'filter_column' <= end_filter. Default is None.
-    :parameter filter_column: Optional. if not None, the results will be filtered by this column and before and/or after
-    :param key_field: column to be used as key for events. can be list of columns
-    :param id_field: column to be used as ID for events.
+    """
+    Reads CSV files as input source for a flow.
+    :parameter paths: paths to CSV files
+    :parameter header: whether CSV files have a header or not. Defaults to False.
+    :parameter build_dict: whether to format each record produced from the input file as a dictionary (as opposed to a
+        list). Default to False.
+    :parameter key_field: the CSV field to be used as the key for events. May be an int (field index) or string (field
+        name) if with_header is True. Defaults to None (no key). Can be a list of keys
+    :parameter time_field: the CSV field to be parsed as the timestamp for events. May be an int (field index) or string
+        (field name) if with_header is True. Defaults to None (no timestamp field).
+    :parameter timestamp_format: timestamp format as defined in datetime.strptime(). Default to ISO-8601 as defined in
+        datetime.fromisoformat().
+    :parameter id_field: the CSV field to be used as the ID for events. May be an int (field index) or string (field
+        name) if with_header is True. Defaults to None (random ID will be generated per event).
+    :parameter type_inference: Whether to infer data types from the data (when True), or read all fields in as strings
+        (when False). Defaults to True.
+    :parameter parse_dates: list of columns (names or integers) that will be attempted to parse as date column
+    for additional params, see documentation of  :class:`~storey.flow.Flow`
     """
 
     def __init__(
