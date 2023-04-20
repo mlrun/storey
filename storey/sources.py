@@ -187,8 +187,7 @@ class FlowController(FlowControllerBase):
         :param return_awaitable_result: Deprecated! An awaitable result object will be returned if a Complete step
             appears in the flow.
         :param expected_number_of_results: Number of times the event will have to pass through a Complete step to be
-            completed (for graph
-        flows).
+            completed (for graph flows).
 
         :returns: AsyncAwaitableResult if a Complete appears in the flow. None otherwise.
         """
@@ -464,7 +463,7 @@ class AsyncFlowController(FlowControllerBase):
         :param key: The event key(s) (optional)
         :param await_result: Deprecated. Will await a result if a Complete step appears in the flow.
         :param expected_number_of_results: Number of times the event will have to pass through a Complete step to be
-        completed (for graph flows).
+            completed (for graph flows).
 
         :returns: The result received from the flow if a Complete step appears in the flow. None otherwise.
         """
@@ -701,6 +700,73 @@ class _IterableSource(Flow):
     async def run_async(self):
         self._closeables = super().run()
         return await self._run_loop()
+
+
+class DataframeSource(_IterableSource, WithUUID):
+    """Use pandas dataframe as input source for a flow.
+
+    :param dfs: A pandas dataframe, or dataframes, to be used as input source for the flow.
+    :param key_field: column to be used as key for events. can be list of columns
+    :param id_field: column to be used as ID for events.
+
+    for additional params, see documentation of  :class:`~storey.flow.Flow`
+    """
+
+    def __init__(
+        self,
+        dfs: Union[pandas.DataFrame, Iterable[pandas.DataFrame]],
+        key_field: Optional[Union[str, List[str]]] = None,
+        id_field: Optional[str] = None,
+        **kwargs,
+    ):
+        if key_field is not None:
+            kwargs["key_field"] = key_field
+        if id_field is not None:
+            kwargs["id_field"] = id_field
+        _IterableSource.__init__(self, **kwargs)
+        WithUUID.__init__(self)
+        if isinstance(dfs, pandas.DataFrame):
+            dfs = [dfs]
+        self._dfs = dfs
+        self._key_field = key_field
+        self._id_field = id_field
+
+    async def _run_loop(self):
+        for df in self._dfs:
+            for namedtuple in df.itertuples():
+                create_event = True
+                body = namedtuple._asdict()
+                index = body.pop("Index")
+                if len(df.index.names) > 1:
+                    for i, index_column in enumerate(df.index.names):
+                        body[index_column] = index[i]
+                elif df.index.names[0] is not None:
+                    body[df.index.names[0]] = index
+
+                key = None
+                if self._key_field:
+                    if isinstance(self._key_field, list):
+                        key = []
+                        for key_field in self._key_field:
+                            if key_field not in body or pandas.isna(body[key_field]):
+                                create_event = False
+                                break
+                            key.append(body[key_field])
+                    else:
+                        key = body[self._key_field]
+                        if key is None:
+                            create_event = False
+                if create_event:
+                    if self._id_field:
+                        id = body[self._id_field]
+                    else:
+                        id = self._get_uuid()
+                    event = Event(body, key=key, id=id)
+                    await self._do_downstream(event)
+                else:
+                    if self.context:
+                        self.context.logger.error(f"For {body} value of key {key_field} is None")
+        return await self._do_downstream(_termination_obj)
 
 
 class CSVSource(_IterableSource, WithUUID):
@@ -977,78 +1043,11 @@ class CSVSource(_IterableSource, WithUUID):
                     return res
 
 
-class DataframeSource(_IterableSource, WithUUID):
-    """Use pandas dataframe as input source for a flow.
-
-    :param dfs: A pandas dataframe, or dataframes, to be used as input source for the flow.
-    :param key_field: column to be used as key for events. can be list of columns
-    :param id_field: column to be used as ID for events.
-
-    for additional params, see documentation of  :class:`~storey.flow.Flow`
-    """
-
-    def __init__(
-        self,
-        dfs: Union[pandas.DataFrame, Iterable[pandas.DataFrame]],
-        key_field: Optional[Union[str, List[str]]] = None,
-        id_field: Optional[str] = None,
-        **kwargs,
-    ):
-        if key_field is not None:
-            kwargs["key_field"] = key_field
-        if id_field is not None:
-            kwargs["id_field"] = id_field
-        _IterableSource.__init__(self, **kwargs)
-        WithUUID.__init__(self)
-        if isinstance(dfs, pandas.DataFrame):
-            dfs = [dfs]
-        self._dfs = dfs
-        self._key_field = key_field
-        self._id_field = id_field
-
-    async def _run_loop(self):
-        for df in self._dfs:
-            for namedtuple in df.itertuples():
-                create_event = True
-                body = namedtuple._asdict()
-                index = body.pop("Index")
-                if len(df.index.names) > 1:
-                    for i, index_column in enumerate(df.index.names):
-                        body[index_column] = index[i]
-                elif df.index.names[0] is not None:
-                    body[df.index.names[0]] = index
-
-                key = None
-                if self._key_field:
-                    if isinstance(self._key_field, list):
-                        key = []
-                        for key_field in self._key_field:
-                            if key_field not in body or pandas.isna(body[key_field]):
-                                create_event = False
-                                break
-                            key.append(body[key_field])
-                    else:
-                        key = body[self._key_field]
-                        if key is None:
-                            create_event = False
-                if create_event:
-                    if self._id_field:
-                        id = body[self._id_field]
-                    else:
-                        id = self._get_uuid()
-                    event = Event(body, key=key, id=id)
-                    await self._do_downstream(event)
-                else:
-                    if self.context:
-                        self.context.logger.error(f"For {body} value of key {key_field} is None")
-        return await self._do_downstream(_termination_obj)
-
-
 class ParquetSource(DataframeSource):
     """Reads Parquet files as input source for a flow.
 
     :parameter paths: paths to Parquet files
-    :parameter columns : list, default=None. If not None, only these columns will be read from the file.
+    :parameter columns: list, default=None. If not None, only these columns will be read from the file.
     :parameter start_filter: datetime. If not None, the results will be filtered by partitions and
         'filter_column' > start_filter. Default is None.
     :parameter end_filter: datetime. If not None, the results will be filtered by partitions
@@ -1188,8 +1187,16 @@ class SQLSource(_IterableSource, WithUUID):
 
         engine = db.create_engine(self.db_path)
         with engine.connect() as conn:
-            query = f"SELECT * FROM {self.table_name}"
-            cursor = pandas.read_sql(query, con=conn, parse_dates=self.time_fields, chunksize=100)
+            metadata = db.MetaData()
+
+            table = db.Table(
+                self.table_name,
+                metadata,
+                autoload=True,
+                autoload_with=engine,
+            )
+            select_object = db.select(table)
+            cursor = pandas.read_sql(select_object, con=conn, parse_dates=self.time_fields, chunksize=100)
 
             for df in cursor:
                 for row in df.itertuples(index=False):
