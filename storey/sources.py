@@ -788,7 +788,7 @@ class CSVSource(DataframeSource):
                 path,
                 header=header,
                 parse_dates=self._dates_indices,
-                date_parser=lambda x: self._datetime_from_timestamp(x),
+                date_parser=self._datetime_from_timestamp,
                 storage_options=self._storage_options,
             )
             self._field_validator(df=df, key_field=self._key_field, id_field=self._id_field, path=path)
