@@ -3488,7 +3488,6 @@ def test_csv_source_with_none_values():
 
     termination_result = controller.await_termination()
 
-
     assert len(termination_result) == 2
     assert termination_result[0].key == "a"
     assert termination_result[0].body == [
