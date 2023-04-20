@@ -782,7 +782,7 @@ class CSVSource(DataframeSource):
         super()._init()
         self._dfs = []
         for path in self._paths:
-            #  with 'header = None' it will automatically put indexes as columns.
+            #  with header=None, columns will be indexed by position (0, 1, 2, ...)
             header = 0 if self._with_header else None
             df = pandas.read_csv(
                 path,
