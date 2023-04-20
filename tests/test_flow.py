@@ -361,9 +361,9 @@ def test_csv_reader_with_key_and_timestamp():
 
 
 @pytest.mark.parametrize(
-    "datetime_field", [{"parse_dates": ["t", "non_existent_column"]}, {"time_field": "non_existent_column"}]
+    "csv_source_kwargs", [{"parse_dates": ["t", "non_existent_column"]}, {"time_field": "non_existent_column"}]
 )
-def test_parse_dates_key_error(datetime_field):
+def test_parse_dates_key_error(csv_source_kwargs):
     with pytest.raises(ValueError) as value_error:
         controller = build_flow(
             [
@@ -371,7 +371,7 @@ def test_parse_dates_key_error(datetime_field):
                     "tests/test-with-timestamp.csv",
                     header=True,
                     key_field="t",
-                    **datetime_field,
+                    **csv_source_kwargs,
                     timestamp_format="%d/%m/%Y %H:%M:%S",
                 )
             ]
@@ -380,8 +380,8 @@ def test_parse_dates_key_error(datetime_field):
     assert str(value_error.value) == "Missing column provided to 'parse_dates': 'non_existent_column'"
 
 
-@pytest.mark.parametrize("datetime_field", [{"parse_dates": ["t", 10]}, {"time_field": 10}])
-def test_parse_dates_index_error(datetime_field):
+@pytest.mark.parametrize("csv_source_kwargs", [{"parse_dates": ["t", 10]}, {"time_field": 10}])
+def test_parse_dates_index_error(csv_source_kwargs):
     with pytest.raises(IndexError):
         controller = build_flow(
             [
@@ -389,7 +389,7 @@ def test_parse_dates_index_error(datetime_field):
                     "tests/test-with-timestamp.csv",
                     header=True,
                     key_field="k",
-                    **datetime_field,
+                    **csv_source_kwargs,
                     timestamp_format="%d/%m/%Y %H:%M:%S",
                 )
             ]
