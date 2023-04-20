@@ -3586,7 +3586,7 @@ def test_none_key_num_is_not_written():
 
 
 def test_field_validator_key():
-    with pytest.raises(KeyError) as value_error:
+    with pytest.raises(ValueError) as value_error:
         data = pd.DataFrame({"id": [1, 2, 3], "some_data": ["data", "random_data", "my_data"]})
 
         controller = build_flow(
@@ -3598,12 +3598,12 @@ def test_field_validator_key():
 
     assert (
         str(value_error.value)
-        == "\"KeyError occurred: keys ['non_existent_column'] missing from df. Df path: file path was not provided.\""
+        == "keys ['non_existent_column'] missing from df. Df path: file path was not provided."
     )
 
 
 def test_field_validator_id():
-    with pytest.raises(KeyError) as value_error:
+    with pytest.raises(ValueError) as value_error:
         data = pd.DataFrame({"id": [1, 2, 3], "some_data": ["data", "random_data", "my_data"]})
 
         controller = build_flow(
@@ -3615,7 +3615,7 @@ def test_field_validator_id():
 
     assert (
         str(value_error.value)
-        == "\"KeyError occurred: id field 'non_existent_column' missing from df. Df path: file path was not provided.\""
+        == "id field 'non_existent_column' missing from df. Df path: file path was not provided."
     )
 
 
