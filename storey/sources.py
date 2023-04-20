@@ -684,10 +684,10 @@ class DataframeSource(_IterableSource, WithUUID):
             key_field = [key_field] if not isinstance(key_field, list) else key_field
             missing_keys = list(set(key_field) - set(df.columns))
             if missing_keys:
-                raise ValueError(f"keys {missing_keys} missing from df. Df path: {path}")
+                raise ValueError(f"keys {missing_keys} missing from df. File path: {path}")
 
         if id_field and id_field not in df.columns:
-            raise ValueError(f"id field '{id_field}' missing from df. Df path: {path}")
+            raise ValueError(f"id field '{id_field}' missing from df. File path: {path}")
 
     class NoneKeyException(Exception):
         pass
@@ -826,7 +826,7 @@ class CSVSource(DataframeSource):
             if isinstance(id_field, str):
                 str_id_field = id_field
             elif isinstance(id_field, int) and (id_field < 0 or id_field >= len(df.columns)):
-                raise IndexError(f"IndexError: id {id_field} is int and isn't in df index range. Df path: {path}")
+                raise IndexError(f"IndexError: id {id_field} is int and isn't in df index range. File path: {path}")
         if key_field:
             key_field = [key_field] if not isinstance(key_field, list) else key_field
             str_key_field = [key for key in key_field if isinstance(key, str)]
@@ -834,7 +834,7 @@ class CSVSource(DataframeSource):
             out_of_range_keys = [int_key for int_key in int_key_field if int_key < 0 or int_key >= len(df.columns)]
             if out_of_range_keys:
                 raise IndexError(
-                    f"IndexError: keys {out_of_range_keys} are int and are not in df index range. Df path: {path}"
+                    f"IndexError: keys {out_of_range_keys} are int and are not in df index range. File path: {path}"
                 )
 
         super()._field_validator(df=df, key_field=str_key_field, id_field=str_id_field, path=path)
