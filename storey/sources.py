@@ -769,7 +769,7 @@ class CSVSource(DataframeSource):
             self._dates_indices.extend(parse_dates)
         if self._time_field is not None:
             if not header and isinstance(self._time_field, str):
-                raise ValueError("time_field can only be set to an integer when with_header is false")
+                raise ValueError("time_field parameter can only be an integer in conjunction with with_header=False")
             self._dates_indices.append(self._time_field)
         if not header and (
             isinstance(key_field, str)
