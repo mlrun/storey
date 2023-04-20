@@ -700,6 +700,7 @@ class DataframeSource(_IterableSource, WithUUID):
 class CSVSource(DataframeSource):
     """
     Reads CSV files as input source for a flow.
+
     :parameter paths: paths to CSV files
     :parameter header: whether CSV files have a header or not. Defaults to False.
     :parameter build_dict: whether to format each record produced from the input file as a dictionary (as opposed to a
