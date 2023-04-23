@@ -436,7 +436,7 @@ def test_csv_reader_key_error():
         ).run()
 
         controller.await_termination()
-    assert str(value_error.value) == "keys ['not_exist'] missing from dataframe. File path: tests/test.csv"
+    assert str(value_error.value) == "keys ['not_exist'] missing from dataframe. File path: tests/test.csv."
 
 
 def test_csv_reader_id_key_error():
@@ -448,7 +448,7 @@ def test_csv_reader_id_key_error():
         ).run()
 
         controller.await_termination()
-    assert str(value_error.value) == "id field 'not_exist' missing from dataframe. File path: tests/test.csv"
+    assert str(value_error.value) == "id field 'not_exist' missing from dataframe. File path: tests/test.csv."
 
 
 def test_csv_reader_index_error():
@@ -464,7 +464,7 @@ def test_csv_reader_index_error():
         controller.await_termination()
     assert (
         str(index_error.value)
-        == "IndexError: keys [3] are int and are not in df index range. File path: tests/test.csv"
+        == "IndexError: keys [3] are int and are not in df index range. File path: tests/test.csv."
     )
 
 
@@ -479,7 +479,7 @@ def test_csv_reader_id_index_error():
     ) as index_error:
         controller = controller.run()
         controller.await_termination()
-    assert str(index_error.value) == "IndexError: id 3 is int and isn't in df index range. File path: tests/test.csv"
+    assert str(index_error.value) == "IndexError: id 3 is int and isn't in df index range. File path: tests/test.csv."
 
 
 def test_dataframe_source():
