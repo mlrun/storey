@@ -678,16 +678,19 @@ class DataframeSource(_IterableSource, WithUUID):
             self._is_nan_validator(result=result, body=body, field_type=field_type, field=field)
         return result
 
-    def _field_validator(self, df, key_field, id_field, path="file path was not provided."):
+    def _field_validator(self, df, key_field, id_field, path=""):
+        path_message = ''
+        if path:
+            path_message = f' File path: {path}.'
         df = df.reset_index()
         if key_field:
             key_field = [key_field] if not isinstance(key_field, list) else key_field
             missing_keys = list(set(key_field) - set(df.columns))
             if missing_keys:
-                raise ValueError(f"keys {missing_keys} missing from dataframe. File path: {path}")
+                raise ValueError(f"keys {missing_keys} missing from dataframe.{path_message}")
 
         if id_field and id_field not in df.columns:
-            raise ValueError(f"id field '{id_field}' missing from dataframe. File path: {path}")
+            raise ValueError(f"id field '{id_field}' missing from dataframe.{path_message}")
 
     class NoneKeyException(Exception):
         pass
