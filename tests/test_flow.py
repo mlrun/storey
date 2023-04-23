@@ -463,7 +463,8 @@ def test_csv_reader_index_error():
         controller = controller.run()
         controller.await_termination()
     assert (
-        str(index_error.value) == "IndexError: keys [3] are int and are not in df index range. File path: tests/test.csv"
+        str(index_error.value)
+        == "IndexError: keys [3] are int and are not in df index range. File path: tests/test.csv"
     )
 
 
@@ -3590,7 +3591,8 @@ def test_field_validator_key():
         controller.await_termination()
 
     assert (
-        str(value_error.value) == "keys ['non_existent_column'] missing from dataframe. File path: file path was not provided."
+        str(value_error.value)
+        == "keys ['non_existent_column'] missing from dataframe. File path: file path was not provided."
     )
 
 
@@ -3606,7 +3608,8 @@ def test_field_validator_id():
         controller.await_termination()
 
     assert (
-        str(value_error.value) == "id field 'non_existent_column' missing from dataframe. File path: file path was not provided."
+        str(value_error.value)
+        == "id field 'non_existent_column' missing from dataframe. File path: file path was not provided."
     )
 
 
