@@ -679,9 +679,7 @@ class DataframeSource(_IterableSource, WithUUID):
         return result
 
     def _field_validator(self, df, key_field, id_field, path=""):
-        path_message = ''
-        if path:
-            path_message = f' File path: {path}.'
+        path_message = get_path_message(path=path)
         df = df.reset_index()
         if key_field:
             key_field = [key_field] if not isinstance(key_field, list) else key_field
@@ -823,13 +821,14 @@ class CSVSource(DataframeSource):
         return result
 
     def _field_validator(self, df, key_field, id_field, path="file path was not provided."):
+        path_message = get_path_message(path=path)
         str_key_field = []
         str_id_field = None
         if id_field is not None:
             if isinstance(id_field, str):
                 str_id_field = id_field
             elif isinstance(id_field, int) and (id_field < 0 or id_field >= len(df.columns)):
-                raise IndexError(f"IndexError: id {id_field} is int and isn't in df index range. File path: {path}")
+                raise IndexError(f"IndexError: id {id_field} is int and isn't in df index range.{path_message}")
         if key_field:
             key_field = [key_field] if not isinstance(key_field, list) else key_field
             str_key_field = [key for key in key_field if isinstance(key, str)]
@@ -837,7 +836,7 @@ class CSVSource(DataframeSource):
             out_of_range_keys = [int_key for int_key in int_key_field if int_key < 0 or int_key >= len(df.columns)]
             if out_of_range_keys:
                 raise IndexError(
-                    f"IndexError: keys {out_of_range_keys} are int and are not in df index range. File path: {path}"
+                    f"IndexError: keys {out_of_range_keys} are int and are not in df index range. {path_message}"
                 )
 
         super()._field_validator(df=df, key_field=str_key_field, id_field=str_id_field, path=path)
@@ -1018,3 +1017,10 @@ class SQLSource(_IterableSource, WithUUID):
                     event = Event(body, key=key, id=event_id)
                     await self._do_downstream(event)
         return await self._do_downstream(_termination_obj)
+
+
+def get_path_message(path):
+    path_message = ""
+    if path:
+        path_message = f" File path: {path}."
+    return path_message
