@@ -3590,10 +3590,7 @@ def test_field_validator_key():
         ).run()
         controller.await_termination()
 
-    assert (
-        str(value_error.value)
-        == "keys ['non_existent_column'] missing from dataframe."
-    )
+    assert str(value_error.value) == "keys ['non_existent_column'] missing from dataframe."
 
 
 def test_field_validator_id():
@@ -3607,10 +3604,7 @@ def test_field_validator_id():
         ).run()
         controller.await_termination()
 
-    assert (
-        str(value_error.value)
-        == "id field 'non_existent_column' missing from dataframe."
-    )
+    assert str(value_error.value) == "id field 'non_existent_column' missing from dataframe."
 
 
 def test_none_key_date_is_not_written():
