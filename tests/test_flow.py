@@ -3592,7 +3592,7 @@ def test_field_validator_key():
 
     assert (
         str(value_error.value)
-        == "keys ['non_existent_column'] missing from dataframe. File path: file path was not provided."
+        == "keys ['non_existent_column'] missing from dataframe."
     )
 
 
@@ -3609,7 +3609,7 @@ def test_field_validator_id():
 
     assert (
         str(value_error.value)
-        == "id field 'non_existent_column' missing from dataframe. File path: file path was not provided."
+        == "id field 'non_existent_column' missing from dataframe."
     )
 
 
