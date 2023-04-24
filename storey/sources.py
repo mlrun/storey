@@ -809,7 +809,6 @@ class CSVSource(DataframeSource):
         return list(body.values())
 
     def _get_by_field_or_index(self, field, body: OrderedDict, field_type: str, raise_exception=False):
-        result = None
         if self._with_header and isinstance(field, str):
             result = super()._get_by_field_or_index(
                 field=field, body=body, field_type=field_type, raise_exception=raise_exception
