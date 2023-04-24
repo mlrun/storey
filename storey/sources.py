@@ -694,7 +694,7 @@ class DataframeSource(_IterableSource, WithUUID):
         pass
 
     def _is_nan_validator(self, result, body, field_type, field):
-        if pandas.isna(result) or result is None:
+        if pandas.isna(result):
             raise self.NoneKeyException(f"For {body} value of {field_type} {field} is None")
 
 
