@@ -3640,7 +3640,7 @@ def test_build_dict_with_no_header():
             ]
         ).run()
 
-    assert str(value_error.value) == "build_dict can only be set to True when with_header is True"
+    assert str(value_error.value) == "build_dict can only be set to False when with_header is False"
 
 
 def test_csv_none_value_first_row(tmpdir):
