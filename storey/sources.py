@@ -834,13 +834,15 @@ class CSVSource(DataframeSource):
             key_field = [key_field] if not isinstance(key_field, list) else key_field
             str_key_field = [key for key in key_field if isinstance(key, str)]
             int_key_field = [key for key in key_field if isinstance(key, int)]
+            if str_key_field and int_key_field:
+                raise ValueError("Keys should not contain both integer and string values")
             out_of_range_keys = [int_key for int_key in int_key_field if int_key < 0 or int_key >= len(df.columns)]
             if out_of_range_keys:
                 raise IndexError(
                     f"Keys {out_of_range_keys} are int and are not in dataframe index range.{path_message}"
                 )
-
-        super()._validate_fields(df=df, key_field=str_key_field, id_field=str_id_field, path=path)
+        if str_id_field or str_key_field:
+            super()._validate_fields(df=df, key_field=str_key_field, id_field=str_id_field, path=path)
 
 
 class ParquetSource(DataframeSource):

@@ -3654,6 +3654,17 @@ def test_str_key_field_with_no_header():
     assert str(value_error.value) == "key_field can only be set to an integer when with_header is false"
 
 
+def test_mixed_key_types():
+    with pytest.raises(ValueError) as value_error:
+        build_flow(
+            [
+                CSVSource("tests/test.csv", header=True, key_field=["n1", 2]),
+            ]
+        ).run()
+
+    assert str(value_error.value) == "Keys should not contain both integer and string values"
+
+
 def test_csv_none_value_first_row(tmpdir):
     out_file_par = f"{tmpdir}/test_csv_none_value_first_row_{uuid.uuid4().hex}.parquet"
     out_file_csv = f"{tmpdir}/test_csv_none_value_first_row_{uuid.uuid4().hex}.csv"
