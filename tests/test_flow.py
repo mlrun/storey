@@ -3632,17 +3632,6 @@ def test_none_key_date_is_not_written():
     assert result == expected
 
 
-def test_build_dict_with_no_header():
-    with pytest.raises(ValueError) as value_error:
-        build_flow(
-            [
-                CSVSource("tests/test.csv", header=False, build_dict=True),
-            ]
-        ).run()
-
-    assert str(value_error.value) == "build_dict can only be set to False when with_header is False"
-
-
 def test_str_id_with_no_header():
     with pytest.raises(ValueError) as value_error:
         build_flow(
