@@ -640,9 +640,7 @@ class DataframeSource(_IterableSource, WithUUID):
                     key.append(single_key)
 
             else:
-                key = self._get_by_field_or_index(
-                    field=self._key_field, body=body
-                )
+                key = self._get_by_field_or_index(field=self._key_field, body=body)
                 if pd.isna(key):
                     return key, self._key_field
         return key, None
@@ -663,9 +661,7 @@ class DataframeSource(_IterableSource, WithUUID):
                 key, none_key = self._get_key(body=body)
                 if not none_key:
                     if self._id_field:
-                        line_id = self._get_by_field_or_index(
-                            field=self._id_field, body=body
-                        )
+                        line_id = self._get_by_field_or_index(field=self._id_field, body=body)
                     else:
                         line_id = self._get_uuid()
                     element = self._get_element(body=body)
@@ -673,7 +669,7 @@ class DataframeSource(_IterableSource, WithUUID):
                     await self._do_downstream(event)
                 else:
                     if self.context:
-                        self.context.logger.error(f'value of key {none_key} is None For {body}')
+                        self.context.logger.error(f"value of key {none_key} is None For {body}")
         return await self._do_downstream(_termination_obj)
 
     def _get_by_field_or_index(self, field, body: OrderedDict):
@@ -810,9 +806,7 @@ class CSVSource(DataframeSource):
 
     def _get_by_field_or_index(self, field, body: OrderedDict):
         if self._with_header and isinstance(field, str):
-            result = super()._get_by_field_or_index(
-                field=field, body=body
-            )
+            result = super()._get_by_field_or_index(field=field, body=body)
         else:
             result = list(body.items())[field][1]
         return result
