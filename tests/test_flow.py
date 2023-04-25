@@ -3643,6 +3643,28 @@ def test_build_dict_with_no_header():
     assert str(value_error.value) == "build_dict can only be set to False when with_header is False"
 
 
+def test_str_id_with_no_header():
+    with pytest.raises(ValueError) as value_error:
+        build_flow(
+            [
+                CSVSource("tests/test.csv", header=False, id_field="n1"),
+            ]
+        ).run()
+
+    assert str(value_error.value) == "id_field can only be set to an integer when with_header is false"
+
+
+def test_str_key_field_with_no_header():
+    with pytest.raises(ValueError) as value_error:
+        build_flow(
+            [
+                CSVSource("tests/test.csv", header=False, key_field="n1"),
+            ]
+        ).run()
+
+    assert str(value_error.value) == "key_field can only be set to an integer when with_header is false"
+
+
 def test_csv_none_value_first_row(tmpdir):
     out_file_par = f"{tmpdir}/test_csv_none_value_first_row_{uuid.uuid4().hex}.parquet"
     out_file_csv = f"{tmpdir}/test_csv_none_value_first_row_{uuid.uuid4().hex}.csv"
