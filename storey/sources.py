@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 from typing import Callable, Coroutine, Iterable, List, Optional, Union
 
 import pandas
+import pandas as pd
 import pyarrow
 import pytz
 
@@ -633,14 +634,18 @@ class DataframeSource(_IterableSource, WithUUID):
             if isinstance(self._key_field, list):
                 key = []
                 for key_field in self._key_field:
-                    key.append(
-                        self._get_by_field_or_index(field=key_field, body=body, field_name="key", raise_exception=True)
-                    )
+                    single_key = self._get_by_field_or_index(field=key_field, body=body)
+                    if pd.isna(single_key):
+                        return single_key, key_field
+                    key.append(single_key)
+
             else:
                 key = self._get_by_field_or_index(
-                    field=self._key_field, body=body, field_name="key", raise_exception=True
+                    field=self._key_field, body=body
                 )
-        return key
+                if pd.isna(key):
+                    return key, self._key_field
+        return key, None
 
     def _get_element(self, body: OrderedDict):
         return dict(body)
@@ -655,27 +660,24 @@ class DataframeSource(_IterableSource, WithUUID):
                         body[index_column] = index[i]
                 elif df.index.names[0] is not None:
                     body[df.index.names[0]] = index
-                try:
-                    key = self._get_key(body=body)
+                key, none_key = self._get_key(body=body)
+                if not none_key:
                     if self._id_field:
                         line_id = self._get_by_field_or_index(
-                            field=self._id_field, body=body, field_name="id", raise_exception=False
+                            field=self._id_field, body=body
                         )
                     else:
                         line_id = self._get_uuid()
                     element = self._get_element(body=body)
                     event = Event(element, key=key, id=line_id)
                     await self._do_downstream(event)
-                except self.NoneKeyException as key_error:
+                else:
                     if self.context:
-                        self.context.logger.error(str(key_error))
-
+                        self.context.logger.error(f'value of key {none_key} is None For {body}')
         return await self._do_downstream(_termination_obj)
 
-    def _get_by_field_or_index(self, field, body: OrderedDict, field_name: str, raise_exception=False):
+    def _get_by_field_or_index(self, field, body: OrderedDict):
         result = body[field]
-        if raise_exception:
-            self._is_nan_validator(result=result, body=body, field_name=field_name, field=field)
         return result
 
     def _validate_fields(self, df, key_field, id_field, path=""):
@@ -692,10 +694,6 @@ class DataframeSource(_IterableSource, WithUUID):
 
     class NoneKeyException(Exception):
         pass
-
-    def _is_nan_validator(self, result, body, field_name, field):
-        if pandas.isna(result):
-            raise self.NoneKeyException(f"For {body} value of {field_name} {field} is None")
 
 
 class CSVSource(DataframeSource):
@@ -810,15 +808,13 @@ class CSVSource(DataframeSource):
             return dict(body)
         return list(body.values())
 
-    def _get_by_field_or_index(self, field, body: OrderedDict, field_name: str, raise_exception=False):
+    def _get_by_field_or_index(self, field, body: OrderedDict):
         if self._with_header and isinstance(field, str):
             result = super()._get_by_field_or_index(
-                field=field, body=body, field_name=field_name, raise_exception=raise_exception
+                field=field, body=body
             )
         else:
             result = list(body.items())[field][1]
-            if raise_exception:
-                self._is_nan_validator(result=result, body=body, field_name=field_name, field=field)
         return result
 
     def _validate_fields(self, df, key_field, id_field, path=""):
