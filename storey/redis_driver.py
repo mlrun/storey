@@ -255,6 +255,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
                     )
 
         lua_script = additional_data_lua_script
+        list_attribute_key_aggr = self._list_key(redis_key_prefix, RedisDriver.AGGREGATION_ATTRIBUTE_PREFIX)
 
         if aggregation_element:
             times_updates = {}
@@ -264,12 +265,22 @@ class RedisDriver(NeedsRedisAccess, Driver):
                 condition_expression = aggregation_element.storage_specific_cache.get(self._mtime_name, None)
             lua_tonum_function = (
                 'local function tonum(str) if str == "inf" then return math.huge elseif str == "-inf" then '
-                'return -math.huge elseif str == "nan" then return 0/0 end return tonumber(str) end'
+                'return -math.huge elseif str == "nan" then return 0/0 end return tonumber(str) end;\n'
+            )
+            lua_strToArr_funct = (
+                "local function strToArr(input)\n"
+                "    local result = {}\n"
+                "    if input == nil or input == false then return {} end\n"
+                '    for value in string.gmatch(input, "([^,]+)") do\n'
+                "        table.insert(result, value)\n"
+                "    end\n"
+                "    return result\n"
+                "end\n"
             )
             lua_script = (
-                f'{lua_script}local len;local redis_key_prefix="{redis_key_prefix}";local list_attribute_key;\n'
+                f"{lua_script}local old_value;local attr_name;\n" f'local aggr_key="{list_attribute_key_aggr}";\n'
             )
-            lua_script = f"{lua_script}{lua_tonum_function}\n"
+            lua_script = f"{lua_script}{lua_tonum_function}{lua_strToArr_funct}\n"
             for name, bucket in aggregation_element.aggregation_buckets.items():
                 # Only save raw aggregates, not virtual
                 if bucket.should_persist:
@@ -292,7 +303,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
                         expected_time_expr = self._convert_python_obj_to_lua_value(
                             datetime.fromtimestamp(expected_time / 1000)
                         )
-                        index_to_update = int((bucket_start_time - expected_time) / bucket.period_millis)
+                        lua_index_to_update = 1 + int((bucket_start_time - expected_time) / bucket.period_millis)
 
                         for (
                             aggregation,
@@ -301,26 +312,30 @@ class RedisDriver(NeedsRedisAccess, Driver):
                             list_attribute_name = (
                                 f"{RedisDriver.AGGREGATION_ATTRIBUTE_PREFIX}{name}_{aggregation}_{feature_attr}"
                             )
-                            list_attribute_key = self._list_key(redis_key_prefix, list_attribute_name)
-                            if list_attribute_key not in redis_keys_involved:
-                                redis_keys_involved.append(list_attribute_key)
-                            lua_script = f'{lua_script}list_attribute_key="{list_attribute_key}";\n'
+                            if list_attribute_key_aggr not in redis_keys_involved:
+                                redis_keys_involved.append(list_attribute_key_aggr)
+                            lua_script = f'{lua_script}attr_name="{list_attribute_name}";\n'
 
                             if cached_time < expected_time:
+                                list_attribute_key = self._list_key(redis_key_prefix, list_attribute_name)
                                 if not initialized_attributes.get(list_attribute_key, -1) == expected_time:
                                     initialized_attributes[list_attribute_key] = expected_time
                                     lua_script = (
                                         f'{lua_script}local t=redis.call("GET","{array_time_attribute_key}");\n'
                                         f'if (type(t)~="boolean" and (tonumber(t) < {expected_time})) then '
-                                        f'redis.call("DEL",list_attribute_key); end;\n'
+                                        f'redis.call("HDEL",aggr_key, attr_name); end;\n'
                                     )
                                     default_value = self._convert_python_obj_to_redis_value(
                                         aggregation_value.default_value
                                     )
                                     lua_script = (
-                                        f'{lua_script}len=redis.call("LLEN",list_attribute_key);\n'
-                                        f"for i=1,({bucket.total_number_of_buckets}-len) do "
-                                        f'redis.call("RPUSH",list_attribute_key,{default_value}) end;\n'
+                                        f'{lua_script}local curr_agg=redis.call("HGET",aggr_key, attr_name)\n'
+                                        "local arr=strToArr(curr_agg);\n"
+                                        f"local org_arr_len=#arr\n"
+                                        f"for i=1,({bucket.total_number_of_buckets}-org_arr_len) \
+                                            do arr[#arr+1]={default_value};end;\n"
+                                        f'if org_arr_len ~= #arr then redis.call("HSET", aggr_key, attr_name,\
+                                            table.concat(arr, ",")) end;\n'
                                     )
                                 if array_time_attribute_key not in times_updates:
                                     times_updates[array_time_attribute_key] = expected_time_expr
@@ -331,22 +346,18 @@ class RedisDriver(NeedsRedisAccess, Driver):
 
                             # Updating the specific cells
                             if cached_time <= expected_time:
-                                lua_script = (
-                                    f"{lua_script}local old_value=redis.call("
-                                    f'"LINDEX",list_attribute_key,{index_to_update});\n'
-                                )
-                                lua_script = f"{lua_script}old_value=tonum(old_value)\n"
                                 new_value_expression = aggregation_value.aggregate_lua_script(
                                     "old_value", aggregation_value.value
                                 )
                                 lua_script = (
-                                    f'{lua_script}redis.call("LSET", list_attribute_key, {index_to_update}, '
-                                    f"{new_value_expression});\n"
+                                    f'{lua_script}arr=strToArr(redis.call("HGET",aggr_key, attr_name))\n'
+                                    f"old_value=tonum(arr[{lua_index_to_update}]);\n"
+                                    f'arr[{lua_index_to_update}]=string.format("%.17f",{new_value_expression});\n'
+                                    'redis.call("HSET", aggr_key, attr_name, table.concat(arr, ","))\n'
                                 )
 
                         redis_keys_involved.append(array_time_attribute_key)
                         lua_script = f'{lua_script}redis.call("SET","{array_time_attribute_key}",{expected_time}); \n'
-
         return lua_script, condition_expression, pending_updates, redis_keys_involved
 
     async def _save_key(self, container, table_path, key, aggr_item, partitioned_by_key, additional_data):
@@ -396,6 +407,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
                 f'"HSET","{redis_key_prefix}","{self._mtime_name}",{current_time});return 1;'
             )
             redis_keys_involved.append(redis_key_prefix)
+
             update_ok = await RedisDriver.asyncify(self.redis.eval)(
                 update_expression, len(redis_keys_involved), *redis_keys_involved
             )
@@ -481,21 +493,24 @@ class RedisDriver(NeedsRedisAccess, Driver):
         aggregations = {}
         # Aggregation Redis keys start with the Redis key prefix for this Storey container, table
         # path, and "key," followed by ":aggr_"
+        redis_key_prefix = self._make_key(container, table_path, key)
         aggr_key_prefix = f"{redis_key_prefix}:{RedisDriver.AGGREGATION_ATTRIBUTE_PREFIX}"
-        # We can't use `async for` here...
-        for aggr_key in self.redis.scan_iter(f"{aggr_key_prefix}*"):
+        all_aggr_keys = self.redis.hkeys(aggr_key_prefix)
+        for aggr_key in all_aggr_keys:
             aggr_key = RedisDriver.convert_to_str(aggr_key)
-            value = await RedisDriver.asyncify(self.redis.lrange)(aggr_key, 0, -1)
+            value = await RedisDriver.asyncify(self.redis.hget)(aggr_key_prefix, aggr_key)
             # Build an attribute for this aggregation in the format that Storey
             # expects to receive from this method. The feature and aggregation
             # name are embedded in the Redis key. Also, drop the "_a" or "_b"
             # portion of the key, which is "the relevant attribute out of the 2
             # feature attributes," according to comments in the V3IO driver.
-            feature_and_aggr_name = aggr_key[len(aggr_key_prefix) : -2]
+            value = RedisDriver.convert_to_str(value)
+            value = value.split(",")
+            feature_and_aggr_name = aggr_key[len(RedisDriver.AGGREGATION_ATTRIBUTE_PREFIX) : -2]
 
             # To get the associated time, we need the aggregation name and the relevant
             # attribute (a or b), so we take a second form of the string for that purpose.
-            aggr_name_with_relevant_attribute = aggr_key[len(aggr_key_prefix) :]
+            aggr_name_with_relevant_attribute = aggr_key[len(RedisDriver.AGGREGATION_ATTRIBUTE_PREFIX) :]
             associated_time_attr, time_in_millis = await self._get_associated_time_attr(
                 redis_key_prefix, aggr_name_with_relevant_attribute
             )
@@ -520,20 +535,23 @@ class RedisDriver(NeedsRedisAccess, Driver):
 
         redis_key_prefix = self._make_key(container, table_path, key)
         aggr_key_prefix = f"{redis_key_prefix}:{RedisDriver.AGGREGATION_ATTRIBUTE_PREFIX}"
-        # We can't use `async for` here...
-        for aggr_key in self.redis.scan_iter(f"{aggr_key_prefix}*"):
+        all_aggr_keys = self.redis.hkeys(aggr_key_prefix)
+        for aggr_key in all_aggr_keys:
             aggr_key = RedisDriver.convert_to_str(aggr_key)
-            value = await RedisDriver.asyncify(self.redis.lrange)(aggr_key, 0, -1)
+            value = await RedisDriver.asyncify(self.redis.hget)(aggr_key_prefix, aggr_key)
             # Build an attribute for this aggregation in the format that Storey
             # expects to receive from this method. The feature and aggregation
             # name are embedded in the Redis key. Also, drop the "_a" or "_b"
             # portion of the key, which is "the relevant attribute out of the 2
             # feature attributes," according to comments in the V3IO driver.
-            feature_and_aggr_name = aggr_key[len(aggr_key_prefix) : -2]
+            value = RedisDriver.convert_to_str(value)
+            value = value.split(",")
+
+            feature_and_aggr_name = aggr_key[len(RedisDriver.AGGREGATION_ATTRIBUTE_PREFIX) : -2]
 
             # To get the associated time, we need the aggregation name and the relevant
             # attribute (a or b), so we take a second form of the string for that purpose.
-            aggr_name_with_relevant_attribute = aggr_key[len(aggr_key_prefix) :]
+            aggr_name_with_relevant_attribute = aggr_key[len(RedisDriver.AGGREGATION_ATTRIBUTE_PREFIX) :]
             associated_time_attr, time_in_millis = await self._get_associated_time_attr(
                 redis_key_prefix, aggr_name_with_relevant_attribute
             )
