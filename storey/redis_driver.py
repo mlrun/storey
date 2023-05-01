@@ -51,9 +51,9 @@ class RedisDriver(NeedsRedisAccess, Driver):
     DATETIME_FIELD_PREFIX = "_dt:"
     TIMEDELTA_FIELD_PREFIX = "_td:"
     DEFAULT_KEY_PREFIX = "storey:"
-    AGGREGATION_ATTRIBUTE_PREFIX = "aggr_"
+    AGGREGATION_ATTRIBUTE_PREFIX = "moving_windows"
     AGGREGATION_TIME_ATTRIBUTE_PREFIX = "_"
-    AGGREGATION_PREFIXES = (AGGREGATION_ATTRIBUTE_PREFIX, AGGREGATION_TIME_ATTRIBUTE_PREFIX)
+    AGGREGATION_PREFIXES = AGGREGATION_TIME_ATTRIBUTE_PREFIX
 
     def __init__(
         self,
@@ -309,9 +309,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
                             aggregation,
                             aggregation_value,
                         ) in aggregation_values.items():
-                            list_attribute_name = (
-                                f"{RedisDriver.AGGREGATION_ATTRIBUTE_PREFIX}{name}_{aggregation}_{feature_attr}"
-                            )
+                            list_attribute_name = f"{name}_{aggregation}_{feature_attr}"
                             if list_attribute_key_aggr not in redis_keys_involved:
                                 redis_keys_involved.append(list_attribute_key_aggr)
                             lua_script = f'{lua_script}attr_name="{list_attribute_name}";\n'
@@ -506,11 +504,11 @@ class RedisDriver(NeedsRedisAccess, Driver):
             # feature attributes," according to comments in the V3IO driver.
             value = RedisDriver.convert_to_str(value)
             value = value.split(",")
-            feature_and_aggr_name = aggr_key[len(RedisDriver.AGGREGATION_ATTRIBUTE_PREFIX) : -2]
+            feature_and_aggr_name = aggr_key[:-2]
 
             # To get the associated time, we need the aggregation name and the relevant
             # attribute (a or b), so we take a second form of the string for that purpose.
-            aggr_name_with_relevant_attribute = aggr_key[len(RedisDriver.AGGREGATION_ATTRIBUTE_PREFIX) :]
+            aggr_name_with_relevant_attribute = aggr_key
             associated_time_attr, time_in_millis = await self._get_associated_time_attr(
                 redis_key_prefix, aggr_name_with_relevant_attribute
             )
@@ -547,11 +545,11 @@ class RedisDriver(NeedsRedisAccess, Driver):
             value = RedisDriver.convert_to_str(value)
             value = value.split(",")
 
-            feature_and_aggr_name = aggr_key[len(RedisDriver.AGGREGATION_ATTRIBUTE_PREFIX) : -2]
+            feature_and_aggr_name = aggr_key[:-2]
 
             # To get the associated time, we need the aggregation name and the relevant
             # attribute (a or b), so we take a second form of the string for that purpose.
-            aggr_name_with_relevant_attribute = aggr_key[len(RedisDriver.AGGREGATION_ATTRIBUTE_PREFIX) :]
+            aggr_name_with_relevant_attribute = aggr_key
             associated_time_attr, time_in_millis = await self._get_associated_time_attr(
                 redis_key_prefix, aggr_name_with_relevant_attribute
             )
