@@ -339,12 +339,8 @@ class QueryByKey(AggregateByKey):
                 raise TypeError("Table can not be string if no context was provided to the step")
             table = kwargs["context"].get_table(table)
         for feature in features:
-            is_aggregation = False
-            if table.supports_aggregations():
-                match = re.match(r".*_([a-z]+)_[0-9]+[smhd]$", feature)
-                if match:
-                    is_aggregation = is_aggregation_name(match.group(1))
-            if is_aggregation:
+            match = re.match(r".*_([a-z]+)_[0-9]+[smhd]$", feature) if table.supports_aggregations() else None
+            if match and is_aggregation_name(match.group(1)):
                 name, window = feature.rsplit("_", 1)
                 if name in resolved_aggrs:
                     resolved_aggrs[name].append(window)
