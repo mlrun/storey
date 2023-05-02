@@ -427,7 +427,7 @@ def test_csv_reader_none_in_keyfield_should_send_error_log():
     assert "value of key k is None" in logger.logs[0][1][0]
 
 
-def test_csv_reader_key_error():
+def test_csv_source_key_error():
     with pytest.raises(ValueError) as value_error:
         controller = build_flow(
             [
