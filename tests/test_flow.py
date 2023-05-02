@@ -371,8 +371,8 @@ def test_parse_dates_key_error(csv_source_kwargs):
                     "tests/test-with-timestamp.csv",
                     header=True,
                     key_field="t",
-                    **csv_source_kwargs,
                     timestamp_format="%d/%m/%Y %H:%M:%S",
+                    **csv_source_kwargs,
                 )
             ]
         ).run()
@@ -389,8 +389,8 @@ def test_parse_dates_index_error(csv_source_kwargs):
                     "tests/test-with-timestamp.csv",
                     header=True,
                     key_field="k",
-                    **csv_source_kwargs,
                     timestamp_format="%d/%m/%Y %H:%M:%S",
+                    **csv_source_kwargs,
                 )
             ]
         ).run()
