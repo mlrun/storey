@@ -3590,7 +3590,7 @@ def test_field_validator_key():
     assert str(value_error.value) == "keys ['non_existent_column'] missing from dataframe."
 
 
-def test_field_validator_id():
+def test_dataframe_source_missing_id_column():
     with pytest.raises(ValueError) as value_error:
         data = pd.DataFrame({"id": [1, 2, 3], "some_data": ["data", "random_data", "my_data"]})
 
