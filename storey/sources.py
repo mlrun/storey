@@ -819,7 +819,9 @@ class CSVSource(DataframeSource):
             if isinstance(id_field, str):
                 str_id_field = id_field
             elif isinstance(id_field, int) and (id_field < 0 or id_field >= len(df.columns)):
-                raise IndexError(f"Id {id_field} is int and isn't in df index range.{path_message}")
+                raise IndexError(
+                    f"id column '{id_field}' is of type int and is not in dataframe index range.{path_message}"
+                )
         if key_field:
             key_field = [key_field] if not isinstance(key_field, list) else key_field
             str_key_field = [key for key in key_field if isinstance(key, str)]

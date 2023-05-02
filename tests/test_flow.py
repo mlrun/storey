@@ -476,7 +476,10 @@ def test_csv_reader_id_index_error():
     ) as index_error:
         controller = controller.run()
         controller.await_termination()
-    assert str(index_error.value) == "Id 3 is int and isn't in df index range. File path: tests/test.csv."
+    assert (
+        str(index_error.value)
+        == "id column '3' is of type int and is not in dataframe index range. File path: tests/test.csv."
+    )
 
 
 def test_dataframe_source():
