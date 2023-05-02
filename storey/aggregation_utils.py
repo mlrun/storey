@@ -140,3 +140,7 @@ def get_all_raw_aggregates_with_hidden(aggregates):
 
 def get_all_raw_aggregates(aggregates):
     return set(get_all_raw_aggregates_with_hidden(aggregates).keys())
+
+
+def is_aggregation_name(name: str):
+    return name in _all_aggregates_by_name
