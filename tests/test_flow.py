@@ -3576,7 +3576,7 @@ def test_none_key_num_is_not_written():
     assert result == expected
 
 
-def test_field_validator_key():
+def test_dataframe_source_missing_key_column():
     with pytest.raises(ValueError) as value_error:
         data = pd.DataFrame({"id": [1, 2, 3], "some_data": ["data", "random_data", "my_data"]})
 
