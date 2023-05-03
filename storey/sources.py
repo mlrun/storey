@@ -686,7 +686,7 @@ class DataframeSource(_IterableSource, WithUUID):
                 if len(missing_keys) > 1:
                     missing_keys_message = f"key columns {missing_keys}"
                 else:
-                    missing_keys_message = f"key column {missing_keys[0]}"
+                    missing_keys_message = f"key column '{missing_keys[0]}'"
                 raise ValueError(f"{missing_keys_message} missing from dataframe.{path_message}")
 
         if id_field and id_field not in df.columns:
