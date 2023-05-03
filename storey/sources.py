@@ -692,9 +692,6 @@ class DataframeSource(_IterableSource, WithUUID):
         if id_field and id_field not in df.columns:
             raise ValueError(f"id column '{id_field}' is missing from dataframe.{path_message}")
 
-    class NoneKeyException(Exception):
-        pass
-
 
 class CSVSource(DataframeSource):
     """
