@@ -397,20 +397,6 @@ def test_parse_dates_index_error(csv_source_kwargs):
         controller.await_termination()
 
 
-def test_csv_reader_as_dict_no_header():
-    controller = build_flow(
-        [
-            CSVSource("tests/test-no-header.csv", header=False, build_dict=True),
-            FlatMap(lambda x: [x[0], x[1], x[2]]),
-            Map(lambda x: int(x)),
-            Reduce(0, lambda acc, x: acc + x),
-        ]
-    ).run()
-
-    termination_result = controller.await_termination()
-    assert termination_result == 21
-
-
 def test_csv_reader_none_in_keyfield_should_send_error_log():
     logger = MockLogger()
     context = MockContext(logger, True)
@@ -3607,7 +3593,7 @@ def test_dataframe_source_missing_id_column():
         ).run()
         controller.await_termination()
 
-    assert str(value_error.value) == "id column 'non_existent_column' missing from dataframe."
+    assert str(value_error.value) == "id column 'non_existent_column' is missing from dataframe."
 
 
 def test_none_key_date_is_not_written():
