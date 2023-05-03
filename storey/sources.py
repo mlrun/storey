@@ -673,8 +673,7 @@ class DataframeSource(_IterableSource, WithUUID):
         return await self._do_downstream(_termination_obj)
 
     def _get_by_field_or_index(self, field, body: OrderedDict):
-        result = body[field]
-        return result
+        return body[field]
 
     def _validate_fields(self, df, key_field, id_field, path=""):
         path_message = f" File path: {path}." if path else ""
