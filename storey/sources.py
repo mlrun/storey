@@ -808,7 +808,7 @@ class CSVSource(DataframeSource):
         if self._with_header and isinstance(field, str):
             result = super()._get_by_field_or_index(field=field, body=body)
         else:
-            result = list(body.items())[field][1]
+            result = list(body.values())[field]
         return result
 
     def _validate_fields(self, df, key_field, id_field, path=""):
