@@ -628,7 +628,10 @@ class DataframeSource(_IterableSource, WithUUID):
         self._key_field = key_field
         self._id_field = id_field
 
-    def _get_key(self, body):
+    def _get_key(self, body: OrderedDict):
+        """
+        return key values by columns + column name that have a non value if exists.
+        """
         key = None
         if self._key_field:
             if isinstance(self._key_field, list):
