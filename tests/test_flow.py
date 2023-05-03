@@ -3668,7 +3668,7 @@ def test_mixed_key_types():
             ]
         ).run()
 
-    assert str(value_error.value) == "Keys should not contain both integer and string values"
+    assert str(value_error.value) == "key_field should not contain both integer and string values"
 
 
 def test_csv_none_value_first_row(tmpdir):

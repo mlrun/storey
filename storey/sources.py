@@ -827,7 +827,7 @@ class CSVSource(DataframeSource):
             str_key_field = [key for key in key_field if isinstance(key, str)]
             int_key_field = [key for key in key_field if isinstance(key, int)]
             if str_key_field and int_key_field:
-                raise ValueError("Keys should not contain both integer and string values")
+                raise ValueError("key_field should not contain both integer and string values")
             out_of_range_keys = [int_key for int_key in int_key_field if int_key < 0 or int_key >= len(df.columns)]
             if out_of_range_keys:
                 if len(out_of_range_keys) > 1:
