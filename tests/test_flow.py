@@ -3657,7 +3657,7 @@ def test_str_key_field_with_no_header():
             ]
         ).run()
 
-    assert str(value_error.value) == "key_field can only be set to an integer when with_header is false"
+    assert str(value_error.value) == "key_field can only be set to an integer when with_header is False"
 
 
 def test_mixed_key_types():
