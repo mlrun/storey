@@ -834,8 +834,12 @@ class CSVSource(DataframeSource):
                 raise ValueError("Keys should not contain both integer and string values")
             out_of_range_keys = [int_key for int_key in int_key_field if int_key < 0 or int_key >= len(df.columns)]
             if out_of_range_keys:
+                if len(out_of_range_keys) > 1:
+                    out_of_range_keys_message = f"key columns {out_of_range_keys} are"
+                else:
+                    out_of_range_keys_message = f"key column '{out_of_range_keys[0]}' is"
                 raise IndexError(
-                    f"Keys {out_of_range_keys} are int and are not in dataframe index range.{path_message}"
+                    f"{out_of_range_keys_message} int and are not in dataframe index range.{path_message}"
                 )
         if str_id_field or str_key_field:
             super()._validate_fields(df=df, key_field=str_key_field, id_field=str_id_field, path=path)
