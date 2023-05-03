@@ -3646,7 +3646,19 @@ def test_str_id_with_no_header():
             ]
         ).run()
 
-    assert str(value_error.value) == "id_field can only be set to an integer when with_header is false"
+    assert str(value_error.value) == "id_field can only be set to an integer when with_header is False."
+
+
+def test_build_dict_with_no_header():
+    with pytest.raises(ValueError) as value_error:
+        controller = build_flow(
+            [
+                CSVSource("tests/test.csv", header=False, build_dict=True),
+            ]
+        ).run()
+
+        controller.await_termination()
+    assert str(value_error.value) == "build_dict can only be False when with_header is False."
 
 
 def test_str_key_field_with_no_header():
@@ -3657,7 +3669,7 @@ def test_str_key_field_with_no_header():
             ]
         ).run()
 
-    assert str(value_error.value) == "key_field can only be set to an integer when with_header is False"
+    assert str(value_error.value) == "key_field can only be set to an integer when with_header is False."
 
 
 def test_mixed_key_types():

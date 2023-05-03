@@ -773,11 +773,11 @@ class CSVSource(DataframeSource):
             isinstance(key_field, str)
             or (isinstance(key_field, list) and any([isinstance(key, str) for key in key_field]))
         ):
-            raise ValueError("key_field can only be set to an integer when with_header is False")
+            raise ValueError("key_field can only be set to an integer when with_header is False.")
         if not header and (isinstance(id_field, str)):
-            raise ValueError("id_field can only be set to an integer when with_header is false")
+            raise ValueError("id_field can only be set to an integer when with_header is False.")
         if self._build_dict and not self._with_header:
-            raise ValueError("build_dict can only be False when with_header is False")
+            raise ValueError("build_dict can only be False when with_header is False.")
         super().__init__([], **kwargs)
 
     def _init(self):
