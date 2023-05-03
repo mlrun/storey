@@ -776,6 +776,8 @@ class CSVSource(DataframeSource):
             raise ValueError("key_field can only be set to an integer when with_header is False")
         if not header and (isinstance(id_field, str)):
             raise ValueError("id_field can only be set to an integer when with_header is false")
+        if self._build_dict and not self._with_header:
+            raise ValueError("build_dict can only be False when with_header is False")
         super().__init__([], **kwargs)
 
     def _init(self):
@@ -803,7 +805,7 @@ class CSVSource(DataframeSource):
             return datetime.fromisoformat(timestamp)
 
     def _get_element(self, body: OrderedDict):
-        if self._build_dict and self._with_header:
+        if self._build_dict:
             return dict(body)
         return list(body.values())
 
