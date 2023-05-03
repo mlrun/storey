@@ -658,8 +658,8 @@ class DataframeSource(_IterableSource, WithUUID):
                         body[index_column] = index[i]
                 elif df.index.names[0] is not None:
                     body[df.index.names[0]] = index
-                key, none_key = self._get_key(body=body)
-                if not none_key:
+                key, none_key_column = self._get_key(body=body)
+                if not none_key_column:
                     if self._id_field:
                         line_id = self._get_by_field_or_index(field=self._id_field, body=body)
                     else:
@@ -669,7 +669,7 @@ class DataframeSource(_IterableSource, WithUUID):
                     await self._do_downstream(event)
                 else:
                     if self.context:
-                        self.context.logger.error(f"value of key {none_key} is None For {body}")
+                        self.context.logger.error(f"value of key {none_key_column} is {key} For {body}")
         return await self._do_downstream(_termination_obj)
 
     def _get_by_field_or_index(self, field, body: OrderedDict):
