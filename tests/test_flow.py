@@ -436,7 +436,7 @@ def test_csv_source_key_error():
         ).run()
 
         controller.await_termination()
-    assert str(value_error.value) == "keys ['not_exist'] missing from dataframe. File path: tests/test.csv."
+    assert str(value_error.value) == "key column 'not_exist' is missing from dataframe. File path: tests/test.csv."
 
 
 def test_csv_reader_id_key_error():
@@ -448,7 +448,7 @@ def test_csv_reader_id_key_error():
         ).run()
 
         controller.await_termination()
-    assert str(value_error.value) == "id field 'not_exist' missing from dataframe. File path: tests/test.csv."
+    assert str(value_error.value) == "id column 'not_exist' is missing from dataframe. File path: tests/test.csv."
 
 
 def test_csv_reader_index_error():
@@ -3590,7 +3590,7 @@ def test_dataframe_source_missing_key_column():
         ).run()
         controller.await_termination()
 
-    assert str(value_error.value) == "keys ['non_existent_column'] missing from dataframe."
+    assert str(value_error.value) == "key column 'non_existent_column' is missing from dataframe."
 
 
 def test_dataframe_source_missing_id_column():
@@ -3604,7 +3604,7 @@ def test_dataframe_source_missing_id_column():
         ).run()
         controller.await_termination()
 
-    assert str(value_error.value) == "id field 'non_existent_column' missing from dataframe."
+    assert str(value_error.value) == "id column 'non_existent_column' missing from dataframe."
 
 
 def test_none_key_date_is_not_written():

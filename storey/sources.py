@@ -690,7 +690,7 @@ class DataframeSource(_IterableSource, WithUUID):
                 raise ValueError(f"{missing_keys_message} missing from dataframe.{path_message}")
 
         if id_field and id_field not in df.columns:
-            raise ValueError(f"id field '{id_field}' missing from dataframe.{path_message}")
+            raise ValueError(f"id column '{id_field}' is missing from dataframe.{path_message}")
 
     class NoneKeyException(Exception):
         pass
