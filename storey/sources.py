@@ -619,6 +619,11 @@ class DataframeSource(_IterableSource, WithUUID):
             kwargs["id_field"] = id_field
         _IterableSource.__init__(self, **kwargs)
         WithUUID.__init__(self)
+        key_fields = [key_field] if not isinstance(key_field, list) else key_field
+        if any([not isinstance(single_key_field, str) for single_key_field in key_fields]):
+            raise ValueError("keys should be in string type only!")
+        if not isinstance(id_field, str):
+            raise ValueError("id_field should be in string type only!")
         self._key_field = key_field
         self._id_field = id_field
         if isinstance(dfs, pandas.DataFrame):
@@ -674,8 +679,8 @@ class DataframeSource(_IterableSource, WithUUID):
         path_message = f" File path: {path}." if path else ""
         df = df.reset_index()
         if self._key_field:
-            key_field = [self._key_field] if not isinstance(self._key_field, list) else self._key_field
-            missing_keys = list(set(key_field) - set(df.columns))
+            key_fields = [self._key_field] if not isinstance(self._key_field, list) else self._key_field
+            missing_keys = list(set(key_fields) - set(df.columns))
             if missing_keys:
                 if len(missing_keys) > 1:
                     missing_keys_message = f"key columns {missing_keys} are"
