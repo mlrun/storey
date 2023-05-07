@@ -780,33 +780,6 @@ class CSVSource(DataframeSource):
         else:
             return datetime.fromisoformat(timestamp)
 
-    def _validate_fields(self, df, key_field, id_field, path=""):
-        path_message = f" File path: {path}." if path else ""
-        str_key_field = []
-        str_id_field = None
-        if id_field is not None:
-            if isinstance(id_field, str):
-                str_id_field = id_field
-            elif isinstance(id_field, int) and (id_field < 0 or id_field >= len(df.columns)):
-                raise IndexError(
-                    f"id column '{id_field}' is of type int and is not in dataframe index range.{path_message}"
-                )
-        if key_field:
-            key_field = [key_field] if not isinstance(key_field, list) else key_field
-            str_key_field = [key for key in key_field if isinstance(key, str)]
-            int_key_field = [key for key in key_field if isinstance(key, int)]
-            if str_key_field and int_key_field:
-                raise ValueError("key_field should not contain both integer and string values")
-            out_of_range_keys = [int_key for int_key in int_key_field if int_key < 0 or int_key >= len(df.columns)]
-            if out_of_range_keys:
-                if len(out_of_range_keys) > 1:
-                    out_of_range_keys_message = f"Key indexes {out_of_range_keys} of type int are"
-                else:
-                    out_of_range_keys_message = f"Key index '{out_of_range_keys[0]}' of type int is"
-                raise IndexError(f"{out_of_range_keys_message} not in dataframe index range.{path_message}")
-        if str_id_field or str_key_field:
-            super()._validate_fields(df=df, key_field=str_key_field, id_field=str_id_field, path=path)
-
 
 class ParquetSource(DataframeSource):
     """Reads Parquet files as input source for a flow.
