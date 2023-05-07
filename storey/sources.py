@@ -619,14 +619,14 @@ class DataframeSource(_IterableSource, WithUUID):
             kwargs["id_field"] = id_field
         _IterableSource.__init__(self, **kwargs)
         WithUUID.__init__(self)
+        self._key_field = key_field
+        self._id_field = id_field
         if isinstance(dfs, pandas.DataFrame):
             dfs = [dfs]
         if dfs:
             for df in dfs:
-                self._validate_fields(df=df, key_field=key_field, id_field=id_field)
+                self._validate_fields(df=df)
         self._dfs = dfs
-        self._key_field = key_field
-        self._id_field = id_field
 
     def _get_key(self, body: OrderedDict):
         """
@@ -671,11 +671,11 @@ class DataframeSource(_IterableSource, WithUUID):
                         self.context.logger.error(f"value of key {none_key_column} is {key} For {body}")
         return await self._do_downstream(_termination_obj)
 
-    def _validate_fields(self, df, key_field, id_field, path=""):
+    def _validate_fields(self, df, path=""):
         path_message = f" File path: {path}." if path else ""
         df = df.reset_index()
-        if key_field:
-            key_field = [key_field] if not isinstance(key_field, list) else key_field
+        if self._key_field:
+            key_field = [self._key_field] if not isinstance(self._key_field, list) else self._key_field
             missing_keys = list(set(key_field) - set(df.columns))
             if missing_keys:
                 if len(missing_keys) > 1:
@@ -684,8 +684,8 @@ class DataframeSource(_IterableSource, WithUUID):
                     missing_keys_message = f"key column '{missing_keys[0]}' is"
                 raise ValueError(f"{missing_keys_message} missing from dataframe.{path_message}")
 
-        if id_field and id_field not in df.columns:
-            raise ValueError(f"id column '{id_field}' is missing from dataframe.{path_message}")
+        if self._id_field and self._id_field not in df.columns:
+            raise ValueError(f"id column '{self._id_field}' is missing from dataframe.{path_message}")
 
 
 class CSVSource(DataframeSource):
@@ -769,7 +769,7 @@ class CSVSource(DataframeSource):
                 date_parser=self._datetime_from_timestamp,
                 storage_options=self._storage_options,
             )
-            self._validate_fields(df=df, key_field=self._key_field, id_field=self._id_field, path=path)
+            self._validate_fields(df=df, path=path)
             self._dfs.append(df)
 
     def _datetime_from_timestamp(self, timestamp):
@@ -883,7 +883,7 @@ class ParquetSource(DataframeSource):
                 df = self._read_filtered_parquet(path)
             else:
                 df = pandas.read_parquet(path, columns=self._columns, storage_options=self._storage_options)
-            self._validate_fields(df=df, key_field=self._key_field, id_field=self._id_field, path=path)
+            self._validate_fields(df=df, path=path)
             self._dfs.append(df)
 
 
