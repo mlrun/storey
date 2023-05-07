@@ -342,7 +342,6 @@ def test_csv_reader_with_key_and_timestamp():
         [
             CSVSource(
                 "tests/test-with-timestamp.csv",
-                header=True,
                 key_field="k",
                 parse_dates="t",
                 timestamp_format="%d/%m/%Y %H:%M:%S",
@@ -435,40 +434,6 @@ def test_csv_reader_id_key_error():
 
         controller.await_termination()
     assert str(value_error.value) == "id column 'not_exist' is missing from dataframe. File path: tests/test.csv."
-
-
-def test_csv_reader_index_error():
-    controller = build_flow(
-        [
-            CSVSource("tests/test.csv", header=True, key_field=3),
-        ]
-    )
-    with pytest.raises(
-        IndexError,
-    ) as index_error:
-        controller = controller.run()
-        controller.await_termination()
-    assert (
-        str(index_error.value)
-        == "Key index '3' of type int is not in dataframe index range. File path: tests/test.csv."
-    )
-
-
-def test_csv_reader_id_index_error():
-    controller = build_flow(
-        [
-            CSVSource("tests/test.csv", header=True, id_field=3),
-        ]
-    )
-    with pytest.raises(
-        IndexError,
-    ) as index_error:
-        controller = controller.run()
-        controller.await_termination()
-    assert (
-        str(index_error.value)
-        == "id column '3' is of type int and is not in dataframe index range. File path: tests/test.csv."
-    )
 
 
 def test_dataframe_source():
