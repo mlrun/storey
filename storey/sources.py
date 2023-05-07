@@ -637,17 +637,16 @@ class DataframeSource(_IterableSource, WithUUID):
             if isinstance(self._key_field, list):
                 key = []
                 for key_field in self._key_field:
-                    single_key = self._get_by_field_or_index(field=key_field, body=body)
+                    single_key = body[key_field]
                     if pd.isna(single_key):
                         return single_key, key_field
                     key.append(single_key)
 
             else:
-                key = self._get_by_field_or_index(field=self._key_field, body=body)
+                key = body[self._key_field]
                 if pd.isna(key):
                     return key, self._key_field
         return key, None
-
 
     async def _run_loop(self):
         for df in self._dfs:
@@ -662,7 +661,7 @@ class DataframeSource(_IterableSource, WithUUID):
                 key, none_key_column = self._get_key(body=body)
                 if not none_key_column:
                     if self._id_field:
-                        line_id = self._get_by_field_or_index(field=self._id_field, body=body)
+                        line_id = body[self._id_field]
                     else:
                         line_id = self._get_uuid()
                     element = dict(body)
@@ -672,9 +671,6 @@ class DataframeSource(_IterableSource, WithUUID):
                     if self.context:
                         self.context.logger.error(f"value of key {none_key_column} is {key} For {body}")
         return await self._do_downstream(_termination_obj)
-
-    def _get_by_field_or_index(self, field, body: OrderedDict):
-        return body[field]
 
     def _validate_fields(self, df, key_field, id_field, path=""):
         path_message = f" File path: {path}." if path else ""
@@ -717,17 +713,17 @@ class CSVSource(DataframeSource):
     """
 
     def __init__(
-            self,
-            paths: Union[List[str], str],
-            header: bool = False,
-            build_dict: bool = False,
-            key_field: Union[int, str, List[int], List[str], None] = None,
-            time_field: Union[int, str, None] = None,
-            timestamp_format: Optional[str] = None,
-            id_field: Union[str, int, None] = None,
-            type_inference: bool = True,
-            parse_dates: Optional[Union[int, str, List[int], List[str]]] = None,
-            **kwargs,
+        self,
+        paths: Union[List[str], str],
+        header: bool = False,
+        build_dict: bool = False,
+        key_field: Union[int, str, List[int], List[str], None] = None,
+        time_field: Union[int, str, None] = None,
+        timestamp_format: Optional[str] = None,
+        id_field: Union[str, int, None] = None,
+        type_inference: bool = True,
+        parse_dates: Optional[Union[int, str, List[int], List[str]]] = None,
+        **kwargs,
     ):
 
         kwargs["paths"] = paths
@@ -784,13 +780,6 @@ class CSVSource(DataframeSource):
             return pandas.to_datetime(timestamp, format=self._timestamp_format).floor("u").to_pydatetime()
         else:
             return datetime.fromisoformat(timestamp)
-
-    def _get_by_field_or_index(self, field, body: OrderedDict):
-        if isinstance(field, str):
-            result = super()._get_by_field_or_index(field=field, body=body)
-        else:
-            result = list(body.values())[field]
-        return result
 
     def _validate_fields(self, df, key_field, id_field, path=""):
         path_message = f" File path: {path}." if path else ""
