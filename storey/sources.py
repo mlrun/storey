@@ -651,7 +651,7 @@ class DataframeSource(_IterableSource, WithUUID):
     async def _run_loop(self):
         for df in self._dfs:
             for namedtuple in df.itertuples():
-                body = OrderedDict(namedtuple._asdict())
+                body = namedtuple._asdict()
                 index = body.pop("Index")
                 if len(df.index.names) > 1:
                     for i, index_column in enumerate(df.index.names):
@@ -664,8 +664,7 @@ class DataframeSource(_IterableSource, WithUUID):
                         line_id = body[self._id_field]
                     else:
                         line_id = self._get_uuid()
-                    element = dict(body)
-                    event = Event(element, key=key, id=line_id)
+                    event = Event(body, key=key, id=line_id)
                     await self._do_downstream(event)
                 else:
                     if self.context:
