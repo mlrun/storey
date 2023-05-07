@@ -619,11 +619,11 @@ class DataframeSource(_IterableSource, WithUUID):
             kwargs["id_field"] = id_field
         _IterableSource.__init__(self, **kwargs)
         WithUUID.__init__(self)
-        if key_field:
+        if key_field is not None:
             key_fields = [key_field] if not isinstance(key_field, list) else key_field
             if any([not isinstance(single_key_field, str) for single_key_field in key_fields]):
                 raise ValueError("key_field should be in string type only!")
-        if id_field and not isinstance(id_field, str):
+        if id_field is not None and not isinstance(id_field, str):
             raise ValueError("id_field should be in string type only!")
         self._key_field = key_field
         self._id_field = id_field

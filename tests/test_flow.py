@@ -3604,15 +3604,26 @@ def test_none_key_date_is_not_written():
     assert result == expected
 
 
-def test_mixed_key_types():
+def test_int_key_field():
     with pytest.raises(ValueError) as value_error:
         build_flow(
             [
-                CSVSource("tests/test.csv", header=True, key_field=["n1", 2]),
+                CSVSource("tests/test.csv", key_field=["n1", 2]),
             ]
         ).run()
 
-    assert str(value_error.value) == "key_field should not contain both integer and string values"
+    assert str(value_error.value) == "key_field should be in string type only!"
+
+
+def test_int_id_field():
+    with pytest.raises(ValueError) as value_error:
+        build_flow(
+            [
+                CSVSource("tests/test.csv", id_field=0),
+            ]
+        ).run()
+
+    assert str(value_error.value) == "id_field should be in string type only!"
 
 
 def test_csv_none_value_first_row(tmpdir):
