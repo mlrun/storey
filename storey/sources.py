@@ -648,8 +648,6 @@ class DataframeSource(_IterableSource, WithUUID):
                     return key, self._key_field
         return key, None
 
-    def _get_element(self, body: OrderedDict):
-        return dict(body)
 
     async def _run_loop(self):
         for df in self._dfs:
@@ -667,7 +665,7 @@ class DataframeSource(_IterableSource, WithUUID):
                         line_id = self._get_by_field_or_index(field=self._id_field, body=body)
                     else:
                         line_id = self._get_uuid()
-                    element = self._get_element(body=body)
+                    element = dict(body)
                     event = Event(element, key=key, id=line_id)
                     await self._do_downstream(event)
                 else:
@@ -770,10 +768,9 @@ class CSVSource(DataframeSource):
         self._dfs = []
         for path in self._paths:
             #  with header=None, columns will be indexed by position (0, 1, 2, ...)
-            header = 0 if self._with_header else None
             df = pandas.read_csv(
                 path,
-                header=header,
+                header=0,
                 parse_dates=self._dates_indices,
                 date_parser=self._datetime_from_timestamp,
                 storage_options=self._storage_options,
@@ -788,11 +785,6 @@ class CSVSource(DataframeSource):
             return pandas.to_datetime(timestamp, format=self._timestamp_format).floor("u").to_pydatetime()
         else:
             return datetime.fromisoformat(timestamp)
-
-    def _get_element(self, body: OrderedDict):
-        if self._build_dict:
-            return dict(body)
-        return list(body.values())
 
     def _get_by_field_or_index(self, field, body: OrderedDict):
         if self._with_header and isinstance(field, str):
