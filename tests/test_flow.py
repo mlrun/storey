@@ -228,15 +228,15 @@ def test_emit_timeless_event():
 def test_csv_reader():
     controller = build_flow(
         [
-            CSVSource("tests/test.csv", header=True),
+            CSVSource("tests/test.csv"),
             FlatMap(lambda x: x),
-            Map(lambda x: int(x)),
-            Reduce(0, lambda acc, x: acc + x),
+            Map(lambda x: x),
+            Reduce('', lambda acc, x: acc + x),
         ]
     ).run()
 
     termination_result = controller.await_termination()
-    assert termination_result == 21
+    assert termination_result == 'n1n2n3n1n2n3'
 
 
 def test_csv_reader_error_on_file_not_found():
