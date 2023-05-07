@@ -767,7 +767,6 @@ class CSVSource(DataframeSource):
         super()._init()
         self._dfs = []
         for path in self._paths:
-            #  with header=None, columns will be indexed by position (0, 1, 2, ...)
             df = pandas.read_csv(
                 path,
                 header=0,
@@ -787,7 +786,7 @@ class CSVSource(DataframeSource):
             return datetime.fromisoformat(timestamp)
 
     def _get_by_field_or_index(self, field, body: OrderedDict):
-        if self._with_header and isinstance(field, str):
+        if isinstance(field, str):
             result = super()._get_by_field_or_index(field=field, body=body)
         else:
             result = list(body.values())[field]
