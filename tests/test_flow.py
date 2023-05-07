@@ -231,12 +231,12 @@ def test_csv_reader():
             CSVSource("tests/test.csv"),
             FlatMap(lambda x: x),
             Map(lambda x: x),
-            Reduce('', lambda acc, x: acc + x),
+            Reduce("", lambda acc, x: acc + x),
         ]
     ).run()
 
     termination_result = controller.await_termination()
-    assert termination_result == 'n1n2n3n1n2n3'
+    assert termination_result == "n1n2n3n1n2n3"
 
 
 def test_csv_reader_error_on_file_not_found():
@@ -354,9 +354,9 @@ def test_csv_reader_with_key_and_timestamp():
 
     assert len(termination_result) == 2
     assert termination_result[0].key == "m1"
-    assert termination_result[0].body == {'b': True, 'k': 'm1', 't': datetime(2020, 2, 15, 2, 0), 'v': 8}
+    assert termination_result[0].body == {"b": True, "k": "m1", "t": datetime(2020, 2, 15, 2, 0), "v": 8}
     assert termination_result[1].key == "m2"
-    assert termination_result[1].body == {'b': False, 'k': 'm2', 't': datetime(2020, 2, 16, 2, 0), 'v': 14}
+    assert termination_result[1].body == {"b": False, "k": "m2", "t": datetime(2020, 2, 16, 2, 0), "v": 14}
 
 
 @pytest.mark.parametrize(
@@ -3445,18 +3445,33 @@ def test_csv_source_with_none_values():
 
     assert len(termination_result) == 2
     assert termination_result[0].key == "a"
-    assert termination_result[0].body == [
-        "a",
-        True,
-        False,
-        1,
-        2.3,
-        "2021-04-21 15:56:53.385444",
-    ]
+    assert termination_result[0].body == {
+        "bool": True,
+        "bool_with_none": False,
+        "date_with_none": "2021-04-21 15:56:53.385444",
+        "float_with_nan": 2.3,
+        "int_with_nan": 1.0,
+        "string": "a",
+    }
     assert termination_result[1].key == "b"
-    excepted_result = ["b", True, math.nan, math.nan, math.nan, math.nan]
-    for x, y in zip(termination_result[1].body, excepted_result):
-        assert (isinstance(x, float) and isinstance(y, float) and math.isnan(x) and math.isnan(y)) or x == y
+    excepted_result = {
+        "bool": True,
+        "bool_with_none": math.nan,
+        "date_with_none": math.nan,
+        "float_with_nan": math.nan,
+        "int_with_nan": math.nan,
+        "string": "b",
+    }
+    for key in excepted_result.keys():
+        excepted_value = excepted_result[key]
+        actual_value = termination_result[1].body[key]
+        assert (
+            isinstance(excepted_value, float)
+            and isinstance(actual_value, float)
+            and math.isnan(excepted_value)
+            and math.isnan(actual_value)
+        ) or excepted_value == actual_value
+    assert sorted(excepted_result.keys()) == sorted(termination_result[1].body.keys())
 
 
 def test_csv_source_event_metadata():
