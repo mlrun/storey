@@ -719,17 +719,17 @@ class CSVSource(DataframeSource):
     """
 
     def __init__(
-        self,
-        paths: Union[List[str], str],
-        header: bool = False,
-        build_dict: bool = False,
-        key_field: Union[int, str, List[int], List[str], None] = None,
-        time_field: Union[int, str, None] = None,
-        timestamp_format: Optional[str] = None,
-        id_field: Union[str, int, None] = None,
-        type_inference: bool = True,
-        parse_dates: Optional[Union[int, str, List[int], List[str]]] = None,
-        **kwargs,
+            self,
+            paths: Union[List[str], str],
+            header: bool = False,
+            build_dict: bool = False,
+            key_field: Union[int, str, List[int], List[str], None] = None,
+            time_field: Union[int, str, None] = None,
+            timestamp_format: Optional[str] = None,
+            id_field: Union[str, int, None] = None,
+            type_inference: bool = True,
+            parse_dates: Optional[Union[int, str, List[int], List[str]]] = None,
+            **kwargs,
     ):
 
         kwargs["paths"] = paths
@@ -749,8 +749,6 @@ class CSVSource(DataframeSource):
         kwargs["type_inference"] = type_inference
         self._storage_options = kwargs.get("storage_options")
         self._paths = paths
-        self._with_header = header
-        self._build_dict = build_dict
         self._key_field = key_field
         self._time_field = time_field
         self._timestamp_format = timestamp_format
@@ -762,22 +760,9 @@ class CSVSource(DataframeSource):
         if parse_dates:
             if not isinstance(parse_dates, List):
                 parse_dates = [parse_dates]
-            if not header and any([isinstance(f, str) for f in self._parse_dates]):
-                raise ValueError("parse_dates can only be a list of strings when with_header=True")
             self._dates_indices.extend(parse_dates)
         if time_field is not None:
-            if not header and isinstance(time_field, str):
-                raise ValueError("time_field parameter can only be an integer in conjunction with with_header=False")
             self._dates_indices.append(time_field)
-        if not header and (
-            isinstance(key_field, str)
-            or (isinstance(key_field, list) and any([isinstance(key, str) for key in key_field]))
-        ):
-            raise ValueError("key_field can only be set to an integer when with_header is False.")
-        if not header and (isinstance(id_field, str)):
-            raise ValueError("id_field can only be set to an integer when with_header is False.")
-        if self._build_dict and not self._with_header:
-            raise ValueError("build_dict can only be False when with_header is False.")
         super().__init__([], **kwargs)
 
     def _init(self):
