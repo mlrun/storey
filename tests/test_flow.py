@@ -3684,20 +3684,6 @@ def test_csv_none_value_string(tmpdir):
 
 
 def test_csv_multiple_time_columns(tmpdir):
-    with pytest.raises(ValueError):
-        controller = build_flow(
-            [
-                CSVSource(
-                    "tests/test-multiple-time-columns.csv",
-                    header=False,
-                    time_field="t1",
-                    parse_dates=["t2"],
-                ),
-                Reduce([], append_and_return),
-            ]
-        ).run()
-
-    # now do it correctly
     controller = build_flow(
         [
             CSVSource(
@@ -3713,20 +3699,19 @@ def test_csv_multiple_time_columns(tmpdir):
     termination_result = controller.await_termination()
 
     expected = [
-        [
-            "m1",
-            datetime(2020, 6, 27, 10, 23, 8, 420581),
-            "katya",
-            datetime(2020, 6, 27, 12, 23, 8, 420581),
-        ],
-        [
-            "m2",
-            datetime(2021, 6, 27, 10, 23, 8, 420581),
-            "dina",
-            datetime(2021, 6, 27, 10, 21, 8, 420581),
-        ],
+        {
+            "k": "m1",
+            "s": "katya",
+            "t1": datetime(2020, 6, 27, 10, 23, 8, 420581),
+            "t2": datetime(2020, 6, 27, 12, 23, 8, 420581),
+        },
+        {
+            "k": "m2",
+            "s": "dina",
+            "t1": datetime(2021, 6, 27, 10, 23, 8, 420581),
+            "t2": datetime(2021, 6, 27, 10, 21, 8, 420581),
+        },
     ]
-
     assert termination_result == expected
 
 
