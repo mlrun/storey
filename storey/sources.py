@@ -641,7 +641,6 @@ class DataframeSource(_IterableSource, WithUUID):
                     if pd.isna(single_key):
                         return single_key, key_field
                     key.append(single_key)
-
             else:
                 key = body[self._key_field]
                 if pd.isna(key):
