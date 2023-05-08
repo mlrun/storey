@@ -635,7 +635,7 @@ class DataframeSource(_IterableSource, WithUUID):
                 self._validate_fields(df=df)
         self._dfs = dfs
 
-    def _get_key(self, body: OrderedDict):
+    def _get_key(self, body: dict):
         """
         return key values by columns + column name that have a non value if exists.
         """
@@ -657,14 +657,10 @@ class DataframeSource(_IterableSource, WithUUID):
     async def _run_loop(self):
         for df in self._dfs:
             columns = list(df.columns)
-            for namedtuple in df.itertuples():
-                body = namedtuple._asdict()
-                index = body.pop("Index")
-                if len(df.index.names) > 1:
-                    for i, index_column in enumerate(df.index.names):
-                        body[index_column] = index[i]
-                elif df.index.names[0] is not None:
-                    body[df.index.names[0]] = index
+            if not df.index.empty:
+                df = df.reset_index(drop=False)
+            for index, row in df.iterrows():
+                body = row.to_dict()
                 key, none_key_column = self._get_key(body=body)
                 if not none_key_column:
                     if self._id_field:
