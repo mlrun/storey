@@ -18,7 +18,6 @@ import queue
 import threading
 import uuid
 import warnings
-from collections import OrderedDict
 from datetime import datetime, timezone
 from typing import Callable, Coroutine, Iterable, List, Optional, Union
 
@@ -657,9 +656,9 @@ class DataframeSource(_IterableSource, WithUUID):
     async def _run_loop(self):
         for df in self._dfs:
             columns = list(df.columns)
-            if not df.index.empty:
+            if not df.index.empty and not (len(df.index.names) == 1 and df.index.names[0] is None):
                 df = df.reset_index(drop=False)
-            for index, row in df.iterrows():
+            for _, row in df.iterrows():
                 body = row.to_dict()
                 key, none_key_column = self._get_key(body=body)
                 if not none_key_column:
