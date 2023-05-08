@@ -836,6 +836,19 @@ def test_set_recovery_step():
     assert result == 55
 
 
+def test_read_space_in_header():
+    controller = build_flow(
+        [
+            CSVSource("tests/test_space_in_header.csv", build_dict=True),
+            Reduce([], append_and_return),
+        ]
+    ).run()
+
+    termination_result = controller.await_termination()
+    expected = [{"header with space": 1, "n2": 2, "n3": 3}, {"header with space": 4, "n2": 5, "n3": 6}]
+    assert termination_result == expected
+
+
 def test_error_specific_recovery():
     reduce = Reduce(0, lambda acc, x: acc + x)
     controller = build_flow(
