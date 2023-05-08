@@ -39,9 +39,9 @@ class AwaitableResult:
     """
 
     def __init__(
-        self,
-        on_error: Optional[Callable[[], None]] = None,
-        expected_number_of_results: int = 1,
+            self,
+            on_error: Optional[Callable[[], None]] = None,
+            expected_number_of_results: int = 1,
     ):
         self._on_error = on_error
         self._expected_number_of_results = expected_number_of_results
@@ -103,9 +103,9 @@ class WithUUID:
 
 class FlowControllerBase(WithUUID):
     def __init__(
-        self,
-        key_field: Optional[Union[str, List[str]]],
-        id_field: Optional[str],
+            self,
+            key_field: Optional[Union[str, List[str]]],
+            id_field: Optional[str],
     ):
         super().__init__()
         self._key_field = key_field
@@ -158,12 +158,12 @@ class FlowController(FlowControllerBase):
     """
 
     def __init__(
-        self,
-        emit_fn,
-        await_termination_fn,
-        return_awaitable_result,
-        key_field: Optional[str] = None,
-        id_field: Optional[str] = None,
+            self,
+            emit_fn,
+            await_termination_fn,
+            return_awaitable_result,
+            key_field: Optional[str] = None,
+            id_field: Optional[str] = None,
     ):
         super().__init__(key_field, id_field)
         self._emit_fn = emit_fn
@@ -171,11 +171,11 @@ class FlowController(FlowControllerBase):
         self._return_awaitable_result = return_awaitable_result
 
     def emit(
-        self,
-        element: object,
-        key: Optional[Union[str, List[str]]] = None,
-        return_awaitable_result: Optional[bool] = None,
-        expected_number_of_results: Optional[int] = None,
+            self,
+            element: object,
+            key: Optional[Union[str, List[str]]] = None,
+            return_awaitable_result: Optional[bool] = None,
+            expected_number_of_results: Optional[int] = None,
     ):
         """Emits an event into the associated flow.
 
@@ -242,10 +242,10 @@ class SyncEmitSource(Flow):
     _legal_first_step = True
 
     def __init__(
-        self,
-        buffer_size: Optional[int] = None,
-        key_field: Union[list, str, int, None] = None,
-        **kwargs,
+            self,
+            buffer_size: Optional[int] = None,
+            key_field: Union[list, str, int, None] = None,
+            **kwargs,
     ):
         if buffer_size is None:
             buffer_size = 8
@@ -349,9 +349,9 @@ class AsyncAwaitableResult:
     """
 
     def __init__(
-        self,
-        on_error: Optional[Callable[[BaseException], Coroutine]] = None,
-        expected_number_of_results: int = 1,
+            self,
+            on_error: Optional[Callable[[BaseException], Coroutine]] = None,
+            expected_number_of_results: int = 1,
     ):
         self._on_error = on_error
         self._expected_number_of_results = expected_number_of_results
@@ -390,12 +390,12 @@ class AsyncFlowController(FlowControllerBase):
     """
 
     def __init__(
-        self,
-        emit_fn,
-        loop_task,
-        await_result,
-        key_field: Optional[str] = None,
-        id_field: Optional[str] = None,
+            self,
+            emit_fn,
+            loop_task,
+            await_result,
+            key_field: Optional[str] = None,
+            id_field: Optional[str] = None,
     ):
         super().__init__(key_field, id_field)
         self._emit_fn = emit_fn
@@ -404,11 +404,11 @@ class AsyncFlowController(FlowControllerBase):
         self._await_result = await_result
 
     async def emit(
-        self,
-        element: object,
-        key: Optional[Union[str, List[str]]] = None,
-        await_result: Optional[bool] = None,
-        expected_number_of_results: Optional[int] = None,
+            self,
+            element: object,
+            key: Optional[Union[str, List[str]]] = None,
+            await_result: Optional[bool] = None,
+            expected_number_of_results: Optional[int] = None,
     ) -> object:
         """Emits an event into the associated flow.
 
@@ -466,10 +466,10 @@ class AsyncEmitSource(Flow):
     _legal_first_step = True
 
     def __init__(
-        self,
-        buffer_size: int = None,
-        key_field: Union[list, str, None] = None,
-        **kwargs,
+            self,
+            buffer_size: int = None,
+            key_field: Union[list, str, None] = None,
+            **kwargs,
     ):
         super().__init__(**kwargs)
         if buffer_size is None:
@@ -607,11 +607,11 @@ class DataframeSource(_IterableSource, WithUUID):
     """
 
     def __init__(
-        self,
-        dfs: Union[pandas.DataFrame, Iterable[pandas.DataFrame]],
-        key_field: Optional[Union[str, List[str]]] = None,
-        id_field: Optional[str] = None,
-        **kwargs,
+            self,
+            dfs: Union[pandas.DataFrame, Iterable[pandas.DataFrame]],
+            key_field: Optional[Union[str, List[str]]] = None,
+            id_field: Optional[str] = None,
+            **kwargs,
     ):
         if key_field is not None:
             kwargs["key_field"] = key_field
@@ -655,6 +655,7 @@ class DataframeSource(_IterableSource, WithUUID):
 
     async def _run_loop(self):
         for df in self._dfs:
+            columns = list(df.columns)
             for namedtuple in df.itertuples():
                 body = namedtuple._asdict()
                 index = body.pop("Index")
@@ -669,7 +670,8 @@ class DataframeSource(_IterableSource, WithUUID):
                         line_id = body[self._id_field]
                     else:
                         line_id = self._get_uuid()
-                    event = Event(body, key=key, id=line_id)
+                    element = self._get_element(body=body, columns=columns)
+                    event = Event(element, key=key, id=line_id)
                     await self._do_downstream(event)
                 else:
                     if self.context:
@@ -691,6 +693,9 @@ class DataframeSource(_IterableSource, WithUUID):
 
         if self._id_field and self._id_field not in df.columns:
             raise ValueError(f"id column '{self._id_field}' is missing from dataframe.{path_message}")
+
+    def _get_element(self, body: dict, columns):
+        return body
 
 
 class CSVSource(DataframeSource):
@@ -717,23 +722,24 @@ class CSVSource(DataframeSource):
     """
 
     def __init__(
-        self,
-        paths: Union[List[str], str],
-        header: bool = False,
-        build_dict: bool = False,
-        key_field: Union[int, str, List[int], List[str], None] = None,
-        time_field: Union[int, str, None] = None,
-        timestamp_format: Optional[str] = None,
-        id_field: Union[str, int, None] = None,
-        type_inference: bool = True,
-        parse_dates: Optional[Union[int, str, List[int], List[str]]] = None,
-        **kwargs,
+            self,
+            paths: Union[List[str], str],
+            header: bool = False,
+            build_dict: bool = False,
+            key_field: Union[int, str, List[int], List[str], None] = None,
+            time_field: Union[int, str, None] = None,
+            timestamp_format: Optional[str] = None,
+            id_field: Union[str, int, None] = None,
+            type_inference: bool = True,
+            parse_dates: Optional[Union[int, str, List[int], List[str]]] = None,
+            **kwargs,
     ):
 
         kwargs["paths"] = paths
         if isinstance(paths, str):
             paths = [paths]
         self._paths = paths
+        self._build_dict = build_dict
         kwargs["header"] = header
         kwargs["build_dict"] = build_dict
         if key_field is not None:
@@ -785,6 +791,11 @@ class CSVSource(DataframeSource):
         else:
             return datetime.fromisoformat(timestamp)
 
+    def _get_element(self, body: dict, columns: List[str]):
+        if self._build_dict:
+            return body
+        return list(body.values())  # todo fix
+
 
 class ParquetSource(DataframeSource):
     """Reads Parquet files as input source for a flow.
@@ -801,13 +812,13 @@ class ParquetSource(DataframeSource):
     """
 
     def __init__(
-        self,
-        paths: Union[str, Iterable[str]],
-        columns=None,
-        start_filter: Optional[datetime] = None,
-        end_filter: Optional[datetime] = None,
-        filter_column: Optional[str] = None,
-        **kwargs,
+            self,
+            paths: Union[str, Iterable[str]],
+            columns=None,
+            start_filter: Optional[datetime] = None,
+            end_filter: Optional[datetime] = None,
+            filter_column: Optional[str] = None,
+            **kwargs,
     ):
         if start_filter or end_filter:
             if start_filter is None:
@@ -903,13 +914,13 @@ class SQLSource(_IterableSource, WithUUID):
     """
 
     def __init__(
-        self,
-        db_path: str,
-        table_name: str,
-        key_field: Union[None, str, List[str]] = None,
-        id_field: str = None,
-        time_fields: List[str] = None,
-        **kwargs,
+            self,
+            db_path: str,
+            table_name: str,
+            key_field: Union[None, str, List[str]] = None,
+            id_field: str = None,
+            time_fields: List[str] = None,
+            **kwargs,
     ):
 
         if key_field is not None:
