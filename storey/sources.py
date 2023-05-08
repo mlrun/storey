@@ -794,7 +794,7 @@ class CSVSource(DataframeSource):
     def _get_element(self, body: dict, columns: List[str]):
         if self._build_dict:
             return body
-        return list(body.values())  # todo fix
+        return [body[column] for column in columns]
 
 
 class ParquetSource(DataframeSource):
