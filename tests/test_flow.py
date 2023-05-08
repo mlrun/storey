@@ -3623,6 +3623,7 @@ def test_none_key_date_is_not_written():
 
     assert result == expected
 
+
 def test_mixed_key_types():
     with pytest.raises(ValueError) as value_error:
         build_flow(
