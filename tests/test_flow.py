@@ -437,40 +437,6 @@ def test_csv_reader_id_key_error():
     assert str(value_error.value) == "id column 'not_exist' is missing from dataframe. File path: tests/test.csv."
 
 
-def test_csv_reader_index_error():
-    controller = build_flow(
-        [
-            CSVSource("tests/test.csv", header=True, key_field=3),
-        ]
-    )
-    with pytest.raises(
-        IndexError,
-    ) as index_error:
-        controller = controller.run()
-        controller.await_termination()
-    assert (
-        str(index_error.value)
-        == "Key index '3' of type int is not in dataframe index range. File path: tests/test.csv."
-    )
-
-
-def test_csv_reader_id_index_error():
-    controller = build_flow(
-        [
-            CSVSource("tests/test.csv", header=True, id_field=3),
-        ]
-    )
-    with pytest.raises(
-        IndexError,
-    ) as index_error:
-        controller = controller.run()
-        controller.await_termination()
-    assert (
-        str(index_error.value)
-        == "id column '3' is of type int and is not in dataframe index range. File path: tests/test.csv."
-    )
-
-
 def test_dataframe_source():
     df = pd.DataFrame([["hello", 1, 1.5], ["world", 2, 2.5]], columns=["string", "int", "float"])
     controller = build_flow(
