@@ -725,7 +725,7 @@ class CSVSource(DataframeSource):
     def __init__(
         self,
         paths: Union[List[str], str],
-        header: bool = False,
+        header: bool = True,
         build_dict: bool = False,
         key_field: Union[int, str, List[int], List[str], None] = None,
         time_field: Union[int, str, None] = None,
