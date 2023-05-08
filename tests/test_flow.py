@@ -228,7 +228,7 @@ def test_emit_timeless_event():
 def test_csv_reader():
     controller = build_flow(
         [
-            CSVSource("tests/test.csv", header=True),
+            CSVSource("tests/test.csv"),
             FlatMap(lambda x: x),
             Map(lambda x: int(x)),
             Reduce(0, lambda acc, x: acc + x),
@@ -242,7 +242,7 @@ def test_csv_reader():
 def test_csv_reader_error_on_file_not_found():
     flow = build_flow(
         [
-            CSVSource("tests/idontexist.csv", header=True),
+            CSVSource("tests/idontexist.csv"),
         ]
     )
     with pytest.raises(
@@ -254,7 +254,7 @@ def test_csv_reader_error_on_file_not_found():
 def test_csv_reader_as_dict():
     controller = build_flow(
         [
-            CSVSource("tests/test.csv", header=True, build_dict=True),
+            CSVSource("tests/test.csv", build_dict=True),
             FlatMap(lambda x: [x["n1"], x["n2"], x["n3"]]),
             Map(lambda x: int(x)),
             Reduce(0, lambda acc, x: acc + x),
@@ -403,7 +403,7 @@ def test_csv_reader_none_in_keyfield_should_send_error_log():
 
     controller = build_flow(
         [
-            CSVSource("tests/test-none-in-keyfield.csv", header=True, key_field="k", context=context),
+            CSVSource("tests/test-none-in-keyfield.csv", key_field="k", context=context),
         ]
     ).run()
 
@@ -417,7 +417,7 @@ def test_csv_source_key_error():
     with pytest.raises(ValueError) as value_error:
         controller = build_flow(
             [
-                CSVSource("tests/test.csv", header=True, key_field="not_exist"),
+                CSVSource("tests/test.csv", key_field="not_exist"),
             ]
         ).run()
 
@@ -429,7 +429,7 @@ def test_csv_reader_id_key_error():
     with pytest.raises(ValueError) as value_error:
         controller = build_flow(
             [
-                CSVSource("tests/test.csv", header=True, id_field="not_exist"),
+                CSVSource("tests/test.csv", id_field="not_exist"),
             ]
         ).run()
 
@@ -3437,7 +3437,7 @@ def test_query_by_key_edge_case_field_name():
 def test_csv_source_with_none_values():
     controller = build_flow(
         [
-            CSVSource("tests/test-with-none-values.csv", header=True, key_field="string"),
+            CSVSource("tests/test-with-none-values.csv", key_field="string"),
             Reduce([], append_and_return, full_event=True),
         ]
     ).run()
@@ -3594,7 +3594,7 @@ def test_not_string_key_field():
     with pytest.raises(ValueError) as value_error:
         build_flow(
             [
-                CSVSource("tests/test.csv", header=True, key_field=0),
+                CSVSource("tests/test.csv", key_field=0),
             ]
         ).run()
 
@@ -3617,7 +3617,7 @@ def test_csv_none_value_first_row(tmpdir):
 
     controller = build_flow(
         [
-            CSVSource(out_file_csv, header=True, key_field="first_name", build_dict=True),
+            CSVSource(out_file_csv, key_field="first_name", build_dict=True),
             ParquetTarget(out_file_par),
         ]
     ).run()
@@ -3643,7 +3643,7 @@ def test_csv_none_value_string(tmpdir):
 
     controller = build_flow(
         [
-            CSVSource(out_file_csv, header=True, key_field="first_name", build_dict=True),
+            CSVSource(out_file_csv, key_field="first_name", build_dict=True),
             ParquetTarget(out_file_par),
         ]
     ).run()
