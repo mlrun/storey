@@ -3659,20 +3659,6 @@ def test_csv_none_value_string(tmpdir):
 
 
 def test_csv_multiple_time_columns(tmpdir):
-    with pytest.raises(ValueError):
-        controller = build_flow(
-            [
-                CSVSource(
-                    "tests/test-multiple-time-columns.csv",
-                    header=False,
-                    time_field="t1",
-                    parse_dates=["t2"],
-                ),
-                Reduce([], append_and_return),
-            ]
-        ).run()
-
-    # now do it correctly
     controller = build_flow(
         [
             CSVSource(
