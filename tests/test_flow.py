@@ -836,10 +836,23 @@ def test_set_recovery_step():
     assert result == 55
 
 
-def test_read_space_in_header():
+def test_read_space_in_header_csv():
     controller = build_flow(
         [
             CSVSource("tests/test_space_in_header.csv", build_dict=True),
+            Reduce([], append_and_return),
+        ]
+    ).run()
+
+    termination_result = controller.await_termination()
+    expected = [{"header with space": 1, "n2": 2, "n3": 3}, {"header with space": 4, "n2": 5, "n3": 6}]
+    assert termination_result == expected
+
+
+def test_read_space_in_header_parquet():
+    controller = build_flow(
+        [
+            ParquetSource("tests/test_space_in_header.parquet"),
             Reduce([], append_and_return),
         ]
     ).run()
