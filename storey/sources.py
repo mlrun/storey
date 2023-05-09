@@ -183,8 +183,7 @@ class FlowController(FlowControllerBase):
         :param return_awaitable_result: Deprecated! An awaitable result object will be returned if a Complete step
             appears in the flow.
         :param expected_number_of_results: Number of times the event will have to pass through a Complete step to be
-            completed (for graph
-        flows).
+            completed (for graph flows).
 
         :returns: AsyncAwaitableResult if a Complete appears in the flow. None otherwise.
         """
@@ -415,7 +414,7 @@ class AsyncFlowController(FlowControllerBase):
         :param key: The event key(s) (optional)
         :param await_result: Deprecated. Will await a result if a Complete step appears in the flow.
         :param expected_number_of_results: Number of times the event will have to pass through a Complete step to be
-        completed (for graph flows).
+            completed (for graph flows).
 
         :returns: The result received from the flow if a Complete step appears in the flow. None otherwise.
         """
@@ -797,7 +796,7 @@ class ParquetSource(DataframeSource):
     """Reads Parquet files as input source for a flow.
 
     :parameter paths: paths to Parquet files
-    :parameter columns : list, default=None. If not None, only these columns will be read from the file.
+    :parameter columns: list, default=None. If not None, only these columns will be read from the file.
     :parameter start_filter: datetime. If not None, the results will be filtered by partitions and
         'filter_column' > start_filter. Default is None.
     :parameter end_filter: datetime. If not None, the results will be filtered by partitions
@@ -938,8 +937,16 @@ class SQLSource(_IterableSource, WithUUID):
 
         engine = db.create_engine(self.db_path)
         with engine.connect() as conn:
-            query = f"SELECT * FROM {self.table_name}"
-            cursor = pandas.read_sql(query, con=conn, parse_dates=self.time_fields, chunksize=100)
+            metadata = db.MetaData()
+
+            table = db.Table(
+                self.table_name,
+                metadata,
+                autoload=True,
+                autoload_with=engine,
+            )
+            select_object = db.select(table)
+            cursor = pandas.read_sql(select_object, con=conn, parse_dates=self.time_fields, chunksize=100)
 
             for df in cursor:
                 for row in df.itertuples(index=False):

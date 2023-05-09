@@ -3457,7 +3457,15 @@ def test_non_existing_key_query_by_key():
 # ML-2257
 def test_query_by_key_edge_case_field_name():
     table = Table("table", NoopDriver())
-    QueryByKey(["my_color_5sec"], table, key_field="name"),
+    QueryByKey(["my_color_5sec"], table, key_field="name")
+
+
+# ML-3782
+def test_query_by_key_non_aggregate():
+    table = Table("table", NoopDriver())
+    query_by_key = QueryByKey(["my_color_5h"], table, key_field="name")
+    assert query_by_key._aggrs == []
+    assert query_by_key._enrich_cols == ["my_color_5h"]
 
 
 def test_csv_source_with_none_values():
@@ -4091,6 +4099,7 @@ def test_rename():
 
 
 def test_read_sql_db():
+    # using `table_1; DROP DATABASE test;` as the table name for testing injection
     import sqlalchemy as db
 
     engine = db.create_engine(integration.conftest.SQLITE_DB)
@@ -4103,10 +4112,12 @@ def test_read_sql_db():
                 "time": [pd.Timestamp(2017, 1, 1, 12), pd.Timestamp(2017, 1, 1, 12)],
             }
         )
-        origin_df.to_sql("table_1", conn, if_exists="replace", index=False)
+        origin_df.to_sql("table_1; DROP DATABASE test;", conn, if_exists="replace", index=False)
     controller = build_flow(
         [
-            SQLSource("sqlite:///test.db", "table_1", "string", id_field="int", time_fields=["time"]),
+            SQLSource(
+                "sqlite:///test.db", "table_1; DROP DATABASE test;", "string", id_field="int", time_fields=["time"]
+            ),
             Reduce([], append_and_return),
         ]
     ).run()

@@ -20,6 +20,7 @@ from typing import Callable, Dict, List, Optional, Union
 
 import pandas as pd
 
+from .aggregation_utils import is_aggregation_name
 from .dtypes import (
     EmitAfterMaxEvent,
     EmitAfterPeriod,
@@ -309,14 +310,13 @@ class QueryByKey(AggregateByKey):
     :param table: A Table object or name for persistence of aggregations.
         If a table name is provided, it will be looked up in the context object passed in kwargs.
     :param key_field: Key field to query by, accepts either a string representing the key field or a key
-        extracting function. Defaults to the key in the event's metadata. (Optional)
+        extracting function. Defaults to the key in the event's metadata. Can be list of keys (Optional)
     :param time_field: Time field to query by, accepts either a string representing the time field or a time
         extracting function. Defaults to the processing time in the event's metadata. (Optional)
-     Defaults to the key in the event's metadata. (Optional). Can be list of keys
     :param augmentation_fn: Function that augments the features into the event's body.
         Defaults to updating a dict. (Optional)
     :param aliases: Dictionary specifying aliases for enriched or aggregate columns, of the
-     format `{'col_name': 'new_col_name'}`. (Optional)
+        format `{'col_name': 'new_col_name'}`. (Optional)
     :param options: Enum flags specifying query options. (Optional)
     """
 
@@ -339,7 +339,8 @@ class QueryByKey(AggregateByKey):
                 raise TypeError("Table can not be string if no context was provided to the step")
             table = kwargs["context"].get_table(table)
         for feature in features:
-            if table.supports_aggregations() and re.match(r".*_[a-z]+_[0-9]+[smhd]$", feature):
+            match = re.match(r".*_([a-z]+)_[0-9]+[smhd]$", feature) if table.supports_aggregations() else None
+            if match and is_aggregation_name(match.group(1)):
                 name, window = feature.rsplit("_", 1)
                 if name in resolved_aggrs:
                     resolved_aggrs[name].append(window)
