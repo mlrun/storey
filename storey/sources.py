@@ -735,6 +735,11 @@ class CSVSource(DataframeSource):
             paths = [paths]
         self._paths = paths
         self._build_dict = build_dict
+        if header is False:
+            warnings.warn(
+                "header=False is deprecated",
+                DeprecationWarning,
+            )
         kwargs["header"] = header
         kwargs["build_dict"] = build_dict
         if key_field is not None:
@@ -762,6 +767,7 @@ class CSVSource(DataframeSource):
             self._dates_indices.extend(parse_dates)
         if time_field is not None:
             self._dates_indices.append(time_field)
+
         super().__init__([], **kwargs)
 
     def _init(self):
