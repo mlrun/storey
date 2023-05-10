@@ -657,8 +657,7 @@ class DataframeSource(_IterableSource, WithUUID):
             columns = list(df.columns)
             if not df.index.empty and not (len(df.index.names) == 1 and df.index.names[0] is None):
                 df = df.reset_index(drop=False)
-            for _, row in df.iterrows():
-                body = row.to_dict()
+            for body in df.to_dict('records'):
                 key, none_key_column = self._get_key(body=body)
                 if not none_key_column:
                     if self._id_field:
