@@ -708,7 +708,7 @@ class CSVSource(DataframeSource):
         datetime.fromisoformat().
     :parameter id_field: the CSV field to be used as the ID for events. May be an int (field index) or string (field
         name) if with_header is True. Defaults to None (random ID will be generated per event).
-    :parameter type_inference: Whether to infer data types from the data (when True), or read all fields in as strings
+    :parameter type_inference: Deprecated! Whether to infer data types from the data (when True), or read all fields in as strings
         (when False). Defaults to True.
     :parameter parse_dates: list of columns (names or integers) that will be attempted to parse as date column
 
