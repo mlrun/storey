@@ -708,8 +708,8 @@ class CSVSource(DataframeSource):
         datetime.fromisoformat().
     :parameter id_field: the CSV field to be used as the ID for events. May be an int (field index) or string (field
         name) if with_header is True. Defaults to None (random ID will be generated per event).
-    :parameter type_inference: Deprecated! Whether to infer data types from the data (when True), or read all fields in as strings
-        (when False). Defaults to True.
+    :parameter type_inference: Deprecated! Whether to infer data types from the data (when True), or read all fields in
+     as strings (when False). Defaults to True.
     :parameter parse_dates: list of columns (names or integers) that will be attempted to parse as date column
 
     for additional params, see documentation of  :class:`~storey.flow.Flow`
@@ -736,7 +736,8 @@ class CSVSource(DataframeSource):
         self._build_dict = build_dict
         if header is False:
             warnings.warn(
-                "header=False is deprecated",
+                "header=False is deprecated, will be treated as header=True."
+                " The parameter will be removed in a future version.",
                 DeprecationWarning,
             )
         kwargs["header"] = header
