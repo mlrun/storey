@@ -3490,6 +3490,7 @@ def test_csv_source_with_none_values():
     ]
     assert termination_result[1].key == "b"
     excepted_result = ["b", True, math.nan, math.nan, math.nan, math.nan]
+    assert len(termination_result[1].body) == len(excepted_result)
     for x, y in zip(termination_result[1].body, excepted_result):
         if isinstance(x, float):
             assert isinstance(y, float)
