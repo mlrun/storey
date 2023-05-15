@@ -3632,7 +3632,7 @@ def test_not_string_key_field():
             ]
         ).run()
 
-    assert str(value_error.value) == "key_field should be string/list of strings only!"
+    assert str(value_error.value) == "key_field must be a string or list of strings"
 
 
 def test_csv_none_value_first_row(tmpdir):
