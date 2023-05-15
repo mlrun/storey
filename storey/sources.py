@@ -647,7 +647,8 @@ class DataframeSource(_IterableSource, WithUUID):
     async def _run_loop(self):
         for df in self._dfs:
             columns = list(df.columns)
-            if not df.index.empty and not (len(df.index.names) == 1 and df.index.names[0] is None):
+            is_df_index_nonempty = not df.index.empty and not (len(df.index.names) == 1 and df.index.names[0] is None)
+            if is_df_index_nonempty:
                 df = df.reset_index(drop=False)
             for body in df.to_dict("records"):
                 keys = self._get_keys(body)
