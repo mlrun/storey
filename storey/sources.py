@@ -675,7 +675,7 @@ class DataframeSource(_IterableSource, WithUUID):
         df = df.reset_index()
         if self._key_field:
             key_fields = [self._key_field] if not isinstance(self._key_field, list) else self._key_field
-            missing_keys = [key_field for key_field in key_fields if key_field in df.columns]
+            missing_keys = [key_field for key_field in key_fields if key_field not in df.columns]
             if missing_keys:
                 if len(missing_keys) > 1:
                     missing_keys_message = f"key columns {missing_keys} are"
