@@ -630,7 +630,7 @@ class DataframeSource(_IterableSource, WithUUID):
             dfs = [dfs]
         if dfs:
             for df in dfs:
-                self._validate_fields(df=df)
+                self._validate_fields(df)
         self._dfs = dfs
 
     def _get_key(self, body: dict):
@@ -781,7 +781,7 @@ class CSVSource(DataframeSource):
                 date_parser=self._datetime_from_timestamp,
                 storage_options=self._storage_options,
             )
-            self._validate_fields(df=df, path=path)
+            self._validate_fields(df, path)
             self._dfs.append(df)
 
     def _datetime_from_timestamp(self, timestamp):
@@ -900,7 +900,7 @@ class ParquetSource(DataframeSource):
                 df = self._read_filtered_parquet(path)
             else:
                 df = pandas.read_parquet(path, columns=self._columns, storage_options=self._storage_options)
-            self._validate_fields(df=df, path=path)
+            self._validate_fields(df, path)
             self._dfs.append(df)
 
 
