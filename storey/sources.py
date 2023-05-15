@@ -657,7 +657,7 @@ class DataframeSource(_IterableSource, WithUUID):
                 if none_keys:
                     if self.context:
                         self.context.logger.error(
-                            f"Encountered null values in key fields. null Key values were:"
+                            f"Encountered null values in the following key fields::"
                             f" {', '.join(none_keys)}, in line: {body}."
                         )
                 else:
