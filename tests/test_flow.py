@@ -3491,7 +3491,14 @@ def test_csv_source_with_none_values():
     assert termination_result[1].key == "b"
     excepted_result = ["b", True, math.nan, math.nan, math.nan, math.nan]
     for x, y in zip(termination_result[1].body, excepted_result):
-        assert (isinstance(x, float) and isinstance(y, float) and math.isnan(x) and math.isnan(y)) or x == y
+        if isinstance(x, float):
+            assert isinstance(y, float)
+            if math.isnan(x):
+                assert math.isnan(y)
+            else:
+                assert x == y
+        else:
+            assert x == y
 
 
 def test_csv_source_event_metadata():
