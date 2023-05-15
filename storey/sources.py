@@ -180,7 +180,7 @@ class FlowController(FlowControllerBase):
 
         :param element: The event data, or payload. To set metadata as well, pass an Event object.
         :param key: The event key(s) (optional) #add to async
-        :param return_awaitable_result: Deprecated! An awaitable result object will be returned if a Complete step
+        :param return_awaitable_result: Deprecated. An awaitable result object will be returned if a Complete step
             appears in the flow.
         :param expected_number_of_results: Number of times the event will have to pass through a Complete step to be
             completed (for graph flows).
@@ -696,7 +696,7 @@ class CSVSource(DataframeSource):
     Reads CSV files as input source for a flow.
 
     :parameter paths: paths to CSV files
-    :parameter header: Deprecated! whether CSV files have a header or not. Defaults to False.
+    :parameter header: Deprecated. whether CSV files have a header or not. Defaults to False.
     :parameter build_dict: whether to format each record produced from the input file as a dictionary (as opposed to a
         list). Default to False.
     :parameter key_field: the CSV field to be used as the key for events. May be an int (field index) or string (field
@@ -707,7 +707,7 @@ class CSVSource(DataframeSource):
         datetime.fromisoformat().
     :parameter id_field: the CSV field to be used as the ID for events. May be an int (field index) or string (field
         name) if with_header is True. Defaults to None (random ID will be generated per event).
-    :parameter type_inference: Deprecated! Whether to infer data types from the data (when True), or read all fields in
+    :parameter type_inference: Deprecated. Whether to infer data types from the data (when True), or read all fields in
      as strings (when False). Defaults to True.
     :parameter parse_dates: list of columns (names or integers) that will be attempted to parse as date column
 
