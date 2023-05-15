@@ -623,7 +623,7 @@ class DataframeSource(_IterableSource, WithUUID):
             if any([not isinstance(single_key_field, str) for single_key_field in key_fields]):
                 raise ValueError("key_field should be string/list of strings only!")
         if id_field and not isinstance(id_field, str):
-            raise ValueError("id_field should be in string type only!")
+            raise ValueError("id_field must be a string")
         self._key_field = key_field
         self._id_field = id_field
         if isinstance(dfs, pandas.DataFrame):
