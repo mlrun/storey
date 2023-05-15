@@ -697,7 +697,7 @@ class CSVSource(DataframeSource):
     Reads CSV files as input source for a flow.
 
     :parameter paths: paths to CSV files
-    :parameter header: deprecated! whether CSV files have a header or not. Defaults to False.
+    :parameter header: Deprecated! whether CSV files have a header or not. Defaults to False.
     :parameter build_dict: whether to format each record produced from the input file as a dictionary (as opposed to a
         list). Default to False.
     :parameter key_field: the CSV field to be used as the key for events. May be an int (field index) or string (field
