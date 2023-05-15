@@ -3227,7 +3227,7 @@ def test_flow_to_dict_read_csv():
             "paths": "tests/test-with-timestamp-microsecs.csv",
             "time_field": "t",
             "timestamp_format": "%d/%m/%Y %H:%M:%S.%f",
-            "type_inference": None,
+            "type_inference": True,
         },
         "name": "CSVSource",
     }
@@ -3355,7 +3355,7 @@ def test_reader_writer_to_code():
 
     reconstructed_code = flow.to_code()
     print(reconstructed_code)
-    expected = """c_s_v_source0 = CSVSource(paths='mycsv.csv', header=True, build_dict=False, type_inference=None)
+    expected = """c_s_v_source0 = CSVSource(paths='mycsv.csv', header=True, build_dict=False, type_inference=True)
 parquet_target0 = ParquetTarget(path='mypq', max_events=10000, flush_after_seconds=60)
 
 c_s_v_source0.to(parquet_target0)

@@ -723,7 +723,7 @@ class CSVSource(DataframeSource):
         time_field: Union[int, str, None] = None,
         timestamp_format: Optional[str] = None,
         id_field: Union[str, int, None] = None,
-        type_inference: bool = None,
+        type_inference: bool = True,
         parse_dates: Optional[Union[int, str, List[int], List[str]]] = None,
         **kwargs,
     ):
@@ -739,9 +739,9 @@ class CSVSource(DataframeSource):
                 " The parameter will be removed in a future version.",
                 DeprecationWarning,
             )
-        if type_inference is not None:
+        if type_inference is False:
             warnings.warn(
-                "type_inference is deprecated, and will not be treated."
+                "type_inference is deprecated, will be treated as type_inference=True."
                 " The parameter will be removed in a future version.",
                 DeprecationWarning,
             )
