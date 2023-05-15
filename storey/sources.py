@@ -633,24 +633,16 @@ class DataframeSource(_IterableSource, WithUUID):
                 self._validate_fields(df)
         self._dfs = dfs
 
-    def _get_key(self, body: dict):
-        """
-        return key values by columns + column name that have a non value if exists.
-        """
-        key = None
+    def _get_keys(self, body: dict):
+        keys = []
         if self._key_field:
             if isinstance(self._key_field, list):
-                key = []
                 for key_field in self._key_field:
                     single_key = body[key_field]
-                    if pd.isna(single_key):
-                        return single_key, key_field
-                    key.append(single_key)
+                    keys.append(single_key)
             else:
-                key = body[self._key_field]
-                if pd.isna(key):
-                    return key, self._key_field
-        return key, None
+                keys.append(body[self._key_field])
+        return keys
 
     async def _run_loop(self):
         for df in self._dfs:
@@ -658,18 +650,24 @@ class DataframeSource(_IterableSource, WithUUID):
             if not df.index.empty and not (len(df.index.names) == 1 and df.index.names[0] is None):
                 df = df.reset_index(drop=False)
             for body in df.to_dict("records"):
-                key, none_key_column = self._get_key(body=body)
-                if not none_key_column:
+                keys = self._get_keys(body)
+                key_fields = self._key_field if isinstance(self._key_field,list) else [self._key_field]
+                none_keys = [key for key, value in zip(key_fields, keys) if pd.isna(value)]
+                if none_keys:
+                    if self.context:
+                        self.context.logger.error(
+                            f"Encountered null values in key fields. null Key values were:"
+                            f" {', '.join(none_keys)}, in line: {body}."
+                        )
+                else:
                     if self._id_field:
                         line_id = body[self._id_field]
                     else:
                         line_id = self._get_uuid()
-                    element = self._get_element(body=body, columns=columns)
-                    event = Event(element, key=key, id=line_id)
+                    element = self._get_element(body, columns)
+                    keys = keys[0] if len(keys) == 1 else keys
+                    event = Event(element, keys, id=line_id)
                     await self._do_downstream(event)
-                else:
-                    if self.context:
-                        self.context.logger.error(f"value of key {none_key_column} is {key} For {body}")
         return await self._do_downstream(_termination_obj)
 
     def _validate_fields(self, df, path=""):
