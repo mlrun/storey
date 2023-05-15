@@ -651,7 +651,7 @@ class DataframeSource(_IterableSource, WithUUID):
                 df = df.reset_index(drop=False)
             for body in df.to_dict("records"):
                 keys = self._get_keys(body)
-                key_fields = self._key_field if isinstance(self._key_field,list) else [self._key_field]
+                key_fields = self._key_field if isinstance(self._key_field, list) else [self._key_field]
                 none_keys = [key for key, value in zip(key_fields, keys) if pd.isna(value)]
                 if none_keys:
                     if self.context:
