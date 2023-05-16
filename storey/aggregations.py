@@ -20,6 +20,7 @@ from typing import Callable, Dict, List, Optional, Union
 
 import pandas as pd
 
+from .aggregation_utils import is_aggregation_name
 from .dtypes import (
     EmitAfterMaxEvent,
     EmitAfterPeriod,
@@ -338,7 +339,8 @@ class QueryByKey(AggregateByKey):
                 raise TypeError("Table can not be string if no context was provided to the step")
             table = kwargs["context"].get_table(table)
         for feature in features:
-            if table.supports_aggregations() and re.match(r".*_[a-z]+_[0-9]+[smhd]$", feature):
+            match = re.match(r".*_([a-z]+)_[0-9]+[smhd]$", feature) if table.supports_aggregations() else None
+            if match and is_aggregation_name(match.group(1)):
                 name, window = feature.rsplit("_", 1)
                 if name in resolved_aggrs:
                     resolved_aggrs[name].append(window)

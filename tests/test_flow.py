@@ -3631,7 +3631,15 @@ def test_non_existing_key_query_by_key():
 # ML-2257
 def test_query_by_key_edge_case_field_name():
     table = Table("table", NoopDriver())
-    QueryByKey(["my_color_5sec"], table, key_field="name"),
+    QueryByKey(["my_color_5sec"], table, key_field="name")
+
+
+# ML-3782
+def test_query_by_key_non_aggregate():
+    table = Table("table", NoopDriver())
+    query_by_key = QueryByKey(["my_color_5h"], table, key_field="name")
+    assert query_by_key._aggrs == []
+    assert query_by_key._enrich_cols == ["my_color_5h"]
 
 
 def test_csv_source_with_none_values():
