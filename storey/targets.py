@@ -466,7 +466,7 @@ class CSVTarget(_Batching, _Writer):
         asyncio.get_running_loop().run_in_executor(None, lambda: self._data_buffer.put(_termination_obj))
         await self._blocking_io_loop_future
 
-    async def _emit(self, batch, batch_key, batch_time, last_event_time=None):
+    async def _emit(self, batch, batch_key, batch_time, batch_events, last_event_time=None):
         if not self._blocking_io_loop_future:
             self._blocking_io_loop_future = asyncio.get_running_loop().run_in_executor(None, self._blocking_io_loop)
 
@@ -590,7 +590,7 @@ class ParquetTarget(_Batching, _Writer):
     def _event_to_batch_entry(self, event):
         return self._event_to_writer_entry(event)
 
-    async def _emit(self, batch, batch_key, batch_time, last_event_time=None):
+    async def _emit(self, batch, batch_key, batch_time, batch_events, last_event_time=None):
         df_columns = []
         if self._non_partition_columns:
             if self._index_cols:
@@ -741,7 +741,7 @@ class TSDBTarget(_Batching, _Writer):
     def _event_to_batch_entry(self, event):
         return self._event_to_writer_entry(event)
 
-    async def _emit(self, batch, batch_key, batch_time, last_event_time=None):
+    async def _emit(self, batch, batch_key, batch_time, batch_events, last_event_time=None):
         df_columns = []
         if self._index_cols:
             df_columns.extend(self._index_cols)

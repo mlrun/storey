@@ -1002,7 +1002,7 @@ class _Batching(Flow):
         else:
             raise ValueError(f"Unsupported key_field type {type(key_field)}")
 
-    async def _emit(self, batch, batch_key, batch_time, last_event_time=None):
+    async def _emit(self, batch, batch_key, batch_time, batch_events, last_event_time=None):
         raise NotImplementedError
 
     async def _terminate(self):
@@ -1066,7 +1066,7 @@ class _Batching(Flow):
         batch_time = self._batch_first_event_time.pop(batch_key)
         last_event_time = self._batch_last_event_time.pop(batch_key)
         del self._batch_start_time[batch_key]
-        await self._emit(batch_to_emit, batch_key, batch_time, last_event_time)
+        await self._emit(batch_to_emit, batch_key, batch_time, self._batch_events[batch_key], last_event_time)
         del self._batch_events[batch_key]
 
     async def _emit_all(self):
@@ -1091,8 +1091,11 @@ class Batch(_Batching):
 
     _do_downstream_per_event = False
 
-    async def _emit(self, batch, batch_key, batch_time, last_event_time=None):
+    async def _emit(self, batch, batch_key, batch_time, batch_events, last_event_time=None):
         event = Event(batch)
+        if not self._full_event:
+            # Preserve reference to the original events to avoid early commit of offsets
+            event._original_events = batch_events
         return await self._do_downstream(event)
 
 
