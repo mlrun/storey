@@ -1206,7 +1206,7 @@ def test_write_multiple_keys_from_csv(setup_teardown_test):
     table = _get_table(setup_teardown_test, {"n1": int, "n2": int, "n3": int}, keys)
     controller = build_flow(
         [
-            CSVSource("tests/test.csv", header=True, key_field=["n1", "n2"], build_dict=True),
+            CSVSource("tests/test.csv", key_field=["n1", "n2"], build_dict=True),
             NoSqlTarget(table),
         ]
     ).run()

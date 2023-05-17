@@ -115,7 +115,7 @@ def s3_recursive_delete(path):
 def test_csv_reader_from_s3(s3_create_csv):
     controller = build_flow(
         [
-            CSVSource(f"s3://{s3_create_csv}", header=True),
+            CSVSource(f"s3://{s3_create_csv}"),
             FlatMap(lambda x: x),
             Map(lambda x: int(x)),
             Reduce(0, lambda acc, x: acc + x),
@@ -130,7 +130,7 @@ def test_csv_reader_from_s3(s3_create_csv):
 def test_csv_reader_from_s3_error_on_file_not_found():
     controller = build_flow(
         [
-            CSVSource(f's3://{os.getenv("AWS_BUCKET")}/idontexist.csv', header=True),
+            CSVSource(f's3://{os.getenv("AWS_BUCKET")}/idontexist.csv'),
         ]
     ).run()
 

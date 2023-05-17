@@ -228,7 +228,7 @@ def test_emit_timeless_event():
 def test_csv_reader():
     controller = build_flow(
         [
-            CSVSource("tests/test.csv", header=True),
+            CSVSource("tests/test.csv"),
             FlatMap(lambda x: x),
             Map(lambda x: int(x)),
             Reduce(0, lambda acc, x: acc + x),
@@ -240,20 +240,21 @@ def test_csv_reader():
 
 
 def test_csv_reader_error_on_file_not_found():
-    controller = build_flow(
+    flow = build_flow(
         [
-            CSVSource("tests/idontexist.csv", header=True),
+            CSVSource("tests/idontexist.csv"),
         ]
-    ).run()
-
-    with pytest.raises(FileNotFoundError):
-        controller.await_termination()
+    )
+    with pytest.raises(
+        FileNotFoundError,
+    ):
+        flow.run()
 
 
 def test_csv_reader_as_dict():
     controller = build_flow(
         [
-            CSVSource("tests/test.csv", header=True, build_dict=True),
+            CSVSource("tests/test.csv", build_dict=True),
             FlatMap(lambda x: [x["n1"], x["n2"], x["n3"]]),
             Map(lambda x: int(x)),
             Reduce(0, lambda acc, x: acc + x),
@@ -359,18 +360,41 @@ def test_csv_reader_with_key_and_timestamp():
     assert termination_result[1].body == ["m2", datetime(2020, 2, 16, 2, 0), 14, False]
 
 
-def test_csv_reader_as_dict_no_header():
-    controller = build_flow(
-        [
-            CSVSource("tests/test-no-header.csv", header=False, build_dict=True),
-            FlatMap(lambda x: [x[0], x[1], x[2]]),
-            Map(lambda x: int(x)),
-            Reduce(0, lambda acc, x: acc + x),
-        ]
-    ).run()
+@pytest.mark.parametrize(
+    "csv_source_kwargs", [{"parse_dates": ["t", "non_existent_column"]}, {"time_field": "non_existent_column"}]
+)
+def test_parse_dates_key_error(csv_source_kwargs):
+    with pytest.raises(ValueError) as value_error:
+        controller = build_flow(
+            [
+                CSVSource(
+                    "tests/test-with-timestamp.csv",
+                    header=True,
+                    key_field="t",
+                    timestamp_format="%d/%m/%Y %H:%M:%S",
+                    **csv_source_kwargs,
+                )
+            ]
+        ).run()
+        controller.await_termination()
+    assert str(value_error.value) == "Missing column provided to 'parse_dates': 'non_existent_column'"
 
-    termination_result = controller.await_termination()
-    assert termination_result == 21
+
+@pytest.mark.parametrize("csv_source_kwargs", [{"parse_dates": ["t", 10]}, {"time_field": 10}])
+def test_parse_dates_index_error(csv_source_kwargs):
+    with pytest.raises(IndexError):
+        controller = build_flow(
+            [
+                CSVSource(
+                    "tests/test-with-timestamp.csv",
+                    header=True,
+                    key_field="k",
+                    timestamp_format="%d/%m/%Y %H:%M:%S",
+                    **csv_source_kwargs,
+                )
+            ]
+        ).run()
+        controller.await_termination()
 
 
 def test_csv_reader_none_in_keyfield_should_send_error_log():
@@ -379,14 +403,38 @@ def test_csv_reader_none_in_keyfield_should_send_error_log():
 
     controller = build_flow(
         [
-            CSVSource("tests/test-none-in-keyfield.csv", header=True, key_field="k", context=context),
+            CSVSource("tests/test-none-in-keyfield.csv", key_field="k", context=context),
         ]
     ).run()
 
     controller.await_termination()
 
     assert "error" == logger.logs[0][0]
-    assert "value of key k is None" in logger.logs[0][1][0]
+    assert "Encountered null values in the following key fields: k" in logger.logs[0][1][0]
+
+
+def test_csv_source_key_error():
+    with pytest.raises(ValueError) as value_error:
+        controller = build_flow(
+            [
+                CSVSource("tests/test.csv", key_field="not_exist"),
+            ]
+        ).run()
+
+        controller.await_termination()
+    assert str(value_error.value) == "key column 'not_exist' is missing from dataframe. File path: tests/test.csv."
+
+
+def test_csv_reader_id_key_error():
+    with pytest.raises(ValueError) as value_error:
+        controller = build_flow(
+            [
+                CSVSource("tests/test.csv", id_field="not_exist"),
+            ]
+        ).run()
+
+        controller.await_termination()
+    assert str(value_error.value) == "id column 'not_exist' is missing from dataframe. File path: tests/test.csv."
 
 
 def test_dataframe_source():
@@ -786,6 +834,32 @@ def test_set_recovery_step():
     controller.terminate()
     result = controller.await_termination()
     assert result == 55
+
+
+def test_read_space_in_header_csv():
+    controller = build_flow(
+        [
+            CSVSource("tests/test_space_in_header.csv", build_dict=True),
+            Reduce([], append_and_return),
+        ]
+    ).run()
+
+    termination_result = controller.await_termination()
+    expected = [{"header with space": 1, "n2": 2, "n3": 3}, {"header with space": 4, "n2": 5, "n3": 6}]
+    assert termination_result == expected
+
+
+def test_read_space_in_header_parquet():
+    controller = build_flow(
+        [
+            ParquetSource("tests/test_space_in_header.parquet"),
+            Reduce([], append_and_return),
+        ]
+    ).run()
+
+    termination_result = controller.await_termination()
+    expected = [{"header with space": 1, "n2": 2, "n3": 3}, {"header with space": 4, "n2": 5, "n3": 6}]
+    assert termination_result == expected
 
 
 def test_error_specific_recovery():
@@ -2915,37 +2989,6 @@ def test_csv_reader_parquet_write_nanosecs(tmpdir):
     assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
 
 
-def test_csv_reader_type_inference(tmpdir):
-    class PushErrorContext:
-        def __init__(self):
-            self.errors = []
-
-        def push_error(self, event, message, source):
-            self.errors.append({"event": event, "message": message, "source": source})
-
-    context = PushErrorContext()
-
-    controller = build_flow(
-        [
-            CSVSource(
-                "tests/test-type-inference.csv",
-                header=True,
-                context=context,
-            ),
-            Reduce([], append_and_return),
-        ]
-    ).run()
-
-    result = controller.await_termination()
-
-    assert result == [[1, "x", 1], [3, "z", 3]]
-    assert len(context.errors) == 1
-    error = context.errors[0]
-    assert error["event"] == Event([2, "y", "x"])
-    assert error["message"].startswith("invalid literal for int() with base 10: 'x'")
-    assert error["source"].startswith("CSVSource")
-
-
 def test_error_in_table_persist():
     table = Table(
         "table",
@@ -3312,7 +3355,7 @@ def test_reader_writer_to_code():
 
     reconstructed_code = flow.to_code()
     print(reconstructed_code)
-    expected = """c_s_v_source0 = CSVSource(paths='mycsv.csv', header=False, build_dict=False, type_inference=True)
+    expected = """c_s_v_source0 = CSVSource(paths='mycsv.csv', header=True, build_dict=False, type_inference=True)
 parquet_target0 = ParquetTarget(path='mypq', max_events=10000, flush_after_seconds=60)
 
 c_s_v_source0.to(parquet_target0)
@@ -3428,14 +3471,12 @@ def test_query_by_key_non_aggregate():
 def test_csv_source_with_none_values():
     controller = build_flow(
         [
-            CSVSource("tests/test-with-none-values.csv", header=True, key_field="string"),
+            CSVSource("tests/test-with-none-values.csv", key_field="string"),
             Reduce([], append_and_return, full_event=True),
         ]
     ).run()
 
     termination_result = controller.await_termination()
-
-    print(termination_result)
 
     assert len(termination_result) == 2
     assert termination_result[0].key == "a"
@@ -3448,7 +3489,17 @@ def test_csv_source_with_none_values():
         "2021-04-21 15:56:53.385444",
     ]
     assert termination_result[1].key == "b"
-    assert termination_result[1].body == ["b", True, None, math.nan, math.nan, None]
+    excepted_result = ["b", True, math.nan, math.nan, math.nan, math.nan]
+    assert len(termination_result[1].body) == len(excepted_result)
+    for x, y in zip(termination_result[1].body, excepted_result):
+        if isinstance(x, float):
+            assert isinstance(y, float)
+            if math.isnan(x):
+                assert math.isnan(y)
+            else:
+                assert x == y
+        else:
+            assert x == y
 
 
 def test_csv_source_event_metadata():
@@ -3525,6 +3576,34 @@ def test_none_key_num_is_not_written():
     assert result == expected
 
 
+def test_dataframe_source_missing_key_column():
+    with pytest.raises(ValueError) as value_error:
+        data = pd.DataFrame({"id": [1, 2, 3], "some_data": ["data", "random_data", "my_data"]})
+
+        controller = build_flow(
+            [
+                DataframeSource(dfs=data, key_field="non_existent_column"),
+            ]
+        ).run()
+        controller.await_termination()
+
+    assert str(value_error.value) == "key column 'non_existent_column' is missing from dataframe."
+
+
+def test_dataframe_source_missing_id_column():
+    with pytest.raises(ValueError) as value_error:
+        data = pd.DataFrame({"id": [1, 2, 3], "some_data": ["data", "random_data", "my_data"]})
+
+        controller = build_flow(
+            [
+                DataframeSource(dfs=data, id_field="non_existent_column"),
+            ]
+        ).run()
+        controller.await_termination()
+
+    assert str(value_error.value) == "id column 'non_existent_column' is missing from dataframe."
+
+
 def test_none_key_date_is_not_written():
     data = pd.DataFrame(
         {
@@ -3553,6 +3632,17 @@ def test_none_key_date_is_not_written():
     assert result == expected
 
 
+def test_not_string_key_field():
+    with pytest.raises(ValueError) as value_error:
+        build_flow(
+            [
+                CSVSource("tests/test.csv", key_field=0),
+            ]
+        ).run()
+
+    assert str(value_error.value) == "key_field must be a string or list of strings"
+
+
 def test_csv_none_value_first_row(tmpdir):
     out_file_par = f"{tmpdir}/test_csv_none_value_first_row_{uuid.uuid4().hex}.parquet"
     out_file_csv = f"{tmpdir}/test_csv_none_value_first_row_{uuid.uuid4().hex}.csv"
@@ -3569,7 +3659,7 @@ def test_csv_none_value_first_row(tmpdir):
 
     controller = build_flow(
         [
-            CSVSource(out_file_csv, header=True, key_field="first_name", build_dict=True),
+            CSVSource(out_file_csv, key_field="first_name", build_dict=True),
             ParquetTarget(out_file_par),
         ]
     ).run()
@@ -3595,7 +3685,7 @@ def test_csv_none_value_string(tmpdir):
 
     controller = build_flow(
         [
-            CSVSource(out_file_csv, header=True, key_field="first_name", build_dict=True),
+            CSVSource(out_file_csv, key_field="first_name", build_dict=True),
             ParquetTarget(out_file_par),
         ]
     ).run()
@@ -3611,20 +3701,6 @@ def test_csv_none_value_string(tmpdir):
 
 
 def test_csv_multiple_time_columns(tmpdir):
-    with pytest.raises(ValueError):
-        controller = build_flow(
-            [
-                CSVSource(
-                    "tests/test-multiple-time-columns.csv",
-                    header=True,
-                    time_field="t1",
-                    parse_dates=[2],
-                ),
-                Reduce([], append_and_return),
-            ]
-        ).run()
-
-    # now do it correctly
     controller = build_flow(
         [
             CSVSource(

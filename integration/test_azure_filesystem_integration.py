@@ -107,7 +107,6 @@ def test_csv_reader_from_azure(azure_create_csv):
         [
             CSVSource(
                 f"az:///{azure_create_csv}",
-                header=True,
                 storage_options=storage_options,
             ),
             FlatMap(lambda x: x),
@@ -126,7 +125,6 @@ def test_csv_reader_from_azure_error_on_file_not_found():
         [
             CSVSource(
                 f'az:///{os.getenv("AZURE_BLOB_STORE")}/idontexist.csv',
-                header=True,
                 storage_options=storage_options,
             ),
         ]
