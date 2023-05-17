@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1683027816643,
+  "lastUpdate": 1684311899114,
   "repoUrl": "https://github.com/mlrun/storey",
   "entries": {
     "Benchmark": [
@@ -89925,6 +89925,184 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.1237170896611475",
             "extra": "mean: 12.987384837599995 sec\nrounds: 5"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "125267619+tomerm-iguazio@users.noreply.github.com",
+            "name": "tomer-mamia",
+            "username": "tomerm-iguazio"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "c678f26e5358e720fb7a93b75efead940d5c1177",
+          "message": "ML-3603: `CSVSource` reimplementation using `pandas.read_csv` (#441)\n\n* started working on PandasCsv\r\n\r\n* started working on PandasCsv\r\n\r\n* add solution for self._with_header=False\r\n\r\n* change timestamp handling\r\n\r\n* change CSVSOURCE\r\n\r\n* remove TODO\r\n\r\n* add TODO\r\n\r\n* change non -header df to header type - int\r\n\r\n* add build dict\r\n\r\n* changed to ordered_dict\r\n\r\n* added prepare_key_values\r\n\r\n* added prepare_key_values\r\n\r\n* added prepare_key_values\r\n\r\n* added prepare_key_values\r\n\r\n* added line_id\r\n\r\n* added get_id_by_id_field\r\n\r\n* added costume key\r\n\r\n* added get_element\r\n\r\n* added functions to csv\r\n\r\n* added get_element to csv\r\n\r\n* added get_by_field_or_index\r\n\r\n* improved get_key\r\n\r\n* fixed get_key\r\n\r\n* fixed get_key in DataframeSource\r\n\r\n* remove get_key from CSV_source\r\n\r\n* change get_by_field_or_index\r\n\r\n* change get_id_by_id_field\r\n\r\n* change line_id\r\n\r\n* delete get_id_by_id_field\r\n\r\n* delete get_id_by_id_field\r\n\r\n* change path handling in init\r\n\r\n* changed test_csv_reader_error_on_file_not_found\r\n\r\n* changed _init\r\n\r\n* change _dates_indices\r\n\r\n* change _datetime_from_timestamp\r\n\r\n* change _datetime_from_timestamp\r\n\r\n* change _dates_indices\r\n\r\n* changed get_element\r\n\r\n* change error message\r\n\r\n* remove test_csv_reader_type_inference\r\n\r\n* update test_csv_source_with_none_values\r\n\r\n* update path saving\r\n\r\n* rename\r\n\r\n* use field and not self....\r\n\r\n* built is_nan_validator\r\n\r\n* built is_nan_validator\r\n\r\n* built is_nan_validator\r\n\r\n* change get_by_field_or_index\r\n\r\n* change get_by_field_or_index\r\n\r\n* change get_by_field_or_index\r\n\r\n* add try in _run_loop\r\n\r\n* add KeyOrIndexError\r\n\r\n* add KeyOrIndexError\r\n\r\n* change get_by_field_or_index\r\n\r\n* changed error\r\n\r\n* changed error\r\n\r\n* changed error\r\n\r\n* changed except (self.SourceKeyError, self.SourceIndexError)\r\n\r\n* changed get_by_field_or_index for SourceIndexError\r\n\r\n* changed SourceKeyError\r\n\r\n* changed SourceKeyError\r\n\r\n* add test_csv_reader_source_index_error\r\n\r\n* add test_csv_reader_source_index_error\r\n\r\n* add test_csv_reader_source_index_error\r\n\r\n* after lint\r\n\r\n* remove comments\r\n\r\n* remove comments\r\n\r\n* remove unnecessarily if in csv source\r\n\r\n* change parser date condition\r\n\r\n* change parser date condition\r\n\r\n* change parse date in _init\r\n\r\n* change _init\r\n\r\n* change _init\r\n\r\n* change test_csv_multiple_time_columns to test header=False with str fields\r\n\r\n* add str+false header validator\r\n\r\n* change __init__ CSVSource\r\n\r\n* changed test_csv_reader_from_v3io_error_on_file_not_found\r\n\r\n* change _init in CSVSource\r\n\r\n* use extend instead of =\r\n\r\n* add field_validator\r\n\r\n* add field_validator\r\n\r\n* modify _init\r\n\r\n* add dfs_field_validator\r\n\r\n* add dfs_field_validator\r\n\r\n* add dfs_field_validator\r\n\r\n* add field_validator to csv\r\n\r\n* add field_validator to csv\r\n\r\n* after lint\r\n\r\n* delete try - except\r\n\r\n* delete SourceKeyError\r\n\r\n* delete SourceIndexError\r\n\r\n* delete unwanted validator\r\n\r\n* delete unwanted validator\r\n\r\n* private methods\r\n\r\n* private methods\r\n\r\n* private methods\r\n\r\n* private methods\r\n\r\n* change error message\r\n\r\n* change key_field type to list in validator\r\n\r\n* df = df.reset_index() to field_valid\r\n\r\n* change test_csv_reader_source_key_error\r\n\r\n* change test_csv_reader_source_key_error\r\n\r\n* change test_csv_reader_source_key_error\r\n\r\n* change test_csv_reader_source_index_error\r\n\r\n* change test_csv_reader_source_index_error\r\n\r\n* rename tests\r\n\r\n* change test\r\n\r\n* add test_csv_reader_id_key_error():\r\n\r\n* add test_csv_reader_id_index_error\r\n\r\n* add test_parse_dates_not_exists\r\n\r\n* add test_parse_dates_not_exists\r\n\r\n* add test_parse_dates_index_error\r\n\r\n* add test_parse_dates_index_error\r\n\r\n* add test_parse_dates_index_error\r\n\r\n* modify test_parse_dates_not_exists\r\n\r\n* modify test_parse_dates_not_exists - add parametrize\r\n\r\n* modify test_parse_dates_not_exists - add parametrize\r\n\r\n* modify test_parse_dates_not_exists - add parametrize\r\n\r\n* add test_field_validator_key\r\n\r\n* add test_field_validator_id\r\n\r\n* change key error to value error\r\n\r\n* change key error to value error\r\n\r\n* change key error to value error\r\n\r\n* DELETE test-type-inference.cs\r\n\r\n* fix CSVSource doc\r\n\r\n* after lint\r\n\r\n* add blank line\r\n\r\n* add blank line\r\n\r\n* change error message\r\n\r\n* change comment\r\n\r\n* change comment\r\n\r\n* change date_parser input\r\n\r\n* rename datetime_field to csv_source_kwargs\r\n\r\n* delete print\r\n\r\n* delete print\r\n\r\n* change test_csv_source_with_none_values\r\n\r\n* change error message\r\n\r\n* change error message\r\n\r\n* change error message\r\n\r\n* after lint\r\n\r\n* change path message validator\r\n\r\n* create get_path_message\r\n\r\n* create get_path_message\r\n\r\n* change message in tests\r\n\r\n* after lint\r\n\r\n* not header\r\n\r\n* remove get_path_message\r\n\r\n* rename _validate_fields\r\n\r\n* remove result\r\n\r\n* fix _is_nan_validator\r\n\r\n* change error message\r\n\r\n* rename field_type\r\n\r\n* change error message\r\n\r\n* after lint\r\n\r\n* add id_field check in _init_\r\n\r\n* add build_dict check in _init_\r\n\r\n* add test_build_dict_with_no_header\r\n\r\n* change error message\r\n\r\n* add test_str_key_field_with_no_header and test_str_id_with_no_header\r\n\r\n* cancel build_dict with no header error\r\n\r\n* disable mixed keys input\r\n\r\n* remove custom exception.\r\n\r\n* after lint\r\n\r\n* fix attributes order in CSVSource\r\n\r\n* rename test\r\n\r\n* rename test\r\n\r\n* rename test\r\n\r\n* change error message\r\n\r\n* change error message\r\n\r\n* change error message\r\n\r\n* change error message\r\n\r\n* change _validate_fields range error message\r\n\r\n* change tests according to error message changes.\r\n\r\n* change tests according to error message changes.\r\n\r\n* change logger.error\r\n\r\n* fix test_csv_reader_none_in_keyfield_should_send_error_log\r\n\r\n* remove NoneKeyException\r\n\r\n* small change in _get_by_field_or_index\r\n\r\n* small change in _get_by_field_or_index\r\n\r\n* parse_dates valueerror change\r\n\r\n* error message change\r\n\r\n* error message change\r\n\r\n* add comments\r\n\r\n* add build_dict validator\r\n\r\n* add test_build_dict_with_no_header test\r\n\r\n* remove test_csv_reader_as_dict_no_header\r\n\r\n* remove build_dict and header validators from __init__\r\n\r\n* remove body\r\n\r\n* remove header uses and build_dict\r\n\r\n* remove get_by_field_or_index\r\n\r\n* remove element\r\n\r\n* remove _validate_fields for csvsource\r\n\r\n* chnage _validate_fields\r\n\r\n* remove space\r\n\r\n* add string only validator\r\n\r\n* fix error message\r\n\r\n* fix id_field validator\r\n\r\n* add build_dict\r\n\r\n* build _get_element back\r\n\r\n* remove no_header tests\r\n\r\n* remove no_header tests\r\n\r\n* remove index_error tests\r\n\r\n* add test_not_string_key_field\r\n\r\n* modify test_csv_multiple_time_columns\r\n\r\n* lint\r\n\r\n* remove header in test_flow tests\r\n\r\n* change header default to True\r\n\r\n* delete header from all tests\r\n\r\n* change iter tuples to iterrows\r\n\r\n* change df.index.empty condition\r\n\r\n* add test_read_space_in_header\r\n\r\n* remove test-no-header.csv\r\n\r\n* add test_read_space_in_header_parquet\r\n\r\n* add deprecated to docstring\r\n\r\n* add warning\r\n\r\n* iterate over df.to_dict('records')\r\n\r\n* make fmt lint\r\n\r\n* change comment\r\n\r\n* change comment\r\n\r\n* change DeprecationWarning\r\n\r\n* change self._validate_fields to args from key value usage\r\n\r\n* change error\r\n\r\n* minor change\r\n\r\n* change _get_keys\r\n\r\n* after lint\r\n\r\n* change _validate_fields\r\n\r\n* change keys\r\n\r\n* change test\r\n\r\n* change condition\r\n\r\n* change error message\r\n\r\n* change test\r\n\r\n* change test\r\n\r\n* change doc\r\n\r\n* add DeprecationWarning\r\n\r\n* add assert in test_csv_source_with_none_values\r\n\r\n* update tests\r\n\r\n* update type_inference\r\n\r\n* edir messages",
+          "timestamp": "2023-05-17T16:21:00+08:00",
+          "tree_id": "7a8e2735a27aa1553ddf8ea9cc13cd45f4d4dcdb",
+          "url": "https://github.com/mlrun/storey/commit/c678f26e5358e720fb7a93b75efead940d5c1177"
+        },
+        "date": 1684311895504,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "bench/bench_flow.py::test_simple_flow_n_events[0]",
+            "value": 1675.7497447794635,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00005477418995038174",
+            "extra": "mean: 596.7478157853485 usec\nrounds: 38"
+          },
+          {
+            "name": "bench/bench_flow.py::test_simple_flow_n_events[1]",
+            "value": 1167.505535573858,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000779259702113854",
+            "extra": "mean: 856.5269881212812 usec\nrounds: 926"
+          },
+          {
+            "name": "bench/bench_flow.py::test_simple_flow_n_events[1000]",
+            "value": 6.799521124103614,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0011302307482642187",
+            "extra": "mean: 147.06918057142306 msec\nrounds: 7"
+          },
+          {
+            "name": "bench/bench_flow.py::test_simple_flow_n_events[5000]",
+            "value": 1.2782755827594956,
+            "unit": "iter/sec",
+            "range": "stddev: 0.010681712345062846",
+            "extra": "mean: 782.3039205999976 msec\nrounds: 5"
+          },
+          {
+            "name": "bench/bench_flow.py::test_simple_async_flow_n_events[0]",
+            "value": 4930.919239798811,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00003145079945867919",
+            "extra": "mean: 202.8019424712382 usec\nrounds: 2590"
+          },
+          {
+            "name": "bench/bench_flow.py::test_simple_async_flow_n_events[1]",
+            "value": 4147.5965974104865,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00003601699873228671",
+            "extra": "mean: 241.10348644425562 usec\nrounds: 2545"
+          },
+          {
+            "name": "bench/bench_flow.py::test_simple_async_flow_n_events[1000]",
+            "value": 53.241814845988586,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00011931828280620186",
+            "extra": "mean: 18.7822297735845 msec\nrounds: 53"
+          },
+          {
+            "name": "bench/bench_flow.py::test_simple_async_flow_n_events[5000]",
+            "value": 10.745098078442432,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0005586925911350711",
+            "extra": "mean: 93.06569309090533 msec\nrounds: 11"
+          },
+          {
+            "name": "bench/bench_flow.py::test_complete_flow_n_events[0]",
+            "value": 1747.7232365156106,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0000615248406005539",
+            "extra": "mean: 572.1729728750838 usec\nrounds: 1106"
+          },
+          {
+            "name": "bench/bench_flow.py::test_complete_flow_n_events[1]",
+            "value": 1068.2963771257473,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00009359891313618745",
+            "extra": "mean: 936.0698223937643 usec\nrounds: 777"
+          },
+          {
+            "name": "bench/bench_flow.py::test_complete_flow_n_events[1000]",
+            "value": 5.5184607891508355,
+            "unit": "iter/sec",
+            "range": "stddev: 0.010153552444467136",
+            "extra": "mean: 181.2099493333316 msec\nrounds: 6"
+          },
+          {
+            "name": "bench/bench_flow.py::test_complete_flow_n_events[5000]",
+            "value": 1.1136499486420623,
+            "unit": "iter/sec",
+            "range": "stddev: 0.03499741056938713",
+            "extra": "mean: 897.9482297999994 msec\nrounds: 5"
+          },
+          {
+            "name": "bench/bench_flow.py::test_aggregate_by_key_n_events[0]",
+            "value": 1625.893928612405,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00006187744387672944",
+            "extra": "mean: 615.0462723318212 usec\nrounds: 918"
+          },
+          {
+            "name": "bench/bench_flow.py::test_aggregate_by_key_n_events[1]",
+            "value": 359.4036518500786,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0064761046642609395",
+            "extra": "mean: 2.782386864608542 msec\nrounds: 421"
+          },
+          {
+            "name": "bench/bench_flow.py::test_aggregate_by_key_n_events[1000]",
+            "value": 4.260447890610486,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0029045992784075946",
+            "extra": "mean: 234.71710620000295 msec\nrounds: 5"
+          },
+          {
+            "name": "bench/bench_flow.py::test_aggregate_by_key_n_events[5000]",
+            "value": 0.8354563218359568,
+            "unit": "iter/sec",
+            "range": "stddev: 0.005282328814669695",
+            "extra": "mean: 1.196950664999997 sec\nrounds: 5"
+          },
+          {
+            "name": "bench/bench_flow.py::test_batch_n_events[0]",
+            "value": 1762.8229897266274,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00005886218643975949",
+            "extra": "mean: 567.2719302095535 usec\nrounds: 1003"
+          },
+          {
+            "name": "bench/bench_flow.py::test_batch_n_events[1]",
+            "value": 1091.2746423914327,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00007885203496918587",
+            "extra": "mean: 916.3596047724409 usec\nrounds: 964"
+          },
+          {
+            "name": "bench/bench_flow.py::test_batch_n_events[1000]",
+            "value": 6.992975206755822,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0021563546369906105",
+            "extra": "mean: 143.00065000000473 msec\nrounds: 8"
+          },
+          {
+            "name": "bench/bench_flow.py::test_batch_n_events[5000]",
+            "value": 1.3254673066011822,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0035183809782009883",
+            "extra": "mean: 754.4508982000025 msec\nrounds: 5"
+          },
+          {
+            "name": "bench/bench_flow.py::test_aggregate_df_86420_events",
+            "value": 0.08294063088073665,
+            "unit": "iter/sec",
+            "range": "stddev: 0.02209752028154513",
+            "extra": "mean: 12.056816898800014 sec\nrounds: 5"
+          },
+          {
+            "name": "bench/bench_flow.py::test_aggregate_df_86420_events_basic",
+            "value": 0.1140365942713498,
+            "unit": "iter/sec",
+            "range": "stddev: 0.11655549201347541",
+            "extra": "mean: 8.769114917800005 sec\nrounds: 5"
           }
         ]
       }
