@@ -112,12 +112,12 @@ class Committer:
     def __init__(self):
         self.offsets = {}
 
-    async def explicit_ack(self, path, shard_id, offset):
-        qualified_shard = (path, shard_id)
+    async def explicit_ack(self, qualified_offset):
+        qualified_shard = (qualified_offset.topic, qualified_offset.partition)
+        offset = qualified_offset.offset
         current_offset = self.offsets.get(qualified_shard, 0)
         assert current_offset < offset
         self.offsets[qualified_shard] = offset
-        # print(f"Committed {qualified_shard} -> {event.offset}")
 
 
 class CommitterContext:
