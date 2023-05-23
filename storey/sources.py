@@ -14,11 +14,8 @@
 #
 import asyncio
 import copy
-import csv
-import math
 import queue
 import threading
-import traceback
 import uuid
 import warnings
 import weakref
@@ -27,6 +24,7 @@ from datetime import datetime, timezone
 from typing import Callable, Coroutine, Iterable, List, Optional, Union
 
 import pandas
+import pandas as pd
 import pyarrow
 import pytz
 from nuclio_sdk import QualifiedOffset
@@ -185,7 +183,7 @@ class FlowController(FlowControllerBase):
 
         :param element: The event data, or payload. To set metadata as well, pass an Event object.
         :param key: The event key(s) (optional) #add to async
-        :param return_awaitable_result: Deprecated! An awaitable result object will be returned if a Complete step
+        :param return_awaitable_result: Deprecated. An awaitable result object will be returned if a Complete step
             appears in the flow.
         :param expected_number_of_results: Number of times the event will have to pass through a Complete step to be
             completed (for graph flows).
@@ -726,56 +724,86 @@ class DataframeSource(_IterableSource, WithUUID):
             kwargs["id_field"] = id_field
         _IterableSource.__init__(self, **kwargs)
         WithUUID.__init__(self)
-        if isinstance(dfs, pandas.DataFrame):
-            dfs = [dfs]
-        self._dfs = dfs
+        #  in order to raise exception also for key_field=0
+        if key_field is not None:
+            key_fields = [key_field] if not isinstance(key_field, list) else key_field
+            if any([not isinstance(single_key_field, str) for single_key_field in key_fields]):
+                raise ValueError("key_field must be a string or list of strings")
+        if id_field and not isinstance(id_field, str):
+            raise ValueError("id_field must be a string")
         self._key_field = key_field
         self._id_field = id_field
+        if isinstance(dfs, pandas.DataFrame):
+            dfs = [dfs]
+        if dfs:
+            for df in dfs:
+                self._validate_fields(df)
+        self._dfs = dfs
+
+    def _get_keys(self, body: dict):
+        keys = []
+        if self._key_field:
+            if isinstance(self._key_field, list):
+                for key_field in self._key_field:
+                    single_key = body[key_field]
+                    keys.append(single_key)
+            else:
+                keys.append(body[self._key_field])
+        return keys
 
     async def _run_loop(self):
         for df in self._dfs:
-            for namedtuple in df.itertuples():
-                create_event = True
-                body = namedtuple._asdict()
-                index = body.pop("Index")
-                if len(df.index.names) > 1:
-                    for i, index_column in enumerate(df.index.names):
-                        body[index_column] = index[i]
-                elif df.index.names[0] is not None:
-                    body[df.index.names[0]] = index
-
-                key = None
-                if self._key_field:
-                    if isinstance(self._key_field, list):
-                        key = []
-                        for key_field in self._key_field:
-                            if key_field not in body or pandas.isna(body[key_field]):
-                                create_event = False
-                                break
-                            key.append(body[key_field])
-                    else:
-                        key = body[self._key_field]
-                        if key is None:
-                            create_event = False
-                if create_event:
-                    if self._id_field:
-                        id = body[self._id_field]
-                    else:
-                        id = self._get_uuid()
-                    event = Event(body, key=key, id=id)
-                    await self._do_downstream(event)
-                else:
+            columns = list(df.columns)
+            is_df_index_nonempty = not df.index.empty and not (len(df.index.names) == 1 and df.index.names[0] is None)
+            if is_df_index_nonempty:
+                df = df.reset_index(drop=False)
+            for body in df.to_dict("records"):
+                keys = self._get_keys(body)
+                key_fields = self._key_field if isinstance(self._key_field, list) else [self._key_field]
+                none_keys = [key for key, value in zip(key_fields, keys) if pd.isna(value)]
+                if none_keys:
                     if self.context:
-                        self.context.logger.error(f"For {body} value of key {key_field} is None")
+                        self.context.logger.error(
+                            f"Encountered null values in the following key fields:"
+                            f" {', '.join(none_keys)}, in line: {body}."
+                        )
+                else:
+                    if self._id_field:
+                        line_id = body[self._id_field]
+                    else:
+                        line_id = self._get_uuid()
+                    element = self._get_element(body, columns)
+                    keys = keys[0] if len(keys) == 1 else (None if not keys else keys)
+                    event = Event(element, keys, id=line_id)
+                    await self._do_downstream(event)
         return await self._do_downstream(_termination_obj)
 
+    def _validate_fields(self, df, path=""):
+        path_message = f" File path: {path}." if path else ""
+        df = df.reset_index()
+        if self._key_field:
+            key_fields = [self._key_field] if not isinstance(self._key_field, list) else self._key_field
+            missing_keys = [key_field for key_field in key_fields if key_field not in df.columns]
+            if missing_keys:
+                if len(missing_keys) > 1:
+                    missing_keys_message = f"key columns {missing_keys} are"
+                else:
+                    missing_keys_message = f"key column '{missing_keys[0]}' is"
+                raise ValueError(f"{missing_keys_message} missing from dataframe.{path_message}")
 
-class CSVSource(_IterableSource, WithUUID):
+        if self._id_field and self._id_field not in df.columns:
+            raise ValueError(f"id column '{self._id_field}' is missing from dataframe.{path_message}")
+
+    def _get_element(self, body: dict, columns):
+        return body
+
+
+class CSVSource(DataframeSource):
     """
     Reads CSV files as input source for a flow.
 
     :parameter paths: paths to CSV files
-    :parameter header: whether CSV files have a header or not. Defaults to False.
+    :parameter header: Deprecated. whether CSV files have a header or not. Defaults to False.
     :parameter build_dict: whether to format each record produced from the input file as a dictionary (as opposed to a
         list). Default to False.
     :parameter key_field: the CSV field to be used as the key for events. May be an int (field index) or string (field
@@ -786,8 +814,8 @@ class CSVSource(_IterableSource, WithUUID):
         datetime.fromisoformat().
     :parameter id_field: the CSV field to be used as the ID for events. May be an int (field index) or string (field
         name) if with_header is True. Defaults to None (random ID will be generated per event).
-    :parameter type_inference: Whether to infer data types from the data (when True), or read all fields in as strings
-        (when False). Defaults to True.
+    :parameter type_inference: Deprecated. Whether to infer data types from the data (when True), or read all fields in
+     as strings (when False). Defaults to True.
     :parameter parse_dates: list of columns (names or integers) that will be attempted to parse as date column
 
     for additional params, see documentation of  :class:`~storey.flow.Flow`
@@ -796,7 +824,7 @@ class CSVSource(_IterableSource, WithUUID):
     def __init__(
         self,
         paths: Union[List[str], str],
-        header: bool = False,
+        header: bool = True,
         build_dict: bool = False,
         key_field: Union[int, str, List[int], List[str], None] = None,
         time_field: Union[int, str, None] = None,
@@ -806,7 +834,24 @@ class CSVSource(_IterableSource, WithUUID):
         parse_dates: Optional[Union[int, str, List[int], List[str]]] = None,
         **kwargs,
     ):
+
         kwargs["paths"] = paths
+        if isinstance(paths, str):
+            paths = [paths]
+        self._paths = paths
+        self._build_dict = build_dict
+        if header is False:
+            warnings.warn(
+                "header=False is deprecated, will be treated as header=True."
+                " The parameter will be removed in a future version.",
+                DeprecationWarning,
+            )
+        if type_inference is False:
+            warnings.warn(
+                "type_inference is deprecated, will be treated as type_inference=True."
+                " The parameter will be removed in a future version.",
+                DeprecationWarning,
+            )
         kwargs["header"] = header
         kwargs["build_dict"] = build_dict
         if key_field is not None:
@@ -818,13 +863,8 @@ class CSVSource(_IterableSource, WithUUID):
         if timestamp_format is not None:
             kwargs["timestamp_format"] = timestamp_format
         kwargs["type_inference"] = type_inference
-        _IterableSource.__init__(self, **kwargs)
-        WithUUID.__init__(self)
-        if isinstance(paths, str):
-            paths = [paths]
+        self._storage_options = kwargs.get("storage_options")
         self._paths = paths
-        self._with_header = header
-        self._build_dict = build_dict
         self._key_field = key_field
         self._time_field = time_field
         self._timestamp_format = timestamp_format
@@ -836,212 +876,38 @@ class CSVSource(_IterableSource, WithUUID):
         if parse_dates:
             if not isinstance(parse_dates, List):
                 parse_dates = [parse_dates]
-            if isinstance(parse_dates, List):
-                if self._with_header and any([isinstance(f, int) for f in self._parse_dates]):
-                    raise ValueError("parse_dates can be list of int only when there is no header")
-                if not self._with_header and all([isinstance(f, int) for f in self._parse_dates]):
-                    self._dates_indices = parse_dates
-        if isinstance(self._time_field, int):
-            if self._with_header:
-                raise ValueError("time field can be int only when there is no header")
-            self._dates_indices.append(self._time_field)
+            self._dates_indices.extend(parse_dates)
+        if time_field is not None:
+            self._dates_indices.append(time_field)
 
-        if not header and isinstance(key_field, str):
-            raise ValueError("key_field can only be set to an integer when with_header is false")
-        if not header and isinstance(time_field, str):
-            raise ValueError("time_field can only be set to an integer when with_header is false")
+        super().__init__([], **kwargs)
 
     def _init(self):
         super()._init()
-        self._event_buffer = queue.Queue(1024)
-        self._types = []
-        self._none_columns = set()
-
-    def _infer_type(self, value):
-        lowercase = value.lower()
-        if lowercase == "true" or lowercase == "false":
-            return "b"
-
-        try:
-            int(value)
-            return "i"
-        except ValueError:
-            pass
-
-        try:
-            float(value)
-            return "f"
-        except ValueError:
-            pass
-
-        if value == "":
-            return "n"
-
-        return "s"
-
-    def _parse_field(self, field, index):
-        typ = self._types[index]
-        if typ == "s":
-            if field == "":
-                return None
-            return field
-        if typ == "f":
-            return float(field) if field != "" else math.nan
-        if typ == "i":
-            return int(field) if field != "" else math.nan
-        if typ == "b":
-            lowercase = field.lower()
-            if lowercase == "true":
-                return True
-            if lowercase == "false":
-                return False
-            if lowercase == "":
-                return None
-            raise TypeError(f"Expected boolean, got {field}")
-        if typ == "t":
-            if field == "":
-                return None
-            return self._datetime_from_timestamp(field)
-        if typ == "n":
-            return None
-        raise TypeError(f"Unknown type: {typ}")
+        self._dfs = []
+        for path in self._paths:
+            df = pandas.read_csv(
+                path,
+                header=0,
+                parse_dates=self._dates_indices,
+                date_parser=self._datetime_from_timestamp,
+                storage_options=self._storage_options,
+            )
+            self._validate_fields(df, path)
+            self._dfs.append(df)
 
     def _datetime_from_timestamp(self, timestamp):
+        if timestamp == "" or timestamp is None:
+            return None
         if self._timestamp_format:
             return pandas.to_datetime(timestamp, format=self._timestamp_format).floor("u").to_pydatetime()
         else:
             return datetime.fromisoformat(timestamp)
 
-    def _blocking_io_loop(self):
-        try:
-
-            for path in self._paths:
-                fs, file_path = url_to_file_system(path, self._storage_options)
-                with fs.open(file_path, mode="r") as f:
-                    header = None
-                    field_name_to_index = None
-                    if self._with_header:
-                        line = f.readline()
-                        header = next(csv.reader([line]))
-                        field_name_to_index = {}
-                        for i in range(len(header)):
-                            field_name_to_index[header[i]] = i
-                            if header[i] == self._time_field or (self._parse_dates and header[i] in self._parse_dates):
-                                self._dates_indices.append(i)
-                    for line in f:
-                        try:
-                            create_event = True
-                            event = None
-                            parsed_line = None
-                            parsed_line = next(csv.reader([line]))
-                            if self._type_inference:
-                                if not self._types:
-                                    for index, field in enumerate(parsed_line):
-                                        if index in self._dates_indices:
-                                            self._types.append("t")
-                                        else:
-                                            type_field = self._infer_type(field)
-                                            self._types.append(type_field)
-                                            if type_field == "n":
-                                                self._none_columns.add(index)
-                                else:
-                                    for index in copy.copy(self._none_columns):
-                                        type_field = self._infer_type(parsed_line[index])
-                                        if type_field != "n":
-                                            self._types[index] = type_field
-                                            self._none_columns.remove(index)
-                                for i in range(len(parsed_line)):
-                                    parsed_line[i] = self._parse_field(parsed_line[i], i)
-                            element = parsed_line
-                            key = None
-                            if header:
-                                if len(parsed_line) != len(header):
-                                    raise ValueError(
-                                        f"CSV line with {len(parsed_line)} fields did not match header "
-                                        f"with {len(header)} fields"
-                                    )
-                                if self._build_dict:
-                                    element = {}
-                                    for i in range(len(parsed_line)):
-                                        element[header[i]] = parsed_line[i]
-                            if self._key_field:
-                                if isinstance(self._key_field, list):
-                                    key = []
-                                    for single_key_field in self._key_field:
-                                        if self._with_header and isinstance(single_key_field, str):
-                                            single_key_field_index = field_name_to_index[single_key_field]
-                                        else:
-                                            single_key_field_index = single_key_field
-                                        if parsed_line[single_key_field_index] is None:
-                                            create_event = False
-                                            break
-                                        key.append(parsed_line[single_key_field_index])
-                                else:
-                                    single_key_field = self._key_field
-                                    if self._with_header and isinstance(single_key_field, str):
-                                        single_key_field_index = field_name_to_index[single_key_field]
-                                    else:
-                                        single_key_field_index = single_key_field
-                                    key = parsed_line[single_key_field_index]
-                                    if key is None:
-                                        create_event = False
-                            if create_event:
-                                if self._id_field:
-                                    id_field = self._id_field
-                                    if self._with_header and isinstance(id_field, str):
-                                        id_field = field_name_to_index[id_field]
-                                    id = parsed_line[id_field]
-                                else:
-                                    id = self._get_uuid()
-                                event = Event(element, key=key, id=id)
-                                self._event_buffer.put(event)
-                            else:
-                                if self.context:
-                                    self.context.logger.error(
-                                        f"For {parsed_line} value of key {single_key_field} is None"
-                                    )
-                        except BaseException as ex:
-                            ex._raised_by_storey_step = self
-                            if self.context and hasattr(self.context, "push_error"):
-                                message = traceback.format_exc()
-                                if self.logger:
-                                    self.logger.error(f"Pushing error to error stream: {ex}\n{message}")
-                                if not event:
-                                    if parsed_line is not None:
-                                        event = Event(parsed_line)
-                                    else:
-                                        event = Event(line)
-                                self.context.push_error(event, f"{ex}\n{message}", source=self.name)
-                            else:
-                                raise ex
-                if self._with_header:
-                    self._dates_indices = []
-
-        except BaseException as ex:
-            self._event_buffer.put(ex)
-        self._event_buffer.put(_termination_obj)
-
-    def _get_event(self):
-        event = self._event_buffer.get()
-        if isinstance(event, BaseException):
-            raise event
-        return event
-
-    async def _run_loop(self):
-        asyncio.get_running_loop().run_in_executor(None, self._blocking_io_loop)
-
-        def get_multiple():
-            events = [self._get_event()]
-            while not self._event_buffer.empty() and len(events) < 128:
-                events.append(self._get_event())
-            return events
-
-        while True:
-            events = await asyncio.get_running_loop().run_in_executor(None, get_multiple)
-            for event in events:
-                res = await self._do_downstream(event)
-                if event is _termination_obj:
-                    return res
+    def _get_element(self, body: dict, columns: List[str]):
+        if self._build_dict:
+            return body
+        return [body[column] for column in columns]
 
 
 class ParquetSource(DataframeSource):
@@ -1146,6 +1012,7 @@ class ParquetSource(DataframeSource):
                 df = self._read_filtered_parquet(path)
             else:
                 df = pandas.read_parquet(path, columns=self._columns, storage_options=self._storage_options)
+            self._validate_fields(df, path)
             self._dfs.append(df)
 
 

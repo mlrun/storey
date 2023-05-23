@@ -103,7 +103,7 @@ async def _delete_file(path):
 def test_csv_reader_from_v3io(v3io_create_csv):
     controller = build_flow(
         [
-            CSVSource(f"v3io:///{v3io_create_csv}", header=True),
+            CSVSource(f"v3io:///{v3io_create_csv}"),
             FlatMap(lambda x: x),
             Map(lambda x: int(x)),
             Reduce(0, lambda acc, x: acc + x),
@@ -117,12 +117,12 @@ def test_csv_reader_from_v3io(v3io_create_csv):
 def test_csv_reader_from_v3io_error_on_file_not_found():
     controller = build_flow(
         [
-            CSVSource("v3io:///bigdatra/tests/idontexist.csv", header=True),
+            CSVSource("v3io:///bigdata/tests/idontexist.csv"),
         ]
-    ).run()
+    )
 
     with pytest.raises(FileNotFoundError):
-        controller.await_termination()
+        controller.run()
 
 
 async def async_test_write_csv_to_v3io(v3io_teardown_csv):
