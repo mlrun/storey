@@ -927,8 +927,6 @@ class StreamTarget(Flow, _Writer):
                         self.context.push_error(event, f"{ex}\n{message}", source=self.name)
                     else:
                         raise ex
-            del buffer_events
-            del in_flight_events
         finally:
             self._worker_exited = True
             await self._storage.close()
@@ -992,19 +990,17 @@ class KafkaTarget(Flow, _Writer):
         appended to the provided list. If header is True and columns is not provided, infer_columns_from_data=True is
         implied. Optional. Default to False if columns is provided, True otherwise.
     :param full_event: Enable metadata wrapper for serialized event. Defaults to False.
-    :param max_pending_events: Maximum number of events that can be buffered before being flushed. Default is 100.
     """
 
     def __init__(
         self,
-        bootstrap_servers: str,
+        bootstrap_servers: Union[str, List[str]],
         topic: str,
         producer_options: Optional[dict] = None,
         sharding_func: Union[None, int, str, Callable[[Event], Any]] = None,
         columns: Optional[List[str]] = None,
         infer_columns_from_data: Optional[bool] = None,
         full_event: Optional[bool] = None,
-        max_pending_events=None,
         **kwargs,
     ):
         if not bootstrap_servers:
@@ -1037,15 +1033,9 @@ class KafkaTarget(Flow, _Writer):
 
         self._full_event = full_event
 
-        if max_pending_events is None:
-            max_pending_events = 100
-        self._max_pending_events = max_pending_events
-
     def _init(self):
         Flow._init(self)
         _Writer._init(self)
-        # Keep pending event to prevent them from being committed at the source
-        self._pending_events = []
 
     async def _lazy_init(self):
         from kafka import KafkaProducer
@@ -1060,11 +1050,9 @@ class KafkaTarget(Flow, _Writer):
 
         if event is _termination_obj:
             self._producer.flush()
-            self._pending_events = []
             self._producer.close()
             return await self._do_downstream(_termination_obj)
         else:
-            self._pending_events.append(event)
             key = None
             if event.key is not None:
                 key = stringify_key(event.key).encode("UTF-8")
@@ -1079,11 +1067,9 @@ class KafkaTarget(Flow, _Writer):
                     partition = sharding_func_result
                 else:
                     key = sharding_func_result
-            self._pending_events.append(event)
-            self._producer.send(self._topic, record, key, partition=partition)
-            if len(self._pending_events) >= self._max_pending_events:
-                self._producer.flush()
-                self._pending_events = []
+            future = self._producer.send(self._topic, record, key, partition=partition)
+            # Prevent garbage collection of event until persisted to kafka
+            future.add_callback(lambda x: event)
 
 
 class NoSqlTarget(_Writer, Flow):
