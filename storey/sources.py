@@ -666,7 +666,7 @@ class DataframeSource(_IterableSource, WithUUID):
                     else:
                         line_id = self._get_uuid()
                     element = self._get_element(body, columns)
-                    keys = keys[0] if len(keys) == 1 else (None if not keys else keys)
+                    keys = None if not keys else keys
                     event = Event(element, keys, id=line_id)
                     await self._do_downstream(event)
         return await self._do_downstream(_termination_obj)
