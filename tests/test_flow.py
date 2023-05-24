@@ -473,7 +473,7 @@ def test_indexed_dataframe_source():
 
 
 @pytest.mark.parametrize(
-    "key_field ,key1, key2", [("my_key", "key1", "key2"), (["my_key"], ["key1"], ["key2"])]  # Test case 2
+    "key_field ,key1, key2", [("my_key", "key1", "key2"), (["my_key"], ["key1"], ["key2"])]
 )
 def test_dataframe_source_with_metadata(key_field, key1, key2):
     t1 = datetime(2020, 2, 15)
