@@ -476,7 +476,6 @@ def test_indexed_dataframe_source():
     "key_field ,key1, key2", [("my_key", "key1", "key2"), (["my_key"], ["key1"], ["key2"])]  # Test case 2
 )
 def test_dataframe_source_with_metadata(key_field, key1, key2):
-    print(key_field)
     t1 = datetime(2020, 2, 15)
     t2 = datetime(2020, 2, 16)
     df = pd.DataFrame(
