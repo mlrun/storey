@@ -472,9 +472,7 @@ def test_indexed_dataframe_source():
     assert termination_result == expected
 
 
-@pytest.mark.parametrize(
-    "key_field ,key1, key2", [("my_key", "key1", "key2"), (["my_key"], ["key1"], ["key2"])]
-)
+@pytest.mark.parametrize("key_field ,key1, key2", [("my_key", "key1", "key2"), (["my_key"], ["key1"], ["key2"])])
 def test_dataframe_source_with_metadata(key_field, key1, key2):
     t1 = datetime(2020, 2, 15)
     t2 = datetime(2020, 2, 16)
@@ -502,10 +500,8 @@ def test_dataframe_source_with_metadata(key_field, key1, key2):
             id="id2",
         ),
     ]
-    assert len(termination_result) == len(expected)
-    for result, expected_event in zip(termination_result, expected):
-        assert result == expected_event
-        assert result.key == expected_event.key  # __eq__ method does not check key.
+    assert termination_result == expected
+    assert list(map(lambda event: event.key, termination_result)) == [key1, key2]
 
 
 async def async_dataframe_source():
