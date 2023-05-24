@@ -667,7 +667,9 @@ class DataframeSource(_IterableSource, WithUUID):
                         line_id = self._get_uuid()
                     element = self._get_element(body, columns)
                     keys = (
-                        keys[0] if len(keys) == 1 and isinstance(self._key_field, str) else (None if not keys else keys)
+                        keys[0]
+                        if len(keys) == 1 and not isinstance(self._key_field, list)
+                        else (None if not keys else keys)
                     )
                     event = Event(element, keys, id=line_id)
                     await self._do_downstream(event)
