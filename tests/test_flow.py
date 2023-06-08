@@ -3540,6 +3540,14 @@ def test_csv_source_event_metadata():
             "t": datetime(2020, 2, 16, 2, 0),
             "v": 14,
         },
+        {
+            "b": True,
+            "id": "m3",
+            "k": "m3",
+            "key": "m3",
+            "t": pd.NaT,
+            "v": 30,
+        },
     ]
 
 
