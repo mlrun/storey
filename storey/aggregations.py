@@ -328,6 +328,7 @@ class QueryByKey(AggregateByKey):
         time_field: Union[str, List[str], Callable[[Event], object], None] = None,
         augmentation_fn: Optional[Callable[[Event, Dict[str, object]], Event]] = None,
         aliases: Optional[Dict[str, str]] = None,
+        input_aliases: Optional[Dict[str, str]] = None,
         fixed_window_type: Optional[FixedWindowType] = FixedWindowType.CurrentOpenWindow,
         **kwargs,
     ):
@@ -374,12 +375,14 @@ class QueryByKey(AggregateByKey):
         )
         self._table._aggregations_read_only = True
         self._table.fixed_window_type = fixed_window_type
+        self._input_aliases = input_aliases or {}
 
     async def _do(self, event):
         if event == _termination_obj:
             self._terminate_worker = True
             return await self._do_downstream(_termination_obj)
 
+        self._aliasing_incoming_event_body(event.body)
         element = event.body
         key = event.key
         if self._key_extractor:
@@ -393,3 +396,12 @@ class QueryByKey(AggregateByKey):
 
     def _check_unique_names(self, aggregates):
         pass
+
+    def _aliasing_incoming_event_body(self, element):
+        if self._input_aliases and element:
+            for key in list(element.keys()):
+                if key in self._input_aliases:
+                    new_key = self._input_aliases[key]
+                    if key != new_key:
+                        element[new_key] = element[key]
+                        del element[key]

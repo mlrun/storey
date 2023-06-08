@@ -69,7 +69,7 @@ from storey import (
     build_flow,
 )
 from storey.flow import Context, ReifyMetadata, Rename, _ConcurrentJobExecution
-
+from tests.test_aggregate_by_key import append_return
 
 class ATestException(Exception):
     pass
@@ -3454,6 +3454,33 @@ def test_non_existing_key_query_by_key():
     controller.emit({"nameeeee": "katya"}, "katya")
     controller.terminate()
     controller.await_termination()
+
+
+def test_aliasing_key_query_by_key():
+    df = pd.DataFrame(
+        [["katya", "green", "hod hasharon"], ["dina", "blue", "ramat gan"]],
+        columns=["name", "color", "city"],
+    )
+    table = Table("table", NoopDriver())
+    controller = build_flow(
+        [
+            DataframeSource(df, key_field="name"),
+            NoSqlTarget(table),
+        ]
+    ).run()
+    controller.await_termination()
+
+    controller = build_flow(
+        [
+            SyncEmitSource(),
+            QueryByKey(["color", "city"], table, key_field="name", input_aliases={"nameeeee": "name"}),
+            Reduce([], lambda acc, x: append_return(acc, x)),
+        ]
+    ).run()
+    controller.emit({"nameeeee": "katya"})
+    controller.terminate()
+    actual = controller.await_termination()
+    assert actual == [{"name": "katya", "color": "green", "city": "hod hasharon"}]
 
 
 # ML-2257
