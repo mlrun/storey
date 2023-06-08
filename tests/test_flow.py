@@ -306,9 +306,10 @@ def test_csv_reader_as_dict_with_key_and_timestamp():
     assert termination_result[2].body == {
         "k": "m3",
         "t": pd.NaT,
-        "v": 20,
+        "v": 30,
         "b": True,
     }
+
 
 def test_csv_reader_as_dict_with_compact_timestamp():
     controller = build_flow(
@@ -365,7 +366,7 @@ def test_csv_reader_with_key_and_timestamp():
     assert termination_result[1].key == "m2"
     assert termination_result[1].body == ["m2", datetime(2020, 2, 16, 2, 0), 14, False]
     assert termination_result[2].key == "m3"
-    assert termination_result[2].body == ["m3", pd.NaT, 20, True]
+    assert termination_result[2].body == ["m3", pd.NaT, 30, True]
 
 
 @pytest.mark.parametrize(
