@@ -359,7 +359,7 @@ def test_csv_reader_with_key_and_timestamp():
 
     termination_result = controller.await_termination()
 
-    assert len(termination_result) == 2
+    assert len(termination_result) == 3
     assert termination_result[0].key == "m1"
     assert termination_result[0].body == ["m1", datetime(2020, 2, 15, 2, 0), 8, True]
     assert termination_result[1].key == "m2"
