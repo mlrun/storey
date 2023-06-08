@@ -364,6 +364,7 @@ def test_csv_reader_with_key_and_timestamp():
     assert termination_result[0].body == ["m1", datetime(2020, 2, 15, 2, 0), 8, True]
     assert termination_result[1].key == "m2"
     assert termination_result[1].body == ["m2", datetime(2020, 2, 16, 2, 0), 14, False]
+    assert termination_result[2].body == ["m2", pd.NaT, 20, True]
 
 
 @pytest.mark.parametrize(
