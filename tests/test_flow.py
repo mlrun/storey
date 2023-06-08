@@ -71,6 +71,7 @@ from storey import (
 from storey.flow import Context, ReifyMetadata, Rename, _ConcurrentJobExecution
 from tests.test_aggregate_by_key import append_return
 
+
 class ATestException(Exception):
     pass
 
