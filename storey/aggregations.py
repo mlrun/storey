@@ -317,6 +317,8 @@ class QueryByKey(AggregateByKey):
         Defaults to updating a dict. (Optional)
     :param aliases: Dictionary specifying aliases for enriched or aggregate columns, of the
         format `{'col_name': 'new_col_name'}`. (Optional)
+    :param input_aliases: Dictionary specifying aliases for the incoming event body data, of the
+        format `{'col_name': 'new_col_name'}`. (Optional)
     :param options: Enum flags specifying query options. (Optional)
     """
 
