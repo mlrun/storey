@@ -689,7 +689,8 @@ def test_indexed_dataframe_source():
     assert termination_result == expected
 
 
-def test_dataframe_source_with_metadata():
+@pytest.mark.parametrize("key_field ,key1, key2", [("my_key", "key1", "key2"), (["my_key"], ["key1"], ["key2"])])
+def test_dataframe_source_with_metadata(key_field, key1, key2):
     t1 = datetime(2020, 2, 15)
     t2 = datetime(2020, 2, 16)
     df = pd.DataFrame(
@@ -698,7 +699,7 @@ def test_dataframe_source_with_metadata():
     )
     controller = build_flow(
         [
-            DataframeSource(df, key_field="my_key", time_field="my_time", id_field="my_id"),
+            DataframeSource(df, key_field=key_field, time_field="my_time", id_field="my_id"),
             Reduce([], append_and_return, full_event=True),
         ]
     ).run()
@@ -707,16 +708,17 @@ def test_dataframe_source_with_metadata():
     expected = [
         Event(
             {"my_key": "key1", "my_time": t1, "my_id": "id1", "my_value": 1.1},
-            key="key1",
+            key=key1,
             id="id1",
         ),
         Event(
             {"my_key": "key2", "my_time": t2, "my_id": "id2", "my_value": 2.2},
-            key="key2",
+            key=key2,
             id="id2",
         ),
     ]
     assert termination_result == expected
+    assert list(map(lambda event: event.key, termination_result)) == [key1, key2]
 
 
 async def async_dataframe_source():
