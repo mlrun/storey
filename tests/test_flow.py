@@ -302,7 +302,13 @@ def test_csv_reader_as_dict_with_key_and_timestamp():
         "v": 14,
         "b": False,
     }
-
+    assert termination_result[2].key == "m3"
+    assert termination_result[2].body == {
+        "k": "m2",
+        "t": pd.NaT,
+        "v": 20,
+        "b": True,
+    }
 
 def test_csv_reader_as_dict_with_compact_timestamp():
     controller = build_flow(
