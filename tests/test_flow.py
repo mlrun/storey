@@ -3488,7 +3488,7 @@ def test_csv_source_with_none_values():
         False,
         1,
         2.3,
-        "2021-04-21 15:56:53.385444",
+        pd.to_datetime("2021-04-21 15:56:53.385444"),
     ]
     assert termination_result[1].key == "b"
     excepted_result = ["b", True, math.nan, math.nan, math.nan, pd.NaT]
