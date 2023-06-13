@@ -3500,6 +3500,8 @@ def test_csv_source_with_none_values():
                 assert math.isnan(y)
             else:
                 assert x == y
+        elif isinstance(x, type(pd.NaT)):
+            assert isinstance(y, type(pd.NaT))
         else:
             assert x == y
 
