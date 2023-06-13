@@ -3473,7 +3473,7 @@ def test_query_by_key_non_aggregate():
 def test_csv_source_with_none_values():
     controller = build_flow(
         [
-            CSVSource("tests/test-with-none-values.csv", key_field="string"),
+            CSVSource("tests/test-with-none-values.csv", key_field="string", parse_dates='date_with_none'),
             Reduce([], append_and_return, full_event=True),
         ]
     ).run()
