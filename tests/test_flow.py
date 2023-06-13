@@ -3491,7 +3491,7 @@ def test_csv_source_with_none_values():
         "2021-04-21 15:56:53.385444",
     ]
     assert termination_result[1].key == "b"
-    excepted_result = ["b", True, math.nan, math.nan, math.nan, math.nan]
+    excepted_result = ["b", True, math.nan, math.nan, math.nan, pd.NaT]
     assert len(termination_result[1].body) == len(excepted_result)
     for x, y in zip(termination_result[1].body, excepted_result):
         if isinstance(x, float):
