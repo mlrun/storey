@@ -3473,7 +3473,7 @@ def test_query_by_key_non_aggregate():
 def test_csv_source_with_none_values():
     controller = build_flow(
         [
-            CSVSource("tests/test-with-none-values.csv", key_field="string"),
+            CSVSource("tests/test-with-none-values.csv", key_field="string", parse_dates="date_with_none"),
             Reduce([], append_and_return, full_event=True),
         ]
     ).run()
@@ -3488,10 +3488,10 @@ def test_csv_source_with_none_values():
         False,
         1,
         2.3,
-        "2021-04-21 15:56:53.385444",
+        pd.to_datetime("2021-04-21 15:56:53.385444"),
     ]
     assert termination_result[1].key == "b"
-    excepted_result = ["b", True, math.nan, math.nan, math.nan, math.nan]
+    excepted_result = ["b", True, math.nan, math.nan, math.nan, pd.NaT]
     assert len(termination_result[1].body) == len(excepted_result)
     for x, y in zip(termination_result[1].body, excepted_result):
         if isinstance(x, float):
@@ -3500,6 +3500,8 @@ def test_csv_source_with_none_values():
                 assert math.isnan(y)
             else:
                 assert x == y
+        elif isinstance(x, type(pd.NaT)):
+            assert isinstance(y, type(pd.NaT))
         else:
             assert x == y
 
