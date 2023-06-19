@@ -783,6 +783,30 @@ def test_write_parquet_flush(tmpdir):
     asyncio.run(async_test_write_parquet_flush(tmpdir))
 
 
+def test_parquet_flush_with_inconsistent_schema_logs_error(tmpdir):
+    out_dir = f"{tmpdir}/test_parquet_flush_with_inconsistent_schema_logs_error/{uuid.uuid4().hex}/"
+
+    logger = MockLogger()
+    context = MockContext(logger, False)
+
+    columns = [("my_int_or_string", "int"), ("my_string", "str")]
+    target = ParquetTarget(
+        out_dir,
+        columns=columns,
+        partition_cols=[],
+        flush_after_seconds=0.5,
+        context=context,
+    )
+    controller = build_flow([SyncEmitSource(), target]).run()
+    controller.emit(["it is actually a string", "abc"])
+    time.sleep(1)
+
+    assert logger.logs[0][1][0].startswith("Failed to flush batch in step 'ParquetTarget':")
+
+    controller.terminate()
+    controller.await_termination()
+
+
 def test_error_flow():
     controller = build_flow(
         [

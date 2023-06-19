@@ -524,7 +524,7 @@ class ParquetTarget(_Batching, _Writer):
         time_format: Optional[str] = None,
         infer_columns_from_data: Optional[bool] = None,
         max_events: Optional[int] = None,
-        flush_after_seconds: Optional[int] = None,
+        flush_after_seconds: Union[int, float, None] = None,
         **kwargs,
     ):
         self._single_file_mode = False
