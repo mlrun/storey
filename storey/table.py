@@ -1163,13 +1163,14 @@ class AggregationValue:
 
 class MinValue(AggregationValue):
     name = "min"
-    default_value = float("inf")
 
     def __init__(self, max_value=None, set_data=None, set_time=None):
         super().__init__(max_value, set_data, set_time)
 
     def aggregate(self, time, value):
-        if value < self.value:
+        if math.isnan(value):
+            return
+        if math.isnan(self.value) or value < self.value:
             self.value = float(value)  # bypass _set_value because there's no need to check max_value each time
 
     def get_update_expression(self, old):
@@ -1187,13 +1188,14 @@ class MinValue(AggregationValue):
 
 class MaxValue(AggregationValue):
     name = "max"
-    default_value = float("-inf")
 
     def __init__(self, max_value=None, set_data=None, set_time=None):
         super().__init__(max_value, set_data, set_time)
 
     def aggregate(self, time, value):
-        if value > self.value:
+        if math.isnan(value):
+            return
+        if math.isnan(self.value) or value > self.value:
             self._set_value(value)
 
     def get_update_expression(self, old):
@@ -1205,16 +1207,20 @@ class MaxValue(AggregationValue):
 
 class SumValue(AggregationValue):
     name = "sum"
-    default_value = 0.0
 
     def __init__(self, max_value=None, set_data=None, set_time=None):
         super().__init__(max_value, set_data, set_time)
 
     def aggregate(self, time, value):
-        self._set_value(self.value + value)
+        if math.isnan(value):
+            return
+        if math.isnan(self.value):
+            self._set_value(value)
+        else:
+            self._set_value(self.value + value)
 
     def aggregate_lua_script(self, vl1, vl2):
-        return f"{vl1}+{vl2}"
+        return f'type({vl1}) == "number" and ({vl1}+{vl2}) or {vl2}'
 
 
 class CountValue(AggregationValue):
@@ -1233,19 +1239,20 @@ class CountValue(AggregationValue):
 
 class SqrValue(AggregationValue):
     name = "sqr"
-    default_value = 0.0
 
     def __init__(self, max_value=None, set_data=None, set_time=None):
         super().__init__(max_value, set_data, set_time)
 
     def aggregate(self, time, value):
-        self._set_value(self.value + value * value)
-
-    def aggregate_argument(self, time, argument):
-        self._set_value(self.value + argument)
+        if math.isnan(value):
+            return
+        if math.isnan(self.value):
+            self._set_value(value * value)
+        else:
+            self._set_value(self.value + value * value)
 
     def aggregate_lua_script(self, vl1, vl2):
-        return f"{vl1}+{vl2}"
+        return f'type({vl1}) == "number" and ({vl1}+({vl2}*{vl2})) or {vl2}*{vl2}'
 
 
 class LastValue(AggregationValue):

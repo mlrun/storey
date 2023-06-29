@@ -14,6 +14,7 @@
 #
 import math
 import queue
+from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta, timezone
 
 import pandas as pd
@@ -42,6 +43,27 @@ test_base_time = datetime.fromisoformat("2020-07-21T21:40:00+00:00")
 def append_return(lst, x):
     lst.append(x)
     return lst
+
+
+def assert_equal(val1, val2):
+    if isinstance(val1, Mapping):
+        # Compare dictionaries
+        assert set(val1.keys()) == set(val2.keys()), "Dictionaries don't have the same keys"
+        for key in val1:
+            assert_equal(val1[key], val2[key])
+    elif isinstance(val1, Sequence) and not isinstance(val1, str):
+        # Compare lists (or other sequences)
+        assert len(val1) == len(val2), "Sequences don't have the same length"
+        for item1, item2 in zip(val1, val2):
+            assert_equal(item1, item2)
+    else:
+        # Compare scalar values
+        try:
+            if math.isnan(val1) and math.isnan(val2):
+                return
+        except TypeError:
+            pass
+        assert val1 == val2, f"Values are not the same: {val1} != {val2}"
 
 
 def test_sliding_window_simple_aggregation_flow():
@@ -233,8 +255,8 @@ def test_sliding_window_simple_aggregation_flow():
         },
     ]
 
-    assert (
-        actual == expected_results
+    assert_equal(
+        actual, expected_results
     ), f"actual did not match expected. \n actual: {actual} \n expected: {expected_results}"
 
 
@@ -431,8 +453,8 @@ def test_aggregation_flow_with_aliases():
             "time": datetime(2020, 7, 22, 1, 25, tzinfo=timezone.utc),
         },
     ]
-    assert (
-        actual == expected_results
+    assert_equal(
+        actual, expected_results
     ), f"actual did not match expected. \n actual: {actual} \n expected: {expected_results}"
 
 
@@ -492,9 +514,9 @@ def test_sliding_window_sparse_data():
             "number_of_stuff2_min_1h": math.nan,
             "number_of_stuff2_min_24h": math.nan,
             "number_of_stuff2_min_2h": math.nan,
-            "number_of_stuff2_sum_1h": 0,
-            "number_of_stuff2_sum_24h": 0,
-            "number_of_stuff2_sum_2h": 0,
+            "number_of_stuff2_sum_1h": math.nan,
+            "number_of_stuff2_sum_24h": math.nan,
+            "number_of_stuff2_sum_2h": math.nan,
             "time": datetime(2020, 7, 21, 21, 40, tzinfo=timezone.utc),
         },
         {
@@ -1031,8 +1053,8 @@ def test_sliding_window_sparse_data():
         },
     ]
 
-    assert (
-        actual == expected_results
+    assert_equal(
+        actual, expected_results
     ), f"actual did not match expected. \n actual: {actual} \n expected: {expected_results}"
 
 
@@ -1096,9 +1118,9 @@ def test_sliding_window_sparse_data_uneven_feature_occurrence():
             "number_of_stuff2_min_1h": math.nan,
             "number_of_stuff2_min_24h": math.nan,
             "number_of_stuff2_min_2h": math.nan,
-            "number_of_stuff2_sum_1h": 0.0,
-            "number_of_stuff2_sum_24h": 0.0,
-            "number_of_stuff2_sum_2h": 0.0,
+            "number_of_stuff2_sum_1h": math.nan,
+            "number_of_stuff2_sum_24h": math.nan,
+            "number_of_stuff2_sum_2h": math.nan,
             "time": datetime(2020, 7, 21, 21, 40, tzinfo=timezone.utc),
         },
         {
@@ -1383,8 +1405,8 @@ def test_sliding_window_sparse_data_uneven_feature_occurrence():
         },
     ]
 
-    assert (
-        actual == expected_results
+    assert_equal(
+        actual, expected_results
     ), f"actual did not match expected. \n actual: {actual} \n expected: {expected_results}"
 
 
@@ -1517,8 +1539,8 @@ def test_sliding_window_multiple_keys_aggregation_flow():
         },
     ]
 
-    assert (
-        actual == expected_results
+    assert_equal(
+        actual, expected_results
     ), f"actual did not match expected. \n actual: {actual} \n expected: {expected_results}"
 
 
@@ -1662,8 +1684,8 @@ def test_sliding_window_aggregations_with_filters_flow():
         },
     ]
 
-    assert (
-        actual == expected_results
+    assert_equal(
+        actual, expected_results
     ), f"actual did not match expected. \n actual: {actual} \n expected: {expected_results}"
 
 
@@ -1747,8 +1769,8 @@ def test_sliding_window_aggregations_with_max_values_flow():
         },
     ]
 
-    assert (
-        actual == expected_results
+    assert_equal(
+        actual, expected_results
     ), f"actual did not match expected. \n actual: {actual} \n expected: {expected_results}"
 
 
@@ -1938,8 +1960,8 @@ def test_sliding_window_simple_aggregation_flow_multiple_fields():
         },
     ]
 
-    assert (
-        actual == expected_results
+    assert_equal(
+        actual, expected_results
     ), f"actual did not match expected. \n actual: {actual} \n expected: {expected_results}"
 
 
@@ -2052,8 +2074,8 @@ def test_fixed_window_simple_aggregation_flow():
         },
     ]
 
-    assert (
-        actual == expected_results
+    assert_equal(
+        actual, expected_results
     ), f"actual did not match expected. \n actual: {actual} \n expected: {expected_results}"
 
 
@@ -2326,8 +2348,8 @@ def test_fixed_window_aggregation_with_uncommon_windows_flow():
         },
     ]
 
-    assert (
-        termination_result == expected
+    assert_equal(
+        termination_result, expected
     ), f"actual did not match expected. \n actual: {termination_result} \n expected: {expected}"
 
 
@@ -2559,8 +2581,8 @@ def test_fixed_window_aggregation_with_multiple_keys_flow():
         },
     ]
 
-    assert (
-        termination_result == expected
+    assert_equal(
+        termination_result, expected
     ), f"actual did not match expected. \n actual: {termination_result} \n expected: {expected}"
 
 
@@ -2833,8 +2855,8 @@ def test_sliding_window_aggregation_with_uncommon_windows_flow():
         },
     ]
 
-    assert (
-        termination_result == expected
+    assert_equal(
+        termination_result, expected
     ), f"actual did not match expected. \n actual: {termination_result} \n expected: {expected}"
 
 
@@ -2908,8 +2930,8 @@ def test_emit_max_event_sliding_window_multiple_keys_aggregation_flow():
         },
     ]
 
-    assert (
-        actual == expected_results
+    assert_equal(
+        actual, expected_results
     ), f"actual did not match expected. \n actual: {actual} \n expected: {expected_results}"
 
 
@@ -2976,8 +2998,8 @@ def test_emit_delay_aggregation_flow():
         },
     ]
 
-    assert (
-        actual == expected_results
+    assert_equal(
+        actual, expected_results
     ), f"actual did not match expected. \n actual: {actual} \n expected: {expected_results}"
 
 
@@ -3172,8 +3194,8 @@ def test_aggregate_dict_simple_aggregation_flow():
         },
     ]
 
-    assert (
-        actual == expected_results
+    assert_equal(
+        actual, expected_results
     ), f"actual did not match expected. \n actual: {actual} \n expected: {expected_results}"
 
 
@@ -3287,8 +3309,8 @@ def test_aggregate_dict_fixed_window():
         },
     ]
 
-    assert (
-        actual == expected_results
+    assert_equal(
+        actual, expected_results
     ), f"actual did not match expected. \n actual: {actual} \n expected: {expected_results}"
 
 
@@ -3372,8 +3394,8 @@ def test_sliding_window_old_event():
         {"col1": 3, "time": datetime(2020, 7, 20, 20, 40, tzinfo=timezone.utc)},
     ]
 
-    assert (
-        actual == expected_results
+    assert_equal(
+        actual, expected_results
     ), f"actual did not match expected. \n actual: {actual} \n expected: {expected_results}"
 
 
@@ -3433,8 +3455,8 @@ def test_fixed_window_old_event():
         {"col1": 3, "time": datetime(2020, 7, 20, 20, 40, tzinfo=timezone.utc)},
     ]
 
-    assert (
-        actual == expected_results
+    assert_equal(
+        actual, expected_results
     ), f"actual did not match expected. \n actual: {actual} \n expected: {expected_results}"
 
 
@@ -3493,8 +3515,8 @@ def test_fixed_window_out_of_order_event():
         },
     ]
 
-    assert (
-        actual == expected_results
+    assert_equal(
+        actual, expected_results
     ), f"actual did not match expected. \n actual: {actual} \n expected: {expected_results}"
 
 
@@ -3597,8 +3619,8 @@ def test_fixed_window_roll_cached_buckets():
         },
     ]
 
-    assert (
-        actual == expected_results
+    assert_equal(
+        actual, expected_results
     ), f"actual did not match expected. \n actual: {actual} \n expected: {expected_results}"
 
 
@@ -3751,8 +3773,8 @@ def test_sliding_window_roll_cached_buckets():
         },
     ]
 
-    assert (
-        actual == expected_results
+    assert_equal(
+        actual, expected_results
     ), f"actual did not match expected. \n actual: {actual} \n expected: {expected_results}"
 
 
@@ -3974,6 +3996,6 @@ def test_fixed_window_aggregation_with_first_and_last_aggregates(timestamp):
         },
     ]
 
-    assert (
-        termination_result == expected
+    assert_equal(
+        termination_result, expected
     ), f"actual did not match expected. \n actual: {termination_result} \n expected: {expected}"
