@@ -957,7 +957,7 @@ class _Batching(Flow):
     def __init__(
         self,
         max_events: Optional[int] = None,
-        flush_after_seconds: Optional[int] = None,
+        flush_after_seconds: Union[int, float, None] = None,
         key_field: Optional[Union[str, Callable[[Event], str]]] = None,
         **kwargs,
     ):
@@ -986,7 +986,6 @@ class _Batching(Flow):
         self._batch_last_event_time: Dict[Optional[str], datetime.datetime] = {}
         self._batch_start_time: Dict[Optional[str], float] = {}
         self._timeout_task: Optional[Task] = None
-        self._timeout_task_ex: Optional[Exception] = None
 
     @staticmethod
     def _create_key_extractor(key_field) -> Callable:
@@ -1028,9 +1027,6 @@ class _Batching(Flow):
         elif self._batch_last_event_time[key] < event_time:
             self._batch_last_event_time[key] = event_time
 
-        if self._timeout_task_ex:
-            raise self._timeout_task_ex
-
         if self._flush_after_seconds is not None and self._timeout_task is None:
             self._timeout_task = asyncio.get_running_loop().create_task(self._sleep_and_emit())
 
@@ -1051,8 +1047,10 @@ class _Batching(Flow):
                 if delta_seconds < self._flush_after_seconds:
                     await asyncio.sleep(self._flush_after_seconds - delta_seconds)
                 await self._emit_batch(key)
-        except Exception as ex:
-            self._timeout_task_ex = ex
+        except Exception:
+            message = traceback.format_exc()
+            if self.logger:
+                self.logger.error(f"Failed to flush batch in step '{self.name}':\n{message}")
 
         self._timeout_task = None
 
