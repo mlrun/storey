@@ -2270,7 +2270,7 @@ def test_write_to_parquet_string_as_datetime(tmpdir):
     out_dir = f"{tmpdir}/test_write_to_parquet_string_to_datetime/{uuid.uuid4().hex}/"
     columns = ["my_int", "my_string", "my_datetime"]
     columns_with_type = [
-        ("my_int", "int"),
+        ("my_int", "int8"),  # ML-4162
         ("my_string", "str"),
         ("my_datetime", "datetime"),
     ]
@@ -2289,6 +2289,7 @@ def test_write_to_parquet_string_as_datetime(tmpdir):
         controller.emit([i, f"this is {i}", my_time.isoformat()])
         expected.append([i, f"this is {i}", my_time.isoformat(sep=" ")])
     expected_df = pd.DataFrame(expected, columns=columns)
+    expected_df["my_int"] = expected_df["my_int"].astype("int8")
     expected_df["my_datetime"] = expected_df["my_datetime"].astype("datetime64[us]")
     controller.terminate()
     controller.await_termination()
