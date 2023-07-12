@@ -14,6 +14,7 @@
 #
 import asyncio
 import copy
+import gc
 import queue
 import threading
 import uuid
@@ -506,6 +507,7 @@ async def _commit_handled_events(outstanding_offsets_by_qualified_shard, committ
         else:
             num_to_clear = 0
             last_handled_offset = None
+            gc.collect()
             # go over offsets in the qualified shard by arrival order until we reach an unhandled offset
             for offset in offsets:
                 if not offset.is_ready_to_commit():
