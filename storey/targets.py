@@ -140,8 +140,16 @@ class _Writer:
 
     _type_string_to_pyarrow_type = {
         "str": pyarrow.string(),
+        "int8": pyarrow.int8(),
+        "int16": pyarrow.int16(),
         "int32": pyarrow.int32(),
+        "int64": pyarrow.int64(),
+        "uint8": pyarrow.uint8(),
+        "uint16": pyarrow.uint16(),
+        "uint32": pyarrow.uint32(),
+        "uint64": pyarrow.uint64(),
         "int": pyarrow.int64(),
+        "float16": pyarrow.float16(),
         "float32": pyarrow.float32(),
         "float": pyarrow.float64(),
         "bool": pyarrow.bool_(),
