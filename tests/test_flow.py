@@ -144,7 +144,7 @@ def test_offset_commit():
 
     controller = build_flow(
         [
-            SyncEmitSource(context=context),
+            SyncEmitSource(context=context, explicit_ack=True),
             Map(lambda x: x + 1),
             Filter(lambda x: x < 3),
             FlatMap(lambda x: [x, x * 10]),
@@ -175,7 +175,7 @@ async def async_offset_commit():
 
     controller = build_flow(
         [
-            AsyncEmitSource(context=context),
+            AsyncEmitSource(context=context, explicit_ack=True),
             Map(lambda x: x + 1),
             Filter(lambda x: x < 3),
             FlatMap(lambda x: [x, x * 10]),
@@ -211,7 +211,7 @@ def test_offset_commit_before_termination():
 
     controller = build_flow(
         [
-            SyncEmitSource(context=context),
+            SyncEmitSource(context=context, explicit_ack=True),
             Map(lambda x: x + 1),
             Filter(lambda x: x < 3),
             FlatMap(lambda x: [x, x * 10]),
@@ -252,7 +252,7 @@ async def async_offset_commit_before_termination():
 
     controller = build_flow(
         [
-            AsyncEmitSource(context=context),
+            AsyncEmitSource(context=context, explicit_ack=True),
             Map(lambda x: x + 1),
             Filter(lambda x: x < 3),
             FlatMap(lambda x: [x, x * 10]),
@@ -295,7 +295,7 @@ def test_offset_not_committed_prematurely():
 
     controller = build_flow(
         [
-            SyncEmitSource(context=context),
+            SyncEmitSource(context=context, explicit_ack=True),
             EventHoarder(),
             Reduce(0, lambda acc, x: acc + x),
         ]
