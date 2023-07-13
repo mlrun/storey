@@ -248,6 +248,8 @@ class SyncEmitSource(Flow):
 
     :param buffer_size: size of the incoming event buffer. Defaults to 8.
     :param key_field: Field to extract and use as the key. Optional.
+    :param max_events_before_commit: Maximum number of events to be processed before committing offsets.
+    :param explicit_ack: Whether to explicitly commit offsets. Defaults to False.
     :param name: Name of this step, as it should appear in logs. Defaults to class name (SyncEmitSource).
     :type name: string
 
@@ -261,6 +263,7 @@ class SyncEmitSource(Flow):
         buffer_size: Optional[int] = None,
         key_field: Union[list, str, int, None] = None,
         max_events_before_commit=None,
+        explicit_ack=False,
         **kwargs,
     ):
         if buffer_size is None:
@@ -275,6 +278,7 @@ class SyncEmitSource(Flow):
         self._q = queue.Queue(buffer_size)
         self._key_field = key_field
         self._max_events_before_commit = max_events_before_commit or 1000
+        self._explicit_ack = explicit_ack
         self._termination_q = queue.Queue(1)
         self._ex = None
         self._closeables = []
@@ -289,7 +293,7 @@ class SyncEmitSource(Flow):
         self._termination_future = loop.create_future()
         committer = None
         num_events_handled_without_commit = 0
-        if hasattr(self.context, "platform") and hasattr(self.context.platform, "explicit_ack"):
+        if self._explicit_ack and hasattr(self.context, "platform") and hasattr(self.context.platform, "explicit_ack"):
             committer = self.context.platform.explicit_ack
         while True:
             event = None
@@ -528,6 +532,9 @@ class AsyncEmitSource(Flow):
     See SyncEmitSource for use from inside a synchronous context.
 
     :param buffer_size: size of the incoming event buffer. Defaults to 8.
+    :param key_field: Field to extract and use as the key. Optional.
+    :param max_events_before_commit: Maximum number of events to be processed before committing offsets.
+    :param explicit_ack: Whether to explicitly commit offsets. Defaults to False.
     :param name: Name of this step, as it should appear in logs. Defaults to class name (AsyncEmitSource).
     :type name: string
 
@@ -541,6 +548,7 @@ class AsyncEmitSource(Flow):
         buffer_size: int = None,
         key_field: Union[list, str, None] = None,
         max_events_before_commit=None,
+        explicit_ack=False,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -553,6 +561,7 @@ class AsyncEmitSource(Flow):
         self._q = asyncio.Queue(buffer_size)
         self._key_field = key_field
         self._max_events_before_commit = max_events_before_commit or 1000
+        self._explicit_ack = explicit_ack
         self._ex = None
         self._closeables = []
 
@@ -564,7 +573,7 @@ class AsyncEmitSource(Flow):
     async def _run_loop(self):
         committer = None
         num_events_handled_without_commit = 0
-        if hasattr(self.context, "platform") and hasattr(self.context.platform, "explicit_ack"):
+        if self._explicit_ack and hasattr(self.context, "platform") and hasattr(self.context.platform, "explicit_ack"):
             committer = self.context.platform.explicit_ack
         while True:
             event = None
