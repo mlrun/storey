@@ -111,7 +111,16 @@ def _get_redis_kv_all_attrs(setup_teardown_test: ContextForTests, key: str):
     hash_key = RedisDriver.make_key("storey-test:", table_name, key)
     redis_key = RedisDriver._static_data_key(hash_key)
     redis_fake_server = setup_teardown_test.redis_fake_server
-    values = get_redis_client(redis_fake_server=redis_fake_server).hgetall(redis_key)
+
+    cursor = 0
+    values = {}
+    while True:
+        cursor, v = get_redis_client(redis_fake_server=redis_fake_server).hscan(
+            redis_key, cursor, match=f"[^{chr(0x1)}]*"
+        )
+        values.update(v)
+        if cursor == 0:
+            break
     return {
         RedisDriver.convert_to_str(key): RedisDriver.convert_redis_value_to_python_obj(val)
         for key, val in values.items()
