@@ -14,10 +14,13 @@
 #
 import asyncio
 import copy
+import gc
 import queue
 import threading
 import uuid
 import warnings
+import weakref
+from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Callable, Coroutine, Iterable, List, Optional, Union
 
@@ -25,6 +28,7 @@ import pandas
 import pandas as pd
 import pyarrow
 import pytz
+from nuclio_sdk import QualifiedOffset
 
 from .dtypes import Event, _termination_obj
 from .flow import Complete, Flow
@@ -199,6 +203,7 @@ class FlowController(FlowControllerBase):
         if self._return_awaitable_result:
             awaitable_result = AwaitableResult(expected_number_of_results=expected_number_of_results or 1)
         event._awaitable_result = awaitable_result
+        event._original_events = [event]
         self._emit_fn(event)
         return awaitable_result
 
@@ -225,12 +230,26 @@ class FlowAwaiter:
         return self._await_termination_fn()
 
 
+class _EventOffset:
+    def __init__(self, event):
+        self.event_weakref = weakref.ref(event)
+        self.offset = event.offset
+
+    def is_ready_to_commit(self):
+        return self.event_weakref() is None
+
+    def __repr__(self):
+        return f"_EventOffset({self.offset})"
+
+
 class SyncEmitSource(Flow):
     """Synchronous entry point into a flow. Produces a FlowController when run, for use from inside a synchronous
     context. See AsyncEmitSource for use from inside an async context.
 
     :param buffer_size: size of the incoming event buffer. Defaults to 8.
     :param key_field: Field to extract and use as the key. Optional.
+    :param max_events_before_commit: Maximum number of events to be processed before committing offsets.
+    :param explicit_ack: Whether to explicitly commit offsets. Defaults to False.
     :param name: Name of this step, as it should appear in logs. Defaults to class name (SyncEmitSource).
     :type name: string
 
@@ -243,6 +262,8 @@ class SyncEmitSource(Flow):
         self,
         buffer_size: Optional[int] = None,
         key_field: Union[list, str, int, None] = None,
+        max_events_before_commit=None,
+        explicit_ack=False,
         **kwargs,
     ):
         if buffer_size is None:
@@ -256,6 +277,8 @@ class SyncEmitSource(Flow):
             raise ValueError("Buffer size must be positive")
         self._q = queue.Queue(buffer_size)
         self._key_field = key_field
+        self._max_events_before_commit = max_events_before_commit or 1000
+        self._explicit_ack = explicit_ack
         self._termination_q = queue.Queue(1)
         self._ex = None
         self._closeables = []
@@ -263,16 +286,45 @@ class SyncEmitSource(Flow):
     def _init(self):
         super()._init()
         self._is_terminated = False
+        self._outstanding_offsets = defaultdict(list)
 
     async def _run_loop(self):
         loop = asyncio.get_running_loop()
-        self._termination_future = asyncio.get_running_loop().create_future()
-
+        self._termination_future = loop.create_future()
+        committer = None
+        num_events_handled_without_commit = 0
+        if self._explicit_ack and hasattr(self.context, "platform") and hasattr(self.context.platform, "explicit_ack"):
+            committer = self.context.platform.explicit_ack
         while True:
-            event = await loop.run_in_executor(None, self._q.get)
+            event = None
+            if (
+                num_events_handled_without_commit > 0
+                and self._q.empty()
+                or num_events_handled_without_commit >= self._max_events_before_commit
+            ):
+                num_events_handled_without_commit = 0
+                can_block = await _commit_handled_events(self._outstanding_offsets, committer)
+                # In case we can't block because there are outstanding events
+                while not can_block:
+                    if self._q.qsize() > 0:
+                        event = self._q.get_nowait()
+                        if event:
+                            break
+                    await asyncio.sleep(1)
+                    can_block = await _commit_handled_events(self._outstanding_offsets, committer)
+            if not event:
+                event = await loop.run_in_executor(None, self._q.get)
+            if committer and hasattr(event, "path") and hasattr(event, "shard_id") and hasattr(event, "offset"):
+                qualified_shard = (event.path, event.shard_id)
+                offsets = self._outstanding_offsets[qualified_shard]
+                offsets.append(_EventOffset(event))
+                num_events_handled_without_commit += 1
             try:
                 termination_result = await self._do_downstream(event)
                 if event is _termination_obj:
+                    # We can commit all at this point because termination of
+                    # all downstream steps completed successfully.
+                    await _commit_handled_events(self._outstanding_offsets, committer, commit_all=True)
                     self._termination_future.set_result(termination_result)
             except BaseException as ex:
                 if event is not _termination_obj and event._awaitable_result:
@@ -430,6 +482,7 @@ class AsyncFlowController(FlowControllerBase):
         if self._await_result:
             awaitable = AsyncAwaitableResult()
         event._awaitable_result = awaitable
+        event._original_events = [event]
         await self._emit_fn(event)
         if self._await_result:
             result = await awaitable.await_result()
@@ -449,12 +502,39 @@ class AsyncFlowController(FlowControllerBase):
         return await self._loop_task
 
 
+async def _commit_handled_events(outstanding_offsets_by_qualified_shard, committer, commit_all=False):
+    all_offsets_handled = True
+    for qualified_shard, offsets in outstanding_offsets_by_qualified_shard.items():
+        if commit_all and offsets:
+            last_handled_offset = offsets[-1].offset
+            num_to_clear = len(offsets)
+        else:
+            num_to_clear = 0
+            last_handled_offset = None
+            gc.collect()
+            # go over offsets in the qualified shard by arrival order until we reach an unhandled offset
+            for offset in offsets:
+                if not offset.is_ready_to_commit():
+                    all_offsets_handled = False
+                    break
+                last_handled_offset = offset.offset
+                num_to_clear += 1
+        if last_handled_offset is not None:
+            path, shard_id = qualified_shard
+            await committer(QualifiedOffset(path, shard_id, last_handled_offset))
+            outstanding_offsets_by_qualified_shard[qualified_shard] = offsets[num_to_clear:]
+    return all_offsets_handled
+
+
 class AsyncEmitSource(Flow):
     """
     Asynchronous entry point into a flow. Produces an AsyncFlowController when run, for use from inside an async def.
     See SyncEmitSource for use from inside a synchronous context.
 
     :param buffer_size: size of the incoming event buffer. Defaults to 8.
+    :param key_field: Field to extract and use as the key. Optional.
+    :param max_events_before_commit: Maximum number of events to be processed before committing offsets.
+    :param explicit_ack: Whether to explicitly commit offsets. Defaults to False.
     :param name: Name of this step, as it should appear in logs. Defaults to class name (AsyncEmitSource).
     :type name: string
 
@@ -467,6 +547,8 @@ class AsyncEmitSource(Flow):
         self,
         buffer_size: int = None,
         key_field: Union[list, str, None] = None,
+        max_events_before_commit=None,
+        explicit_ack=False,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -478,19 +560,54 @@ class AsyncEmitSource(Flow):
             kwargs["buffer_size"] = buffer_size
         self._q = asyncio.Queue(buffer_size)
         self._key_field = key_field
+        self._max_events_before_commit = max_events_before_commit or 1000
+        self._explicit_ack = explicit_ack
         self._ex = None
         self._closeables = []
 
     def _init(self):
         super()._init()
         self._is_terminated = False
+        self._outstanding_offsets = defaultdict(list)
 
     async def _run_loop(self):
+        committer = None
+        num_events_handled_without_commit = 0
+        if self._explicit_ack and hasattr(self.context, "platform") and hasattr(self.context.platform, "explicit_ack"):
+            committer = self.context.platform.explicit_ack
         while True:
-            event = await self._q.get()
+            event = None
+            if (
+                num_events_handled_without_commit > 0
+                and self._q.empty()
+                or num_events_handled_without_commit >= self._max_events_before_commit
+            ):
+                num_events_handled_without_commit = 0
+                can_block = await _commit_handled_events(self._outstanding_offsets, committer)
+                # In case we can't block because there are outstanding events
+                while not can_block:
+                    # Yield to allow the queue to fill if possible
+                    await asyncio.sleep(0)
+                    if not self._q.empty():
+                        event = self._q.get_nowait()
+                    if event:
+                        break
+                    # Wait to avoid busy-wait
+                    await asyncio.sleep(0.2)
+                    can_block = await _commit_handled_events(self._outstanding_offsets, committer)
+            if not event:
+                event = await self._q.get()
+            if committer and hasattr(event, "path") and hasattr(event, "shard_id") and hasattr(event, "offset"):
+                qualified_shard = (event.path, event.shard_id)
+                offsets = self._outstanding_offsets[qualified_shard]
+                offsets.append(_EventOffset(event))
+                num_events_handled_without_commit += 1
             try:
                 termination_result = await self._do_downstream(event)
                 if event is _termination_obj:
+                    # We can commit all at this point because termination of
+                    # all downstream steps completed successfully.
+                    await _commit_handled_events(self._outstanding_offsets, committer, commit_all=True)
                     return termination_result
             except BaseException as ex:
                 self._ex = ex

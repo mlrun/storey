@@ -269,9 +269,12 @@ class Flow:
         if len(self._outlets) > 1:
             awaitable_result = event._awaitable_result
             event._awaitable_result = None
+            original_events = event._original_events
+            event._original_events = None
             for i in range(1, len(self._outlets)):
                 event_copy = copy.deepcopy(event)
                 event_copy._awaitable_result = awaitable_result
+                event._original_events = original_events
                 tasks.append(asyncio.get_running_loop().create_task(self._outlets[i]._do_and_recover(event_copy)))
             event._awaitable_result = awaitable_result
         if self.verbose and self.logger:
@@ -550,6 +553,7 @@ class _FunctionWithStateFlow(Flow):
             res, new_state = self._fn(element, key_data)
             async with self._state._get_lock(safe_key):
                 self._state._update_static_attrs(safe_key, new_state)
+                self._state._pending_events.append(event)
             self._state._init_flush_task()
         else:
             res, self._state = self._fn(element, self._state)
@@ -976,6 +980,8 @@ class _Batching(Flow):
     def _init(self):
         super()._init()
         self._batch: Dict[Optional[str], List[Any]] = defaultdict(list)
+        # Keep the original events that make up each batch
+        self._batch_events: Dict[Optional[str], List[Any]] = defaultdict(list)
         self._batch_first_event_time: Dict[Optional[str], datetime.datetime] = {}
         self._batch_last_event_time: Dict[Optional[str], datetime.datetime] = {}
         self._batch_start_time: Dict[Optional[str], float] = {}
@@ -995,7 +1001,7 @@ class _Batching(Flow):
         else:
             raise ValueError(f"Unsupported key_field type {type(key_field)}")
 
-    async def _emit(self, batch, batch_key, batch_time, last_event_time=None):
+    async def _emit(self, batch, batch_key, batch_time, batch_events, last_event_time=None):
         raise NotImplementedError
 
     async def _terminate(self):
@@ -1025,6 +1031,7 @@ class _Batching(Flow):
             self._timeout_task = asyncio.get_running_loop().create_task(self._sleep_and_emit())
 
         self._batch[key].append(self._event_to_batch_entry(event))
+        self._batch_events[key].append(event)
 
         if len(self._batch[key]) == self._max_events:
             await self._emit_batch(key)
@@ -1057,7 +1064,8 @@ class _Batching(Flow):
         batch_time = self._batch_first_event_time.pop(batch_key)
         last_event_time = self._batch_last_event_time.pop(batch_key)
         del self._batch_start_time[batch_key]
-        await self._emit(batch_to_emit, batch_key, batch_time, last_event_time)
+        await self._emit(batch_to_emit, batch_key, batch_time, self._batch_events[batch_key], last_event_time)
+        del self._batch_events[batch_key]
 
     async def _emit_all(self):
         for key in list(self._batch.keys()):
@@ -1081,8 +1089,11 @@ class Batch(_Batching):
 
     _do_downstream_per_event = False
 
-    async def _emit(self, batch, batch_key, batch_time, last_event_time=None):
+    async def _emit(self, batch, batch_key, batch_time, batch_events, last_event_time=None):
         event = Event(batch)
+        if not self._full_event:
+            # Preserve reference to the original events to avoid early commit of offsets
+            event._original_events = batch_events
         return await self._do_downstream(event)
 
 

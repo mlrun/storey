@@ -8,3 +8,4 @@ pyarrow>=1,<12
 v3io-frames~=0.10.3
 v3iofs~=0.1.9
 xxhash>=1
+nuclio-sdk>=0.5.3

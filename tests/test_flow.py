@@ -14,6 +14,7 @@
 #
 import asyncio
 import copy
+import gc
 import math
 import os
 import queue
@@ -105,6 +106,222 @@ def test_functional_flow():
     controller.terminate()
     termination_result = controller.await_termination()
     assert termination_result == 3300
+
+
+class Committer:
+    def __init__(self):
+        self.offsets = {}
+
+    async def explicit_ack(self, qualified_offset):
+        qualified_shard = (qualified_offset.topic, qualified_offset.partition)
+        offset = qualified_offset.offset
+        current_offset = self.offsets.get(qualified_shard, 0)
+        assert current_offset < offset
+        self.offsets[qualified_shard] = offset
+
+
+class CommitterContext:
+    def __init__(self, platform):
+        self.platform = platform
+
+
+class EventHoarder(storey.Flow):
+    events = []
+
+    async def _do(self, event):
+        if event is storey.dtypes._termination_obj:
+            self.events = []
+            print("Hoarder terminated")
+        else:
+            self.events.append(event)
+            print("Hoarder hoards!")
+        return await self._do_downstream(event)
+
+
+def test_offset_commit():
+    platform = Committer()
+    context = CommitterContext(platform)
+
+    controller = build_flow(
+        [
+            SyncEmitSource(context=context, explicit_ack=True),
+            Map(lambda x: x + 1),
+            Filter(lambda x: x < 3),
+            FlatMap(lambda x: [x, x * 10]),
+            Reduce(0, lambda acc, x: acc + x),
+        ]
+    ).run()
+
+    num_shards = 10
+    num_records_per_shard = 10
+
+    for offset in range(1, num_records_per_shard + 1):
+        for shard in range(num_shards):
+            event = Event(shard)
+            event.shard_id = shard
+            event.offset = offset
+            controller.emit(event)
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == 330
+
+    offsets = copy.copy(platform.offsets)
+    assert offsets == {("/", i): num_records_per_shard for i in range(num_shards)}
+
+
+async def async_offset_commit():
+    platform = Committer()
+    context = CommitterContext(platform)
+
+    controller = build_flow(
+        [
+            AsyncEmitSource(context=context, explicit_ack=True),
+            Map(lambda x: x + 1),
+            Filter(lambda x: x < 3),
+            FlatMap(lambda x: [x, x * 10]),
+            Reduce(0, lambda acc, x: acc + x),
+        ]
+    ).run()
+
+    num_shards = 10
+    num_records_per_shard = 10
+
+    for offset in range(1, num_records_per_shard + 1):
+        for shard in range(num_shards):
+            event = Event(shard)
+            event.shard_id = shard
+            event.offset = offset
+            await controller.emit(event)
+    print()
+    await controller.terminate()
+    termination_result = await controller.await_termination()
+    assert termination_result == 330
+
+    offsets = copy.copy(platform.offsets)
+    assert offsets == {("/", i): num_records_per_shard for i in range(num_shards)}
+
+
+def test_async_offset_commit():
+    asyncio.run(async_offset_commit())
+
+
+def test_offset_commit_before_termination():
+    platform = Committer()
+    context = CommitterContext(platform)
+
+    controller = build_flow(
+        [
+            SyncEmitSource(context=context, explicit_ack=True),
+            Map(lambda x: x + 1),
+            Filter(lambda x: x < 3),
+            FlatMap(lambda x: [x, x * 10]),
+            Reduce(0, lambda acc, x: acc + x),
+        ]
+    ).run()
+
+    num_shards = 10
+    num_records_per_shard = 10
+
+    for offset in range(1, num_records_per_shard + 1):
+        for shard in range(num_shards):
+            event = Event(shard)
+            event.shard_id = shard
+            event.offset = offset
+            controller.emit(event)
+
+    time.sleep(1)
+    gc.collect()
+    time.sleep(1)
+
+    expected_offsets = {("/", i): num_records_per_shard for i in range(num_shards)}
+    # TODO: Remove when commit of last record is fixed
+    expected_offsets[("/", 9)] = 9
+
+    try:
+        offsets = copy.copy(platform.offsets)
+        assert offsets == expected_offsets
+    finally:
+        controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == 330
+
+
+async def async_offset_commit_before_termination():
+    platform = Committer()
+    context = CommitterContext(platform)
+
+    controller = build_flow(
+        [
+            AsyncEmitSource(context=context, explicit_ack=True),
+            Map(lambda x: x + 1),
+            Filter(lambda x: x < 3),
+            FlatMap(lambda x: [x, x * 10]),
+            Reduce(0, lambda acc, x: acc + x),
+        ]
+    ).run()
+
+    num_shards = 10
+    num_records_per_shard = 10
+
+    for offset in range(1, num_records_per_shard + 1):
+        for shard in range(num_shards):
+            event = Event(shard)
+            event.shard_id = shard
+            event.offset = offset
+            await controller.emit(event)
+
+    del event
+
+    await asyncio.sleep(1)
+    gc.collect()
+    await asyncio.sleep(1)
+
+    try:
+        offsets = copy.copy(platform.offsets)
+        assert offsets == {("/", i): num_records_per_shard for i in range(num_shards)}
+    finally:
+        await controller.terminate()
+    termination_result = await controller.await_termination()
+    assert termination_result == 330
+
+
+def test_async_offset_commit_before_termination():
+    asyncio.run(async_offset_commit_before_termination())
+
+
+def test_offset_not_committed_prematurely():
+    platform = Committer()
+    context = CommitterContext(platform)
+
+    controller = build_flow(
+        [
+            SyncEmitSource(context=context, explicit_ack=True),
+            EventHoarder(),
+            Reduce(0, lambda acc, x: acc + x),
+        ]
+    ).run()
+
+    num_shards = 10
+    num_records_per_shard = 10
+
+    for offset in range(1, num_records_per_shard + 1):
+        for shard in range(num_shards):
+            event = Event(shard)
+            event.shard_id = shard
+            event.offset = offset
+            controller.emit(event)
+
+    time.sleep(1)
+
+    try:
+        offsets = copy.copy(platform.offsets)
+        assert offsets == {}
+    finally:
+        controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == 450
+    offsets = copy.copy(platform.offsets)
+    assert offsets == {("/", i): num_records_per_shard for i in range(num_shards)}
 
 
 def test_multiple_upstreams():

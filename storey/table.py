@@ -75,6 +75,7 @@ class Table:
         self._terminated = False
         self._flush_exception = None
         self._changed_keys = set()
+        self._pending_events = []
         self.fixed_window_type = None
 
     def __str__(self):
@@ -180,7 +181,7 @@ class Table:
     async def close(self):
         await self._storage.close()
 
-    async def _aggregate(self, key, data, timestamp):
+    async def _aggregate(self, key, event, data, timestamp):
         if self._flush_exception is not None:
             raise self._flush_exception
         if not self._schema:
@@ -189,6 +190,7 @@ class Table:
             cache_item = self._get_aggregations_attrs(key)
             await cache_item.aggregate(data, timestamp)
             self._changed_keys.add(key)
+        self._pending_events.append(event)
 
     async def _get_features(self, key, timestamp):
         if self._flush_exception is not None:
@@ -389,6 +391,8 @@ class Table:
         except BaseException as ex:
             if not isinstance(ex, asyncio.CancelledError):
                 self._flush_exception = ex
+
+        self._pending_events = []
 
     async def _persist_worker(self):
         task = None
