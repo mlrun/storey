@@ -269,13 +269,16 @@ class Flow:
         if len(self._outlets) > 1:
             awaitable_result = event._awaitable_result
             event._awaitable_result = None
-            original_events = event._original_events
+            original_events = getattr(event, "_original_events", None)
+            # Temporarily delete self-reference to avoid deepcopy getting stuck in an infinite loop
             event._original_events = None
             for i in range(1, len(self._outlets)):
                 event_copy = copy.deepcopy(event)
                 event_copy._awaitable_result = awaitable_result
-                event._original_events = original_events
+                event_copy._original_events = original_events
                 tasks.append(asyncio.get_running_loop().create_task(self._outlets[i]._do_and_recover(event_copy)))
+            # Set self-reference back after deepcopy
+            event._original_events = original_events
             event._awaitable_result = awaitable_result
         if self.verbose and self.logger:
             step_name = self.name

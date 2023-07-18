@@ -342,6 +342,21 @@ def test_multiple_upstreams():
     assert termination_result == 55 + 450
 
 
+def test_multiple_upstreams_csv_source():
+    source = CSVSource("tests/test.csv")
+    map1 = Map(lambda x: append_and_return(x, "map1"))
+    map2 = Map(lambda x: append_and_return(x, "map2"))
+    reduce = Reduce([], append_and_return)
+    source.to(map1)
+    source.to(map2)
+    map1.to(reduce)
+    map2.to(reduce)
+    controller = source.run()
+
+    termination_result = controller.await_termination()
+    assert termination_result == [[1, 2, 3, "map1"], [1, 2, 3, "map2"], [4, 5, 6, "map1"], [4, 5, 6, "map2"]]
+
+
 def test_multiple_upstreams_completion():
     source = SyncEmitSource()
     map1 = Map(lambda x: x + 1)
