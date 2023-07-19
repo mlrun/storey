@@ -412,19 +412,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
                 await self._fetch_state_by_key(aggr_item, container, table_path, key)
 
     async def _get_all_fields(self, redis_key: str):
-        try:
-            cursor = 0
-            values = {}
-            # Get all the fields except the internal ones
-            while True:
-                cursor, v = await RedisDriver.asyncify(self.redis.hscan)(
-                    redis_key, cursor, match=f"[^{self.INTERFNAL_FIELD_PREFIX}]*"
-                )
-                values.update(v)
-                if cursor == 0:
-                    break
-        except redis.ResponseError as e:
-            raise RedisError(f"Failed to get key {redis_key}. Response error was: {e}")
+        values = await self.redis_hscan(redis_key, f"[^{self.INTERFNAL_FIELD_PREFIX}]*")
         res = {
             RedisDriver.convert_to_str(key): RedisDriver.convert_redis_value_to_python_obj(val)
             for key, val in values.items()
@@ -502,18 +490,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
         # path, and "key," followed by ":aggr_"
         redis_key_prefix = self._make_key(container, table_path, key)
         redis_key = self._static_data_key(redis_key_prefix)
-        try:
-            cursor = 0
-            values = {}
-            while True:
-                cursor, v = await RedisDriver.asyncify(self.redis.hscan)(
-                    redis_key, cursor, match=f"{self.AGGREGATION_ATTRIBUTE_PREFIX}*"
-                )
-                values.update(v)
-                if cursor == 0:
-                    break
-        except redis.ResponseError as e:
-            raise RedisError(f"Failed to get key {redis_key}. Response error was: {e}")
+        values = await self.redis_hscan(redis_key, f"{self.AGGREGATION_ATTRIBUTE_PREFIX}*")
 
         for aggr_key, value in values.items():
             # Build an attribute for this aggregation in the format that Storey
@@ -546,6 +523,19 @@ class RedisDriver(NeedsRedisAccess, Driver):
         additional_data_to_return = additional_data if additional_data else None
         return aggregations_to_return, additional_data_to_return
 
+    async def redis_hscan(self, redis_key, match):
+        try:
+            cursor = 0
+            values = {}
+            while True:
+                cursor, v = await RedisDriver.asyncify(self.redis.hscan)(redis_key, cursor, match=match)
+                values.update(v)
+                if cursor == 0:
+                    break
+        except redis.ResponseError as e:
+            raise RedisError(f"Failed to get key {redis_key}. Response error was: {e}")
+        return values
+
     async def _fetch_state_by_key(self, aggr_item, container, table_path, key):
         redis_key_prefix = self._make_key(container, table_path, key)
         aggregations = {}
@@ -553,19 +543,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
         # path, and "key," followed by ":aggr_"
         redis_key_prefix = self._make_key(container, table_path, key)
         redis_key = self._static_data_key(redis_key_prefix)
-        try:
-            cursor = 0
-            values = {}
-            while True:
-                cursor, v = await RedisDriver.asyncify(self.redis.hscan)(
-                    redis_key, cursor, match=f"{self.AGGREGATION_ATTRIBUTE_PREFIX}*"
-                )
-                values.update(v)
-                if cursor == 0:
-                    break
-        except redis.ResponseError as e:
-            raise RedisError(f"Failed to get key {redis_key}. Response error was: {e}")
-
+        values = await self.redis_hscan(redis_key, f"{self.AGGREGATION_ATTRIBUTE_PREFIX}*")
         for aggr_key, value in values.items():
             # Build an attribute for this aggregation in the format that Storey
             # expects to receive from this method. The feature and aggregation
