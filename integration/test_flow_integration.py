@@ -116,7 +116,7 @@ def _get_redis_kv_all_attrs(setup_teardown_test: ContextForTests, key: str):
     values = {}
     while True:
         cursor, v = get_redis_client(redis_fake_server=redis_fake_server).hscan(
-            redis_key, cursor, match=f"[^{chr(0x1)}]*"
+            redis_key, cursor, match=f"[^{RedisDriver.INTERFNAL_FIELD_PREFIX}]*"
         )
         values.update(v)
         if cursor == 0:
