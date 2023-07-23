@@ -39,7 +39,13 @@ def test_redis_driver_write(redis):
         hash_key = RedisDriver.make_key("storey:", table_name, "key")
         redis_key = RedisDriver._static_data_key(hash_key)
 
-        data = driver.redis.hgetall(redis_key)
+        cursor = 0
+        data = {}
+        while True:
+            cursor, v = driver.redis.hscan(redis_key, cursor, match=f"[^{driver.INTERFNAL_FIELD_PREFIX}]*")
+            data.update(v)
+            if cursor == 0:
+                break
         data_strings = {}
         for key, val in data.items():
             if isinstance(key, bytes):
