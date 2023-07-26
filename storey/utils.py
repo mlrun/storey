@@ -127,8 +127,8 @@ def get_remaining_path(url):
     if "://" in url:
         parsed_url = urlparse(url)
         scheme = parsed_url.scheme.lower()
-        if scheme == "v3io":
-            if scheme in ("v3io", "dbfs"):
+        if scheme in ("v3io", "dbfs"):
+            remaining_path = parsed_url.path
         elif scheme in ["wasb", "wasbs"]:
             remaining_path = f"{parsed_url.username}{parsed_url.path}"
         else:
