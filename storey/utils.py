@@ -143,7 +143,7 @@ def url_to_file_system(url, storage_options):
         if parsed_url.password:
             scheme = parsed_url.password
         else:
-            raise ValueError("Datastore profile URL expecting to have underlying scheme embedded as a password")
+            raise ValueError("Datastore profile URL is expected to have underlying scheme embedded as password")
     if scheme:
         load_fs_dependencies(scheme)
 
