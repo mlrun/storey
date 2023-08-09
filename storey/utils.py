@@ -127,7 +127,7 @@ def get_remaining_path(url):
     if "://" in url:
         parsed_url = urlparse(url)
         scheme = parsed_url.scheme.lower()
-        if scheme in ("v3io", "dbfs"):
+        if scheme in ("ds", "v3io", "dbfs"):
             remaining_path = parsed_url.path
         elif scheme in ["wasb", "wasbs"]:
             remaining_path = f"{parsed_url.username}{parsed_url.path}"
@@ -138,6 +138,12 @@ def get_remaining_path(url):
 
 def url_to_file_system(url, storage_options):
     scheme, remaining_path = get_remaining_path(url)
+    if url.startswith("ds://"):
+        parsed_url = urlparse(url)
+        if parsed_url.password:
+            scheme = parsed_url.password
+        else:
+            raise ValueError("Datastore profile URL is expected to have underlying scheme embedded as password")
     if scheme:
         load_fs_dependencies(scheme)
 

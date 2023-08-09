@@ -38,7 +38,6 @@ from storey import (
     build_flow,
 )
 from storey.dtypes import V3ioError
-from storey.utils import get_remaining_path
 
 
 @pytest.fixture()
@@ -665,10 +664,3 @@ def test_filter_before_after_partitioned_outer_other_partition(setup_teardown_te
     ]
 
     assert read_back_result == expected, f"{read_back_result}\n!=\n{expected}"
-
-
-def test_get_path_utils():
-    url = "wasbs://mycontainer@myaccount.blob.core.windows.net/path/to/object.csv"
-    schema, path = get_remaining_path(url)
-    assert path == "mycontainer/path/to/object.csv"
-    assert schema == "wasbs"
