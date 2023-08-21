@@ -14,7 +14,6 @@
 #
 import asyncio
 import copy
-import gc
 import math
 import os
 import queue
@@ -230,8 +229,6 @@ def test_offset_commit_before_termination():
             controller.emit(event)
 
     time.sleep(1)
-    gc.collect()
-    time.sleep(1)
 
     expected_offsets = {("/", i): num_records_per_shard for i in range(num_shards)}
     # TODO: Remove when commit of last record is fixed
@@ -272,8 +269,6 @@ async def async_offset_commit_before_termination():
 
     del event
 
-    await asyncio.sleep(1)
-    gc.collect()
     await asyncio.sleep(1)
 
     try:
