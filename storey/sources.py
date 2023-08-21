@@ -257,6 +257,7 @@ class SyncEmitSource(Flow):
     """
 
     _legal_first_step = True
+    _backoff = [0, 1 / 16, 1 / 8, 1 / 4, 1 / 2, 1]
 
     def __init__(
         self,
@@ -304,13 +305,16 @@ class SyncEmitSource(Flow):
             ):
                 num_events_handled_without_commit = 0
                 can_block = await _commit_handled_events(self._outstanding_offsets, committer)
+                iteration = 0
                 # In case we can't block because there are outstanding events
                 while not can_block:
+                    sleep = self._backoff[min(iteration, len(self._backoff))]
+                    iteration += 1
+                    await asyncio.sleep(sleep)
                     if self._q.qsize() > 0:
                         event = self._q.get_nowait()
                         if event:
                             break
-                    await asyncio.sleep(1)
                     can_block = await _commit_handled_events(self._outstanding_offsets, committer)
             if not event:
                 event = await loop.run_in_executor(None, self._q.get)
@@ -504,6 +508,8 @@ class AsyncFlowController(FlowControllerBase):
 
 async def _commit_handled_events(outstanding_offsets_by_qualified_shard, committer, commit_all=False):
     all_offsets_handled = True
+    if not commit_all:
+        gc.collect()
     for qualified_shard, offsets in outstanding_offsets_by_qualified_shard.items():
         if commit_all and offsets:
             last_handled_offset = offsets[-1].offset
@@ -511,7 +517,6 @@ async def _commit_handled_events(outstanding_offsets_by_qualified_shard, committ
         else:
             num_to_clear = 0
             last_handled_offset = None
-            gc.collect()
             # go over offsets in the qualified shard by arrival order until we reach an unhandled offset
             for offset in offsets:
                 if not offset.is_ready_to_commit():
@@ -542,6 +547,7 @@ class AsyncEmitSource(Flow):
     """
 
     _legal_first_step = True
+    _backoff = [0, 1 / 16, 1 / 8, 1 / 4, 1 / 2, 1]
 
     def __init__(
         self,
@@ -584,16 +590,17 @@ class AsyncEmitSource(Flow):
             ):
                 num_events_handled_without_commit = 0
                 can_block = await _commit_handled_events(self._outstanding_offsets, committer)
+                iteration = 0
                 # In case we can't block because there are outstanding events
                 while not can_block:
-                    # Yield to allow the queue to fill if possible
-                    await asyncio.sleep(0)
+                    # Sleep to yield and to avoid busy-wait
+                    sleep = self._backoff[min(iteration, len(self._backoff))]
+                    iteration += 1
+                    await asyncio.sleep(sleep)
                     if not self._q.empty():
                         event = self._q.get_nowait()
                     if event:
                         break
-                    # Wait to avoid busy-wait
-                    await asyncio.sleep(0.2)
                     can_block = await _commit_handled_events(self._outstanding_offsets, committer)
             if not event:
                 event = await self._q.get()
