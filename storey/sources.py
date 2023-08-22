@@ -258,6 +258,7 @@ class SyncEmitSource(Flow):
 
     _legal_first_step = True
     _backoff = [0, 1 / 16, 1 / 8, 1 / 4, 1 / 2, 1]
+    _backoff_last_index = len(_backoff) - 1
 
     def __init__(
         self,
@@ -308,7 +309,7 @@ class SyncEmitSource(Flow):
                 iteration = 0
                 # In case we can't block because there are outstanding events
                 while not can_block:
-                    sleep = self._backoff[min(iteration, len(self._backoff))]
+                    sleep = self._backoff[min(iteration, self._backoff_last_index)]
                     iteration += 1
                     await asyncio.sleep(sleep)
                     if self._q.qsize() > 0:
@@ -548,6 +549,7 @@ class AsyncEmitSource(Flow):
 
     _legal_first_step = True
     _backoff = [0, 1 / 16, 1 / 8, 1 / 4, 1 / 2, 1]
+    _backoff_last_index = len(_backoff) - 1
 
     def __init__(
         self,
@@ -594,7 +596,7 @@ class AsyncEmitSource(Flow):
                 # In case we can't block because there are outstanding events
                 while not can_block:
                     # Sleep to yield and to avoid busy-wait
-                    sleep = self._backoff[min(iteration, len(self._backoff))]
+                    sleep = self._backoff[min(iteration, self._backoff_last_index)]
                     iteration += 1
                     await asyncio.sleep(sleep)
                     if not self._q.empty():
