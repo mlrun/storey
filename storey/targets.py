@@ -638,7 +638,7 @@ class ParquetTarget(_Batching, _Writer):
                         df[name] = pd.to_datetime(df[name], utc=True)
                     else:
                         raise ex
-        if pd.core.dtypes.common.is_datetime64_dtype(df.index) or pd.core.dtypes.common.is_datetime64tz_dtype(df.index):
+        if pd.core.dtypes.common.is_datetime64_dtype(df.index) or isinstance(df.index.dtype, pd.DatetimeTZDtype):
             df.index = df.index.floor("u")
         with self._file_system.open(file_path, "wb") as file:
             kwargs = {}
