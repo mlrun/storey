@@ -16,7 +16,6 @@
 from typing import List, Union
 
 import pandas as pd
-import sqlalchemy as db
 
 from storey.drivers import Driver
 
@@ -36,12 +35,13 @@ class SQLDriver(Driver):
         self._time_fields = time_fields
 
     def _lazy_init(self):
-
+        import sqlalchemy as db
         if not self._sql_connection:
             self._engine = db.create_engine(self._db_path)
             self._sql_connection = self._engine.connect()
 
     def _table(self, table_path):
+        import sqlalchemy as db
         metadata = db.MetaData()
 
         return db.Table(
@@ -52,6 +52,7 @@ class SQLDriver(Driver):
         )
 
     async def _save_key(self, container, table_path, key, aggr_item, partitioned_by_key, additional_data):
+        import sqlalchemy as db
         self._lazy_init()
         key = self._extract_list_of_keys(key)
         for i in range(len(self._primary_key)):
@@ -87,6 +88,7 @@ class SQLDriver(Driver):
             self._sql_connection = None
 
     async def _get_all_fields(self, key, table):
+        import sqlalchemy as db
         key = self._extract_list_of_keys(key)
         select_object = db.select(table).where(
             db.and_(getattr(table.c, self._primary_key[i]) == key[i] for i in range(len(self._primary_key)))
@@ -98,6 +100,7 @@ class SQLDriver(Driver):
         return results[0]
 
     async def _get_specific_fields(self, key: str, table, attributes: List[str]):
+        import sqlalchemy as db
         key = self._extract_list_of_keys(key)
         try:
             select_object = db.select(*[getattr(table.c, atr) for atr in attributes]).where(
@@ -115,6 +118,7 @@ class SQLDriver(Driver):
         return False
 
     def _update_by_key(self, key, data, sql_table):
+        import sqlalchemy as db
         self._sql_connection.execute(
             db.update(sql_table)
             .values({getattr(sql_table.c, k): v for k, v in data.items() if k not in self._primary_key})
