@@ -1408,6 +1408,7 @@ class AggregationBuckets:
         self.name = name
         self._explicit_raw_aggregations = explicit_raw_aggregations
         self._hidden_raw_aggregations = hidden_raw_aggregations
+        self._hidden_raw_aggregations.append("count")
         self._all_raw_aggregates = self._explicit_raw_aggregations.copy()
         for hidden_aggr in self._hidden_raw_aggregations:
             if hidden_aggr not in self._all_raw_aggregates:
@@ -1655,7 +1656,10 @@ class AggregationBuckets:
             for aggregation_name in self._explicit_raw_aggregations:
                 for (window_millis, window_str) in self.explicit_windows.windows:
                     value = self._current_aggregate_values[(aggregation_name, window_millis)].value
+                    count_value = self._current_aggregate_values[("count", window_millis)].value
                     if value == math.inf or value == -math.inf:
+                        value = math.nan
+                    if count_value == 0 and aggregation_name != "count":
                         value = math.nan
                     result[f"{self.name}_{aggregation_name}_{window_str}"] = value
 
