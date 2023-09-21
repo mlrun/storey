@@ -2453,15 +2453,13 @@ def test_write_to_parquet(tmpdir):
     for i in range(10):
         controller.emit([i, f"this is {i}"])
         expected.append([i, f"this is {i}"])
-    expected_in_pyarrow1 = pd.DataFrame(expected, columns=columns)
-    expected_in_pyarrow3 = expected_in_pyarrow1.copy()
-    expected_in_pyarrow1["my_int"] = expected_in_pyarrow1["my_int"].astype("int32")
-    expected_in_pyarrow3["my_int"] = expected_in_pyarrow3["my_int"].astype("category")
+    expected_df = pd.DataFrame(expected, columns=columns)
+    expected_df["my_int"] = expected_df["my_int"].astype("category")
     controller.terminate()
     controller.await_termination()
 
     read_back_df = pd.read_parquet(out_dir, columns=columns)
-    assert read_back_df.equals(expected_in_pyarrow1) or read_back_df.equals(expected_in_pyarrow3)
+    pd.testing.assert_frame_equal(read_back_df, expected_df, check_categorical=False)
 
 
 # Regression test for ML-2510.
@@ -2517,14 +2515,14 @@ def test_write_to_parquet_string_as_datetime(tmpdir):
         expected.append([i, f"this is {i}", my_time.isoformat(sep=" ")])
     expected_df = pd.DataFrame(expected, columns=columns)
     expected_df["my_int"] = expected_df["my_int"].astype("int8")
-    expected_df["my_datetime"] = expected_df["my_datetime"].astype("datetime64[us]")
+    expected_df["my_datetime"] = expected_df["my_datetime"].astype("datetime64[ns]")
     controller.terminate()
     controller.await_termination()
 
     read_back_df = pd.read_parquet(out_dir, columns=columns)
     read_back_df.sort_values("my_int", inplace=True)
     read_back_df.reset_index(drop=True, inplace=True)
-    assert read_back_df.equals(expected_df)
+    pd.testing.assert_frame_equal(read_back_df, expected_df)
 
 
 def test_write_sparse_data_to_parquet(tmpdir):
