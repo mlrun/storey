@@ -552,7 +552,11 @@ class ReadOnlyAggregatedStoreElement:
         windows = {}
         for aggregation_metadata in aggregates:
             for meta in aggregation_metadata.aggregations:
-                for aggr, is_hidden in get_all_raw_aggregates_with_hidden([meta]).items():
+                meta_aggregates = get_all_raw_aggregates_with_hidden([meta]).items()
+                if not any(ag[0] == "count" for ag in meta_aggregates):
+                    meta_aggregates = list(meta_aggregates)
+                    meta_aggregates.append(("count", True))
+                for aggr, is_hidden in meta_aggregates:
                     if (
                         aggregation_metadata.name,
                         aggr,
@@ -629,8 +633,13 @@ class ReadOnlyAggregatedStoreElement:
     def get_features(self, timestamp):
         result = {}
         for aggregation_bucket in self.aggregation_buckets.values():
-            if isinstance(aggregation_bucket, VirtualAggregationBuckets) or aggregation_bucket.explicit_windows:
+            if isinstance(aggregation_bucket, VirtualAggregationBuckets):
                 result.update(aggregation_bucket.get_features(timestamp))
+            elif aggregation_bucket.explicit_windows:
+                count_features = self.aggregation_buckets[f"{aggregation_bucket.name}_count"].get_features(
+                    timestamp, aggregation_bucket.explicit_windows.windows
+                )
+                result.update(aggregation_bucket.get_features(timestamp, count_features=count_features))
 
         return result
 
@@ -832,7 +841,7 @@ class ReadOnlyAggregationBuckets:
             return "sum"
         return self.aggregation
 
-    def get_features(self, timestamp, windows=None):
+    def get_features(self, timestamp, windows=None, count_features=None):
         result = {}
         if not windows:
             if self.explicit_windows:
@@ -852,7 +861,11 @@ class ReadOnlyAggregationBuckets:
         # In case our pre aggregates already have the answer
         for win in windows:
             result[f"{self.name}_{self.aggregation}_{win[1]}"] = self._current_aggregate_values[win].value
-
+            if (
+                self.aggregation != "count"
+                and (count_features.get(f"{self.name}_count_{win[1]}", 0) if count_features else 1) == 0
+            ):
+                result[f"{self.name}_{self.aggregation}_{win[1]}"] = math.nan
         return result
 
     def calculate_features(self, timestamp, windows):

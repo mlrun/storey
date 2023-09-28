@@ -1094,9 +1094,9 @@ def test_aggregate_and_query_with_different_fixed_windows(setup_teardown_test, p
         {
             "col1": 10,
             "number_of_stuff_avg_1h": math.nan,
-            "number_of_stuff_max_1h": -math.inf,
-            "number_of_stuff_min_1h": math.inf,
-            "number_of_stuff_sum_1h": 0.0,
+            "number_of_stuff_max_1h": math.nan,
+            "number_of_stuff_min_1h": math.nan,
+            "number_of_stuff_sum_1h": math.nan,
             "time": datetime.datetime(2020, 7, 22, 2, 15, tzinfo=datetime.timezone.utc),
         },
     ]
