@@ -863,9 +863,13 @@ class ReadOnlyAggregationBuckets:
             result[f"{self.name}_{self.aggregation}_{win[1]}"] = self._current_aggregate_values[win].value
             if (
                 self.aggregation != "count"
-                and (count_features.get(f"{self.name}_count_{win[1]}", 0) if count_features else 1) == 0
+                and count_features
+                and count_features.get(f"{self.name}_count_{win[1]}", 0) == 0
             ):
-                result[f"{self.name}_{self.aggregation}_{win[1]}"] = math.nan
+                value = math.nan
+            else:
+                value = self._current_aggregate_values[win].value
+            result[f"{self.name}_{self.aggregation}_{win[1]}"] = value
         return result
 
     def calculate_features(self, timestamp, windows):
