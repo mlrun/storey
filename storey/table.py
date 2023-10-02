@@ -1426,6 +1426,7 @@ class AggregationBuckets:
         self._explicit_raw_aggregations = explicit_raw_aggregations
         self._hidden_raw_aggregations = hidden_raw_aggregations
         self._hidden_raw_aggregations.append("count")
+        self._hidden_raw_aggregations = list(set(self._hidden_raw_aggregations))
         self._all_raw_aggregates = self._explicit_raw_aggregations.copy()
         for hidden_aggr in self._hidden_raw_aggregations:
             if hidden_aggr not in self._all_raw_aggregates:
