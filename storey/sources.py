@@ -517,9 +517,9 @@ async def _commit_handled_events(outstanding_offsets_by_qualified_shard, committ
             num_to_clear = 0
             last_handled_offset = None
             # go over offsets in the qualified shard by arrival order until we reach an unhandled offset
-            for offset in offsets:
+            for i, offset in enumerate(offsets):
                 if not offset.is_ready_to_commit():
-                    num_offsets_not_handled += 1
+                    num_offsets_not_handled += len(offsets) - i + 1
                     break
                 last_handled_offset = offset.offset
                 num_to_clear += 1
