@@ -305,7 +305,10 @@ class SyncEmitSource(Flow):
             ):
                 num_events_handled_without_commit = 0
                 while event is None:
-                    can_block = await _commit_handled_events(self._outstanding_offsets, committer)
+                    num_offsets_not_handled = await _commit_handled_events(self._outstanding_offsets, committer)
+                    # Due to the last event not being garbage collected, we tolerate a single unhandled event
+                    # TODO: Remove after transitioning to AsyncEmitSource, which would solve the underlying problem
+                    can_block = num_offsets_not_handled <= 1
                     if can_block:
                         break
                     try:
@@ -503,7 +506,7 @@ class AsyncFlowController(FlowControllerBase):
 
 
 async def _commit_handled_events(outstanding_offsets_by_qualified_shard, committer, commit_all=False):
-    all_offsets_handled = True
+    num_offsets_not_handled = 0
     if not commit_all:
         gc.collect()
     for qualified_shard, offsets in outstanding_offsets_by_qualified_shard.items():
@@ -516,7 +519,7 @@ async def _commit_handled_events(outstanding_offsets_by_qualified_shard, committ
             # go over offsets in the qualified shard by arrival order until we reach an unhandled offset
             for offset in offsets:
                 if not offset.is_ready_to_commit():
-                    all_offsets_handled = False
+                    num_offsets_not_handled += 1
                     break
                 last_handled_offset = offset.offset
                 num_to_clear += 1
@@ -524,7 +527,7 @@ async def _commit_handled_events(outstanding_offsets_by_qualified_shard, committ
             path, shard_id = qualified_shard
             await committer(QualifiedOffset(path, shard_id, last_handled_offset))
             outstanding_offsets_by_qualified_shard[qualified_shard] = offsets[num_to_clear:]
-    return all_offsets_handled
+    return num_offsets_not_handled
 
 
 class AsyncEmitSource(Flow):
@@ -543,8 +546,7 @@ class AsyncEmitSource(Flow):
     """
 
     _legal_first_step = True
-    _backoff = [0, 1 / 16, 1 / 8, 1 / 4, 1 / 2, 1]
-    _backoff_last_index = len(_backoff) - 1
+    _max_wait_before_commit = 2
 
     def __init__(
         self,
@@ -586,19 +588,16 @@ class AsyncEmitSource(Flow):
                 or num_events_handled_without_commit >= self._max_events_before_commit
             ):
                 num_events_handled_without_commit = 0
-                can_block = await _commit_handled_events(self._outstanding_offsets, committer)
-                iteration = 0
                 # In case we can't block because there are outstanding events
-                while not can_block:
-                    # Sleep to yield and to avoid busy-wait
-                    sleep = self._backoff[min(iteration, self._backoff_last_index)]
-                    iteration += 1
-                    await asyncio.sleep(sleep)
-                    if not self._q.empty():
-                        event = self._q.get_nowait()
-                    if event:
+                while event is None:
+                    num_offsets_not_handled = await _commit_handled_events(self._outstanding_offsets, committer)
+                    can_block = num_offsets_not_handled == 0
+                    if can_block:
                         break
-                    can_block = await _commit_handled_events(self._outstanding_offsets, committer)
+                    try:
+                        event = await asyncio.wait_for(self._q.get(), self._max_wait_before_commit)
+                    except TimeoutError:
+                        pass
             if not event:
                 event = await self._q.get()
             if committer and hasattr(event, "path") and hasattr(event, "shard_id") and hasattr(event, "offset"):
