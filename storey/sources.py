@@ -257,8 +257,7 @@ class SyncEmitSource(Flow):
     """
 
     _legal_first_step = True
-    _backoff = [0, 1 / 16, 1 / 8, 1 / 4, 1 / 2, 1]
-    _backoff_last_index = len(_backoff) - 1
+    _max_wait_before_commit = 2
 
     def __init__(
         self,
@@ -299,26 +298,23 @@ class SyncEmitSource(Flow):
             committer = self.context.platform.explicit_ack
         while True:
             event = None
+            next_event_future = loop.run_in_executor(None, self._q.get)
             if (
                 num_events_handled_without_commit > 0
                 and self._q.empty()
                 or num_events_handled_without_commit >= self._max_events_before_commit
             ):
                 num_events_handled_without_commit = 0
-                can_block = await _commit_handled_events(self._outstanding_offsets, committer)
-                iteration = 0
-                # In case we can't block because there are outstanding events
-                while not can_block:
-                    sleep = self._backoff[min(iteration, self._backoff_last_index)]
-                    iteration += 1
-                    await asyncio.sleep(sleep)
-                    if self._q.qsize() > 0:
-                        event = self._q.get_nowait()
-                        if event:
-                            break
+                while event is None:
                     can_block = await _commit_handled_events(self._outstanding_offsets, committer)
-            if not event:
-                event = await loop.run_in_executor(None, self._q.get)
+                    if can_block:
+                        event = await next_event_future
+                    try:
+                        event = await asyncio.wait_for(next_event_future, timeout=self._max_wait_before_commit)
+                    except TimeoutError:
+                        pass
+            else:
+                event = await next_event_future
             if committer and hasattr(event, "path") and hasattr(event, "shard_id") and hasattr(event, "offset"):
                 qualified_shard = (event.path, event.shard_id)
                 offsets = self._outstanding_offsets[qualified_shard]
