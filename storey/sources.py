@@ -298,7 +298,6 @@ class SyncEmitSource(Flow):
             committer = self.context.platform.explicit_ack
         while True:
             event = None
-            next_event_future = loop.run_in_executor(None, self._q.get)
             if (
                 num_events_handled_without_commit > 0
                 and self._q.empty()
@@ -308,13 +307,13 @@ class SyncEmitSource(Flow):
                 while event is None:
                     can_block = await _commit_handled_events(self._outstanding_offsets, committer)
                     if can_block:
-                        event = await next_event_future
+                        break
                     try:
-                        event = await asyncio.wait_for(next_event_future, timeout=self._max_wait_before_commit)
-                    except TimeoutError:
+                        event = await loop.run_in_executor(None, self._q.get, True, self._max_wait_before_commit)
+                    except queue.Empty:
                         pass
-            else:
-                event = await next_event_future
+            if event is None:
+                event = await loop.run_in_executor(None, self._q.get)
             if committer and hasattr(event, "path") and hasattr(event, "shard_id") and hasattr(event, "offset"):
                 qualified_shard = (event.path, event.shard_id)
                 offsets = self._outstanding_offsets[qualified_shard]
