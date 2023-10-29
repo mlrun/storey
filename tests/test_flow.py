@@ -228,7 +228,7 @@ def test_offset_commit_before_termination():
             event.offset = offset
             controller.emit(event)
 
-    time.sleep(1)
+    time.sleep(SyncEmitSource._max_wait_before_commit + 1)
 
     expected_offsets = {("/", i): num_records_per_shard for i in range(num_shards)}
     # TODO: Remove when commit of last record is fixed
@@ -269,7 +269,7 @@ async def async_offset_commit_before_termination():
 
     del event
 
-    await asyncio.sleep(1)
+    await asyncio.sleep(AsyncEmitSource._max_wait_before_commit + 1)
 
     try:
         offsets = copy.copy(platform.offsets)
