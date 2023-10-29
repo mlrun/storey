@@ -17,6 +17,7 @@ import copy
 import gc
 import queue
 import threading
+import time
 import uuid
 import warnings
 import weakref
@@ -265,6 +266,7 @@ class SyncEmitSource(Flow):
         buffer_size: Optional[int] = None,
         key_field: Union[list, str, int, None] = None,
         max_events_before_commit=None,
+        max_time_before_commit=None,
         explicit_ack=False,
         **kwargs,
     ):
@@ -279,7 +281,8 @@ class SyncEmitSource(Flow):
             raise ValueError("Buffer size must be positive")
         self._q = queue.Queue(buffer_size)
         self._key_field = key_field
-        self._max_events_before_commit = max_events_before_commit or 10000
+        self._max_events_before_commit = max_events_before_commit or 20000
+        self._max_time_before_commit = max_time_before_commit or 45
         self._explicit_ack = explicit_ack
         self._termination_q = queue.Queue(1)
         self._ex = None
@@ -295,14 +298,22 @@ class SyncEmitSource(Flow):
         self._termination_future = loop.create_future()
         committer = None
         num_offsets_not_handled = 0
+        events_handled_since_commit = 0
+        last_commit_time = time.monotonic()
         if self._explicit_ack and hasattr(self.context, "platform") and hasattr(self.context.platform, "explicit_ack"):
             committer = self.context.platform.explicit_ack
         while True:
             event = None
             if committer:
-                if num_offsets_not_handled >= self._max_events_before_commit:
+                if (
+                    events_handled_since_commit >= self._max_events_before_commit
+                    or num_offsets_not_handled > 1
+                    and time.monotonic() >= last_commit_time + self._max_time_before_commit
+                ):
                     num_offsets_not_handled = await _commit_handled_events(self._outstanding_offsets, committer)
-                    # Due to the last event not being garbage collected, we tolerate a single unhandled event
+                    events_handled_since_commit = 0
+                    last_commit_time = time.monotonic()
+                # Due to the last event not being garbage collected, we tolerate a single unhandled event
                 # TODO: Fix after transitioning to AsyncEmitSource, which would solve the underlying problem
                 while num_offsets_not_handled > 1:
                     try:
@@ -311,6 +322,8 @@ class SyncEmitSource(Flow):
                     except queue.Empty:
                         pass
                     num_offsets_not_handled = await _commit_handled_events(self._outstanding_offsets, committer)
+                    events_handled_since_commit = 0
+                    last_commit_time = time.monotonic()
             if event is None:
                 event = await loop.run_in_executor(None, self._q.get)
             if committer and hasattr(event, "path") and hasattr(event, "shard_id") and hasattr(event, "offset"):
@@ -318,6 +331,7 @@ class SyncEmitSource(Flow):
                 offsets = self._outstanding_offsets[qualified_shard]
                 offsets.append(_EventOffset(event))
                 num_offsets_not_handled += 1
+                events_handled_since_commit += 1
             try:
                 termination_result = await self._do_downstream(event)
                 if event is _termination_obj:
@@ -550,6 +564,7 @@ class AsyncEmitSource(Flow):
         buffer_size: int = None,
         key_field: Union[list, str, None] = None,
         max_events_before_commit=None,
+        max_time_before_commit=None,
         explicit_ack=False,
         **kwargs,
     ):
@@ -562,7 +577,8 @@ class AsyncEmitSource(Flow):
             kwargs["buffer_size"] = buffer_size
         self._q = asyncio.Queue(buffer_size)
         self._key_field = key_field
-        self._max_events_before_commit = max_events_before_commit or 10000
+        self._max_events_before_commit = max_events_before_commit or 20000
+        self._max_time_before_commit = max_time_before_commit or 45
         self._explicit_ack = explicit_ack
         self._ex = None
         self._closeables = []
@@ -575,13 +591,21 @@ class AsyncEmitSource(Flow):
     async def _run_loop(self):
         committer = None
         num_offsets_not_handled = 0
+        events_handled_since_commit = 0
+        last_commit_time = time.monotonic()
         if self._explicit_ack and hasattr(self.context, "platform") and hasattr(self.context.platform, "explicit_ack"):
             committer = self.context.platform.explicit_ack
         while True:
             event = None
             if committer:
-                if num_offsets_not_handled >= self._max_events_before_commit:
+                if (
+                    events_handled_since_commit >= self._max_events_before_commit
+                    or num_offsets_not_handled > 0
+                    and time.monotonic() >= last_commit_time + self._max_time_before_commit
+                ):
                     num_offsets_not_handled = await _commit_handled_events(self._outstanding_offsets, committer)
+                    events_handled_since_commit = 0
+                    last_commit_time = time.monotonic()
                 # In case we can't block because there are outstanding events
                 while num_offsets_not_handled > 0:
                     try:
@@ -590,6 +614,8 @@ class AsyncEmitSource(Flow):
                     except asyncio.TimeoutError:
                         pass
                     num_offsets_not_handled = await _commit_handled_events(self._outstanding_offsets, committer)
+                    events_handled_since_commit = 0
+                    last_commit_time = time.monotonic()
             if not event:
                 event = await self._q.get()
             if committer and hasattr(event, "path") and hasattr(event, "shard_id") and hasattr(event, "offset"):
@@ -597,6 +623,7 @@ class AsyncEmitSource(Flow):
                 offsets = self._outstanding_offsets[qualified_shard]
                 offsets.append(_EventOffset(event))
                 num_offsets_not_handled += 1
+                events_handled_since_commit += 1
             try:
                 termination_result = await self._do_downstream(event)
                 if event is _termination_obj:
