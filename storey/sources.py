@@ -259,7 +259,7 @@ class SyncEmitSource(Flow):
     """
 
     _legal_first_step = True
-    _max_wait_before_commit = 2
+    _max_wait_before_commit = 5
 
     def __init__(
         self,
@@ -557,7 +557,7 @@ class AsyncEmitSource(Flow):
     """
 
     _legal_first_step = True
-    _max_wait_before_commit = 2
+    _max_wait_before_commit = 5
 
     def __init__(
         self,
