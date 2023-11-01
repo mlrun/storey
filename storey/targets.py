@@ -890,17 +890,17 @@ class StreamTarget(Flow, _Writer):
                 in_flight_events.append(None)
             while True:
                 try:
-                    request_sent = False
+                    request_sent_on_empty_queue = False
                     if self._q.empty():
                         for shard_id in range(self._shards):
                             req = in_flight_reqs[shard_id]
                             if req:
-                                request_sent = True
+                                request_sent_on_empty_queue = True
                             in_flight_reqs[shard_id] = None
                             await self._handle_response(req)
                             in_flight_events[shard_id] = None
                             self._send_batch(buffers, in_flight_reqs, buffer_events, in_flight_events, shard_id)
-                    if request_sent:
+                    if request_sent_on_empty_queue:
                         continue
                     event = await self._q.get()
                     if event is _termination_obj:  # handle outstanding batches and in flight requests on termination

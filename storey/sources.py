@@ -250,7 +250,7 @@ class SyncEmitSource(Flow):
     :param buffer_size: size of the incoming event buffer. Defaults to 8.
     :param key_field: Field to extract and use as the key. Optional.
     :param max_events_before_commit: Maximum number of events to be processed before committing offsets.
-      Defaults to 10,000.
+      Defaults to 20,000.
     :param explicit_ack: Whether to explicitly commit offsets. Defaults to False.
     :param name: Name of this step, as it should appear in logs. Defaults to class name (SyncEmitSource).
     :type name: string
@@ -297,7 +297,7 @@ class SyncEmitSource(Flow):
         loop = asyncio.get_running_loop()
         self._termination_future = loop.create_future()
         committer = None
-        num_offsets_not_handled = 0
+        num_offsets_not_committed = 0
         events_handled_since_commit = 0
         last_commit_time = time.monotonic()
         if self._explicit_ack and hasattr(self.context, "platform") and hasattr(self.context.platform, "explicit_ack"):
@@ -307,21 +307,21 @@ class SyncEmitSource(Flow):
             if committer:
                 if (
                     events_handled_since_commit >= self._max_events_before_commit
-                    or num_offsets_not_handled > 1
+                    or num_offsets_not_committed > 1
                     and time.monotonic() >= last_commit_time + self._max_time_before_commit
                 ):
-                    num_offsets_not_handled = await _commit_handled_events(self._outstanding_offsets, committer)
+                    num_offsets_not_committed = await _commit_handled_events(self._outstanding_offsets, committer)
                     events_handled_since_commit = 0
                     last_commit_time = time.monotonic()
                 # Due to the last event not being garbage collected, we tolerate a single unhandled event
                 # TODO: Fix after transitioning to AsyncEmitSource, which would solve the underlying problem
-                while num_offsets_not_handled > 1:
+                while num_offsets_not_committed > 1:
                     try:
                         event = await loop.run_in_executor(None, self._q.get, True, self._max_wait_before_commit)
                         break
                     except queue.Empty:
                         pass
-                    num_offsets_not_handled = await _commit_handled_events(self._outstanding_offsets, committer)
+                    num_offsets_not_committed = await _commit_handled_events(self._outstanding_offsets, committer)
                     events_handled_since_commit = 0
                     last_commit_time = time.monotonic()
             if event is None:
@@ -330,7 +330,7 @@ class SyncEmitSource(Flow):
                 qualified_shard = (event.path, event.shard_id)
                 offsets = self._outstanding_offsets[qualified_shard]
                 offsets.append(_EventOffset(event))
-                num_offsets_not_handled += 1
+                num_offsets_not_committed += 1
                 events_handled_since_commit += 1
             try:
                 termination_result = await self._do_downstream(event)
@@ -548,7 +548,7 @@ class AsyncEmitSource(Flow):
     :param buffer_size: size of the incoming event buffer. Defaults to 8.
     :param key_field: Field to extract and use as the key. Optional.
     :param max_events_before_commit: Maximum number of events to be processed before committing offsets.
-      Defaults to 10,000.
+      Defaults to 20,000.
     :param explicit_ack: Whether to explicitly commit offsets. Defaults to False.
     :param name: Name of this step, as it should appear in logs. Defaults to class name (AsyncEmitSource).
     :type name: string
