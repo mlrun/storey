@@ -190,7 +190,8 @@ class Table:
             cache_item = self._get_aggregations_attrs(key)
             await cache_item.aggregate(data, timestamp)
             self._changed_keys.add(key)
-        self._pending_events.append(event)
+        if self._flush_task:
+            self._pending_events.append(event)
 
     async def _get_features(self, key, timestamp):
         if self._flush_exception is not None:
