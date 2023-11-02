@@ -251,6 +251,7 @@ class SyncEmitSource(Flow):
     :param key_field: Field to extract and use as the key. Optional.
     :param max_events_before_commit: Maximum number of events to be processed before committing offsets.
       Defaults to 20,000.
+    :param max_time_before_commit: Maximum number of seconds before committing offsets. Defaults to 45.
     :param explicit_ack: Whether to explicitly commit offsets. Defaults to False.
     :param name: Name of this step, as it should appear in logs. Defaults to class name (SyncEmitSource).
     :type name: string
@@ -549,6 +550,7 @@ class AsyncEmitSource(Flow):
     :param key_field: Field to extract and use as the key. Optional.
     :param max_events_before_commit: Maximum number of events to be processed before committing offsets.
       Defaults to 20,000.
+    :param max_time_before_commit: Maximum number of seconds before committing offsets. Defaults to 45.
     :param explicit_ack: Whether to explicitly commit offsets. Defaults to False.
     :param name: Name of this step, as it should appear in logs. Defaults to class name (AsyncEmitSource).
     :type name: string
