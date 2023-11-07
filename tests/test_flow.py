@@ -208,9 +208,11 @@ def test_offset_commit_before_termination():
     platform = Committer()
     context = CommitterContext(platform)
 
+    max_wait_before_commit = 1
+
     controller = build_flow(
         [
-            SyncEmitSource(context=context, explicit_ack=True),
+            SyncEmitSource(context=context, explicit_ack=True, max_wait_before_commit=max_wait_before_commit),
             Map(lambda x: x + 1),
             Filter(lambda x: x < 3),
             FlatMap(lambda x: [x, x * 10]),
@@ -228,7 +230,7 @@ def test_offset_commit_before_termination():
             event.offset = offset
             controller.emit(event)
 
-    time.sleep(SyncEmitSource._max_wait_before_commit + 1)
+    time.sleep(max_wait_before_commit + 1)
 
     expected_offsets = {("/", i): num_records_per_shard for i in range(num_shards)}
     # TODO: Remove when commit of last record is fixed
@@ -247,9 +249,11 @@ async def async_offset_commit_before_termination():
     platform = Committer()
     context = CommitterContext(platform)
 
+    max_wait_before_commit = 1
+
     controller = build_flow(
         [
-            AsyncEmitSource(context=context, explicit_ack=True),
+            AsyncEmitSource(context=context, explicit_ack=True, max_wait_before_commit=max_wait_before_commit),
             Map(lambda x: x + 1),
             Filter(lambda x: x < 3),
             FlatMap(lambda x: [x, x * 10]),
@@ -269,7 +273,7 @@ async def async_offset_commit_before_termination():
 
     del event
 
-    await asyncio.sleep(AsyncEmitSource._max_wait_before_commit + 1)
+    await asyncio.sleep(max_wait_before_commit + 1)
 
     try:
         offsets = copy.copy(platform.offsets)
