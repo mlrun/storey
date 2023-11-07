@@ -252,6 +252,7 @@ class SyncEmitSource(Flow):
     :param max_events_before_commit: Maximum number of events to be processed before committing offsets.
       Defaults to 20,000.
     :param max_time_before_commit: Maximum number of seconds before committing offsets. Defaults to 45.
+    :param max_wait_before_commit: Maximum number of seconds to wait for an event before committing offsets.
     :param explicit_ack: Whether to explicitly commit offsets. Defaults to False.
     :param name: Name of this step, as it should appear in logs. Defaults to class name (SyncEmitSource).
     :type name: string
@@ -260,7 +261,6 @@ class SyncEmitSource(Flow):
     """
 
     _legal_first_step = True
-    _max_wait_before_commit = 5
 
     def __init__(
         self,
@@ -268,6 +268,7 @@ class SyncEmitSource(Flow):
         key_field: Union[list, str, int, None] = None,
         max_events_before_commit=None,
         max_time_before_commit=None,
+        max_wait_before_commit=None,
         explicit_ack=False,
         **kwargs,
     ):
@@ -284,6 +285,7 @@ class SyncEmitSource(Flow):
         self._key_field = key_field
         self._max_events_before_commit = max_events_before_commit or 20000
         self._max_time_before_commit = max_time_before_commit or 45
+        self._max_wait_before_commit = max_wait_before_commit or 5
         self._explicit_ack = explicit_ack
         self._termination_q = queue.Queue(1)
         self._ex = None
@@ -551,6 +553,7 @@ class AsyncEmitSource(Flow):
     :param max_events_before_commit: Maximum number of events to be processed before committing offsets.
       Defaults to 20,000.
     :param max_time_before_commit: Maximum number of seconds before committing offsets. Defaults to 45.
+    :param max_wait_before_commit: Maximum number of seconds to wait for an event before committing offsets.
     :param explicit_ack: Whether to explicitly commit offsets. Defaults to False.
     :param name: Name of this step, as it should appear in logs. Defaults to class name (AsyncEmitSource).
     :type name: string
@@ -559,7 +562,6 @@ class AsyncEmitSource(Flow):
     """
 
     _legal_first_step = True
-    _max_wait_before_commit = 5
 
     def __init__(
         self,
@@ -567,6 +569,7 @@ class AsyncEmitSource(Flow):
         key_field: Union[list, str, None] = None,
         max_events_before_commit=None,
         max_time_before_commit=None,
+        max_wait_before_commit=None,
         explicit_ack=False,
         **kwargs,
     ):
@@ -581,6 +584,7 @@ class AsyncEmitSource(Flow):
         self._key_field = key_field
         self._max_events_before_commit = max_events_before_commit or 20000
         self._max_time_before_commit = max_time_before_commit or 45
+        self._max_wait_before_commit = max_wait_before_commit or 5
         self._explicit_ack = explicit_ack
         self._ex = None
         self._closeables = []
