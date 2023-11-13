@@ -437,27 +437,30 @@ class CSVTarget(_Batching, _Writer):
             got_first_event = False
             fs, file_path = url_to_file_system(self._path, self._storage_options)
             dirname = os.path.dirname(self._path)
+            file_exists = False
             if dirname and not fs.exists(dirname):
                 fs.makedirs(dirname, exist_ok=True)
-            with fs.open(file_path, mode="w") as f:
-                csv_writer = csv.writer(f, _V3ioCSVDialect())
-                line_number = 0
-                while True:
-                    batch = self._data_buffer.get()
-                    if batch is _termination_obj:
-                        break
+            elif fs.exists(self._path):
+                file_exists = True
+
+            line_number = 0
+            while True:
+                batch = self._data_buffer.get()
+                if batch is _termination_obj:
+                    break
+                with fs.open(file_path, mode="a") as f:
+                    csv_writer = csv.writer(f, _V3ioCSVDialect())
                     for data in batch:
                         if not got_first_event:
                             if not self._columns and self._write_header:
                                 raise ValueError(
                                     "columns must be defined when header is True and events type is not dictionary"
                                 )
-                            if self._write_header:
+                            if self._write_header and not file_exists:
                                 csv_writer.writerow(self._columns)
                             got_first_event = True
                         csv_writer.writerow(data)
                         line_number += 1
-                    f.flush()
         except BaseException as ex:
             self._blocking_io_loop_failed = True
             if not self._data_buffer.empty():
