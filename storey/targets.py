@@ -443,7 +443,6 @@ class CSVTarget(_Batching, _Writer):
             elif fs.exists(self._path):
                 file_exists = True
 
-            line_number = 0
             while True:
                 batch = self._data_buffer.get()
                 if batch is _termination_obj:
@@ -460,7 +459,6 @@ class CSVTarget(_Batching, _Writer):
                                 csv_writer.writerow(self._columns)
                             got_first_event = True
                         csv_writer.writerow(data)
-                        line_number += 1
         except BaseException as ex:
             self._blocking_io_loop_failed = True
             if not self._data_buffer.empty():
