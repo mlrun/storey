@@ -2060,6 +2060,25 @@ def test_write_csv_with_dict(tmpdir):
     assert result == expected
 
 
+def test_append_csv(tmpdir):
+    file_path = f"{tmpdir}/test_append_csv.csv"
+
+    flow = build_flow([SyncEmitSource(), CSVTarget(file_path, columns=["n", "n*10"], header=True)])
+
+    for _ in range(2):
+        controller = flow.run()
+        for i in range(3):
+            controller.emit({"n": i, "n*10": 10 * i})
+        controller.terminate()
+        controller.await_termination()
+
+    with open(file_path) as file:
+        result = file.read()
+
+    expected = "n,n*10\n0,0\n1,10\n2,20\n0,0\n1,10\n2,20\n"
+    assert result == expected
+
+
 def test_write_csv_infer_columns(tmpdir):
     file_path = f"{tmpdir}/test_write_csv_infer_columns.csv"
     controller = build_flow([SyncEmitSource(), CSVTarget(file_path, header=True)]).run()
