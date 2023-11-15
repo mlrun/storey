@@ -436,11 +436,11 @@ class CSVTarget(_Batching, _Writer):
         try:
             got_first_event = False
             fs, file_path = url_to_file_system(self._path, self._storage_options)
-            dirname = os.path.dirname(self._path)
+            dirname = os.path.dirname(file_path)
             file_exists = False
             if dirname and not fs.exists(dirname):
                 fs.makedirs(dirname, exist_ok=True)
-            elif fs.exists(self._path):
+            elif fs.exists(file_path):
                 file_exists = True
 
             while True:
