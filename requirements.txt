@@ -4,6 +4,7 @@ v3io~=0.5.14
 # and 1.5.* due to https://github.com/pandas-dev/pandas/issues/49203
 pandas>=1, !=1.5.*, <3
 numpy>=1.16.5,<1.23
+# <15 is just a safeguard - no tests performed with pyarrow higher then 14
 pyarrow>=1,<15
 v3io-frames~=0.10.3
 v3iofs~=0.1.17

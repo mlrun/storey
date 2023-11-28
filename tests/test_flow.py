@@ -3235,6 +3235,44 @@ def test_csv_reader_parquet_write_microsecs(tmpdir):
     assert_frame_equal(expected, read_back_df, check_dtype=version.parse(pd.__version__) < version.parse("2.0.0"))
 
 
+def test_csv_reader_parquet_write_nanosecs_truncation(tmpdir):
+    out_file = f"{tmpdir}/test_csv_reader_parquet_write_nanosecs_{uuid.uuid4().hex}/"
+    columns = ["k", "t"]
+
+    time_format = "%d/%m/%Y %H:%M:%S.%f"
+    controller = build_flow(
+        [
+            CSVSource(
+                "tests/test-with-timestamp-nanosecs.csv",
+                header=True,
+                key_field="k",
+                parse_dates="t",
+                timestamp_format=time_format,
+            ),
+            ParquetTarget(
+                out_file,
+                columns=columns,
+                partition_cols=["$year", "$month", "$day", "$hour"],
+                max_events=2,
+            ),
+        ]
+    ).run()
+
+    expected = pd.DataFrame(
+        [
+            ["m1", datetime.strptime("15/02/2020 02:03:04.123456", time_format)],
+            ["m2", datetime.strptime("16/02/2020 02:03:04.123456", time_format)],
+        ],
+        columns=columns,
+    )
+    controller.await_termination()
+    read_back_df = pd.read_parquet(out_file, columns=columns)
+
+    # with the introduction of s, ms, us time resolutions in pandas-2.0, the dtype of the parquet data
+    # is set to datetime64[us], while default DataFrame dtype is datetime64[ns]
+    assert_frame_equal(expected, read_back_df, check_dtype=version.parse(pd.__version__) < version.parse("2.0.0"))
+
+
 def test_error_in_table_persist():
     table = Table(
         "table",
