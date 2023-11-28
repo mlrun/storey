@@ -29,6 +29,7 @@ import pandas as pd
 import pyarrow.parquet as pq
 import pytest
 from aiohttp import ClientConnectorError, InvalidURL
+from packaging import version
 from pandas.testing import assert_frame_equal
 
 import integration.conftest
@@ -2721,7 +2722,9 @@ def test_write_to_parquet_partition_by_hash(tmpdir):
     read_back_df = pd.read_parquet(out_file, columns=columns)
     read_back_df.sort_values("my_int", inplace=True)
     read_back_df.reset_index(drop=True, inplace=True)
-    assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+    # with the introduction of s, ms, us time resolutions in pandas-2.0, the dtype of the parquet data
+    # is set to datetime64[us], while default DataFrame dtype is datetime64[ns]
+    assert_frame_equal(expected, read_back_df, check_dtype=version.parse(pd.__version__) < version.parse("2.0.0"))
 
 
 def test_write_to_parquet_partition_by_column(tmpdir):
@@ -2754,7 +2757,9 @@ def test_write_to_parquet_partition_by_column(tmpdir):
     read_back_df = pd.read_parquet(out_file, columns=columns)
     read_back_df.sort_values("my_int", inplace=True)
     read_back_df.reset_index(drop=True, inplace=True)
-    assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+    # with the introduction of s, ms, us time resolutions in pandas-2.0, the dtype of the parquet data
+    # is set to datetime64[us], while default DataFrame dtype is datetime64[ns]
+    assert_frame_equal(expected, read_back_df, check_dtype=version.parse(pd.__version__) < version.parse("2.0.0"))
 
 
 def test_write_to_parquet_with_inference(tmpdir):
@@ -3225,10 +3230,12 @@ def test_csv_reader_parquet_write_microsecs(tmpdir):
     controller.await_termination()
     read_back_df = pd.read_parquet(out_file, columns=columns)
 
-    assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+    # with the introduction of s, ms, us time resolutions in pandas-2.0, the dtype of the parquet data
+    # is set to datetime64[us], while default DataFrame dtype is datetime64[ns]
+    assert_frame_equal(expected, read_back_df, check_dtype=version.parse(pd.__version__) < version.parse("2.0.0"))
 
 
-def test_csv_reader_parquet_write_nanosecs(tmpdir):
+def test_csv_reader_parquet_write_nanosecs_truncation(tmpdir):
     out_file = f"{tmpdir}/test_csv_reader_parquet_write_nanosecs_{uuid.uuid4().hex}/"
     columns = ["k", "t"]
 
@@ -3261,7 +3268,9 @@ def test_csv_reader_parquet_write_nanosecs(tmpdir):
     controller.await_termination()
     read_back_df = pd.read_parquet(out_file, columns=columns)
 
-    assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+    # with the introduction of s, ms, us time resolutions in pandas-2.0, the dtype of the parquet data
+    # is set to datetime64[us], while default DataFrame dtype is datetime64[ns]
+    assert_frame_equal(expected, read_back_df, check_dtype=version.parse(pd.__version__) < version.parse("2.0.0"))
 
 
 def test_error_in_table_persist():
