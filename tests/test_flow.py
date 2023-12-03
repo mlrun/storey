@@ -2539,7 +2539,7 @@ def test_write_to_parquet_string_as_datetime(tmpdir):
         expected.append([i, f"this is {i}", my_time.isoformat(sep=" ")])
     expected_df = pd.DataFrame(expected, columns=columns)
     expected_df["my_int"] = expected_df["my_int"].astype("int8")
-    expected_df["my_datetime"] = expected_df["my_datetime"].astype("datetime64[ns]")
+    expected_df["my_datetime"] = expected_df["my_datetime"].astype("datetime64[us]")
     controller.terminate()
     controller.await_termination()
 
