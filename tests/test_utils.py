@@ -12,9 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+import datetime
+
 from fsspec.implementations.local import LocalFileSystem
 
-from storey.utils import get_remaining_path, url_to_file_system
+from storey.utils import find_filters, get_remaining_path, url_to_file_system
 
 
 def test_get_path_utils():
@@ -29,3 +31,12 @@ def test_ds_get_path_utils():
     fs, path = url_to_file_system(url, "")
     assert path == "/path/to/object.csv"
     assert isinstance(fs, LocalFileSystem)
+
+
+def test_find_filters():
+    filters = []
+    find_filters([], datetime.datetime.min, datetime.datetime.max, filters, "time")
+    assert filters == [[("time", ">", datetime.datetime.min), ("time", "<=", datetime.datetime.max)]]
+    filters = []
+    find_filters([], None, datetime.datetime.max, filters, "time")
+    assert filters == [[("time", "<=", datetime.datetime.max)]]

@@ -217,7 +217,7 @@ def stringify_key(key_list):
 
 
 def _create_filter_tuple(dtime, attr, sign, list_tuples):
-    if attr:
+    if dtime is not None and attr:
         value = getattr(dtime, attr, None)
         tuple1 = (attr, sign, value)
         list_tuples.append(tuple1)
@@ -233,6 +233,8 @@ def _find_filter_helper(
     filter_column=None,
 ):
     single_filter = []
+    if dtime is None:
+        return
     if len(list_partitions) == 0 or first_uncommon is None:
         return
     last_partition = list_partitions[-1]
@@ -257,10 +259,12 @@ def _find_filter_helper(
 
 
 def _get_filters_for_filter_column(start, end, filter_column, side_range):
-    lower_limit_tuple = (filter_column, ">", start)
-    upper_limit_tuple = (filter_column, "<=", end)
-    side_range.append(lower_limit_tuple)
-    side_range.append(upper_limit_tuple)
+    if start is not None:
+        lower_limit_tuple = (filter_column, ">", start)
+        side_range.append(lower_limit_tuple)
+    if end is not None:
+        upper_limit_tuple = (filter_column, "<=", end)
+        side_range.append(upper_limit_tuple)
 
 
 def find_partitions(url, fs):
