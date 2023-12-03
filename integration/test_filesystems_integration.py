@@ -278,7 +278,7 @@ def test_write_to_parquet_to_v3io_single_file_on_termination(setup_teardown_test
     controller.await_termination()
 
     read_back_df = pd.read_parquet(out_file, columns=columns)
-    assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+    pd.testing.assert_frame_equal(read_back_df, expected)
 
 
 # ML-775
@@ -304,7 +304,7 @@ def test_write_to_parquet_key_hash_partitioning(setup_teardown_test):
     read_back_df["hash4_key"] = read_back_df["hash4_key"].astype("int64")
     read_back_df.sort_values("my_int", inplace=True)
     read_back_df.reset_index(inplace=True, drop=True)
-    assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+    pd.testing.assert_frame_equal(read_back_df, expected)
 
 
 # ML-701
@@ -318,12 +318,12 @@ def test_write_to_parquet_to_v3io_force_string_to_timestamp(setup_teardown_test)
         t = "2021-03-02T19:45:00"
         controller.emit([t])
         expected.append([datetime.datetime.fromisoformat(t)])
-    expected = pd.DataFrame(expected, columns=columns)
+    expected = pd.DataFrame(expected, columns=columns).astype("datetime64[us]")
     controller.terminate()
     controller.await_termination()
 
     read_back_df = pd.read_parquet(out_file, columns=columns)
-    assert read_back_df.equals(expected)
+    pd.testing.assert_frame_equal(read_back_df, expected)
 
 
 def test_write_to_parquet_to_v3io_with_indices(setup_teardown_test):
@@ -346,7 +346,7 @@ def test_write_to_parquet_to_v3io_with_indices(setup_teardown_test):
     controller.await_termination()
 
     read_back_df = pd.read_parquet(out_file, columns=columns)
-    assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+    pd.testing.assert_frame_equal(read_back_df, expected)
 
 
 # ML-602
