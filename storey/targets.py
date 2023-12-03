@@ -645,7 +645,8 @@ class ParquetTarget(_Batching, _Writer):
             kwargs = {}
             if self._schema is not None:
                 kwargs["schema"] = self._schema
-            df.to_parquet(path=file, index=bool(self._index_cols), **kwargs)
+            # version set for pyspark compatibility, and is needed as of pyarrow 13 due to timestamp incompatibility
+            df.to_parquet(path=file, index=bool(self._index_cols), version="2.4", **kwargs)
             if not self._last_written_event or last_event_time > self._last_written_event:
                 self._last_written_event = last_event_time
 
