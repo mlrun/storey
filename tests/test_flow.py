@@ -2044,6 +2044,17 @@ def test_write_csv_error(tmpdir):
     asyncio.run(async_test_write_csv_error(tmpdir))
 
 
+# ML-5299
+def test_write_csv_with_zero_records(tmpdir):
+    file_path = f"{tmpdir}/test_write_csv_with_zero_records.csv"
+    controller = build_flow([SyncEmitSource(), CSVTarget(file_path, columns=["n", "n*10"], header=True)]).run()
+
+    controller.terminate()
+    controller.await_termination()
+
+    assert not os.path.isfile(file_path)
+
+
 def test_write_csv_with_dict(tmpdir):
     file_path = f"{tmpdir}/test_write_csv_with_dict.csv"
     controller = build_flow([SyncEmitSource(), CSVTarget(file_path, columns=["n", "n*10"], header=True)]).run()
