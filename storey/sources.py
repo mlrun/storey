@@ -343,6 +343,12 @@ class SyncEmitSource(Flow):
                     await _commit_handled_events(self._outstanding_offsets, committer, commit_all=True)
                     self._termination_future.set_result(termination_result)
             except BaseException as ex:
+                if self.logger:
+                    message = "An error was raised"
+                    raised_by = getattr(ex, "_raised_by_storey_step", None)
+                    if raised_by:
+                        message += f" by step {type(raised_by)}"
+                    self.context.logger.error(f"{message}: {ex}")
                 if event is not _termination_obj and event._awaitable_result:
                     event._awaitable_result._set_error(ex)
                 self._ex = ex
@@ -638,6 +644,12 @@ class AsyncEmitSource(Flow):
                     await _commit_handled_events(self._outstanding_offsets, committer, commit_all=True)
                     return termination_result
             except BaseException as ex:
+                if self.logger:
+                    message = "An error was raised"
+                    raised_by = getattr(ex, "_raised_by_storey_step", None)
+                    if raised_by:
+                        message += f" by step {type(raised_by)}"
+                    self.context.logger.error(f"{message}: {ex}")
                 self._ex = ex
                 if event is not _termination_obj and event._awaitable_result:
                     awaitable = event._awaitable_result._set_error(ex)
