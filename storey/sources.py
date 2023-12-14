@@ -18,6 +18,7 @@ import gc
 import queue
 import threading
 import time
+import traceback
 import uuid
 import warnings
 import weakref
@@ -348,7 +349,7 @@ class SyncEmitSource(Flow):
                     raised_by = getattr(ex, "_raised_by_storey_step", None)
                     if raised_by:
                         message += f" by step {type(raised_by)}"
-                    self.context.logger.error(f"{message}: {ex}")
+                    self.context.logger.error(f"{message}: {traceback.format_exc()}")
                 if event is not _termination_obj and event._awaitable_result:
                     event._awaitable_result._set_error(ex)
                 self._ex = ex
@@ -649,7 +650,7 @@ class AsyncEmitSource(Flow):
                     raised_by = getattr(ex, "_raised_by_storey_step", None)
                     if raised_by:
                         message += f" by step {type(raised_by)}"
-                    self.context.logger.error(f"{message}: {ex}")
+                    self.context.logger.error(f"{message}: {traceback.format_exc()}")
                 self._ex = ex
                 if event is not _termination_obj and event._awaitable_result:
                     awaitable = event._awaitable_result._set_error(ex)
