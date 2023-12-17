@@ -4473,7 +4473,7 @@ def test_filter_by_time_non_partitioned(data_with_timezone, filter_with_timezone
     )
     df.set_index("my_string")
     path = "/tmp/test_filter_by_time_non_partitioned.parquet"
-    df.to_parquet(path)
+    df.to_parquet(path, coerce_timestamps="us")
     start = datetime.fromisoformat("2019-07-01 00:00:00" + ("+00:00" if data_with_timezone else ""))
     end = pd.Timestamp("2020-12-31 14:00:00" + ("Z" if data_with_timezone else ""))
 
@@ -4513,14 +4513,14 @@ def test_empty_filter_result():
     )
     df.set_index("my_string")
     path = "/tmp/test_empty_filter_result.parquet"
-    df.to_parquet(path)
+    df.to_parquet(path, coerce_timestamps="us")
     start = pd.Timestamp("2022-07-01 00:00:00")
     end = pd.Timestamp("2022-12-31 14:00:00")
 
     controller = build_flow(
         [
             ParquetSource(path, start_filter=start, end_filter=end, filter_column="my_time"),
-            ReduceToDataFrame(index=["my_string"], insert_key_column_as=["my_string"]),
+            ReduceToDataFrame(index="my_string", insert_key_column_as="my_string"),
         ]
     ).run()
 
