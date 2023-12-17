@@ -2097,6 +2097,25 @@ def test_write_csv_infer_columns(tmpdir):
     assert result == expected
 
 
+# ML-5298
+def test_write_csv_infer_columns_after_flow_restart(tmpdir):
+    file_path = f"{tmpdir}/test_write_csv_infer_columns_after_flow_restart.csv"
+    flow = build_flow([SyncEmitSource(), CSVTarget(file_path, header=True)])
+
+    for r in [range(3), range(3, 6), range(6, 10)]:
+        controller = flow.run()
+        for i in r:
+            controller.emit({"n": i, "n*10": 10 * i})
+        controller.terminate()
+        controller.await_termination()
+
+    with open(file_path) as file:
+        result = file.read()
+
+    expected = "n,n*10\n0,0\n1,10\n2,20\n3,30\n4,40\n5,50\n6,60\n7,70\n8,80\n9,90\n"
+    assert result == expected
+
+
 def test_write_csv_infer_columns_without_header(tmpdir):
     file_path = f"{tmpdir}/test_write_csv_infer_columns_without_header.csv"
     controller = build_flow([SyncEmitSource(), CSVTarget(file_path)]).run()

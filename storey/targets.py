@@ -163,6 +163,7 @@ class _Writer:
             self._col_to_index[col] = index
         self._index_cols = copy.copy(self._initial_index_cols)
         self._init_partition_col_indices()
+        self._still_need_to_infer_columns = self._infer_columns_from_data
 
     def _init_partition_col_indices(self):
         self._partition_col_to_index = {}
@@ -295,10 +296,10 @@ class _Writer:
     def _event_to_writer_entry(self, event):
         data = event.body
         if isinstance(data, dict):
-            if self._infer_columns_from_data:
+            if self._still_need_to_infer_columns:
                 self._columns.extend(data.keys() - self._index_cols)
                 self._columns.sort()
-                self._infer_columns_from_data = False
+                self._still_need_to_infer_columns = False
                 self._init_partition_col_indices()
             data = {} if self._retain_dict else []
             self._get_column_data_from_dict(
@@ -326,7 +327,7 @@ class _Writer:
         elif isinstance(data, list):
             for index in self._partition_col_indices:
                 del data[index]
-            if self._infer_columns_from_data:
+            if self._still_need_to_infer_columns:
                 raise TypeError(
                     "Cannot infer_columns_from_data when event type is list. Inference is only possible from dict."
                 )
