@@ -18,6 +18,7 @@ import gc
 import queue
 import threading
 import time
+import traceback
 import uuid
 import warnings
 import weakref
@@ -343,6 +344,12 @@ class SyncEmitSource(Flow):
                     await _commit_handled_events(self._outstanding_offsets, committer, commit_all=True)
                     self._termination_future.set_result(termination_result)
             except BaseException as ex:
+                if self.logger:
+                    message = "An error was raised"
+                    raised_by = getattr(ex, "_raised_by_storey_step", None)
+                    if raised_by:
+                        message += f" by step {type(raised_by)}"
+                    self.logger.error(f"{message}: {traceback.format_exc()}")
                 if event is not _termination_obj and event._awaitable_result:
                     event._awaitable_result._set_error(ex)
                 self._ex = ex
@@ -362,7 +369,7 @@ class SyncEmitSource(Flow):
                     await maybe_coroutine
             except Exception as ex:
                 if self.context:
-                    self.context.logger.error(f"Error trying to close {closeable}: {ex}")
+                    self.logger.error(f"Error trying to close {closeable}: {ex}")
 
     def _loop_thread_main(self):
         asyncio.run(self._run_loop())
@@ -638,6 +645,12 @@ class AsyncEmitSource(Flow):
                     await _commit_handled_events(self._outstanding_offsets, committer, commit_all=True)
                     return termination_result
             except BaseException as ex:
+                if self.logger:
+                    message = "An error was raised"
+                    raised_by = getattr(ex, "_raised_by_storey_step", None)
+                    if raised_by:
+                        message += f" by step {type(raised_by)}"
+                    self.logger.error(f"{message}: {traceback.format_exc()}")
                 self._ex = ex
                 if event is not _termination_obj and event._awaitable_result:
                     awaitable = event._awaitable_result._set_error(ex)
@@ -655,7 +668,7 @@ class AsyncEmitSource(Flow):
                                 await maybe_coroutine
                         except Exception as ex:
                             if self.context:
-                                self.context.logger.error(f"Error trying to close {closeable}: {ex}")
+                                self.logger.error(f"Error trying to close {closeable}: {ex}")
 
     def _raise_on_error(self):
         if self._ex:
@@ -801,7 +814,7 @@ class DataframeSource(_IterableSource, WithUUID):
                 none_keys = [key for key, value in zip(key_fields, keys) if pd.isna(value)]
                 if none_keys:
                     if self.context:
-                        self.context.logger.error(
+                        self.logger.error(
                             f"Encountered null values in the following key fields:"
                             f" {', '.join(none_keys)}, in line: {body}."
                         )
@@ -1116,7 +1129,7 @@ class SQLSource(_IterableSource, WithUUID):
                             key = []
                             for key_field in self._key_field:
                                 if key_field not in body or pandas.isna(body[key_field]):
-                                    self.context.logger.error(
+                                    self.logger.error(
                                         f"For {body} value there is no {self._key_field} " f"field (key_field)"
                                     )
                                     break
@@ -1124,9 +1137,7 @@ class SQLSource(_IterableSource, WithUUID):
                         else:
                             key = body.get(self._key_field, None)
                             if key is None:
-                                self.context.logger.error(
-                                    f"For {body} value there is no {self._key_field} field (key_field)"
-                                )
+                                self.logger.error(f"For {body} value there is no {self._key_field} field (key_field)")
                     if self._id_field:
                         event_id = body[self._id_field]
                     else:

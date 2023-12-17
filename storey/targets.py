@@ -473,8 +473,9 @@ class CSVTarget(_Batching, _Writer):
         return writer_entry
 
     async def _terminate(self):
-        asyncio.get_running_loop().run_in_executor(None, lambda: self._data_buffer.put(_termination_obj))
-        await self._blocking_io_loop_future
+        if self._blocking_io_loop_future:
+            asyncio.get_running_loop().run_in_executor(None, lambda: self._data_buffer.put(_termination_obj))
+            await self._blocking_io_loop_future
 
     async def _emit(self, batch, batch_key, batch_time, batch_events, last_event_time=None):
         if not self._blocking_io_loop_future:
