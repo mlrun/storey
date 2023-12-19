@@ -26,6 +26,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Callable, Coroutine, Iterable, List, Optional, Union
 
+import packaging.version
 import pandas
 import pandas as pd
 import pyarrow
@@ -940,15 +941,28 @@ class CSVSource(DataframeSource):
         super()._init()
         self._dfs = []
         for path in self._paths:
+            kwargs = {}
+            if packaging.version.Version(pandas.__version__).major >= 2:
+                kwargs["date_format"] = self._timestamp_format
+            else:
+                kwargs["date_parser"] = self._datetime_from_timestamp
             df = pandas.read_csv(
                 path,
                 header=0,
                 parse_dates=self._dates_indices,
-                date_format=self._timestamp_format,
                 storage_options=self._storage_options,
+                **kwargs,
             )
             self._validate_fields(df, path)
             self._dfs.append(df)
+
+    def _datetime_from_timestamp(self, timestamp):
+        if timestamp == "" or pd.isna(timestamp):
+            return None
+        if self._timestamp_format:
+            return pandas.to_datetime(timestamp, format=self._timestamp_format).floor("u").to_pydatetime()
+        else:
+            return datetime.fromisoformat(timestamp)
 
     def _get_element(self, body: dict, columns: List[str]):
         if self._build_dict:
