@@ -2601,7 +2601,10 @@ def test_write_sparse_data_to_parquet(tmpdir):
 def test_write_to_parquet_single_file_on_termination(tmpdir):
     out_file = f"{tmpdir}/test_write_to_parquet_single_file_on_termination_{uuid.uuid4().hex}/out.parquet"
     columns = ["my_int", "my_string"]
-    controller = build_flow([SyncEmitSource(), ParquetTarget(out_file, columns=columns)]).run()
+    # ML-5119 – make sure max_events and flush_after_seconds are ignored
+    controller = build_flow(
+        [SyncEmitSource(), ParquetTarget(out_file, columns=columns, max_events=1, flush_after_seconds=1)]
+    ).run()
 
     expected = []
     for i in range(10):
@@ -3555,7 +3558,6 @@ def test_flow_to_dict_write_to_parquet():
             "path": "outdir",
             "columns": ["col1", "col2"],
             "max_events": 2,
-            "flush_after_seconds": 60,
         },
         "name": "ParquetTarget",
     }
@@ -3670,7 +3672,7 @@ def test_reader_writer_to_code():
     reconstructed_code = flow.to_code()
     print(reconstructed_code)
     expected = """c_s_v_source0 = CSVSource(paths='mycsv.csv', header=True, build_dict=False, type_inference=True)
-parquet_target0 = ParquetTarget(path='mypq', max_events=10000, flush_after_seconds=60)
+parquet_target0 = ParquetTarget(path='mypq')
 
 c_s_v_source0.to(parquet_target0)
 """

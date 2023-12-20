@@ -549,10 +549,9 @@ class ParquetTarget(_Batching, _Writer):
         else:
             kwargs["partition_cols"] = partition_cols
 
-        if max_events is None and not self._single_file_mode:
-            max_events = 10000
-        if flush_after_seconds is None and not self._single_file_mode:
-            flush_after_seconds = 60
+        if self._single_file_mode:
+            max_events = None
+            flush_after_seconds = None
 
         kwargs["path"] = path
         if not self._single_file_mode and path.endswith("/"):
