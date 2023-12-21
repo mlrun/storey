@@ -26,22 +26,24 @@ ISORT_OPTIONS := --profile black
 .PHONY: fmt
 fmt:
 	@echo "Running black fmt..."
-	python -m black $(BLACK_OPTIONS) $(CHECKED_IN_PYTHON_FILES)
-	python -m isort $(ISORT_OPTIONS) $(CHECKED_IN_PYTHON_FILES)
+	@python -m black $(BLACK_OPTIONS) $(CHECKED_IN_PYTHON_FILES)
+	@echo "Running isort..."
+	@python -m isort $(ISORT_OPTIONS) $(CHECKED_IN_PYTHON_FILES)
 
 .PHONY: lint
 lint: flake8 fmt-check
 
 .PHONY: fmt-check
 fmt-check:
-	@echo "Running black+isort fmt check..."
-	python -m black $(BLACK_OPTIONS) --check --diff $(CHECKED_IN_PYTHON_FILES)
-	python -m isort --check --diff $(ISORT_OPTIONS) $(CHECKED_IN_PYTHON_FILES)
+	@echo "Running black check..."
+	@python -m black $(BLACK_OPTIONS) --check --diff $(CHECKED_IN_PYTHON_FILES)
+	@echo "Running isort check..."
+	@python -m isort --check --diff $(ISORT_OPTIONS) $(CHECKED_IN_PYTHON_FILES)
 
 .PHONY: flake8
 flake8:
 	@echo "Running flake8 lint..."
-	python -m flake8 $(FLAKE8_OPTIONS) $(CHECKED_IN_PYTHON_FILES)
+	@python -m flake8 $(FLAKE8_OPTIONS) $(CHECKED_IN_PYTHON_FILES)
 
 .PHONY: test
 test:
