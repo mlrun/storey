@@ -38,8 +38,8 @@ def load_deps(file_name):
 install_requires = load_deps("requirements.txt")
 tests_require = load_deps("dev-requirements.txt")
 extras_require = {
-    "s3": ["s3fs~=0.5"],
-    "az": ["adlfs~=0.5"],
+    "s3": ["s3fs==2023.9.2"],
+    "az": ["adlfs==2023.9.0"],
     "kafka": ["kafka-python~=2.0"],
     "redis": ["redis~=4.3"],
     "lupa": ["lupa~=1.13"],
