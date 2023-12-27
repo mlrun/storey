@@ -13,6 +13,7 @@
 # limitations under the License.
 #
 import asyncio
+import datetime
 import json
 import os
 from time import sleep
@@ -73,7 +74,7 @@ def test_kafka_target(kafka_topic_setup_teardown):
         key = None
         if i > 0:
             key = f"key{i}"
-        event = Event({"hello": i}, key)
+        event = Event({"hello": i, "time": datetime.datetime(2023, 12, 26)}, key)
         events.append(event)
         controller.emit(event)
 
@@ -88,7 +89,7 @@ def test_kafka_target(kafka_topic_setup_teardown):
                 assert record.key is None
             else:
                 assert record.key.decode("UTF-8") == event.key
-        assert record.value.decode("UTF-8") == json.dumps(event.body)
+        assert record.value.decode("UTF-8") == json.dumps(event.body, default=str)
 
 
 async def async_test_write_to_kafka_full_event_readback(kafka_topic_setup_teardown):
