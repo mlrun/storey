@@ -175,7 +175,7 @@ async def async_offset_commit():
 
     controller = build_flow(
         [
-            AsyncEmitSource(context=context, explicit_ack=True),
+            AsyncEmitSource(context=context, explicit_ack=True, max_wait_before_commit=1),
             Map(lambda x: x + 1),
             Filter(lambda x: x < 3),
             FlatMap(lambda x: [x, x * 10]),
@@ -192,13 +192,20 @@ async def async_offset_commit():
             event.shard_id = shard
             event.offset = offset
             await controller.emit(event)
-    print()
-    await controller.terminate()
+    del event
+
+    # Make sure that offsets are committed even before termination
+    await asyncio.sleep(2)
+    offsets = copy.copy(platform.offsets)
+    print(f"offsets={offsets}")
+
+    try:
+        assert offsets == {("/", i): num_records_per_shard for i in range(num_shards)}
+    finally:
+        await controller.terminate()
+
     termination_result = await controller.await_termination()
     assert termination_result == 330
-
-    offsets = copy.copy(platform.offsets)
-    assert offsets == {("/", i): num_records_per_shard for i in range(num_shards)}
 
 
 def test_async_offset_commit():
