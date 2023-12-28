@@ -2826,8 +2826,8 @@ def test_write_to_parquet_with_inference_error_on_partition_index_collision(tmpd
 
 def test_join_by_key():
     table = Table("test", NoopDriver())
-    table._update_static_attrs(9, {"age": 1, "color": "blue9"})
-    table._update_static_attrs(7, {"age": 3, "color": "blue7"})
+    table._update_static_attrs("9", {"age": 1, "color": "blue9"})
+    table._update_static_attrs("7", {"age": 3, "color": "blue7"})
 
     controller = build_flow(
         [
@@ -2848,8 +2848,8 @@ def test_join_by_key():
 
 def test_join_by_key_error():
     table = Table("test", NoopDriver())
-    table._update_static_attrs(1, {"age": 1, "color": "blue"})
-    table._update_static_attrs(3, {"age": 3, "color": "red"})
+    table._update_static_attrs("1", {"age": 1, "color": "blue"})
+    table._update_static_attrs("3", {"age": 3, "color": "red"})
 
     recovery_step = Reduce([], lambda acc, x: append_and_return(acc, x))
     terminal_step = Reduce([], lambda acc, x: append_and_return(acc, x))
@@ -2877,8 +2877,8 @@ def test_join_by_key_error():
 
 def test_join_by_key_full_event():
     table = Table("test", NoopDriver())
-    table._update_static_attrs(9, {"age": 1, "color": "blue9"})
-    table._update_static_attrs(7, {"age": 3, "color": "blue7"})
+    table._update_static_attrs("9", {"age": 1, "color": "blue9"})
+    table._update_static_attrs("7", {"age": 3, "color": "blue7"})
 
     controller = build_flow(
         [
@@ -2899,8 +2899,8 @@ def test_join_by_key_full_event():
 
 def test_join_by_string_key():
     table = Table("test", NoopDriver())
-    table._update_static_attrs(9, {"age": 1, "color": "blue9"})
-    table._update_static_attrs(7, {"age": 3, "color": "blue7"})
+    table._update_static_attrs("9", {"age": 1, "color": "blue9"})
+    table._update_static_attrs("7", {"age": 3, "color": "blue7"})
 
     controller = build_flow(
         [
@@ -2921,8 +2921,8 @@ def test_join_by_string_key():
 
 def test_join_with_join_function():
     table = Table("test", NoopDriver())
-    table._update_static_attrs(2, {"age": 2, "color": "blue"})
-    table._update_static_attrs(3, {"age": 3, "color": "red"})
+    table._update_static_attrs("2", {"age": 2, "color": "blue"})
+    table._update_static_attrs("3", {"age": 3, "color": "red"})
 
     def join_function(event, aug):
         event.update(aug)
