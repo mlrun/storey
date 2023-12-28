@@ -1077,7 +1077,7 @@ class KafkaTarget(Flow, _Writer):
             record = self._event_to_writer_entry(event)
             if self._full_event:
                 record = Event.wrap_for_serialization(event, record)
-            record = json.dumps(record).encode("UTF-8")
+            record = json.dumps(record, default=str).encode("UTF-8")
             partition = None
             if self._sharding_func:
                 sharding_func_result = self._sharding_func(event)
