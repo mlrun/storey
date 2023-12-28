@@ -3362,37 +3362,6 @@ def test_async_task_error_and_complete_repeated_emits():
         controller.await_termination()
 
 
-def test_no_sql_target_flow_reuse():
-    class MockDriver(Driver):
-        def __init__(self):
-            self.times_closed = 0
-
-        def close(self):
-            self.times_closed += 1
-
-    driver = MockDriver()
-
-    class MockContext:
-        def __init__(self):
-            self.times_called = 0
-
-        def get_table(self, table_name):
-            self.times_called += 1
-            return Table("mytable", driver)
-
-    context = MockContext()
-
-    df = pd.DataFrame({"num": [0, 1, 2], "color": ["green", "blue", "red"]})
-
-    flow = build_flow([DataframeSource(df, key_field="num"), NoSqlTarget("mytable", context=context)])
-
-    for i in [1, 2]:
-        controller = flow.run()
-        controller.await_termination()
-        assert driver.times_closed == i
-        assert context.times_called == i
-
-
 def test_push_error():
     class PushErrorContext:
         def push_error(self, event, message, source):

@@ -67,10 +67,11 @@ class Flow:
         else:
             self.name = type(self).__name__
 
+        self._closeables = []
+
     def _init(self):
         self._termination_received = 0
         self._termination_result = None
-        self._closeables = []
 
     def to_dict(self, fields=None, exclude=None):
         """convert the step object to a python dictionary"""
@@ -528,14 +529,7 @@ class _FunctionWithStateFlow(Flow):
         if not callable(fn):
             raise TypeError(f"Expected a callable, got {type(fn)}")
         self._is_async = asyncio.iscoroutinefunction(fn)
-        self._initial_state = initial_state
-        self._fn = fn
-        self._group_by_key = group_by_key
-
-    def _init(self):
-        super()._init()
-
-        self._state = self._initial_state
+        self._state = initial_state
         if isinstance(self._state, str):
             should_get_from_context = False
             for known_scheme in known_driver_schemes:
@@ -546,9 +540,10 @@ class _FunctionWithStateFlow(Flow):
                 if not self.context:
                     raise TypeError("Table can not be string if no context was provided to the step")
                 self._state = self.context.get_table(self._state)
-        self._closeables = []
+        self._fn = fn
+        self._group_by_key = group_by_key
         if hasattr(self._state, "close"):
-            self._closeables.append(self._state)
+            self._closeables = [self._state]
 
     async def _call(self, event):
         element = self._get_event_or_body(event)
@@ -1202,12 +1197,11 @@ class JoinWithTable(_ConcurrentJobExecution):
 
         super().__init__(**kwargs)
 
+        self._table = table
         if isinstance(table, str):
-            self._table_name = table
-            self._table = None
-        else:
-            self._table_name = None
-            self._table = table
+            if not self.context:
+                raise TypeError("Table can not be string if no context was provided to the step")
+            self._table = self.context.get_table(table)
 
         if key_extractor:
             if callable(key_extractor):
@@ -1235,11 +1229,7 @@ class JoinWithTable(_ConcurrentJobExecution):
 
     def _init(self):
         super()._init()
-        if self._table_name:
-            if not self.context:
-                raise TypeError("Table can not be string if no context was provided to the step")
-            self._table = self.context.get_table(self._table_name)
-            self._closeables = [self._table]
+        self._closeables = [self._table]
 
     async def _process_event(self, event):
         key = self._key_extractor(self._get_event_or_body(event))

@@ -179,9 +179,7 @@ class Table:
             self._flush_task = asyncio.get_running_loop().create_task(self._flush_worker())
 
     async def close(self):
-        result = self._storage.close()
-        if asyncio.iscoroutine(result):
-            await result
+        await self._storage.close()
 
     async def _aggregate(self, key, event, data, timestamp):
         if self._flush_exception is not None:

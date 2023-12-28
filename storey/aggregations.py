@@ -83,16 +83,15 @@ class AggregateByKey(Flow):
         aggregates = self._parse_aggregates(aggregates)
         self._check_unique_names(aggregates)
 
+        self._table = table
         if isinstance(table, str):
-            self._table_name = table
-            self._table = None
-        else:
-            self._table_name = None
-            self._table = table
+            if not self.context:
+                raise TypeError("Table can not be string if no context was provided to the step")
+            self._table = self.context.get_table(table)
+        self._table._set_aggregation_metadata(aggregates, use_windows_from_schema=use_windows_from_schema)
+        self._closeables = [self._table]
 
-        self._aggregates = aggregates
-
-        self._use_windows_from_schema = use_windows_from_schema
+        self._aggregates_metadata = aggregates
 
         self._enrich_with = enrich_with or []
         self._aliases = aliases or {}
@@ -146,13 +145,6 @@ class AggregateByKey(Flow):
         self._emit_worker_running = False
         self._terminate_worker = False
         self._timeout_task: Optional[asyncio.Task] = None
-
-        if self._table_name:
-            if not self.context:
-                raise TypeError("Table can not be string if no context was provided to the step")
-            self._table = self.context.get_table(self._table_name)
-        self._table._set_aggregation_metadata(self._aggregates, use_windows_from_schema=self._use_windows_from_schema)
-        self._closeables = [self._table]
 
     def _check_unique_names(self, aggregates):
         unique_aggr_names = set()
@@ -342,6 +334,10 @@ class QueryByKey(AggregateByKey):
         self._aggrs = []
         self._enrich_cols = []
         resolved_aggrs = {}
+        if isinstance(table, str):
+            if "context" not in kwargs:
+                raise TypeError("Table can not be string if no context was provided to the step")
+            table = kwargs["context"].get_table(table)
         for feature in features:
             match = re.match(r".*_([a-z]+)_[0-9]+[smhd]$", feature) if table.supports_aggregations() else None
             if match and is_aggregation_name(match.group(1)):
