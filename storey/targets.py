@@ -1123,12 +1123,12 @@ class NoSqlTarget(_Writer, Flow):
             kwargs["infer_columns_from_data"] = infer_columns_from_data
         Flow.__init__(self, **kwargs)
         _Writer.__init__(self, columns, infer_columns_from_data, retain_dict=True)
+        self._table = table
         if isinstance(table, str):
-            self._table_name = table
-            self._table = None
-        else:
-            self._table_name = None
-            self._table = table
+            if not self.context:
+                raise TypeError("Table can not be string if no context was provided to the step")
+            self._table = self.context.get_table(table)
+        self._closeables = [self._table]
 
         self._field_extractor = lambda event_body, field_name: event_body.get(field_name)
         self._write_missing_fields = False
@@ -1136,11 +1136,6 @@ class NoSqlTarget(_Writer, Flow):
     def _init(self):
         Flow._init(self)
         _Writer._init(self)
-        if self._table_name:
-            if not self.context:
-                raise TypeError("Table can not be string if no context was provided to the step")
-            self._table = self.context.get_table(self._table_name)
-            self._closeables = [self._table]
 
     async def _handle_completed(self, event, response):
         await self._do_downstream(event)
