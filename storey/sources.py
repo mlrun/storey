@@ -726,7 +726,11 @@ class _IterableSource(Flow):
                 await closeable.close()
 
     def _loop_thread_main(self):
-        asyncio.run(self._async_loop_thread_main())
+        try:
+            asyncio.run(self._async_loop_thread_main())
+        except BaseException as ex:
+            self._termination_q.put(ex)
+            raise ex
         self._termination_q.put(self._ex)
 
     def _raise_on_error(self, ex):
@@ -737,8 +741,6 @@ class _IterableSource(Flow):
 
     def run(self):
         self._closeables = super().run()
-
-        self._init()
 
         thread = threading.Thread(target=self._loop_thread_main)
         thread.start()
