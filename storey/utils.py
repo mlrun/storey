@@ -211,7 +211,7 @@ def stringify_key(key_list):
             return str(key_list[0]) + "." + hash_list(key_list[1:])
         if len(key_list) == 2:
             return str(key_list[0]) + "." + str(key_list[1])
-        return key_list[0]
+        return str(key_list[0])
     else:
         return str(key_list)
 
