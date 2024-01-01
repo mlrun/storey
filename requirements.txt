@@ -3,6 +3,7 @@ v3io~=0.5.14
 # exclude pandas 1.5.0 due to https://github.com/pandas-dev/pandas/issues/48767
 # and 1.5.* due to https://github.com/pandas-dev/pandas/issues/49203
 pandas>=1, !=1.5.*, <3
+# <=1.26.2 is just a safeguard - no tests performed with numpy higher than 1.26.2
 numpy<=1.26.2
 # <15 is just a safeguard - no tests performed with pyarrow higher than 14
 pyarrow>=1,<15
