@@ -53,7 +53,7 @@ jobs:
 
   integration:
     name: Integration tests
-    runs-on: [ self-hosted, Linux, data-flows ]
+    runs-on: [ self-hosted, Linux ]
     container:
       image: python:3.9.18
     steps:
