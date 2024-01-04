@@ -283,18 +283,19 @@ class SyncEmitSource(Flow):
         super().__init__(**kwargs)
         if buffer_size <= 0:
             raise ValueError("Buffer size must be positive")
-        self._q = queue.Queue(buffer_size)
+        self._buffer_size = buffer_size
         self._key_field = key_field
         self._max_events_before_commit = max_events_before_commit or 20000
         self._max_time_before_commit = max_time_before_commit or 45
         self._max_wait_before_commit = max_wait_before_commit or 5
         self._explicit_ack = explicit_ack
-        self._termination_q = queue.Queue(1)
         self._ex = None
         self._closeables = []
 
     def _init(self):
         super()._init()
+        self._q = queue.Queue(self._buffer_size)
+        self._termination_q = queue.Queue(1)
         self._is_terminated = False
         self._outstanding_offsets = defaultdict(list)
 
@@ -583,12 +584,11 @@ class AsyncEmitSource(Flow):
     ):
         super().__init__(**kwargs)
         if buffer_size is None:
-            buffer_size = 8
+            self._buffer_size = 8
         elif buffer_size <= 0:
             raise ValueError("Buffer size must be positive")
         else:
-            kwargs["buffer_size"] = buffer_size
-        self._q = asyncio.Queue(buffer_size)
+            kwargs["buffer_size"] = self._buffer_size
         self._key_field = key_field
         self._max_events_before_commit = max_events_before_commit or 20000
         self._max_time_before_commit = max_time_before_commit or 45
@@ -601,6 +601,7 @@ class AsyncEmitSource(Flow):
         super()._init()
         self._is_terminated = False
         self._outstanding_offsets = defaultdict(list)
+        self._q = asyncio.Queue(self._buffer_size)
 
     async def _run_loop(self):
         committer = None

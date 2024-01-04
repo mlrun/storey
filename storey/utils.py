@@ -211,9 +211,9 @@ def stringify_key(key_list):
             return str(key_list[0]) + "." + hash_list(key_list[1:])
         if len(key_list) == 2:
             return str(key_list[0]) + "." + str(key_list[1])
-        return key_list[0]
+        return str(key_list[0])
     else:
-        return key_list
+        return str(key_list)
 
 
 def _create_filter_tuple(dtime, attr, sign, list_tuples):

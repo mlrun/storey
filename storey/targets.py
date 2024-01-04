@@ -839,13 +839,13 @@ class StreamTarget(Flow, _Writer):
 
         self._shards = shards
         self._retention_period_hours = retention_period_hours
-        self._initialized = False
 
         self._full_event = full_event
 
     def _init(self):
         Flow._init(self)
         _Writer._init(self)
+        self._initialized = False
         self._worker_exited = False
 
     @staticmethod
@@ -1048,13 +1048,12 @@ class KafkaTarget(Flow, _Writer):
         Flow.__init__(self, **kwargs)
         _Writer.__init__(self, columns, infer_columns_from_data, retain_dict=True)
 
-        self._initialized = False
-
         self._full_event = full_event
 
     def _init(self):
         Flow._init(self)
         _Writer._init(self)
+        self._initialized = False
 
     async def _lazy_init(self):
         from kafka import KafkaProducer
@@ -1078,7 +1077,7 @@ class KafkaTarget(Flow, _Writer):
             record = self._event_to_writer_entry(event)
             if self._full_event:
                 record = Event.wrap_for_serialization(event, record)
-            record = json.dumps(record).encode("UTF-8")
+            record = json.dumps(record, default=str).encode("UTF-8")
             partition = None
             if self._sharding_func:
                 sharding_func_result = self._sharding_func(event)
