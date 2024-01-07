@@ -3416,6 +3416,34 @@ def test_metadata_fields():
     assert result2.body == body2
 
 
+# ML-5442
+def test_key_field_and_non_dict_event_body():
+    controller = build_flow(
+        [
+            SyncEmitSource(key_field="my_key_field"),
+            Reduce([], append_and_return, full_event=True),
+        ]
+    ).run()
+
+    body1 = 1
+    body2 = 2
+
+    controller.emit(body1)
+    controller.emit(Event(body2, "my_key"))
+
+    controller.terminate()
+    result = controller.await_termination()
+
+    assert len(result) == 2
+
+    result1 = result[0]
+    assert result1.body == body1
+    assert result1.key is None
+
+    result2 = result[1]
+    assert result2.key == "my_key"
+
+
 async def async_test_async_metadata_fields():
     controller = build_flow(
         [
