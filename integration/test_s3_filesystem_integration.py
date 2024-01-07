@@ -128,13 +128,12 @@ def test_csv_reader_from_s3(s3_create_csv):
 
 @pytest.mark.skipif(not has_s3_credentials, reason="No s3 credentials found")
 def test_csv_reader_from_s3_error_on_file_not_found():
-    controller = build_flow(
-        [
-            CSVSource(f's3://{os.getenv("AWS_BUCKET")}/idontexist.csv'),
-        ]
-    ).run()
-
     with pytest.raises(FileNotFoundError):
+        controller = build_flow(
+            [
+                CSVSource(f's3://{os.getenv("AWS_BUCKET")}/idontexist.csv'),
+            ]
+        ).run()
         controller.await_termination()
 
 

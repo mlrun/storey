@@ -121,16 +121,15 @@ def test_csv_reader_from_azure(azure_create_csv):
 
 @pytest.mark.skipif(not has_azure_credentials, reason="No azure credentials found")
 def test_csv_reader_from_azure_error_on_file_not_found():
-    controller = build_flow(
-        [
-            CSVSource(
-                f'az:///{os.getenv("AZURE_BLOB_STORE")}/idontexist.csv',
-                storage_options=storage_options,
-            ),
-        ]
-    ).run()
-
     with pytest.raises(FileNotFoundError):
+        controller = build_flow(
+            [
+                CSVSource(
+                    f'az:///{os.getenv("AZURE_BLOB_STORE")}/idontexist.csv',
+                    storage_options=storage_options,
+                ),
+            ]
+        ).run()
         controller.await_termination()
 
 
