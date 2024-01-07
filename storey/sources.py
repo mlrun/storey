@@ -142,7 +142,7 @@ class FlowControllerBase(WithUUID):
         else:
             body = element
 
-        if isinstance(body, dict) and not key and self._key_field:
+        if hasattr(body, "__getitem__") and not key and self._key_field:
             if isinstance(self._key_field, str) or isinstance(self._key_field, int):
                 key = body[self._key_field]
             else:
