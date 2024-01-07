@@ -9,5 +9,4 @@ myst-nb~=0.10
 sphinx-book-theme~=1.0.1
 markdown-it-py~=2.2
 mdit-py-plugins~=0.3
-# This transitive dependency breaks dependency resolution when the newly released 8.0.0 is taken.
-ipython<8
+ipython<9
