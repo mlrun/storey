@@ -10,3 +10,5 @@ fakeredis~=1.9
 redis~=4.3
 # in sqlalchemy>=2.0 there is breaking changes (such as in Table class autoload argument is removed)
 sqlalchemy~=1.4
+s3fs~=2023.9.2
+adlfs~=2023.9.0
