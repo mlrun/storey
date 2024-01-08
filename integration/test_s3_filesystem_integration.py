@@ -230,7 +230,7 @@ def test_write_csv_from_lists_with_metadata_and_column_pruning_to_s3(s3_teardown
 
 @pytest.mark.skipif(not has_s3_credentials, reason="No s3 credentials found")
 def test_write_to_parquet_to_s3(s3_setup_teardown_test):
-    out_dir = f"s3://{s3_setup_teardown_test}/"
+    out_dir = f"s3://{s3_setup_teardown_test}"
     columns = ["my_int", "my_string"]
     controller = build_flow(
         [
@@ -254,7 +254,7 @@ def test_write_to_parquet_to_s3(s3_setup_teardown_test):
 
 @pytest.mark.skipif(not has_s3_credentials, reason="No s3 credentials found")
 def test_write_to_parquet_to_s3_single_file_on_termination(s3_setup_teardown_test):
-    out_file = f"s3://{s3_setup_teardown_test}/myfile.pq"
+    out_file = f"s3://{s3_setup_teardown_test}myfile.pq"
     columns = ["my_int", "my_string"]
     controller = build_flow([SyncEmitSource(), ParquetTarget(out_file, columns=columns)]).run()
 
@@ -262,7 +262,7 @@ def test_write_to_parquet_to_s3_single_file_on_termination(s3_setup_teardown_tes
     for i in range(10):
         controller.emit([i, f"this is {i}"])
         expected.append([i, f"this is {i}"])
-    expected = pd.DataFrame(expected, columns=columns, dtype="int64")
+    expected = pd.DataFrame(expected, columns=columns)
     controller.terminate()
     controller.await_termination()
 
@@ -272,7 +272,7 @@ def test_write_to_parquet_to_s3_single_file_on_termination(s3_setup_teardown_tes
 
 @pytest.mark.skipif(not has_s3_credentials, reason="No s3 credentials found")
 def test_write_to_parquet_to_s3_with_indices(s3_setup_teardown_test):
-    out_file = f"s3://{s3_setup_teardown_test}/test_write_to_parquet_with_indices{uuid.uuid4().hex}/"
+    out_file = f"s3://{s3_setup_teardown_test}test_write_to_parquet_with_indices{uuid.uuid4().hex}/"
     controller = build_flow(
         [
             SyncEmitSource(),
@@ -285,7 +285,7 @@ def test_write_to_parquet_to_s3_with_indices(s3_setup_teardown_test):
         controller.emit([i, f"this is {i}"], key=f"key{i}")
         expected.append([f"key{i}", i, f"this is {i}"])
     columns = ["event_key", "my_int", "my_string"]
-    expected = pd.DataFrame(expected, columns=columns, dtype="int64")
+    expected = pd.DataFrame(expected, columns=columns)
     expected.set_index(["event_key"], inplace=True)
     controller.terminate()
     controller.await_termination()

@@ -8,6 +8,7 @@ numpy>=1.16.5,<1.27
 # <15 is just a safeguard - no tests performed with pyarrow higher than 14
 pyarrow>=1,<15
 v3io-frames~=0.10.9
+fsspec>=0.6.2
 v3iofs~=0.1.17
 xxhash>=1
 nuclio-sdk>=0.5.3
