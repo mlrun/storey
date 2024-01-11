@@ -3425,8 +3425,8 @@ def test_key_field_and_non_dict_event_body():
         ]
     ).run()
 
-    body1 = 1
-    body2 = 2
+    body1 = b"a"
+    body2 = b"b"
 
     controller.emit(body1)
     controller.emit(Event(body2, "my_key"))
