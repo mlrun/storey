@@ -144,26 +144,11 @@ def url_to_file_system(url, storage_options):
             scheme = parsed_url.password
         else:
             raise ValueError("Datastore profile URL is expected to have underlying scheme embedded as password")
-    if scheme:
-        load_fs_dependencies(scheme)
 
     if storage_options:
         return fsspec.filesystem(scheme, **storage_options), remaining_path
     else:
         return fsspec.filesystem(scheme), remaining_path
-
-
-def load_fs_dependencies(schema):
-    if schema == "s3":
-        try:
-            import s3fs  # noqa: F401
-        except ImportError:
-            raise StoreyMissingDependencyError("s3 packages are missing, use pip install storey[s3]")
-    if schema == "az":
-        try:
-            import adlfs  # noqa: F401
-        except ImportError:
-            raise StoreyMissingDependencyError("azure packages are missing, use pip install storey[az]")
 
 
 class StoreyMissingDependencyError(Exception):
@@ -211,9 +196,9 @@ def stringify_key(key_list):
             return str(key_list[0]) + "." + hash_list(key_list[1:])
         if len(key_list) == 2:
             return str(key_list[0]) + "." + str(key_list[1])
-        return key_list[0]
+        return str(key_list[0])
     else:
-        return key_list
+        return str(key_list)
 
 
 def _create_filter_tuple(dtime, attr, sign, list_tuples):

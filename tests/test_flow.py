@@ -2833,8 +2833,8 @@ def test_write_to_parquet_with_inference_error_on_partition_index_collision(tmpd
 
 def test_join_by_key():
     table = Table("test", NoopDriver())
-    table._update_static_attrs(9, {"age": 1, "color": "blue9"})
-    table._update_static_attrs(7, {"age": 3, "color": "blue7"})
+    table._update_static_attrs("9", {"age": 1, "color": "blue9"})
+    table._update_static_attrs("7", {"age": 3, "color": "blue7"})
 
     controller = build_flow(
         [
@@ -2855,8 +2855,8 @@ def test_join_by_key():
 
 def test_join_by_key_error():
     table = Table("test", NoopDriver())
-    table._update_static_attrs(1, {"age": 1, "color": "blue"})
-    table._update_static_attrs(3, {"age": 3, "color": "red"})
+    table._update_static_attrs("1", {"age": 1, "color": "blue"})
+    table._update_static_attrs("3", {"age": 3, "color": "red"})
 
     recovery_step = Reduce([], lambda acc, x: append_and_return(acc, x))
     terminal_step = Reduce([], lambda acc, x: append_and_return(acc, x))
@@ -2884,8 +2884,8 @@ def test_join_by_key_error():
 
 def test_join_by_key_full_event():
     table = Table("test", NoopDriver())
-    table._update_static_attrs(9, {"age": 1, "color": "blue9"})
-    table._update_static_attrs(7, {"age": 3, "color": "blue7"})
+    table._update_static_attrs("9", {"age": 1, "color": "blue9"})
+    table._update_static_attrs("7", {"age": 3, "color": "blue7"})
 
     controller = build_flow(
         [
@@ -2906,8 +2906,8 @@ def test_join_by_key_full_event():
 
 def test_join_by_string_key():
     table = Table("test", NoopDriver())
-    table._update_static_attrs(9, {"age": 1, "color": "blue9"})
-    table._update_static_attrs(7, {"age": 3, "color": "blue7"})
+    table._update_static_attrs("9", {"age": 1, "color": "blue9"})
+    table._update_static_attrs("7", {"age": 3, "color": "blue7"})
 
     controller = build_flow(
         [
@@ -2928,8 +2928,8 @@ def test_join_by_string_key():
 
 def test_join_with_join_function():
     table = Table("test", NoopDriver())
-    table._update_static_attrs(2, {"age": 2, "color": "blue"})
-    table._update_static_attrs(3, {"age": 3, "color": "red"})
+    table._update_static_attrs("2", {"age": 2, "color": "blue"})
+    table._update_static_attrs("3", {"age": 3, "color": "red"})
 
     def join_function(event, aug):
         event.update(aug)
@@ -3421,6 +3421,34 @@ def test_metadata_fields():
     result2 = result[1]
     assert result2.key == "k2"
     assert result2.body == body2
+
+
+# ML-5442
+def test_key_field_and_non_dict_event_body():
+    controller = build_flow(
+        [
+            SyncEmitSource(key_field="my_key_field"),
+            Reduce([], append_and_return, full_event=True),
+        ]
+    ).run()
+
+    body1 = b"a"
+    body2 = b"b"
+
+    controller.emit(body1)
+    controller.emit(Event(body2, "my_key"))
+
+    controller.terminate()
+    result = controller.await_termination()
+
+    assert len(result) == 2
+
+    result1 = result[0]
+    assert result1.body == body1
+    assert result1.key is None
+
+    result2 = result[1]
+    assert result2.key == "my_key"
 
 
 async def async_test_async_metadata_fields():

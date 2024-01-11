@@ -53,16 +53,13 @@ jobs:
 
   integration:
     name: Integration tests
-    runs-on: ubuntu-latest
+    runs-on: [ self-hosted, Linux ]
+    container:
+      image: python:3.9.18
     steps:
       - uses: actions/checkout@v3
         with:
           ref: refs/pull/${{ github.event.number }}/merge
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: 3.9
-          cache: pip
       - name: Install dependencies
         run: make dev-env
       - name: Run integration tests
