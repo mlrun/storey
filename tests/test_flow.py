@@ -3860,7 +3860,7 @@ def test_csv_source_event_metadata():
                 timestamp_format="%d/%m/%Y %H:%M:%S",
                 id_field="k",
             ),
-            ReifyMetadata({"key", "id"}),
+            ReifyMetadata({"key": "id"}),
             Reduce([], append_and_return, full_event=False),
         ]
     ).run()
@@ -3872,7 +3872,6 @@ def test_csv_source_event_metadata():
             "b": True,
             "id": "m1",
             "k": "m1",
-            "key": "m1",
             "t": datetime(2020, 2, 15, 2, 0),
             "v": 8,
         },
@@ -3880,7 +3879,6 @@ def test_csv_source_event_metadata():
             "b": False,
             "id": "m2",
             "k": "m2",
-            "key": "m2",
             "t": datetime(2020, 2, 16, 2, 0),
             "v": 14,
         },
