@@ -677,7 +677,7 @@ class ReifyMetadata(Flow):
     async def _do(self, event):
         if event is not _termination_obj:
             if isinstance(self.mapping, dict):
-                for attribute_name, entry_key in self.mapping:
+                for attribute_name, entry_key in self.mapping.items():
                     event.body[entry_key] = getattr(event, attribute_name)
             else:
                 for attribute_name in self.mapping:
