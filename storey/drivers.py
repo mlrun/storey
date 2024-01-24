@@ -552,7 +552,7 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
             # in order to handle ' in value.
             # may impact performance
             if "'" in value:
-                return f"\"{value}\""
+                return f'"{value}"'
             return f"'{value}'"
         if isinstance(value, bool) or isinstance(value, float) or isinstance(value, int):
             return str(value)
