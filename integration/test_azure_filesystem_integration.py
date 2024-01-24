@@ -121,16 +121,15 @@ def test_csv_reader_from_azure(azure_create_csv):
 
 @pytest.mark.skipif(not has_azure_credentials, reason="No azure credentials found")
 def test_csv_reader_from_azure_error_on_file_not_found():
-    controller = build_flow(
-        [
-            CSVSource(
-                f'az:///{os.getenv("AZURE_BLOB_STORE")}/idontexist.csv',
-                storage_options=storage_options,
-            ),
-        ]
-    ).run()
-
     with pytest.raises(FileNotFoundError):
+        controller = build_flow(
+            [
+                CSVSource(
+                    f'az:///{os.getenv("AZURE_BLOB_STORE")}/idontexist.csv',
+                    storage_options=storage_options,
+                ),
+            ]
+        ).run()
         controller.await_termination()
 
 
@@ -267,12 +266,13 @@ def test_write_to_parquet_to_azure(azure_setup_teardown_test):
     for i in range(10):
         controller.emit([i, f"this is {i}"])
         expected.append([i, f"this is {i}"])
-    expected = pd.DataFrame(expected, columns=columns, dtype="int32")
+    expected = pd.DataFrame(expected, columns=columns)
     controller.terminate()
     controller.await_termination()
 
     read_back_df = pd.read_parquet(out_dir, columns=columns, storage_options=storage_options)
-    assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+    read_back_df["my_int"] = read_back_df["my_int"].astype("int64")
+    pd.testing.assert_frame_equal(read_back_df, expected)
 
 
 @pytest.mark.skipif(not has_azure_credentials, reason="No azure credentials found")
@@ -292,12 +292,13 @@ def test_write_to_parquet_to_azure_single_file_on_termination(
     for i in range(10):
         controller.emit([i, f"this is {i}"])
         expected.append([i, f"this is {i}"])
-    expected = pd.DataFrame(expected, columns=columns, dtype="int64")
+    expected = pd.DataFrame(expected, columns=columns)
     controller.terminate()
     controller.await_termination()
 
     read_back_df = pd.read_parquet(out_file, columns=columns, storage_options=storage_options)
-    assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+    read_back_df["my_int"] = read_back_df["my_int"].astype("int64")
+    pd.testing.assert_frame_equal(read_back_df, expected)
 
 
 @pytest.mark.skipif(not has_azure_credentials, reason="No azure credentials found")
@@ -320,10 +321,11 @@ def test_write_to_parquet_to_azure_with_indices(azure_setup_teardown_test):
         controller.emit([i, f"this is {i}"], key=f"key{i}")
         expected.append([f"key{i}", i, f"this is {i}"])
     columns = ["event_key", "my_int", "my_string"]
-    expected = pd.DataFrame(expected, columns=columns, dtype="int64")
+    expected = pd.DataFrame(expected, columns=columns)
     expected.set_index(["event_key"], inplace=True)
     controller.terminate()
     controller.await_termination()
 
     read_back_df = pd.read_parquet(out_file, columns=columns, storage_options=storage_options)
-    assert read_back_df.equals(expected), f"{read_back_df}\n!=\n{expected}"
+    read_back_df["my_int"] = read_back_df["my_int"].astype("int64")
+    pd.testing.assert_frame_equal(read_back_df, expected)

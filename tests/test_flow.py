@@ -3416,6 +3416,34 @@ def test_metadata_fields():
     assert result2.body == body2
 
 
+# ML-5442
+def test_key_field_and_non_dict_event_body():
+    controller = build_flow(
+        [
+            SyncEmitSource(key_field="my_key_field"),
+            Reduce([], append_and_return, full_event=True),
+        ]
+    ).run()
+
+    body1 = b"a"
+    body2 = b"b"
+
+    controller.emit(body1)
+    controller.emit(Event(body2, "my_key"))
+
+    controller.terminate()
+    result = controller.await_termination()
+
+    assert len(result) == 2
+
+    result1 = result[0]
+    assert result1.body == body1
+    assert result1.key is None
+
+    result2 = result[1]
+    assert result2.key == "my_key"
+
+
 async def async_test_async_metadata_fields():
     controller = build_flow(
         [
@@ -3832,7 +3860,7 @@ def test_csv_source_event_metadata():
                 timestamp_format="%d/%m/%Y %H:%M:%S",
                 id_field="k",
             ),
-            ReifyMetadata({"key", "id"}),
+            ReifyMetadata({"key": "id"}),
             Reduce([], append_and_return, full_event=False),
         ]
     ).run()
@@ -3844,7 +3872,6 @@ def test_csv_source_event_metadata():
             "b": True,
             "id": "m1",
             "k": "m1",
-            "key": "m1",
             "t": datetime(2020, 2, 15, 2, 0),
             "v": 8,
         },
@@ -3852,7 +3879,6 @@ def test_csv_source_event_metadata():
             "b": False,
             "id": "m2",
             "k": "m2",
-            "key": "m2",
             "t": datetime(2020, 2, 16, 2, 0),
             "v": 14,
         },

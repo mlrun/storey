@@ -19,6 +19,11 @@ all:
 # We only want to format and lint checked in python files
 CHECKED_IN_PYTHON_FILES := $(shell git ls-files | grep '\.py$$')
 
+# Fallback
+ifeq ($(CHECKED_IN_PYTHON_FILES),)
+CHECKED_IN_PYTHON_FILES := .
+endif
+
 FLAKE8_OPTIONS := --max-line-length 120 --extend-ignore E203,W503
 BLACK_OPTIONS := --line-length 120
 ISORT_OPTIONS := --profile black
