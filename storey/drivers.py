@@ -549,6 +549,10 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
     @staticmethod
     def _convert_python_obj_to_expression_value(value):
         if isinstance(value, str):
+            # in order to handle ' in value.
+            # may impact performance
+            if "'" in value:
+                return f"\"{value}\""
             return f"'{value}'"
         if isinstance(value, bool) or isinstance(value, float) or isinstance(value, int):
             return str(value)
