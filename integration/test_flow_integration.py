@@ -1120,9 +1120,9 @@ def test_writing_quote_in_value(setup_teardown_test):
         ]
     ).run()
     controller.await_termination()
-    assert get_key_all_attrs_test_helper(setup_teardown_test, "0", keys) == {'color': "gre'en", 'num': 0}
-    assert get_key_all_attrs_test_helper(setup_teardown_test, "1", keys) == {'color': 'bl"ue', 'num': 1}
-    assert get_key_all_attrs_test_helper(setup_teardown_test, "2", keys) == {'color': 'red', 'num': 2}
+    assert get_key_all_attrs_test_helper(setup_teardown_test, "0", keys) == {"color": "gre'en", "num": 0}
+    assert get_key_all_attrs_test_helper(setup_teardown_test, "1", keys) == {"color": 'bl"ue', "num": 1}
+    assert get_key_all_attrs_test_helper(setup_teardown_test, "2", keys) == {"color": "red", "num": 2}
 
 
 def test_writing_timedelta_key(setup_teardown_test):
