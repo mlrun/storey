@@ -1107,6 +1107,24 @@ def test_writing_int_key(setup_teardown_test):
     controller.await_termination()
 
 
+def test_writing_quote_in_value(setup_teardown_test):
+    keys = ["num"]
+    table = _get_table(setup_teardown_test, {"num": int, "color": str}, keys)
+
+    df = pd.DataFrame({"num": [0, 1, 2], "color": ["gre'en", 'bl"ue', "red"]})
+
+    controller = build_flow(
+        [
+            DataframeSource(df, key_field="num"),
+            NoSqlTarget(table),
+        ]
+    ).run()
+    controller.await_termination()
+    assert get_key_all_attrs_test_helper(setup_teardown_test, "0", keys) == {'color': "gre'en", 'num': 0}
+    assert get_key_all_attrs_test_helper(setup_teardown_test, "1", keys) == {'color': 'bl"ue', 'num': 1}
+    assert get_key_all_attrs_test_helper(setup_teardown_test, "2", keys) == {'color': 'red', 'num': 2}
+
+
 def test_writing_timedelta_key(setup_teardown_test):
     if setup_teardown_test.driver_name == "SQLDriver":
         pytest.skip("test_writing_timedelta_key not testing over SQLDriver because SQLITE not support interval type")
