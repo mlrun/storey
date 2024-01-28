@@ -47,6 +47,7 @@ from storey import (
     V3ioDriver,
     build_flow,
 )
+from storey.dtypes import V3ioError
 from storey.flow import DropColumns
 
 from .conftest import ContextForTests
@@ -1107,22 +1108,35 @@ def test_writing_int_key(setup_teardown_test):
     controller.await_termination()
 
 
-def test_writing_quote_in_value(setup_teardown_test):
+@pytest.mark.parametrize(
+    "color, v3io_failed", [(["gre'en", 'bl"ue', "red"], False), (["gr\"e'en", "bl\"u'e", "red"], True)]
+)
+def test_writing_quote_in_value(setup_teardown_test, color, v3io_failed):
     keys = ["num"]
     table = _get_table(setup_teardown_test, {"num": int, "color": str}, keys)
 
-    df = pd.DataFrame({"num": [0, 1, 2], "color": ["gre'en", 'bl"ue', "red"]})
-
-    controller = build_flow(
-        [
-            DataframeSource(df, key_field="num"),
-            NoSqlTarget(table),
-        ]
-    ).run()
-    controller.await_termination()
-    assert get_key_all_attrs_test_helper(setup_teardown_test, "0", keys) == {"color": "gre'en", "num": 0}
-    assert get_key_all_attrs_test_helper(setup_teardown_test, "1", keys) == {"color": 'bl"ue', "num": 1}
-    assert get_key_all_attrs_test_helper(setup_teardown_test, "2", keys) == {"color": "red", "num": 2}
+    df = pd.DataFrame({"num": [0, 1, 2], "color": color})
+    records = df.to_dict(orient="records")
+    if isinstance(table._storage, V3ioDriver) and v3io_failed:
+        with pytest.raises(V3ioError):
+            controller = build_flow(
+                [
+                    DataframeSource(df, key_field="num"),
+                    NoSqlTarget(table),
+                ]
+            ).run()
+            controller.await_termination()
+    else:
+        controller = build_flow(
+            [
+                DataframeSource(df, key_field="num"),
+                NoSqlTarget(table),
+            ]
+        ).run()
+        controller.await_termination()
+        assert get_key_all_attrs_test_helper(setup_teardown_test, "0", keys) == records[0]
+        assert get_key_all_attrs_test_helper(setup_teardown_test, "1", keys) == records[1]
+        assert get_key_all_attrs_test_helper(setup_teardown_test, "2", keys) == records[2]
 
 
 def test_writing_timedelta_key(setup_teardown_test):
