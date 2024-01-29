@@ -197,7 +197,6 @@ async def async_offset_commit():
     # Make sure that offsets are committed even before termination
     await asyncio.sleep(2)
     offsets = copy.copy(platform.offsets)
-    print(f"offsets={offsets}")
 
     try:
         assert offsets == {("/", i): num_records_per_shard for i in range(num_shards)}
