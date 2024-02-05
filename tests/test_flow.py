@@ -231,11 +231,11 @@ def test_offset_commit_before_termination():
             event.offset = offset
             controller.emit(event)
 
+    del event
+
     time.sleep(max_wait_before_commit + 1)
 
     expected_offsets = {("/", i): num_records_per_shard for i in range(num_shards)}
-    # TODO: Remove when commit of last record is fixed
-    expected_offsets[("/", 9)] = 9
 
     try:
         offsets = copy.copy(platform.offsets)
