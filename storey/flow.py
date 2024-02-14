@@ -393,7 +393,7 @@ class Recover(Flow):
 
 
 class _UnaryFunctionFlow(Flow):
-    def __init__(self, fn, long_running=None, **kwargs):
+    def __init__(self, fn, long_running=None, pass_context=None, **kwargs):
         super().__init__(**kwargs)
         if not callable(fn):
             raise TypeError(f"Expected a callable, got {type(fn)}")
@@ -402,12 +402,16 @@ class _UnaryFunctionFlow(Flow):
             raise ValueError("long_running=True cannot be used in conjunction with a coroutine")
         self._long_running = long_running
         self._fn = fn
+        self._pass_context = pass_context
 
     async def _call(self, element):
         if self._long_running:
             res = await asyncio.get_running_loop().run_in_executor(None, self._fn, element)
         else:
-            res = self._fn(element)
+            kwargs = {}
+            if self._pass_context:
+                kwargs = {"context": self.context}
+            res = self._fn(element, **kwargs)
         if self._is_async:
             res = await res
         return res

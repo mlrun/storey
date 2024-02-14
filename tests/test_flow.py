@@ -108,6 +108,22 @@ def test_functional_flow():
     assert termination_result == 3300
 
 
+def test_pass_context_to_function():
+    controller = build_flow(
+        [
+            SyncEmitSource(),
+            Map(lambda x, context: x + context, pass_context=True, context=10),
+            Reduce(0, lambda acc, x: acc + x),
+        ]
+    ).run()
+
+    for i in range(5):
+        controller.emit(i)
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == 60
+
+
 class Committer:
     def __init__(self):
         self.offsets = {}
