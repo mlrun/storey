@@ -1,5 +1,5 @@
 aiohttp~=3.8
-v3io~=0.6.1
+v3io~=0.6.2
 # exclude pandas 1.5.0 due to https://github.com/pandas-dev/pandas/issues/48767
 # and 1.5.* due to https://github.com/pandas-dev/pandas/issues/49203
 # pandas 2.2 requires sqlalchemy 2
