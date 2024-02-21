@@ -35,6 +35,7 @@ from nuclio_sdk import QualifiedOffset
 
 from .dtypes import Event, _termination_obj
 from .flow import Complete, Flow
+from .queue import SimpleAsyncQueue
 from .utils import find_filters, find_partitions, url_to_file_system
 
 
@@ -601,7 +602,7 @@ class AsyncEmitSource(Flow):
         super()._init()
         self._is_terminated = False
         self._outstanding_offsets = defaultdict(list)
-        self._q = asyncio.Queue(self._buffer_size)
+        self._q = SimpleAsyncQueue(self._buffer_size)
 
     async def _run_loop(self):
         committer = None
@@ -624,9 +625,9 @@ class AsyncEmitSource(Flow):
                 # In case we can't block because there are outstanding events
                 while num_offsets_not_handled > 0:
                     try:
-                        event = await asyncio.wait_for(self._q.get(), self._max_wait_before_commit)
+                        event = await self._q.get(self._max_wait_before_commit)
                         break
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         pass
                     num_offsets_not_handled = await _commit_handled_events(self._outstanding_offsets, committer)
                     events_handled_since_commit = 0
