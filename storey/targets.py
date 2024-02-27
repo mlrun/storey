@@ -937,6 +937,9 @@ class StreamTarget(Flow, _Writer):
                             await self._handle_response(req)
                             in_flight_events[shard_id] = None
                         self._send_batch(buffers, in_flight_reqs, buffer_events, in_flight_events, shard_id)
+
+                    # avoid keeping a reference to last event
+                    del event
                 except BaseException as ex:
                     ex._raised_by_storey_step = self
                     if self.context and hasattr(self.context, "push_error"):
