@@ -893,6 +893,7 @@ class StreamTarget(Flow, _Writer):
                 in_flight_reqs.append(None)
                 in_flight_events.append(None)
             while True:
+                event = None
                 try:
                     request_sent_on_empty_queue = False
                     if self._q.empty():
