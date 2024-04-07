@@ -23,10 +23,10 @@ import pytest
 from storey import AsyncEmitSource, Event, Reduce, SyncEmitSource, build_flow
 from storey.targets import KafkaTarget
 
-bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS")
+kafka_brokers = os.getenv("KAFKA_BROKERS")
 topic = "test_kafka_integration"
 
-if bootstrap_servers:
+if kafka_brokers:
     import kafka
 
 
@@ -38,8 +38,8 @@ def append_return(lst, x):
 @pytest.fixture()
 def kafka_topic_setup_teardown():
     # Setup
-    kafka_admin_client = kafka.KafkaAdminClient(bootstrap_servers=bootstrap_servers)
-    kafka_consumer = kafka.KafkaConsumer(topic, bootstrap_servers=bootstrap_servers, auto_offset_reset="earliest")
+    kafka_admin_client = kafka.KafkaAdminClient(bootstrap_servers=kafka_brokers)
+    kafka_consumer = kafka.KafkaConsumer(topic, bootstrap_servers=kafka_brokers, auto_offset_reset="earliest")
     try:
         kafka_admin_client.delete_topics([topic])
         sleep(1)
@@ -57,8 +57,8 @@ def kafka_topic_setup_teardown():
 
 
 @pytest.mark.skipif(
-    not bootstrap_servers,
-    reason="KAFKA_BOOTSTRAP_SERVERS must be defined to run kafka tests",
+    not kafka_brokers,
+    reason="KAFKA_BROKERS must be defined to run kafka tests",
 )
 def test_kafka_target(kafka_topic_setup_teardown):
     kafka_consumer = kafka_topic_setup_teardown
@@ -66,7 +66,7 @@ def test_kafka_target(kafka_topic_setup_teardown):
     controller = build_flow(
         [
             SyncEmitSource(),
-            KafkaTarget(bootstrap_servers, topic, sharding_func=0, full_event=False),
+            KafkaTarget(kafka_brokers, topic, sharding_func=0, full_event=False),
         ]
     ).run()
     events = []
@@ -98,7 +98,7 @@ async def async_test_write_to_kafka_full_event_readback(kafka_topic_setup_teardo
     controller = build_flow(
         [
             AsyncEmitSource(),
-            KafkaTarget(bootstrap_servers, topic, sharding_func=lambda _: 0, full_event=True),
+            KafkaTarget(kafka_brokers, topic, sharding_func=lambda _: 0, full_event=True),
         ]
     ).run()
     events = []
@@ -140,8 +140,8 @@ async def async_test_write_to_kafka_full_event_readback(kafka_topic_setup_teardo
 
 
 @pytest.mark.skipif(
-    not bootstrap_servers,
-    reason="KAFKA_BOOTSTRAP_SERVERS must be defined to run kafka tests",
+    not kafka_brokers,
+    reason="KAFKA_BROKERS must be defined to run kafka tests",
 )
 def test_async_test_write_to_kafka_full_event_readback(kafka_topic_setup_teardown):
     asyncio.run(async_test_write_to_kafka_full_event_readback(kafka_topic_setup_teardown))

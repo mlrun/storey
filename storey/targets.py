@@ -997,7 +997,7 @@ class KafkaTarget(Flow, _Writer):
     """Writes all incoming events into a Kafka stream.
 
     :param topic: Kafka topic.
-    :param bootstrap_servers: Kafka bootstrap servers (brokers).
+    :param brokers: List of kafka brokers, each in the form of host:port.
     :param producer_options: Extra options to be passed as kwargs to kafka.KafkaProducer.
     :param sharding_func: Partition, sharding key field, or function from event to partition or sharding key. Optional.
         If not set, event key will be used as the sharding key.
@@ -1014,7 +1014,7 @@ class KafkaTarget(Flow, _Writer):
 
     def __init__(
         self,
-        bootstrap_servers: Union[str, List[str]],
+        brokers: Union[str, List[str]],
         topic: str,
         producer_options: Optional[dict] = None,
         sharding_func: Union[None, int, str, Callable[[Event], Any]] = None,
@@ -1023,12 +1023,12 @@ class KafkaTarget(Flow, _Writer):
         full_event: Optional[bool] = None,
         **kwargs,
     ):
-        if not bootstrap_servers:
-            raise ValueError("bootstrap_servers must be defined")
+        if not brokers:
+            raise ValueError("brokers must be defined")
         if not topic:
             raise ValueError("topic must be defined")
 
-        self._bootstrap_servers = bootstrap_servers
+        self._brokers = brokers
         self._topic = topic
         self._producer_options = producer_options
 
@@ -1061,7 +1061,7 @@ class KafkaTarget(Flow, _Writer):
 
         if not self._initialized:
             kwargs = self._producer_options or {}
-            self._producer = KafkaProducer(bootstrap_servers=self._bootstrap_servers, **kwargs)
+            self._producer = KafkaProducer(bootstrap_servers=self._brokers, **kwargs)
             self._initialized = True
 
     async def _do(self, event):
