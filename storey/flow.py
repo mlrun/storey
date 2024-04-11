@@ -20,6 +20,7 @@ import time
 import traceback
 from asyncio import Task
 from collections import defaultdict
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Union
 
 import aiohttp
@@ -804,7 +805,8 @@ class _ConcurrentJobExecution(Flow):
         self.retries = retries
         self.backoff_factor = backoff_factor
 
-        self._queue_size = max_in_flight - 1 if max_in_flight else 8
+        max_in_flight = max_in_flight or 8
+        self._queue_size = max_in_flight - 1
 
     def _init(self):
         super()._init()
@@ -914,6 +916,51 @@ class _ConcurrentJobExecution(Flow):
                 await self._q.put((event, task))
                 if self._worker_awaitable.done():
                     await self._worker_awaitable
+
+
+class ConcurrentExecution(_ConcurrentJobExecution):
+    """
+    Inherit this class and override `process_event()` to process events concurrently.
+
+    :param process_event: Function that will be run on each event
+
+    :param concurrency_mechanism: One of:
+      * "asyncio" (default) – for I/O implemented using asyncio
+      * "threading" – for blocking I/O
+      * "multiprocessing" – for processing-intensive tasks
+
+    :param max_in_flight: Maximum number of events to be processed at a time (default 8)
+    :param retries: Maximum number of retries per event (default 0)
+    :param backoff_factor: Wait time in seconds between retries (default 1)
+    """
+
+    _suppported_concurrency_mechanisms = ["asyncio", "threading", "multiprocessing"]
+
+    def __init__(self, event_processor: Callable[[Event], Any], concurrency_mechanism=None, **kwargs):
+        super().__init__(**kwargs)
+
+        self._event_processor = event_processor
+
+        if concurrency_mechanism and concurrency_mechanism not in self._suppported_concurrency_mechanisms:
+            raise ValueError(f"Concurrency mechanism '{concurrency_mechanism}' is not supported")
+
+        self._executor = None
+        if concurrency_mechanism == "threading":
+            self._executor = ThreadPoolExecutor(max_workers=self.max_in_flight)
+        elif concurrency_mechanism == "multiprocessing":
+            self._executor = ProcessPoolExecutor(max_workers=self.max_in_flight)
+
+    async def _process_event(self, event):
+        if self._executor:
+            result = await asyncio.get_running_loop().run_in_executor(self._executor, self._event_processor, event)
+        else:
+            result = self._event_processor(event)
+        if asyncio.iscoroutine(result):
+            result = await result
+        return result
+
+    async def _handle_completed(self, event, response):
+        await self._do_downstream(response)
 
 
 class SendToHttp(_ConcurrentJobExecution):
