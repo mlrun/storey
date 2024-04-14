@@ -934,14 +934,14 @@ class ConcurrentExecution(_ConcurrentJobExecution):
     :param backoff_factor: Wait time in seconds between retries (default 1)
     """
 
-    _suppported_concurrency_mechanisms = ["asyncio", "threading", "multiprocessing"]
+    _supported_concurrency_mechanisms = ["asyncio", "threading", "multiprocessing"]
 
     def __init__(self, event_processor: Callable[[Event], Any], concurrency_mechanism=None, **kwargs):
         super().__init__(**kwargs)
 
         self._event_processor = event_processor
 
-        if concurrency_mechanism and concurrency_mechanism not in self._suppported_concurrency_mechanisms:
+        if concurrency_mechanism and concurrency_mechanism not in self._supported_concurrency_mechanisms:
             raise ValueError(f"Concurrency mechanism '{concurrency_mechanism}' is not supported")
 
         self._executor = None
