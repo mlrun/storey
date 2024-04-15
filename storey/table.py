@@ -1462,7 +1462,7 @@ class AggregationBuckets:
         self.period_millis = explicit_windows.period_millis
         self._window_start_time = explicit_windows.get_window_start_time_by_time(base_time)
         if self._precalculated_aggregations:
-            for (window_millis, _) in explicit_windows.windows:
+            for window_millis, _ in explicit_windows.windows:
                 for aggr in self._all_raw_aggregates:
                     self._current_aggregate_values[(aggr, window_millis)] = AggregationValue.new_from_name(
                         aggr, max_value
@@ -1673,7 +1673,7 @@ class AggregationBuckets:
         else:
             # In case our pre aggregates already have the answer
             for aggregation_name in self._explicit_raw_aggregations:
-                for (window_millis, window_str) in self.explicit_windows.windows:
+                for window_millis, window_str in self.explicit_windows.windows:
                     value = self._current_aggregate_values[(aggregation_name, window_millis)].value
                     count_value = self._current_aggregate_values[("count", window_millis)].value
                     if value == math.inf or value == -math.inf:
@@ -1691,7 +1691,7 @@ class AggregationBuckets:
 
         args = [None, None, None]  # Avoid in-loop allocation
         for aggregate in self._virtual_aggregations:
-            for (window_millis, window_str) in self.explicit_windows.windows:
+            for window_millis, window_str in self.explicit_windows.windows:
                 for i, aggr in enumerate(aggregate.dependant_aggregates):
                     args[i] = self._current_aggregate_values[(aggr, window_millis)].value
                 features[f"{self.name}_{aggregate.name}_{window_str}"] = aggregate.aggregation_func(args)
@@ -1710,7 +1710,7 @@ class AggregationBuckets:
         for aggregation_name in self._all_raw_aggregates:
             self._intermediate_aggregation_values[aggregation_name].reset()
         prev_windows_millis = 0
-        for (window_millis, window_string) in self.explicit_windows.windows:
+        for window_millis, window_string in self.explicit_windows.windows:
             # In case the current bucket is outside our time range just create a feature with the current aggregated
             # value
             if current_time_bucket_index < 0:

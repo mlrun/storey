@@ -508,9 +508,9 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
                                     f"{aggregation_value.default_value})"
                                 )
                             if array_time_attribute_name not in times_update_expressions:
-                                times_update_expressions[
-                                    array_time_attribute_name
-                                ] = f"{array_time_attribute_name}={expected_time_expr}"
+                                times_update_expressions[array_time_attribute_name] = (
+                                    f"{array_time_attribute_name}={expected_time_expr}"
+                                )
                             new_cached_times[name] = (
                                 array_time_attribute_name,
                                 expected_time,
