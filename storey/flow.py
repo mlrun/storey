@@ -957,7 +957,7 @@ class ConcurrentExecution(_ConcurrentJobExecution):
     async def _process_event(self, event):
         args = [event]
         if self._pass_context:
-            args += self.context
+            args.append(self.context)
         if self._executor:
             result = await asyncio.get_running_loop().run_in_executor(self._executor, self._event_processor, *args)
         else:
