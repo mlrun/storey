@@ -936,7 +936,9 @@ class ConcurrentExecution(_ConcurrentJobExecution):
 
     _supported_concurrency_mechanisms = ["asyncio", "threading", "multiprocessing"]
 
-    def __init__(self, event_processor: Callable[[Event], Any], concurrency_mechanism=None, **kwargs):
+    def __init__(
+        self, event_processor: Callable[[Event], Any], concurrency_mechanism=None, pass_context=None, **kwargs
+    ):
         super().__init__(**kwargs)
 
         self._event_processor = event_processor
@@ -950,11 +952,16 @@ class ConcurrentExecution(_ConcurrentJobExecution):
         elif concurrency_mechanism == "multiprocessing":
             self._executor = ProcessPoolExecutor(max_workers=self.max_in_flight)
 
+        self._pass_context = pass_context
+
     async def _process_event(self, event):
+        args = [event]
+        if self._pass_context:
+            args += self.context
         if self._executor:
-            result = await asyncio.get_running_loop().run_in_executor(self._executor, self._event_processor, event)
+            result = await asyncio.get_running_loop().run_in_executor(self._executor, self._event_processor, *args)
         else:
-            result = self._event_processor(event)
+            result = self._event_processor(*args)
         if asyncio.iscoroutine(result):
             result = await result
         return result
