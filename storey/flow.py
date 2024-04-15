@@ -16,6 +16,7 @@ import asyncio
 import copy
 import datetime
 import inspect
+import pickle
 import time
 import traceback
 from asyncio import Task
@@ -945,6 +946,15 @@ class ConcurrentExecution(_ConcurrentJobExecution):
 
         if concurrency_mechanism and concurrency_mechanism not in self._supported_concurrency_mechanisms:
             raise ValueError(f"Concurrency mechanism '{concurrency_mechanism}' is not supported")
+
+        if concurrency_mechanism == "multiprocessing" and pass_context:
+            try:
+                pickle.dumps(self.context)
+            except Exception as ex:
+                raise ValueError(
+                    'When concurrency_mechanism="multiprocessing" is used in conjunction with '
+                    "pass_context=True, context must be serializable"
+                ) from ex
 
         self._executor = None
         if concurrency_mechanism == "threading":
