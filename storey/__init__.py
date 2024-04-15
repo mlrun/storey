@@ -36,6 +36,7 @@ from .dtypes import SlidingWindows  # noqa: F401
 from .flow import Batch  # noqa: F401
 from .flow import Choice  # noqa: F401
 from .flow import Complete  # noqa: F401
+from .flow import ConcurrentExecution  # noqa: F401
 from .flow import Context  # noqa: F401
 from .flow import Extend  # noqa: F401
 from .flow import Filter  # noqa: F401
