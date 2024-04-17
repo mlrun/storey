@@ -802,12 +802,11 @@ class _ConcurrentJobExecution(Flow):
         Flow.__init__(self, **kwargs)
         if max_in_flight is not None and max_in_flight < 1:
             raise ValueError(f"max_in_flight may not be less than 1 (got {max_in_flight})")
-        self.max_in_flight = max_in_flight
         self.retries = retries
         self.backoff_factor = backoff_factor
 
-        max_in_flight = max_in_flight or 8
-        self._queue_size = max_in_flight - 1
+        self.max_in_flight = max_in_flight or 8
+        self._queue_size = self.max_in_flight - 1
 
     def _init(self):
         super()._init()
