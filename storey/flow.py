@@ -805,8 +805,8 @@ class _ConcurrentJobExecution(Flow):
         self.retries = retries
         self.backoff_factor = backoff_factor
 
-        self.max_in_flight = max_in_flight or 8
-        self._queue_size = self.max_in_flight - 1
+        self._max_in_flight = max_in_flight or 8
+        self._queue_size = self._max_in_flight - 1
 
     def _init(self):
         super()._init()
@@ -957,9 +957,9 @@ class ConcurrentExecution(_ConcurrentJobExecution):
 
         self._executor = None
         if concurrency_mechanism == "threading":
-            self._executor = ThreadPoolExecutor(max_workers=self.max_in_flight)
+            self._executor = ThreadPoolExecutor(max_workers=self._max_in_flight)
         elif concurrency_mechanism == "multiprocessing":
-            self._executor = ProcessPoolExecutor(max_workers=self.max_in_flight)
+            self._executor = ProcessPoolExecutor(max_workers=self._max_in_flight)
 
         self._pass_context = pass_context
 
