@@ -4,27 +4,38 @@ import time
 import pytest
 
 from storey import AsyncEmitSource
-from storey.flow import ConcurrentExecution, Reduce, build_flow
+from storey.flow import ConcurrentExecution, Reduce, UserFunction, build_flow
 from tests.test_flow import append_and_return
 
 event_processing_duration = 0.5
 
 
-async def process_event_slow_asyncio(event):
-    await asyncio.sleep(event_processing_duration)
-    return event
+class SomeContext:
+    def __init__(self):
+        self.fn = lambda x: x
 
 
-def process_event_slow_io(event):
-    time.sleep(event_processing_duration)
-    return event
+class ProcessEventSlowAsyncio(UserFunction):
+    async def call(self, event, context):
+        assert isinstance(context, SomeContext) and callable(context.fn)
+        await asyncio.sleep(event_processing_duration)
+        return event
 
 
-def process_event_slow_processing(event):
-    start = time.monotonic()
-    while time.monotonic() - start < event_processing_duration:
-        pass
-    return event
+class ProcessEventSlowIO(UserFunction):
+    def call(self, event, context):
+        assert isinstance(context, SomeContext) and callable(context.fn)
+        time.sleep(event_processing_duration)
+        return event
+
+
+class ProcessEventSlowProcessing(UserFunction):
+    def call(self, event, context):
+        assert isinstance(context, SomeContext) and callable(context.fn)
+        start = time.monotonic()
+        while time.monotonic() - start < event_processing_duration:
+            pass
+        return event
 
 
 async def async_test_concurrent_execution(concurrency_mechanism, event_processor):
@@ -34,7 +45,9 @@ async def async_test_concurrent_execution(concurrency_mechanism, event_processor
             ConcurrentExecution(
                 event_processor=event_processor,
                 concurrency_mechanism=concurrency_mechanism,
+                pass_context=True,
                 max_in_flight=10,
+                context=SomeContext(),
             ),
             Reduce([], append_and_return),
         ]
@@ -58,12 +71,13 @@ async def async_test_concurrent_execution(concurrency_mechanism, event_processor
 
 
 @pytest.mark.parametrize(
-    ["concurrency_mechanism", "event_processor"],
+    ["concurrency_mechanism", "event_processor_class"],
     [
-        ("asyncio", process_event_slow_asyncio),
-        ("threading", process_event_slow_io),
-        ("multiprocessing", process_event_slow_processing),
+        ("asyncio", ProcessEventSlowAsyncio),
+        ("threading", ProcessEventSlowIO),
+        ("multiprocessing", ProcessEventSlowProcessing),
     ],
 )
-def test_concurrent_execution(concurrency_mechanism, event_processor):
+def test_concurrent_execution(concurrency_mechanism, event_processor_class):
+    event_processor = event_processor_class()
     asyncio.run(async_test_concurrent_execution(concurrency_mechanism, event_processor))

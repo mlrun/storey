@@ -16,7 +16,6 @@ import asyncio
 import copy
 import datetime
 import inspect
-import pickle
 import time
 import traceback
 from asyncio import Task
@@ -25,6 +24,7 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Union
 
 import aiohttp
+import dill
 
 from .dtypes import Event, FlowError, V3ioError, _termination_obj, known_driver_schemes
 from .queue import AsyncQueue
@@ -918,6 +918,16 @@ class _ConcurrentJobExecution(Flow):
                     await self._worker_awaitable
 
 
+class UserFunction:
+    def call(self, *args):
+        raise NotImplementedError()
+
+    def _unpickle_context_and_call(self, *args):
+        event, context = args
+        context = dill.loads(context)
+        return self.call(event, context)
+
+
 class ConcurrentExecution(_ConcurrentJobExecution):
     """
     Inherit this class and override `process_event()` to process events concurrently.
@@ -936,24 +946,13 @@ class ConcurrentExecution(_ConcurrentJobExecution):
 
     _supported_concurrency_mechanisms = ["asyncio", "threading", "multiprocessing"]
 
-    def __init__(
-        self, event_processor: Callable[[Event], Any], concurrency_mechanism=None, pass_context=None, **kwargs
-    ):
+    def __init__(self, event_processor: UserFunction, concurrency_mechanism=None, pass_context=None, **kwargs):
         super().__init__(**kwargs)
 
         self._event_processor = event_processor
 
         if concurrency_mechanism and concurrency_mechanism not in self._supported_concurrency_mechanisms:
             raise ValueError(f"Concurrency mechanism '{concurrency_mechanism}' is not supported")
-
-        if concurrency_mechanism == "multiprocessing" and pass_context:
-            try:
-                pickle.dumps(self.context)
-            except Exception as ex:
-                raise ValueError(
-                    'When concurrency_mechanism="multiprocessing" is used in conjunction with '
-                    "pass_context=True, context must be serializable"
-                ) from ex
 
         self._executor = None
         if concurrency_mechanism == "threading":
@@ -965,12 +964,20 @@ class ConcurrentExecution(_ConcurrentJobExecution):
 
     async def _process_event(self, event):
         args = [event]
-        if self._pass_context:
-            args.append(self.context)
         if self._executor:
-            result = await asyncio.get_running_loop().run_in_executor(self._executor, self._event_processor, *args)
+            func = self._event_processor.call
+            if isinstance(self._executor, ProcessPoolExecutor):
+                if self._pass_context:
+                    # dill, unlike pickle, is able to serialize function objects
+                    args.append(dill.dumps(self.context))
+                    func = self._event_processor._unpickle_context_and_call
+            elif self._pass_context:
+                args.append(self.context)
+            result = await asyncio.get_running_loop().run_in_executor(self._executor, func, *args)
         else:
-            result = self._event_processor(*args)
+            if self._pass_context:
+                args.append(self.context)
+            result = self._event_processor.call(*args)
         if asyncio.iscoroutine(result):
             result = await result
         return result
