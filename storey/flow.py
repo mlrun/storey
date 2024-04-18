@@ -919,6 +919,12 @@ class _ConcurrentJobExecution(Flow):
                     await self._worker_awaitable
 
 
+def _unpickle_context_and_call(function, *args):
+    event, context = args
+    context = dill.loads(context)
+    return function(event, context)
+
+
 class ConcurrentExecution(_ConcurrentJobExecution):
     """
     Inherit this class and override `process_event()` to process events concurrently.
@@ -936,12 +942,6 @@ class ConcurrentExecution(_ConcurrentJobExecution):
     """
 
     _supported_concurrency_mechanisms = ["asyncio", "threading", "multiprocessing"]
-
-    @staticmethod
-    def _unpickle_context_and_call(function, *args):
-        event, context = args
-        context = dill.loads(context)
-        return function(event, context)
 
     def __init__(self, event_processor: Callable, concurrency_mechanism=None, pass_context=None, **kwargs):
         super().__init__(**kwargs)
@@ -968,7 +968,7 @@ class ConcurrentExecution(_ConcurrentJobExecution):
                 if isinstance(self._executor, ProcessPoolExecutor):
                     # dill, unlike pickle, is able to serialize function objects
                     context = dill.dumps(self.context)
-                    func = functools.partial(self._unpickle_context_and_call, self._event_processor)
+                    func = functools.partial(_unpickle_context_and_call, self._event_processor)
                 args.append(context)
             result = await asyncio.get_running_loop().run_in_executor(self._executor, func, *args)
         else:
