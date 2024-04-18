@@ -966,13 +966,13 @@ class ConcurrentExecution(_ConcurrentJobExecution):
         args = [event]
         if self._executor:
             func = self._event_processor.call
-            if isinstance(self._executor, ProcessPoolExecutor):
-                if self._pass_context:
+            context = self.context
+            if self._pass_context:
+                if isinstance(self._executor, ProcessPoolExecutor):
                     # dill, unlike pickle, is able to serialize function objects
-                    args.append(dill.dumps(self.context))
+                    context = dill.dumps(self.context)
                     func = self._event_processor._unpickle_context_and_call
-            elif self._pass_context:
-                args.append(self.context)
+                args.append(context)
             result = await asyncio.get_running_loop().run_in_executor(self._executor, func, *args)
         else:
             if self._pass_context:
