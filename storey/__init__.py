@@ -54,7 +54,6 @@ from .flow import Recover  # noqa: F401
 from .flow import Reduce  # noqa: F401
 from .flow import Rename  # noqa: F401
 from .flow import SendToHttp  # noqa: F401
-from .flow import UserFunction  # noqa: F401
 from .flow import build_flow  # noqa: F401
 from .sources import AsyncEmitSource  # noqa: F401
 from .sources import CSVSource  # noqa: F401

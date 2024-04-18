@@ -15,6 +15,7 @@
 import asyncio
 import copy
 import datetime
+import functools
 import inspect
 import time
 import traceback
@@ -918,16 +919,6 @@ class _ConcurrentJobExecution(Flow):
                     await self._worker_awaitable
 
 
-class UserFunction:
-    def call(self, *args):
-        raise NotImplementedError()
-
-    def _unpickle_context_and_call(self, *args):
-        event, context = args
-        context = dill.loads(context)
-        return self.call(event, context)
-
-
 class ConcurrentExecution(_ConcurrentJobExecution):
     """
     Inherit this class and override `process_event()` to process events concurrently.
@@ -946,7 +937,13 @@ class ConcurrentExecution(_ConcurrentJobExecution):
 
     _supported_concurrency_mechanisms = ["asyncio", "threading", "multiprocessing"]
 
-    def __init__(self, event_processor: UserFunction, concurrency_mechanism=None, pass_context=None, **kwargs):
+    @staticmethod
+    def _unpickle_context_and_call(function, *args):
+        event, context = args
+        context = dill.loads(context)
+        return function(event, context)
+
+    def __init__(self, event_processor: Callable, concurrency_mechanism=None, pass_context=None, **kwargs):
         super().__init__(**kwargs)
 
         self._event_processor = event_processor
@@ -965,19 +962,19 @@ class ConcurrentExecution(_ConcurrentJobExecution):
     async def _process_event(self, event):
         args = [event]
         if self._executor:
-            func = self._event_processor.call
+            func = self._event_processor
             context = self.context
             if self._pass_context:
                 if isinstance(self._executor, ProcessPoolExecutor):
                     # dill, unlike pickle, is able to serialize function objects
                     context = dill.dumps(self.context)
-                    func = self._event_processor._unpickle_context_and_call
+                    func = functools.partial(self._unpickle_context_and_call, self._event_processor)
                 args.append(context)
             result = await asyncio.get_running_loop().run_in_executor(self._executor, func, *args)
         else:
             if self._pass_context:
                 args.append(self.context)
-            result = self._event_processor.call(*args)
+            result = self._event_processor(*args)
         if asyncio.iscoroutine(result):
             result = await result
         return result
