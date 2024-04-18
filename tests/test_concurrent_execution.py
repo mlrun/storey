@@ -21,28 +21,27 @@ async def process_event_slow_asyncio(event, context):
     return event
 
 
-def process_even_slow_io(event, context):
+def process_event_slow_io(event, context):
     assert isinstance(context, SomeContext) and callable(context.fn)
     time.sleep(event_processing_duration)
     return event
 
 
-def process_event_slow_processing(event, context):
-    assert isinstance(context, SomeContext) and callable(context.fn)
+def process_event_slow_processing(event):
     start = time.monotonic()
     while time.monotonic() - start < event_processing_duration:
         pass
     return event
 
 
-async def async_test_concurrent_execution(concurrency_mechanism, event_processor):
+async def async_test_concurrent_execution(concurrency_mechanism, event_processor, pass_context):
     controller = build_flow(
         [
             AsyncEmitSource(),
             ConcurrentExecution(
                 event_processor=event_processor,
                 concurrency_mechanism=concurrency_mechanism,
-                pass_context=True,
+                pass_context=pass_context,
                 max_in_flight=10,
                 context=SomeContext(),
             ),
@@ -68,12 +67,12 @@ async def async_test_concurrent_execution(concurrency_mechanism, event_processor
 
 
 @pytest.mark.parametrize(
-    ["concurrency_mechanism", "event_processor"],
+    ["concurrency_mechanism", "event_processor", "pass_context"],
     [
-        ("asyncio", process_event_slow_asyncio),
-        ("threading", process_even_slow_io),
-        ("multiprocessing", process_event_slow_processing),
+        ("asyncio", process_event_slow_asyncio, True),
+        ("threading", process_event_slow_io, True),
+        ("multiprocessing", process_event_slow_processing, False),
     ],
 )
-def test_concurrent_execution(concurrency_mechanism, event_processor):
-    asyncio.run(async_test_concurrent_execution(concurrency_mechanism, event_processor))
+def test_concurrent_execution(concurrency_mechanism, event_processor, pass_context):
+    asyncio.run(async_test_concurrent_execution(concurrency_mechanism, event_processor, pass_context))
