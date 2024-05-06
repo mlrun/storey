@@ -12,3 +12,4 @@ redis~=4.3
 sqlalchemy~=1.4
 s3fs~=2023.9.2
 adlfs~=2023.9.0
+taospy>=2,<3

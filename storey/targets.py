@@ -23,6 +23,7 @@ import queue
 import random
 import traceback
 import uuid
+from io import StringIO
 from typing import Any, Callable, List, Optional, Tuple, Union
 from urllib.parse import urlparse
 
@@ -771,6 +772,111 @@ class TSDBTarget(_Batching, _Writer):
                 aggregation_granularity=self.aggr_granularity or "",
             )
         self._frames_client.write("tsdb", self._path, df)
+
+
+class TDEngineTarget(_Batching, _Writer):
+    """Writes incoming events to a TDEngine table.
+
+    :param url: TDEngine REST API URL.
+    :param user: Username with which to connect.
+    :param password: Password with which to connect.
+    :param database: Name of the database where events will be written.
+    :param table: Name of the table in the database where events will be written.
+    :param time_col: Name of the time column.
+    :param columns: List of column names to be passed to the DataFrame constructor. Use = notation for renaming fields
+        (e.g. write_this=event_field). Use $ notation to refer to metadata ($key, event_time=$time).
+    :param timeout: REST API timeout in seconds.
+    :param time_format: If time_col is a string column, and its format is not compatible with ISO-8601, use this
+        parameter to determine the expected format.
+    :param max_events: Maximum number of events to write at a time. If None (default), all events will be written on
+        flow termination, or after flush_after_seconds (if flush_after_seconds is set).
+    :type max_events: int
+    :param flush_after_seconds: Maximum number of seconds to hold events before they are written. If None (default), all
+        events will be written on flow termination, or after max_events are accumulated (if max_events is set).
+    :type flush_after_seconds: int
+    """
+
+    def __init__(
+        self,
+        url: str,
+        user: str,
+        password: str,
+        database: Optional[str],
+        table: str,
+        time_col: str,
+        columns: List[str],
+        timeout: Optional[int] = None,
+        time_format: Optional[str] = None,
+        **kwargs,
+    ):
+        kwargs["url"] = url
+        kwargs["user"] = user
+        kwargs["password"] = password
+        kwargs["database"] = database
+        kwargs["table"] = table
+        kwargs["time_col"] = time_col
+        kwargs["columns"] = columns
+        if timeout:
+            kwargs["timeout"] = timeout
+        if time_format:
+            kwargs["time_format"] = time_format
+        _Batching.__init__(self, **kwargs)
+        self._time_col = time_col
+        _Writer.__init__(
+            self,
+            [time_col] + columns,
+            infer_columns_from_data=False,
+            retain_dict=True,
+            time_field=time_col,
+            time_format=time_format,
+        )
+
+        self._url = url
+        self._user = user
+        self._password = password
+        self._database = database
+        self._table = table
+        self._timeout = timeout
+
+        self._connection = None
+
+    def _init(self):
+        import taosrest
+
+        _Batching._init(self)
+        _Writer._init(self)
+        self._connection = taosrest.connect(
+            url=self._url,
+            user=self._user,
+            password=self._password,
+            timeout=self._timeout or 30,
+        )
+
+    def _event_to_batch_entry(self, event):
+        return self._event_to_writer_entry(event)
+
+    async def _emit(self, batch, batch_key, batch_time, batch_events, last_event_time=None):
+        with StringIO() as b:
+            b.write("INSERT INTO ")
+            b.write(self._database)
+            b.write(".")
+            b.write(self._table)
+            b.write(" VALUES ")
+            for record in batch:
+                b.write("(")
+                for column_index in range(len(self._columns)):
+                    value = record.get(self._columns[column_index], "NULL")
+                    if isinstance(value, datetime.datetime):
+                        value = round(value.timestamp() * 1000)
+                    elif isinstance(value, str):
+                        value = f"'{value}'"
+                    b.write(str(value))
+                    if column_index < len(self._columns) - 1:
+                        b.write(",")
+                b.write(") ")
+            b.write(";")
+            insert_statement = b.getvalue()
+        self._connection.execute(insert_statement)
 
 
 class StreamTarget(Flow, _Writer):
