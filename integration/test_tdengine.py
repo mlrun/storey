@@ -12,7 +12,7 @@ from storey.targets import TDEngineTarget
 url = os.getenv("TDENGINE_URL")
 user = os.getenv("TDENGINE_USER")
 password = os.getenv("TDENGINE_PASSWORD")
-has_tdengine_credentials = all([url, user, password]) or url.startswith("taosws")
+has_tdengine_credentials = all([url, user, password]) or (url and url.startswith("taosws"))
 
 
 @pytest.fixture()
