@@ -777,9 +777,11 @@ class TSDBTarget(_Batching, _Writer):
 class TDEngineTarget(_Batching, _Writer):
     """Writes incoming events to a TDEngine table.
 
-    :param url: TDEngine REST API URL.
-    :param user: Username with which to connect.
-    :param password: Password with which to connect.
+    :param url: TDEngine Websocket or REST API URL.
+    :param user: Username with which to connect. This is ignored when url is a Websocket URL, which should already
+        contain the username.
+    :param password: Password with which to connect. This is ignored when url is a Websocket URL, which should already
+        contain the password.
     :param database: Name of the database where events will be written.
     :param table: Name of the table in the database where events will be written.
     :param time_col: Name of the time column.
@@ -799,8 +801,8 @@ class TDEngineTarget(_Batching, _Writer):
     def __init__(
         self,
         url: str,
-        user: str,
-        password: str,
+        user: Optional[str],
+        password: Optional[str],
         database: Optional[str],
         table: str,
         time_col: str,
@@ -809,6 +811,10 @@ class TDEngineTarget(_Batching, _Writer):
         time_format: Optional[str] = None,
         **kwargs,
     ):
+        parsed_url = urlparse(url)
+        if parsed_url.scheme not in ("taosws", "http", "https"):
+            raise ValueError("URL must start with taosws://, http://, or https://")
+
         kwargs["url"] = url
         kwargs["user"] = user
         kwargs["password"] = password
@@ -839,18 +845,30 @@ class TDEngineTarget(_Batching, _Writer):
         self._timeout = timeout
 
         self._connection = None
+        self._using_websocket = None
 
     def _init(self):
         import taosrest
 
         _Batching._init(self)
         _Writer._init(self)
-        self._connection = taosrest.connect(
-            url=self._url,
-            user=self._user,
-            password=self._password,
-            timeout=self._timeout or 30,
-        )
+
+        parsed_url = urlparse(self._url)
+
+        if parsed_url.scheme == "taosws":
+            import taosws
+
+            self._using_websocket = True
+            self._connection = taosws.connect(self._url)
+            self._connection.execute(f"USE {self._database}")
+        else:
+            self._using_websocket = False
+            self._connection = taosrest.connect(
+                url=self._url,
+                user=self._user,
+                password=self._password,
+                timeout=self._timeout or 30,
+            )
 
     def _event_to_batch_entry(self, event):
         return self._event_to_writer_entry(event)
@@ -858,8 +876,9 @@ class TDEngineTarget(_Batching, _Writer):
     async def _emit(self, batch, batch_key, batch_time, batch_events, last_event_time=None):
         with StringIO() as b:
             b.write("INSERT INTO ")
-            b.write(self._database)
-            b.write(".")
+            if not self._using_websocket:
+                b.write(self._database)
+                b.write(".")
             b.write(self._table)
             b.write(" VALUES ")
             for record in batch:
