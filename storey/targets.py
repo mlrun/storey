@@ -783,7 +783,12 @@ class TDEngineTarget(_Batching, _Writer):
     :param password: Password with which to connect. This is ignored when url is a Websocket URL, which should already
         contain the password.
     :param database: Name of the database where events will be written.
-    :param table: Name of the table in the database where events will be written.
+    :param table: Name of the table in the database where events will be written. To set the table dynamically on a
+        per-event basis, use the $ prefix to indicate the field that should be used for the table name, or $$ prefix to
+        indicate the event attribute (e.g. key or path) that should be used.
+    :param dynamic_table: Alternative to the table parameter (exactly one of these must be set). The name of the field
+        in the event body to use for the table, or the name of the event attribute preceded by a dollar sign (e.g.
+        $key or $path).
     :param time_col: Name of the time column.
     :param columns: List of column names to be passed to the DataFrame constructor. Use = notation for renaming fields
         (e.g. write_this=event_field). Use $ notation to refer to metadata ($key, event_time=$time).
@@ -804,7 +809,8 @@ class TDEngineTarget(_Batching, _Writer):
         user: Optional[str],
         password: Optional[str],
         database: Optional[str],
-        table: str,
+        table: Optional[str],
+        dynamic_table: Optional[str],
         time_col: str,
         columns: List[str],
         timeout: Optional[int] = None,
@@ -814,6 +820,12 @@ class TDEngineTarget(_Batching, _Writer):
         parsed_url = urlparse(url)
         if parsed_url.scheme not in ("taosws", "http", "https"):
             raise ValueError("URL must start with taosws://, http://, or https://")
+
+        if table and dynamic_table:
+            raise ValueError("Cannot set both table and dynamic_table")
+
+        if not table and not dynamic_table:
+            raise ValueError("table or dynamic_table must be set")
 
         kwargs["url"] = url
         kwargs["user"] = user
@@ -826,6 +838,13 @@ class TDEngineTarget(_Batching, _Writer):
             kwargs["timeout"] = timeout
         if time_format:
             kwargs["time_format"] = time_format
+
+        self._table = table
+
+        if dynamic_table:
+            kwargs["key_field"] = dynamic_table
+            kwargs["drop_key_field"] = True
+
         _Batching.__init__(self, **kwargs)
         self._time_col = time_col
         _Writer.__init__(
@@ -841,7 +860,6 @@ class TDEngineTarget(_Batching, _Writer):
         self._user = user
         self._password = password
         self._database = database
-        self._table = table
         self._timeout = timeout
 
         self._connection = None
@@ -879,7 +897,10 @@ class TDEngineTarget(_Batching, _Writer):
             if not self._using_websocket:
                 b.write(self._database)
                 b.write(".")
-            b.write(self._table)
+            if self._table:
+                b.write(self._table)
+            else:  # table is dynamic
+                b.write(batch_key)
             b.write(" VALUES ")
             for record in batch:
                 b.write("(")

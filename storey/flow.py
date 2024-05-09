@@ -1036,6 +1036,7 @@ class _Batching(Flow):
         max_events: Optional[int] = None,
         flush_after_seconds: Union[int, float, None] = None,
         key_field: Optional[Union[str, Callable[[Event], str]]] = None,
+        drop_key_field=False,
         **kwargs,
     ):
         if max_events:
@@ -1052,7 +1053,7 @@ class _Batching(Flow):
         if self._flush_after_seconds is not None and self._flush_after_seconds < 0:
             raise ValueError("flush_after_seconds cannot be negative")
 
-        self._extract_key: Optional[Callable[[Event], str]] = self._create_key_extractor(key_field)
+        self._extract_key: Optional[Callable[[Event], str]] = self._create_key_extractor(key_field, drop_key_field)
 
     def _init(self):
         super()._init()
@@ -1065,14 +1066,17 @@ class _Batching(Flow):
         self._timeout_task: Optional[Task] = None
 
     @staticmethod
-    def _create_key_extractor(key_field) -> Callable:
+    def _create_key_extractor(key_field, drop_key_field) -> Callable:
         if key_field is None:
             return lambda event: None
         elif callable(key_field):
             return key_field
         elif isinstance(key_field, str):
-            if key_field == "$key":
-                return lambda event: event.key
+            if key_field.startswith("$"):
+                attribute = key_field[1:]
+                return lambda event: getattr(event, attribute)
+            elif drop_key_field:
+                return lambda event: event.body.pop(key_field)
             else:
                 return lambda event: event.body[key_field]
         else:
@@ -1159,8 +1163,8 @@ class Batch(_Batching):
     :param flush_after_seconds: Maximum number of seconds to wait before a batch is emitted.
     :param key: The key by which events are grouped. By default (None), events are not grouped.
         Other options may be:
-        Set a '$key' to group events by the Event.key property.
-        set a 'str' key to group events by Event.body[str].
+        Set to '$x' to group events by the x attribute of the event. E.g. "$key" or "$path".
+        set to other string 'str' to group events by Event.body[str].
         set a Callable[Any, Any] to group events by a a custom key extractor.
     """
 

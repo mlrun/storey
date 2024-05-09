@@ -60,8 +60,9 @@ def tdengine():
     connection.close()
 
 
+@pytest.mark.parametrize("dynamic_table", [None, "$key", "table"])
 @pytest.mark.skipif(not has_tdengine_credentials, reason="Missing TDEngine URL, user, and/or password")
-def test_tdengine_target(tdengine):
+def test_tdengine_target(tdengine, dynamic_table):
     connection, url, user, password, db_name, table_name, db_prefix = tdengine
     time_format = "%d/%m/%y %H:%M:%S UTC%z"
     controller = build_flow(
@@ -72,7 +73,8 @@ def test_tdengine_target(tdengine):
                 user=user,
                 password=password,
                 database=db_name,
-                table=table_name,
+                table=None if dynamic_table else table_name,
+                dynamic_table=dynamic_table,
                 time_col="time",
                 columns=["my_int", "my_string"],
                 time_format=time_format,
@@ -84,7 +86,13 @@ def test_tdengine_target(tdengine):
     date_time_str = "18/09/19 01:55:1"
     for i in range(9):
         timestamp = f"{date_time_str}{i} UTC-0000"
-        controller.emit({"time": timestamp, "my_int": i, "my_string": f"hello{i}"})
+        event_body = {"time": timestamp, "my_int": i, "my_string": f"hello{i}"}
+        event_key = None
+        if dynamic_table == "$key":
+            event_key = table_name
+        elif dynamic_table:
+            event_body[dynamic_table] = table_name
+        controller.emit(event_body, event_key)
 
     controller.terminate()
     controller.await_termination()
