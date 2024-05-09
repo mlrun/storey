@@ -2,6 +2,7 @@ import os
 from datetime import datetime
 
 import pytest
+import pytz
 import taosrest
 from taosrest import ConnectError
 from taosws import QueryError
@@ -98,27 +99,31 @@ def test_tdengine_target(tdengine, dynamic_table):
     controller.await_termination()
 
     result = connection.query(f"SELECT * FROM {db_prefix}{table_name};")
-    if url.startswith("taosws"):
-        result_list = []
-        for row in result:
-            row = list(row)
-            for field_index, field in enumerate(result.fields):
-                if field.type() == "TIMESTAMP":
+    result_list = []
+    for row in result:
+        row = list(row)
+        for field_index, field in enumerate(result.fields):
+            typ = field.type() if url.startswith("taosws") else field["type"]
+            if typ == "TIMESTAMP":
+                if url.startswith("taosws"):
                     t = datetime.fromisoformat(row[field_index])
-                    # REST API returns a naive timestamp, but websocket returns a timestamp with a time zone
-                    t = t.replace(tzinfo=None)
+                    # websocket returns a timestamp with the local time zone
+                    t = t.astimezone(pytz.UTC).replace(tzinfo=None)
                     row[field_index] = t
-            result_list.append(row)
-    else:
-        result_list = result.data
+                else:
+                    t = row[field_index]
+                    # REST API returns a naive timestamp matching the local time zone
+                    t = t.astimezone(pytz.UTC).replace(tzinfo=None)
+                    row[field_index] = t
+        result_list.append(row)
     assert result_list == [
-        [datetime(2019, 9, 18, 9, 55, 10), 0, "hello0"],
-        [datetime(2019, 9, 18, 9, 55, 11), 1, "hello1"],
-        [datetime(2019, 9, 18, 9, 55, 12), 2, "hello2"],
-        [datetime(2019, 9, 18, 9, 55, 13), 3, "hello3"],
-        [datetime(2019, 9, 18, 9, 55, 14), 4, "hello4"],
-        [datetime(2019, 9, 18, 9, 55, 15), 5, "hello5"],
-        [datetime(2019, 9, 18, 9, 55, 16), 6, "hello6"],
-        [datetime(2019, 9, 18, 9, 55, 17), 7, "hello7"],
-        [datetime(2019, 9, 18, 9, 55, 18), 8, "hello8"],
+        [datetime(2019, 9, 18, 1, 55, 10), 0, "hello0"],
+        [datetime(2019, 9, 18, 1, 55, 11), 1, "hello1"],
+        [datetime(2019, 9, 18, 1, 55, 12), 2, "hello2"],
+        [datetime(2019, 9, 18, 1, 55, 13), 3, "hello3"],
+        [datetime(2019, 9, 18, 1, 55, 14), 4, "hello4"],
+        [datetime(2019, 9, 18, 1, 55, 15), 5, "hello5"],
+        [datetime(2019, 9, 18, 1, 55, 16), 6, "hello6"],
+        [datetime(2019, 9, 18, 1, 55, 17), 7, "hello7"],
+        [datetime(2019, 9, 18, 1, 55, 18), 8, "hello8"],
     ]
