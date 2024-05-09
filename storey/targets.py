@@ -843,7 +843,8 @@ class TDEngineTarget(_Batching, _Writer):
 
         if dynamic_table:
             kwargs["key_field"] = dynamic_table
-            kwargs["drop_key_field"] = True
+            if kwargs.get("drop_key_field") is None:
+                kwargs["drop_key_field"] = True
 
         _Batching.__init__(self, **kwargs)
         self._time_col = time_col
