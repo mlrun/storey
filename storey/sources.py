@@ -355,6 +355,7 @@ class SyncEmitSource(Flow):
                     self.logger.error(f"{message}: {traceback.format_exc()}")
                 if event is not _termination_obj and event._awaitable_result:
                     event._awaitable_result._set_error(ex)
+                traceback.print_exc()
                 self._ex = ex
                 if not self._q.empty():
                     event = self._q.get()

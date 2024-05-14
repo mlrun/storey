@@ -778,6 +778,9 @@ class TDEngineTarget(_Batching, _Writer):
     """Writes incoming events to a TDEngine table.
 
     :param url: TDEngine Websocket or REST API URL.
+    :param time_col: Name of the time column.
+    :param columns: List of column names to be passed to the DataFrame constructor. Use = notation for renaming fields
+        (e.g. write_this=event_field). Use $ notation to refer to metadata ($key, event_time=$time).
     :param user: Username with which to connect. This is ignored when url is a Websocket URL, which should already
         contain the username.
     :param password: Password with which to connect. This is ignored when url is a Websocket URL, which should already
@@ -786,12 +789,13 @@ class TDEngineTarget(_Batching, _Writer):
     :param table: Name of the table in the database where events will be written. To set the table dynamically on a
         per-event basis, use the $ prefix to indicate the field that should be used for the table name, or $$ prefix to
         indicate the event attribute (e.g. key or path) that should be used.
-    :param dynamic_table: Alternative to the table parameter (exactly one of these must be set). The name of the field
+    :param table_col: Alternative to the table parameter (exactly one of these must be set). The name of the field
         in the event body to use for the table, or the name of the event attribute preceded by a dollar sign (e.g.
         $key or $path).
-    :param time_col: Name of the time column.
-    :param columns: List of column names to be passed to the DataFrame constructor. Use = notation for renaming fields
-        (e.g. write_this=event_field). Use $ notation to refer to metadata ($key, event_time=$time).
+    :param supertable: The supertable associated with the writes. Must be specified together with tag_cols or not at
+        all.
+    :param tag_cols: List of column names to be used as tags. Must be specified together with supertable or not at
+        all.
     :param timeout: REST API timeout in seconds.
     :param time_format: If time_col is a string column, and its format is not compatible with ISO-8601, use this
         parameter to determine the expected format.
@@ -806,13 +810,15 @@ class TDEngineTarget(_Batching, _Writer):
     def __init__(
         self,
         url: str,
-        user: Optional[str],
-        password: Optional[str],
-        database: Optional[str],
-        table: Optional[str],
-        dynamic_table: Optional[str],
         time_col: str,
         columns: List[str],
+        user: Optional[str] = None,
+        password: Optional[str] = None,
+        database: Optional[str] = None,
+        table: Optional[str] = None,
+        table_col: Optional[str] = None,
+        supertable: Optional[str] = None,
+        tag_cols: Union[str, List[str], None] = None,
         timeout: Optional[int] = None,
         time_format: Optional[str] = None,
         **kwargs,
@@ -821,42 +827,60 @@ class TDEngineTarget(_Batching, _Writer):
         if parsed_url.scheme not in ("taosws", "http", "https"):
             raise ValueError("URL must start with taosws://, http://, or https://")
 
-        if table and dynamic_table:
-            raise ValueError("Cannot set both table and dynamic_table")
+        if table and table_col:
+            raise ValueError("Cannot set both table and table_col")
 
-        if not table and not dynamic_table:
-            raise ValueError("table or dynamic_table must be set")
+        if not table and not table_col:
+            raise ValueError("table or table_col must be set")
+
+        if supertable and not tag_cols:
+            raise ValueError("supertable must be used in conjunction with tag_cols")
+
+        if tag_cols and not supertable:
+            raise ValueError("tag_cols must be used in conjunction with supertable")
 
         kwargs["url"] = url
-        kwargs["user"] = user
-        kwargs["password"] = password
-        kwargs["database"] = database
-        kwargs["table"] = table
         kwargs["time_col"] = time_col
         kwargs["columns"] = columns
+        if user:
+            kwargs["user"] = user
+        if password:
+            kwargs["password"] = password
+        if database:
+            kwargs["database"] = database
+        if table:
+            kwargs["table"] = table
+        if table_col:
+            kwargs["table_col"] = table_col
+        if supertable:
+            kwargs["supertable"] = supertable
+        if tag_cols:
+            kwargs["tag_cols"] = tag_cols
         if timeout:
             kwargs["timeout"] = timeout
         if time_format:
             kwargs["time_format"] = time_format
 
         self._table = table
+        self._supertable = supertable
 
-        if dynamic_table:
-            kwargs["key_field"] = dynamic_table
+        if table_col:
+            kwargs["key_field"] = table_col
             if kwargs.get("drop_key_field") is None:
                 kwargs["drop_key_field"] = True
 
         _Batching.__init__(self, **kwargs)
         self._time_col = time_col
+        tag_cols = tag_cols or []
+        self._number_of_tags = len(tag_cols)
         _Writer.__init__(
             self,
-            [time_col] + columns,
+            tag_cols + [time_col] + columns,
             infer_columns_from_data=False,
             retain_dict=True,
             time_field=time_col,
             time_format=time_format,
         )
-
         self._url = url
         self._user = user
         self._password = password
@@ -892,6 +916,14 @@ class TDEngineTarget(_Batching, _Writer):
     def _event_to_batch_entry(self, event):
         return self._event_to_writer_entry(event)
 
+    @staticmethod
+    def _sanitize_value(value):
+        if isinstance(value, datetime.datetime):
+            value = round(value.timestamp() * 1000)
+        elif isinstance(value, str):
+            value = f"'{value}'"
+        return str(value)
+
     async def _emit(self, batch, batch_key, batch_time, batch_events, last_event_time=None):
         with StringIO() as b:
             b.write("INSERT INTO ")
@@ -902,16 +934,26 @@ class TDEngineTarget(_Batching, _Writer):
                 b.write(self._table)
             else:  # table is dynamic
                 b.write(batch_key)
+            if self._supertable:
+                b.write(" USING ")
+                if not self._using_websocket:
+                    b.write(self._database)
+                    b.write(".")
+                b.write(self._supertable)
+            if self._number_of_tags:
+                b.write(" TAGS (")
+                for column_index in range(self._number_of_tags):
+                    value = batch[0].get(self._columns[column_index], "NULL")
+                    b.write(self._sanitize_value(value))
+                    if column_index < self._number_of_tags - 1:
+                        b.write(",")
+                b.write(")")
             b.write(" VALUES ")
             for record in batch:
                 b.write("(")
-                for column_index in range(len(self._columns)):
+                for column_index in range(self._number_of_tags, len(self._columns)):
                     value = record.get(self._columns[column_index], "NULL")
-                    if isinstance(value, datetime.datetime):
-                        value = round(value.timestamp() * 1000)
-                    elif isinstance(value, str):
-                        value = f"'{value}'"
-                    b.write(str(value))
+                    b.write(self._sanitize_value(value))
                     if column_index < len(self._columns) - 1:
                         b.write(",")
                 b.write(") ")
