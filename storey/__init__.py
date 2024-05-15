@@ -68,6 +68,7 @@ from .targets import KafkaTarget  # noqa: F401
 from .targets import NoSqlTarget  # noqa: F401
 from .targets import ParquetTarget  # noqa: F401
 from .targets import StreamTarget  # noqa: F401
+from .targets import TDEngineTarget  # noqa: F401
 from .targets import TSDBTarget  # noqa: F401
 
 # clear module namespace
