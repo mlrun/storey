@@ -940,7 +940,6 @@ class TDEngineTarget(_Batching, _Writer):
                     b.write(self._database)
                     b.write(".")
                 b.write(self._supertable)
-            if self._number_of_tags:
                 b.write(" TAGS (")
                 for column_index in range(self._number_of_tags):
                     value = batch[0].get(self._columns[column_index], "NULL")
