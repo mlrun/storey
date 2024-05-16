@@ -866,7 +866,7 @@ class TDEngineTarget(_Batching, _Writer):
 
         if table_col:
             kwargs["key_field"] = table_col
-            if kwargs.get("drop_key_field") is None:
+            if kwargs.get("drop_key_field") is None and table_col not in columns and table_col not in tag_cols:
                 kwargs["drop_key_field"] = True
 
         _Batching.__init__(self, **kwargs)
