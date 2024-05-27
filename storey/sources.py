@@ -19,7 +19,6 @@ import queue
 import threading
 import time
 import traceback
-import uuid
 import warnings
 import weakref
 from collections import defaultdict
@@ -34,7 +33,7 @@ import pytz
 from nuclio_sdk import QualifiedOffset
 
 from .dtypes import Event, _termination_obj
-from .flow import Complete, Flow
+from .flow import Complete, Flow, WithUUID
 from .queue import SimpleAsyncQueue
 from .utils import find_filters, find_partitions, url_to_file_system
 
@@ -92,20 +91,6 @@ def _convert_to_datetime(obj, time_format: Optional[str] = None):
             return datetime.strptime(obj, time_format)
     else:
         raise ValueError(f"Could not parse '{obj}' (of type {type(obj)}) as a time.")
-
-
-class WithUUID:
-    def __init__(self):
-        self._current_uuid_base = None
-        self._current_uuid_count = 0
-
-    def _get_uuid(self):
-        if not self._current_uuid_base or self._current_uuid_count == 1024:
-            self._current_uuid_base = uuid.uuid4().hex
-            self._current_uuid_count = 0
-        result = f"{self._current_uuid_base}-{self._current_uuid_count:04}"
-        self._current_uuid_count += 1
-        return result
 
 
 class FlowControllerBase(WithUUID):

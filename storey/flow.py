@@ -19,6 +19,7 @@ import inspect
 import pickle
 import time
 import traceback
+import uuid
 from asyncio import Task
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
@@ -329,6 +330,20 @@ class Flow:
                 if step._check_step_in_flow(type_to_check):
                     return True
         return False
+
+
+class WithUUID:
+    def __init__(self):
+        self._current_uuid_base = None
+        self._current_uuid_count = 0
+
+    def _get_uuid(self):
+        if not self._current_uuid_base or self._current_uuid_count == 1024:
+            self._current_uuid_base = uuid.uuid4().hex
+            self._current_uuid_count = 0
+        result = f"{self._current_uuid_base}-{self._current_uuid_count:04}"
+        self._current_uuid_count += 1
+        return result
 
 
 class Choice(Flow):
@@ -1153,7 +1168,7 @@ class _Batching(Flow):
             await self._emit_batch(key)
 
 
-class Batch(_Batching):
+class Batch(_Batching, WithUUID):
     """Batches events into lists of up to max_events events. Each emitted list contained max_events events, unless
     flush_after_seconds seconds have passed since the first event in the batch was received, at which the batch is
     emitted with potentially fewer than max_events event.
@@ -1170,8 +1185,12 @@ class Batch(_Batching):
 
     _do_downstream_per_event = False
 
+    def __init__(self, *args, **kwargs):
+        _Batching.__init__(self, *args, **kwargs)
+        WithUUID.__init__(self)
+
     async def _emit(self, batch, batch_key, batch_time, batch_events, last_event_time=None):
-        event = Event(batch)
+        event = Event(batch, id=self._get_uuid())
         if not self._full_event:
             # Preserve reference to the original events to avoid early commit of offsets
             event._original_events = batch_events

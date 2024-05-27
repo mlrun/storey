@@ -1768,7 +1768,7 @@ def test_batch():
         [
             SyncEmitSource(),
             Batch(4, 100),
-            Reduce([], lambda acc, x: append_and_return(acc, x)),
+            Reduce([], lambda acc, x: append_and_return(acc, x), full_event=True),
         ]
     ).run()
 
@@ -1776,7 +1776,13 @@ def test_batch():
         controller.emit(i)
     controller.terminate()
     termination_result = controller.await_termination()
-    assert termination_result == [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9]]
+    assert len(termination_result) == 3
+    assert termination_result[0].id
+    assert termination_result[0].body == [0, 1, 2, 3]
+    assert termination_result[1].id
+    assert termination_result[1].body == [4, 5, 6, 7]
+    assert termination_result[2].id
+    assert termination_result[2].body == [8, 9]
 
 
 def test_batch_full_event():
