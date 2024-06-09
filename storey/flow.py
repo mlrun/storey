@@ -950,6 +950,8 @@ class ConcurrentExecution(_ConcurrentJobExecution):
     :param backoff_factor: Wait time in seconds between retries (default 1)
     :param pass_context: If False, the process_event function will be called with just one parameter (event). If True,
       the process_event function will be called with two parameters (event, context). Defaults to False.
+    :param full_event: Whether event processor should receive and/or return Event objects (when True),
+        or only the payload (when False). Defaults to False.
     """
 
     _supported_concurrency_mechanisms = ["asyncio", "threading", "multiprocessing"]
@@ -962,6 +964,11 @@ class ConcurrentExecution(_ConcurrentJobExecution):
         **kwargs,
     ):
         super().__init__(**kwargs)
+
+        if concurrency_mechanism == "multiprocessing" and kwargs.get("full_event"):
+            raise ValueError(
+                'concurrency_mechanism="multiprocessing" may not be used in conjunction with full_event=True'
+            )
 
         self._event_processor = event_processor
 
@@ -986,16 +993,23 @@ class ConcurrentExecution(_ConcurrentJobExecution):
         self._pass_context = pass_context
 
     async def _process_event(self, event):
-        args = [event]
+        args = [event if self._full_event else event.body]
+
         if self._pass_context:
             args.append(self.context)
         if self._executor:
             result = await asyncio.get_running_loop().run_in_executor(self._executor, self._event_processor, *args)
         else:
             result = self._event_processor(*args)
+
         if asyncio.iscoroutine(result):
             result = await result
-        return result
+
+        if self._full_event:
+            return result
+        else:
+            event.body = result
+            return event
 
     async def _handle_completed(self, event, response):
         await self._do_downstream(response)
