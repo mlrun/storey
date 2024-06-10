@@ -358,7 +358,7 @@ class Choice(Flow):
     :type default: Flow
     :param name: Name of this step, as it should appear in logs. Defaults to class name (Choice).
     :type name: string
-    :param full_event: Whether user functions should receive and/or return Event objects (when True),
+    :param full_event: Whether user functions should receive and return Event objects (when True),
         or only the payload (when False). Defaults to False.
     :type full_event: boolean
     """
@@ -471,7 +471,7 @@ class Map(_UnaryFunctionFlow):
     :type long_running: boolean
     :param name: Name of this step, as it should appear in logs. Defaults to class name (Map).
     :type name: string
-    :param full_event: Whether user functions should receive and/or return Event objects (when True),
+    :param full_event: Whether user functions should receive and return Event objects (when True),
         or only the payload (when False). Defaults to False.
     :type full_event: boolean
     """
@@ -491,7 +491,7 @@ class Filter(_UnaryFunctionFlow):
     :type long_running: boolean
     :param name: Name of this step, as it should appear in logs. Defaults to class name (Filter).
     :type name: string
-    :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the
+    :param full_event: Whether user functions should receive and return Event objects (when True), or only the
         payload (when False). Defaults to False.
     :type full_event: boolean
     """
@@ -511,7 +511,7 @@ class FlatMap(_UnaryFunctionFlow):
     :type long_running: boolean
     :param name: Name of this step, as it should appear in logs. Defaults to class name (FlatMap).
     :type name: string
-    :param full_event: Whether user functions should receive and/or return Event objects (when True), or only
+    :param full_event: Whether user functions should receive and return Event objects (when True), or only
         the payload (when False). Defaults to False.
     :type full_event: boolean
     """
@@ -533,7 +533,7 @@ class Extend(_UnaryFunctionFlow):
     :type long_running: boolean
     :param name: Name of this step, as it should appear in logs. Defaults to class name (Extend).
     :type name: string
-    :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the
+    :param full_event: Whether user functions should receive and return Event objects (when True), or only the
         payload (when False). Defaults to False.
     :type full_event: boolean
     """
@@ -739,7 +739,7 @@ class Reduce(Flow):
     :type fn: Function ((object, Event) => object)
     :param name: Name of this step, as it should appear in logs. Defaults to class name (Reduce).
     :type name: string
-    :param full_event: Whether user functions should receive and/or return Event objects (when True),
+    :param full_event: Whether user functions should receive and return Event objects (when True),
         or only the payload (when False). Defaults to False.
     :type full_event: boolean
     """
@@ -950,7 +950,7 @@ class ConcurrentExecution(_ConcurrentJobExecution):
     :param backoff_factor: Wait time in seconds between retries (default 1)
     :param pass_context: If False, the process_event function will be called with just one parameter (event). If True,
       the process_event function will be called with two parameters (event, context). Defaults to False.
-    :param full_event: Whether event processor should receive and/or return Event objects (when True),
+    :param full_event: Whether event processor should receive and return Event objects (when True),
         or only the payload (when False). Defaults to False.
     """
 
@@ -1024,7 +1024,7 @@ class SendToHttp(_ConcurrentJobExecution):
     :type join_from_response: Function ((Event, HttpResponse)=>Event)
     :param name: Name of this step, as it should appear in logs. Defaults to class name (SendToHttp).
     :type name: string
-    :param full_event: Whether user functions should receive and/or return Event objects (when True),
+    :param full_event: Whether user functions should receive and return Event objects (when True),
         or only the payload (when False). Defaults to False.
     :type full_event: boolean
     """
@@ -1227,7 +1227,7 @@ class JoinWithV3IOTable(_ConcurrentJobExecution):
     :type attributes: string
     :param name: Name of this step, as it should appear in logs. Defaults to class name (JoinWithV3IOTable).
     :type name: string
-    :param full_event: Whether user functions should receive and/or return Event objects (when True), or only
+    :param full_event: Whether user functions should receive and return Event objects (when True), or only
         the payload (when False). Defaults to False.
     :type full_event: boolean
     """
@@ -1284,7 +1284,7 @@ class JoinWithTable(_ConcurrentJobExecution):
     :param join_function: Joins the original event with relevant data received from the storage. Event is dropped when
         this function returns None. Defaults to assume the event's body is a dict-like object and updating it.
     :param name: Name of this step, as it should appear in logs. Defaults to class name (JoinWithTable).
-    :param full_event: Whether user functions should receive and/or return Event objects (when True), or only the
+    :param full_event: Whether user functions should receive and return Event objects (when True), or only the
         payload (when False). Defaults to False.
     :param context: Context object that holds global configurations and secrets.
     """
