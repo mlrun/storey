@@ -319,7 +319,9 @@ class SyncEmitSource(Flow):
             if event is None:
                 event = await loop.run_in_executor(None, self._q.get)
             if committer and hasattr(event, "path") and hasattr(event, "shard_id") and hasattr(event, "offset"):
-                qualified_shard = (event.path, event.shard_id)
+                # ML-6065 – workaround for NUC-178
+                stream_path = event.stream_path if hasattr(event, "stream_path") else event.path
+                qualified_shard = (stream_path, event.shard_id)
                 offsets = self._outstanding_offsets[qualified_shard]
                 offsets.append(_EventOffset(event))
                 num_offsets_not_committed += 1
@@ -620,7 +622,9 @@ class AsyncEmitSource(Flow):
             if not event:
                 event = await self._q.get()
             if committer and hasattr(event, "path") and hasattr(event, "shard_id") and hasattr(event, "offset"):
-                qualified_shard = (event.path, event.shard_id)
+                # ML-6065 – workaround for NUC-178
+                stream_path = event.stream_path if hasattr(event, "stream_path") else event.path
+                qualified_shard = (stream_path, event.shard_id)
                 offsets = self._outstanding_offsets[qualified_shard]
                 offsets.append(_EventOffset(event))
                 num_offsets_not_handled += 1
