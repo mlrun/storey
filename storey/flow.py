@@ -947,7 +947,8 @@ class ConcurrentExecution(_ConcurrentJobExecution):
 
     :param max_in_flight: Maximum number of events to be processed at a time (default 8)
     :param retries: Maximum number of retries per event (default 0)
-    :param backoff_factor: Wait time in seconds between retries (default 1)
+    :param backoff_factor: Wait time in seconds before the first retry (default 1). Subsequent retries will each wait
+      twice as the previous retry, up to a maximum of two minutes.
     :param pass_context: If False, the process_event function will be called with just one parameter (event). If True,
       the process_event function will be called with two parameters (event, context). Defaults to False.
     :param full_event: Whether event processor should receive and return Event objects (when True),
