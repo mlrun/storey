@@ -1001,6 +1001,8 @@ class StreamTarget(Flow, _Writer):
 
         self._full_event = full_event
 
+        self._lazy_init_lock = None
+
     def _init(self):
         Flow._init(self)
         _Writer._init(self)
@@ -1110,30 +1112,40 @@ class StreamTarget(Flow, _Writer):
             self._worker_exited = True
             await self._storage.close()
 
+    async def _do_lazy_init(self):
+        status_code = await self._storage._create_stream(
+            self._container,
+            self._stream_path,
+            self._shards,
+            self._retention_period_hours,
+        )
+        if status_code == 409:
+            # get actual number of shards (for pre existing stream)
+            response = await self._storage._describe(self._container, self._stream_path)
+            self._shards = response.shard_count
+        elif status_code >= 400:
+            raise ValueError(f"Failed to create stream due to {status_code}: {response.body}")
+        if self._sharding_func is None:
+
+            def f(_):
+                return random.randint(0, self._shards - 1)
+
+            self._sharding_func = f
+
+        self._q = asyncio.queues.Queue(self._batch_size * self._shards)
+        self._worker_awaitable = asyncio.get_running_loop().create_task(self._worker())
+
     async def _lazy_init(self):
+        # Double-checked locking. Needed because await may yield control and allow for lazy init to be called
+        # pseudo-concurrently. Alternatively, we could set self._initialized to True before awaiting, but that would
+        # be incorrect in case an error is raised.
         if not self._initialized:
-            status_code = await self._storage._create_stream(
-                self._container,
-                self._stream_path,
-                self._shards,
-                self._retention_period_hours,
-            )
-            if status_code == 409:
-                # get actual number of shards (for pre existing stream)
-                response = await self._storage._describe(self._container, self._stream_path)
-                self._shards = response.shard_count
-            elif status_code >= 400:
-                raise ValueError(f"Failed to create stream due to {status_code}: {response.body}")
-            if self._sharding_func is None:
-
-                def f(_):
-                    return random.randint(0, self._shards - 1)
-
-                self._sharding_func = f
-
-            self._q = asyncio.queues.Queue(self._batch_size * self._shards)
-            self._worker_awaitable = asyncio.get_running_loop().create_task(self._worker())
-            self._initialized = True
+            if not self._lazy_init_lock:
+                self._lazy_init_lock = asyncio.Lock()
+            async with self._lazy_init_lock:
+                if not self._initialized:
+                    await self._do_lazy_init()
+                    self._initialized = True
 
     async def _do(self, event):
         await self._lazy_init()
