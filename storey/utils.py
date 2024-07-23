@@ -383,7 +383,7 @@ def unpack_event_if_wrapped(event):
 def wrap_event_for_serialization(event, record):
     record = {serialize_event_marker: True, "body": record}
     for field in event_fields_to_serialize:
-        val = getattr(event, field)
+        val = getattr(event, field, None)
         if val is not None:
             if isinstance(val, datetime):
                 val = datetime.isoformat(val)
