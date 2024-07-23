@@ -36,7 +36,7 @@ from . import Driver
 from .dtypes import Event, V3ioError
 from .flow import Flow, _Batching, _split_path, _termination_obj
 from .table import Table, _PersistJob
-from .utils import stringify_key, url_to_file_system
+from .utils import stringify_key, url_to_file_system, wrap_event_for_serialization
 
 
 class _Writer:
@@ -1089,7 +1089,7 @@ class StreamTarget(Flow, _Writer):
                     shard_id %= self._shards
                     record = self._event_to_writer_entry(event)
                     if self._full_event:
-                        record = Event.wrap_for_serialization(event, record)
+                        record = wrap_event_for_serialization(event, record)
                     buffers[shard_id].append(record)
                     buffer_events[shard_id].append(event)
                     if len(buffers[shard_id]) >= self._batch_size:
@@ -1248,7 +1248,7 @@ class KafkaTarget(Flow, _Writer):
                 key = stringify_key(event.key).encode("UTF-8")
             record = self._event_to_writer_entry(event)
             if self._full_event:
-                record = Event.wrap_for_serialization(event, record)
+                record = wrap_event_for_serialization(event, record)
             record = json.dumps(record, default=str).encode("UTF-8")
             partition = None
             if self._sharding_func:

@@ -17,12 +17,18 @@ import hashlib
 import os
 import struct
 from array import array
+from datetime import datetime
+from typing import Optional
 from urllib.parse import urlparse
 
 import fsspec
+import pytz
 
 bucketPerWindow = 2
 schema_file_name = ".schema"
+
+serialize_event_marker = "full_event_wrapper"
+event_fields_to_serialize = ["key", "id"]
 
 
 def parse_duration(string_time):
@@ -344,3 +350,42 @@ def find_filters(partitions_time_attributes, start, end, filters, filter_column)
         filters,
         filter_column,
     )
+
+
+def _convert_to_datetime(obj, time_format: Optional[str] = None):
+    if isinstance(obj, datetime):
+        return obj
+    elif isinstance(obj, float) or isinstance(obj, int):
+        return datetime.fromtimestamp(obj, tz=pytz.utc)
+    elif isinstance(obj, str):
+        if time_format is None:
+            return datetime.fromisoformat(obj)
+        else:
+            return datetime.strptime(obj, time_format)
+    else:
+        raise ValueError(f"Could not parse '{obj}' (of type {type(obj)}) as a time.")
+
+
+def unpack_event_if_wrapped(event):
+    if isinstance(event.body, dict) and event.body.get(serialize_event_marker):
+        serialized_event = event.body
+        body = serialized_event.get("body")
+        event.body = body
+        for field in event_fields_to_serialize:
+            val = serialized_event.get(field)
+            if val is not None:
+                val = serialized_event.get(field)
+                if val is not None:
+                    setattr(event, field, val)
+    return event
+
+
+def wrap_event_for_serialization(event, record):
+    record = {serialize_event_marker: True, "body": record}
+    for field in event_fields_to_serialize:
+        val = getattr(event, field)
+        if val is not None:
+            if isinstance(val, datetime):
+                val = datetime.isoformat(val)
+            record[field] = val
+    return record

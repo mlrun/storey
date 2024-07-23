@@ -35,7 +35,12 @@ from nuclio_sdk import QualifiedOffset
 from .dtypes import Event, _termination_obj
 from .flow import Complete, Flow, WithUUID
 from .queue import SimpleAsyncQueue
-from .utils import find_filters, find_partitions, url_to_file_system
+from .utils import (
+    find_filters,
+    find_partitions,
+    unpack_event_if_wrapped,
+    url_to_file_system,
+)
 
 
 class AwaitableResult:
@@ -79,20 +84,6 @@ class AwaitableResult:
         self._set_result(ex)
 
 
-def _convert_to_datetime(obj, time_format: Optional[str] = None):
-    if isinstance(obj, datetime):
-        return obj
-    elif isinstance(obj, float) or isinstance(obj, int):
-        return datetime.fromtimestamp(obj, tz=pytz.utc)
-    elif isinstance(obj, str):
-        if time_format is None:
-            return datetime.fromisoformat(obj)
-        else:
-            return datetime.strptime(obj, time_format)
-    else:
-        raise ValueError(f"Could not parse '{obj}' (of type {type(obj)}) as a time.")
-
-
 class FlowControllerBase(WithUUID):
     def __init__(
         self,
@@ -106,20 +97,8 @@ class FlowControllerBase(WithUUID):
     def _build_event(self, element, key):
         element_is_event = hasattr(element, "id")
         if element_is_event:
-            if isinstance(element.body, dict) and element.body.get(Event._serialize_event_marker):
-                serialized_event = element.body
-                body = serialized_event.get("body")
-                element.body = body
-                for field in Event._serialize_fields:
-                    val = serialized_event.get(field)
-                    if val is not None:
-                        val = serialized_event.get(field)
-                        if val is not None:
-                            if field == "time":
-                                val = _convert_to_datetime(val)
-                            setattr(element, field, val)
-            else:
-                body = element.body
+            element = unpack_event_if_wrapped(element)
+            body = element.body
             if not hasattr(element, "processing_time"):
                 if hasattr(element, "timestamp"):
                     element.processing_time = element.timestamp

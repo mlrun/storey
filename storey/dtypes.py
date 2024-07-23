@@ -41,9 +41,6 @@ class Event:
     :type awaitable_result: AwaitableResult (Optional)
     """
 
-    _serialize_event_marker = "full_event_wrapper"
-    _serialize_fields = ["key", "id"]
-
     def __init__(
         self,
         body: object,
@@ -92,17 +89,6 @@ class Event:
 
     def __str__(self):
         return f"Event(id={self.id}, key={str(self.key)}, body={self.body})"
-
-    @staticmethod
-    def wrap_for_serialization(event, record):
-        record = {Event._serialize_event_marker: True, "body": record}
-        for field in Event._serialize_fields:
-            val = getattr(event, field)
-            if val is not None:
-                if isinstance(val, datetime):
-                    val = datetime.isoformat(val)
-                record[field] = val
-        return record
 
 
 class V3ioError(Exception):
