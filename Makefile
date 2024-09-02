@@ -40,6 +40,7 @@ fmt:
 .PHONY: lint
 lint: flake8 fmt-check
 
+
 .PHONY: fmt-check
 fmt-check:
 	@echo "Running black check..."
