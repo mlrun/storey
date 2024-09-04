@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
+
 from setuptools import find_packages, setup
 
 
@@ -59,6 +59,7 @@ setup(
     license="Apache",
     url="https://github.com/mlrun/storey",
     packages=find_packages(),
+    python_requires=">=3.9",
     install_requires=install_requires,
     extras_require=extras_require,
     classifiers=[
@@ -69,9 +70,7 @@ setup(
         "Operating System :: Microsoft :: Windows",
         "Operating System :: MacOS",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.6",
-        "Programming Language :: Python :: 3.7",
-        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
         "Programming Language :: Python",
         "Topic :: Software Development :: Libraries :: Python Modules",
         "Topic :: Software Development :: Libraries",
