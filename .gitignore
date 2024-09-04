@@ -4,3 +4,4 @@ dist/
 venv/
 *.coverage
 coverage_reports/
+.DS_Store
