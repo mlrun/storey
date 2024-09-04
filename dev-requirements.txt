@@ -6,6 +6,8 @@ isort~=5.7
 pytest~=5.4.3
 coverage~=7.5
 pytest-benchmark~=3.2.3
+# Note: you might need a Lua installation to install lupa on Mac.
+# brew install lua
 lupa~=1.13
 fakeredis~=1.9
 redis~=4.3
