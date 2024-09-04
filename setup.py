@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from setuptools import find_packages, setup
+from setuptools import setup
 
 
 def version() -> str:
@@ -59,7 +59,7 @@ setup(
     author_email="yaronh@iguazio.com",
     license="Apache",
     url="https://github.com/mlrun/storey",
-    packages=find_packages(),
+    packages=["storey"],
     python_requires=">=3.9",
     install_requires=install_requires,
     extras_require=extras_require,
