@@ -15,12 +15,13 @@
 from setuptools import find_packages, setup
 
 
-def version():
+def version() -> str:
     with open("storey/__init__.py") as fp:
         for line in fp:
             if line.startswith("__version__"):
                 _, version = line.split("=")
                 return version.replace('"', "").strip()
+    raise ValueError("Could not find package version")
 
 
 def load_deps(file_name):
