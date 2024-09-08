@@ -12,6 +12,8 @@ user = os.getenv("TDENGINE_USER")
 password = os.getenv("TDENGINE_PASSWORD")
 has_tdengine_credentials = all([url, user, password]) or (url and url.startswith("taosws://"))
 
+pytestmark = pytest.mark.skipif(not has_tdengine_credentials, reason="Missing TDEngine URL, user, and/or password")
+
 
 @pytest.fixture()
 def tdengine():
@@ -49,7 +51,6 @@ def tdengine():
 
 
 @pytest.mark.parametrize("table_col", [None, "$key", "table"])
-@pytest.mark.skipif(not has_tdengine_credentials, reason="Missing TDEngine URL, user, and/or password")
 def test_tdengine_target(tdengine, table_col):
     connection, url, user, password, db_name, supertable_name = tdengine
     time_format = "%d/%m/%y %H:%M:%S UTC%z"
