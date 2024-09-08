@@ -6,4 +6,7 @@ dist/
 venv/
 *.coverage
 coverage_reports/
+.python-version
+test.db
+
 .DS_Store
