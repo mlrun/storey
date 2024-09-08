@@ -11,16 +11,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
+
 from setuptools import find_packages, setup
 
 
-def version():
+def version() -> str:
     with open("storey/__init__.py") as fp:
         for line in fp:
             if line.startswith("__version__"):
                 _, version = line.split("=")
                 return version.replace('"', "").strip()
+    raise ValueError("Could not find package version")
 
 
 def load_deps(file_name):
@@ -58,7 +59,8 @@ setup(
     author_email="yaronh@iguazio.com",
     license="Apache",
     url="https://github.com/mlrun/storey",
-    packages=find_packages(),
+    packages=find_packages(include=["storey*"]),
+    python_requires=">=3.9",
     install_requires=install_requires,
     extras_require=extras_require,
     classifiers=[
@@ -69,9 +71,7 @@ setup(
         "Operating System :: Microsoft :: Windows",
         "Operating System :: MacOS",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.6",
-        "Programming Language :: Python :: 3.7",
-        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
         "Programming Language :: Python",
         "Topic :: Software Development :: Libraries :: Python Modules",
         "Topic :: Software Development :: Libraries",
