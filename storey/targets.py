@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
+
 import asyncio
 import copy
 import csv
@@ -894,7 +894,7 @@ class TDEngineTarget(_Batching, _Writer):
         return self._event_to_writer_entry(event)
 
     @staticmethod
-    def _sanitize_value(value):
+    def _sanitize_value(value) -> str:
         if isinstance(value, datetime.datetime):
             value = round(value.timestamp() * 1000)
         elif isinstance(value, str):

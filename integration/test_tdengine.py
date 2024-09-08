@@ -1,17 +1,16 @@
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pytest
-import pytz
 import taosws
 
 from storey import SyncEmitSource, build_flow
 from storey.targets import TDEngineTarget
 
-url = os.getenv("TDENGINE_URL")
+url = os.getenv("TDENGINE_URL")  # e.g.: taosws://root:taosdata@localhost:6041
 user = os.getenv("TDENGINE_USER")
 password = os.getenv("TDENGINE_PASSWORD")
-has_tdengine_credentials = all([url, user, password]) or (url and url.startswith("taosws"))
+has_tdengine_credentials = all([url, user, password]) or (url and url.startswith("taosws://"))
 
 
 @pytest.fixture()
@@ -19,15 +18,10 @@ def tdengine():
     db_name = "storey"
     supertable_name = "test_supertable"
 
-    if url.startswith("taosws"):
+    if url.startswith("taosws://"):
         connection = taosws.connect(url)
     else:
-
-        connection = taosws.connect(
-            url=url,
-            user=user,
-            password=password,
-        )
+        connection = taosws.connect(url=url, user=user, password=password)
 
     try:
         connection.execute(f"DROP DATABASE {db_name};")
@@ -116,7 +110,7 @@ def test_tdengine_target(tdengine, table_col):
             if typ == "TIMESTAMP":
                 t = datetime.fromisoformat(row[field_index])
                 # websocket returns a timestamp with the local time zone
-                t = t.astimezone(pytz.UTC).replace(tzinfo=None)
+                t = t.astimezone(timezone.utc).replace(tzinfo=None)
                 row[field_index] = t
         result_list.append(row)
     if table_col:
