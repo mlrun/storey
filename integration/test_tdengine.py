@@ -1,5 +1,7 @@
 import os
+from collections.abc import Iterator
 from datetime import datetime, timezone
+from typing import Optional
 
 import pytest
 import taosws
@@ -14,9 +16,11 @@ has_tdengine_credentials = all([url, user, password]) or (url and url.startswith
 
 pytestmark = pytest.mark.skipif(not has_tdengine_credentials, reason="Missing TDEngine URL, user, and/or password")
 
+TDEngineData = tuple[taosws.Connection, str, Optional[str], Optional[str], str, str]
+
 
 @pytest.fixture()
-def tdengine():
+def tdengine() -> Iterator[TDEngineData]:
     db_name = "storey"
     supertable_name = "test_supertable"
 
@@ -51,7 +55,7 @@ def tdengine():
 
 
 @pytest.mark.parametrize("table_col", [None, "$key", "table"])
-def test_tdengine_target(tdengine, table_col):
+def test_tdengine_target(tdengine: TDEngineData, table_col: Optional[str]) -> None:
     connection, url, user, password, db_name, supertable_name = tdengine
     time_format = "%d/%m/%y %H:%M:%S UTC%z"
 
