@@ -20,7 +20,7 @@ TDEngineData = tuple[taosws.Connection, str, Optional[str], Optional[str], str, 
 
 
 @pytest.fixture(params=[10])
-def tdengine(request: pytest.FixtureRequest) -> Iterator[TDEngineData]:
+def tdengine(request: "pytest.FixtureRequest") -> Iterator[TDEngineData]:
     db_name = "storey"
     supertable_name = "test_supertable"
 
