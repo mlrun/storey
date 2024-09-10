@@ -805,6 +805,9 @@ class TDEngineTarget(_Batching, _Writer):
     :type flush_after_seconds: int
     """
 
+    class UnsupportedTDEngineTypeError(TypeError):
+        pass
+
     def __init__(
         self,
         url: str,
@@ -888,48 +891,100 @@ class TDEngineTarget(_Batching, _Writer):
             self._connection = taosws.connect(self._url)
         else:
             self._connection = taosws.connect(url=self._url, user=self._user, password=self._password)
+        self._closeables.append(self._connection)
         self._connection.execute(f"USE {self._database}")
+
+        self._number_of_values = len(self._columns) - self._number_of_tags
+        self._sql_template = self._get_sql_template()
 
     def _event_to_batch_entry(self, event):
         return self._event_to_writer_entry(event)
 
     @staticmethod
-    def _sanitize_value(value) -> str:
-        if isinstance(value, datetime.datetime):
-            value = round(value.timestamp() * 1000)
-        elif isinstance(value, str):
-            value = f"'{value}'"
-        return str(value)
+    def _get_params_template(num_param: int) -> str:
+        return f"({','.join(num_param * ['?'])})"
 
-    async def _emit(self, batch, batch_key, batch_time, batch_events, last_event_time=None):
-        with StringIO() as b:
-            b.write("INSERT INTO ")
-            if self._table:
-                b.write(self._table)
-            else:  # table is dynamic
-                b.write(batch_key)
+    def _get_sql_template(self) -> str:
+        with StringIO() as sql:
+            sql.write("INSERT INTO ?")
             if self._supertable:
-                b.write(" USING ")
-                b.write(self._supertable)
-                b.write(" TAGS (")
-                for column_index in range(self._number_of_tags):
-                    value = batch[0].get(self._columns[column_index], "NULL")
-                    b.write(self._sanitize_value(value))
-                    if column_index < self._number_of_tags - 1:
-                        b.write(",")
-                b.write(")")
-            b.write(" VALUES ")
-            for record in batch:
-                b.write("(")
-                for column_index in range(self._number_of_tags, len(self._columns)):
-                    value = record.get(self._columns[column_index], "NULL")
-                    b.write(self._sanitize_value(value))
-                    if column_index < len(self._columns) - 1:
-                        b.write(",")
-                b.write(") ")
-            b.write(";")
-            insert_statement = b.getvalue()
-        self._connection.execute(insert_statement)
+                sql.write(f" USING {self._supertable} TAGS {self._get_params_template(self._number_of_tags)}")
+            sql.write(f" VALUES {self._get_params_template(self._number_of_values)};")
+            return sql.getvalue()
+
+    @classmethod
+    def _get_unsupported_error(cls, value) -> UnsupportedTDEngineTypeError:
+        return cls.UnsupportedTDEngineTypeError(f"Unsupported value type {type(value)} in {cls.__name__}")
+
+    @classmethod
+    def _value_to_tag(cls, value):
+        import taosws
+
+        if isinstance(value, bool):
+            return taosws.bool_to_tag(value)
+        if isinstance(value, int):
+            return taosws.int_to_tag(value)
+        if isinstance(value, float):
+            return taosws.float_to_tag(value)
+        if isinstance(value, str):
+            return taosws.varchar_to_tag(value)
+        raise cls._get_unsupported_error(value)
+
+    def _get_tags_from_event(self, event: dict) -> list:
+        tags = []
+        for tag_name in self._columns[: self._number_of_tags]:
+            tags.append(self._value_to_tag(event.get(tag_name)))
+        return tags
+
+    @classmethod
+    def _raw_value_to_column_fun(cls, value) -> Callable:
+        import taosws
+
+        if isinstance(value, datetime.datetime):
+            return taosws.millis_timestamps_to_column
+        if isinstance(value, bool):
+            return taosws.bools_to_column
+        if isinstance(value, int):
+            return taosws.ints_to_column
+        if isinstance(value, float):
+            return taosws.floats_to_column
+        if isinstance(value, str):
+            return taosws.nchar_to_column
+        raise cls._get_unsupported_error(value)
+
+    @classmethod
+    def _raw_value_to_value(cls, value):
+        if isinstance(value, datetime.datetime):
+            return int(value.timestamp() * 1000)
+        return value
+
+    def _get_batch_values(self, batch: list[dict]) -> list:
+        values = [[] for _ in range(self._number_of_values)]
+        to_column_funs = []
+        val_names = self._columns[self._number_of_tags :]
+        for event_ind, event in enumerate(batch):
+            for val_ind, val_name in enumerate(val_names):
+                raw_value = event.get(val_name)
+                if event_ind == 0:
+                    to_column_funs.append(self._raw_value_to_column_fun(raw_value))
+                values[val_ind].append(self._raw_value_to_value(raw_value))
+        return [fun(vals) for fun, vals in zip(to_column_funs, values)]
+
+    async def _emit(self, batch: list[dict], batch_key: str, batch_time, batch_events, last_event_time=None):
+        stmt = self._connection.statement()
+        stmt.prepare(self._sql_template)
+        try:
+            stmt.set_tbname(self._table or batch_key)
+
+            if self._number_of_tags:
+                # take the tags from the first event in the batch
+                stmt.set_tags(self._get_tags_from_event(batch[0]))
+
+            stmt.bind_param(self._get_batch_values(batch))
+            stmt.add_batch()
+            stmt.execute()
+        finally:
+            stmt.close()
 
 
 class StreamTarget(Flow, _Writer):

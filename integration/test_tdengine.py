@@ -19,8 +19,8 @@ pytestmark = pytest.mark.skipif(not has_tdengine_credentials, reason="Missing TD
 TDEngineData = tuple[taosws.Connection, str, Optional[str], Optional[str], str, str]
 
 
-@pytest.fixture()
-def tdengine() -> Iterator[TDEngineData]:
+@pytest.fixture(params=[10])
+def tdengine(request: pytest.FixtureRequest) -> Iterator[TDEngineData]:
     db_name = "storey"
     supertable_name = "test_supertable"
 
@@ -44,7 +44,9 @@ def tdengine() -> Iterator[TDEngineData]:
         if "STable not exist" not in str(err):
             raise err
 
-    connection.execute(f"CREATE STABLE {supertable_name} (time TIMESTAMP, my_string NCHAR(10)) TAGS (my_int INT);")
+    connection.execute(
+        f"CREATE STABLE {supertable_name} (time TIMESTAMP, my_string NCHAR({request.param})) TAGS (my_int INT);"
+    )
 
     # Test runs
     yield connection, url, user, password, db_name, supertable_name
@@ -132,3 +134,49 @@ def test_tdengine_target(tdengine: TDEngineData, table_col: Optional[str]) -> No
             [datetime(2019, 9, 18, 1, 55, 14), "hello4", 4],
         ]
     assert result_list == expected_result
+
+
+@pytest.mark.parametrize("tdengine", [100], indirect=["tdengine"])
+def test_sql_injection(tdengine: TDEngineData) -> None:
+    connection, url, user, password, db_name, supertable_name = tdengine
+    # Create another table to be dropped via SQL injection
+    tb_name = "dont_drop_me"
+    connection.execute(f"CREATE TABLE IF NOT EXISTS {tb_name} USING {supertable_name} TAGS (101);")
+    extra_table_query = f"SHOW TABLES LIKE '{tb_name}';"
+    assert list(connection.query(extra_table_query)), "The extra table was not created"
+
+    # Try dropping the table
+    table_name = "test_table"
+    table_col = "table"
+    controller = build_flow(
+        [
+            SyncEmitSource(),
+            TDEngineTarget(
+                url=url,
+                time_col="time",
+                columns=["my_string"],
+                user=user,
+                password=password,
+                database=db_name,
+                table=None,
+                table_col=table_col,
+                supertable=supertable_name,
+                tag_cols=["my_int"],
+                time_format="%d/%m/%y %H:%M:%S UTC%z",
+                max_events=10,
+            ),
+        ]
+    ).run()
+
+    date_time_str = "18/09/19 01:55:1"
+    for i in range(5):
+        timestamp = f"{date_time_str}{i} UTC-0000"
+        subtable_name = f"{table_name}{i}"
+        event_body = {"time": timestamp, "my_int": i, "my_string": f"s); DROP TABLE {tb_name};"}
+        event_body[table_col] = subtable_name
+        controller.emit(event_body)
+
+    controller.terminate()
+    controller.await_termination()
+
+    assert list(connection.query(extra_table_query)), "The extra table was dropped"
