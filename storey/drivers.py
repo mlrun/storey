@@ -532,7 +532,9 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
 
         if use_parallel:
             for attr_name, d in pexpressions.items():
-                encoded_array = kv_array.encode_list(d["values"][d["first_index"] : d["last_index"] + 1])
+                encoded_array = kv_array.encode_list(d["values"][d["first_index"] : d["last_index"] + 1]).decode(
+                    "utf-8"
+                )
                 paggregate = self.parallel_aggregates[d["aggregation"]]
                 sliced_array = f'{attr_name}[{d["first_index"]}..{d["last_index"]}]'
                 expressions.append(f"{sliced_array}={paggregate}({sliced_array}, blob('{encoded_array}'))")
