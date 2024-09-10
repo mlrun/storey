@@ -186,7 +186,7 @@ def _get_table(setup_teardown_test, schema, keys, time_fields=None):
 
 def test_join_with_v3io_table(setup_kv_teardown_test):
     if setup_kv_teardown_test.driver_name == "RedisDriver":
-        pytest.skip(msg="test not relevant for Redis")
+        pytest.skip("test not relevant for Redis")
 
     table_path = setup_kv_teardown_test.table_name
     controller = build_flow(
