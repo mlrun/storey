@@ -252,15 +252,16 @@ class Flow:
     def _should_terminate(self):
         return self._termination_received == len(self._inlets)
 
-    async def _do_downstream(self, event):
-        if not self._outlets:
+    async def _do_downstream(self, event, outlets=None):
+        outlets = self._outlets if outlets is None else outlets
+        if not outlets:
             return
         if event is _termination_obj:
             # Only propagate the termination object once we received one per inlet
-            self._outlets[0]._termination_received += 1
-            if self._outlets[0]._should_terminate():
-                self._termination_result = await self._outlets[0]._do(_termination_obj)
-            for outlet in self._outlets[1:] + self._get_recovery_steps():
+            outlets[0]._termination_received += 1
+            if outlets[0]._should_terminate():
+                self._termination_result = await outlets[0]._do(_termination_obj)
+            for outlet in outlets[1:] + self._get_recovery_steps():
                 outlet._termination_received += 1
                 if outlet._should_terminate():
                     self._termination_result = self._termination_result_fn(
@@ -269,28 +270,28 @@ class Flow:
             return self._termination_result
         # If there is more than one outlet, allow concurrent execution.
         tasks = []
-        if len(self._outlets) > 1:
+        if len(outlets) > 1:
             awaitable_result = event._awaitable_result
             event._awaitable_result = None
             original_events = getattr(event, "_original_events", None)
             # Temporarily delete self-reference to avoid deepcopy getting stuck in an infinite loop
             event._original_events = None
-            for i in range(1, len(self._outlets)):
+            for i in range(1, len(outlets)):
                 event_copy = copy.deepcopy(event)
                 event_copy._awaitable_result = awaitable_result
                 event_copy._original_events = original_events
-                tasks.append(asyncio.get_running_loop().create_task(self._outlets[i]._do_and_recover(event_copy)))
+                tasks.append(asyncio.get_running_loop().create_task(outlets[i]._do_and_recover(event_copy)))
             # Set self-reference back after deepcopy
             event._original_events = original_events
             event._awaitable_result = awaitable_result
         if self.verbose and self.logger:
             step_name = self.name
             event_string = self._event_string(event)
-            self.logger.debug(f"{step_name} -> {self._outlets[0].name} | {event_string}")
-        await self._outlets[0]._do_and_recover(event)  # Optimization - avoids creating a task for the first outlet.
+            self.logger.debug(f"{step_name} -> {outlets[0].name} | {event_string}")
+        await outlets[0]._do_and_recover(event)  # Optimization - avoids creating a task for the first outlet.
         for i, task in enumerate(tasks, start=1):
             if self.verbose and self.logger:
-                self.logger.debug(f"{step_name} -> {self._outlets[i].name} | {event_string}")
+                self.logger.debug(f"{step_name} -> {outlets[i].name} | {event_string}")
             await task
 
     def _get_event_or_body(self, event):
@@ -347,46 +348,35 @@ class WithUUID:
 
 
 class Choice(Flow):
-    """Redirects each input element into at most one of multiple downstreams.
+    """Redirects each input element into any number of predetermined downstream steps."""
 
-    :param choice_array: a list of (downstream, condition) tuples, where downstream is a step and condition is a
-        function. The first condition in the list to evaluate as true for an input element causes that element to
-        be redirected to that downstream step.
-    :type choice_array: tuple of (Flow, Function (Event=>boolean))
-    :param default: a default step for events that did not match any condition in choice_array. If not set, elements
-        that don't match any condition will be discarded.
-    :type default: Flow
-    :param name: Name of this step, as it should appear in logs. Defaults to class name (Choice).
-    :type name: string
-    :param full_event: Whether user functions should receive and return Event objects (when True),
-        or only the payload (when False). Defaults to False.
-    :type full_event: boolean
-    """
+    def _init(self, **kwargs):
+        super()._init()
+        self._name_to_outlet = {}
+        for outlet in self._outlets:
+            if outlet.name in self._name_to_outlet:
+                raise ValueError(f"Ambiguous outlet name '{outlet.name}' in Choice step")
+            self._name_to_outlet[outlet.name] = outlet
 
-    def __init__(self, choice_array, default=None, **kwargs):
-        Flow.__init__(self, **kwargs)
-
-        self._choice_array = choice_array
-        for outlet, _ in choice_array:
-            self.to(outlet)
-
-        if default:
-            self.to(default)
-        self._default = default
+    def select_outlets(self, event):
+        return list(self._name_to_outlet.keys())
 
     async def _do(self, event):
-        if not self._outlets or event is _termination_obj:
-            return await super()._do_downstream(event)
-        chosen_outlet = None
-        element = self._get_event_or_body(event)
-        for outlet, condition in self._choice_array:
-            if condition(element):
-                chosen_outlet = outlet
-                break
-        if chosen_outlet:
-            await chosen_outlet._do(event)
-        elif self._default:
-            await self._default._do(event)
+        if event is _termination_obj:
+            return await self._do_downstream(_termination_obj)
+        else:
+            event_body = event if self._full_event else event.body
+            outlet_names = self.select_outlets(event_body)
+            outlets = []
+            for outlet_name in outlet_names:
+                if outlet_name not in self._name_to_outlet:
+                    raise ValueError(
+                        f"select_outlets() returned outlet name '{outlet_name}', which is not one of the"
+                        f"defined outlets: " + ", ".join(self._name_to_outlet)
+                    )
+                outlet = self._name_to_outlet[outlet_name]
+                outlets.append(outlet)
+            return await self._do_downstream(event, outlets=outlets)
 
 
 class Recover(Flow):

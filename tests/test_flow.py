@@ -1690,26 +1690,42 @@ def test_error_trace():
 
 
 def test_choice():
-    small_reduce = Reduce(0, lambda acc, x: acc + x)
+    class MyChoice(Choice):
+        def select_outlets(self, event):
+            outlets = ["all_events"]
+            if event > 5:
+                outlets.append("more_than_five")
+            else:
+                outlets.append("up_to_five")
+            return outlets
 
-    big_reduce = build_flow([Map(lambda x: x * 100), Reduce(0, lambda acc, x: acc + x)])
+    source = SyncEmitSource()
+    my_choice = MyChoice(termination_result_fn=lambda x, y: x + y)
+    all_events = Map(lambda x: x, name="all_events")
+    more_than_five = Map(lambda x: x * 10, name="more_than_five")
+    up_to_five = Map(lambda x: x * 100, name="up_to_five")
+    sum_up_all_events = Reduce(0, lambda acc, x: acc + x)
+    sum_up_more_than_five = Reduce(0, lambda acc, x: acc + x)
+    sum_up_up_to_five = Reduce(0, lambda acc, x: acc + x)
 
-    controller = build_flow(
-        [
-            SyncEmitSource(),
-            Choice(
-                [(big_reduce, lambda x: x % 2 == 0)],
-                default=small_reduce,
-                termination_result_fn=lambda x, y: x + y,
-            ),
-        ]
-    ).run()
+    source.to(my_choice)
+    my_choice.to(all_events)
+    my_choice.to(more_than_five)
+    my_choice.to(up_to_five)
+    all_events.to(sum_up_all_events)
+    more_than_five.to(sum_up_more_than_five)
+    up_to_five.to(sum_up_up_to_five)
 
-    for i in range(10):
+    controller = source.run()
+
+    for i in range(4, 8):
         controller.emit(i)
+
     controller.terminate()
     termination_result = controller.await_termination()
-    assert termination_result == 2025
+
+    expected = sum(range(4, 8)) + sum(range(6, 8)) * 10 + sum(range(4, 6)) * 100
+    assert termination_result == expected
 
 
 def test_metadata():
