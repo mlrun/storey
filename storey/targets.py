@@ -33,7 +33,7 @@ import v3io_frames as frames
 import xxhash
 
 from . import Driver
-from .dtypes import Event, V3ioError
+from .dtypes import Event, TDEngineTypeError, V3ioError
 from .flow import Flow, _Batching, _split_path, _termination_obj
 from .table import Table, _PersistJob
 from .utils import stringify_key, url_to_file_system, wrap_event_for_serialization
@@ -805,9 +805,6 @@ class TDEngineTarget(_Batching, _Writer):
     :type flush_after_seconds: int
     """
 
-    class UnsupportedTDEngineTypeError(TypeError):
-        pass
-
     def __init__(
         self,
         url: str,
@@ -913,8 +910,8 @@ class TDEngineTarget(_Batching, _Writer):
             return sql.getvalue()
 
     @classmethod
-    def _get_unsupported_error(cls, value) -> UnsupportedTDEngineTypeError:
-        return cls.UnsupportedTDEngineTypeError(f"Unsupported value type {type(value)} in {cls.__name__}")
+    def _get_unsupported_error(cls, value) -> TDEngineTypeError:
+        return TDEngineTypeError(f"Unsupported value type {type(value)} in {cls.__name__}")
 
     @classmethod
     def _value_to_tag(cls, value):

@@ -103,6 +103,10 @@ class FlowError(Exception):
     pass
 
 
+class TDEngineTypeError(TypeError):
+    pass
+
+
 class WindowBase:
     def __init__(self, window, period, window_str):
         self.window_millis = window
