@@ -934,7 +934,7 @@ class TDEngineTarget(_Batching, _Writer):
         return tags
 
     @classmethod
-    def _raw_value_to_column_fun(cls, value) -> Callable:
+    def _raw_value_to_column_func(cls, value) -> Callable:
         import taosws
 
         if isinstance(value, datetime.datetime):
@@ -957,15 +957,15 @@ class TDEngineTarget(_Batching, _Writer):
 
     def _get_batch_values(self, batch: list[dict]) -> list:
         values = [[] for _ in range(self._number_of_values)]
-        to_column_funs = []
+        to_column_funcs = []
         val_names = self._columns[self._number_of_tags :]
         for event_ind, event in enumerate(batch):
             for val_ind, val_name in enumerate(val_names):
                 raw_value = event.get(val_name)
                 if event_ind == 0:
-                    to_column_funs.append(self._raw_value_to_column_fun(raw_value))
+                    to_column_funcs.append(self._raw_value_to_column_func(raw_value))
                 values[val_ind].append(self._raw_value_to_value(raw_value))
-        return [fun(vals) for fun, vals in zip(to_column_funs, values)]
+        return [func(vals) for func, vals in zip(to_column_funcs, values)]
 
     async def _emit(self, batch: list[dict], batch_key: str, batch_time, batch_events, last_event_time=None):
         stmt = self._connection.statement()
