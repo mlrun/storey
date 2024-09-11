@@ -33,7 +33,7 @@ import v3io_frames as frames
 import xxhash
 
 from . import Driver
-from .dtypes import Event, TDEngineTypeError, V3ioError
+from .dtypes import Event, TDEngineTypeError, V3ioError, _TDEngineFieldData
 from .flow import Flow, _Batching, _split_path, _termination_obj
 from .table import Table, _PersistJob
 from .utils import stringify_key, url_to_file_system, wrap_event_for_serialization
@@ -932,6 +932,28 @@ class TDEngineTarget(_Batching, _Writer):
     def _get_params_template(num_param: int) -> str:
         return f"({','.join(num_param * ['?'])})"
 
+    def _get_table_schema(
+        self, table_name
+    ) -> tuple[
+        list[tuple[str, Callable[[Any], "taosws.PyTagView"]]], list[tuple[str, Callable[[list], "taosws.PyColumnView"]]]
+    ]:
+        fields_data = [_TDEngineFieldData(*raw) for raw in self._connection.query(f"DESCRIBE {table_name};")]
+        tags_schema = []
+        reg_cols_schema = []
+        for field_data in fields_data:
+            name = field_data.field
+            type_ = field_data.type
+            try:
+                if field_data.note == "TAG":
+                    tags_schema.append((name, self._tdengine_type_to_tag_func[type_]))
+                else:
+                    reg_cols_schema.append((name, self._tdengine_type_to_column_func[type_]))
+            except KeyError:
+                raise TDEngineTypeError(
+                    f"Unsupported value type '{type_}' of field '{name}' in {self.__class__.__name__}"
+                )
+        return tags_schema, reg_cols_schema
+
     def _get_sql_template(self) -> str:
         with StringIO() as sql:
             sql.write("INSERT INTO ?")
@@ -940,65 +962,27 @@ class TDEngineTarget(_Batching, _Writer):
             sql.write(f" VALUES {self._get_params_template(self._number_of_values)};")
             return sql.getvalue()
 
-    @classmethod
-    def _get_unsupported_error(cls, value) -> TDEngineTypeError:
-        return TDEngineTypeError(f"Unsupported value type {type(value)} in {cls.__name__}")
+    @staticmethod
+    def _get_tags_from_event(
+        tags_schema: list[tuple[str, Callable[[Any], "taosws.PyTagView"]]], event: dict
+    ) -> list["taosws.PyTagView"]:
+        return [tag_func(event.get(tag_name)) for tag_name, tag_func in tags_schema]
 
-    @classmethod
-    def _value_to_tag(cls, value):
-        import taosws
-
-        if isinstance(value, bool):
-            return taosws.bool_to_tag(value)
-        if isinstance(value, int):
-            return taosws.int_to_tag(value)
-        if isinstance(value, float):
-            return taosws.float_to_tag(value)
-        if isinstance(value, str):
-            return taosws.varchar_to_tag(value)
-        raise cls._get_unsupported_error(value)
-
-    def _get_tags_from_event(self, event: dict) -> list:
-        tags = []
-        for tag_name in self._columns[: self._number_of_tags]:
-            tags.append(self._value_to_tag(event.get(tag_name)))
-        return tags
-
-    @classmethod
-    def _raw_value_to_column_func(cls, value) -> Callable:
-        import taosws
-
+    @staticmethod
+    def _raw_value_to_value(value):
         if isinstance(value, datetime.datetime):
-            return taosws.millis_timestamps_to_column
-        if isinstance(value, bool):
-            return taosws.bools_to_column
-        if isinstance(value, int):
-            return taosws.ints_to_column
-        if isinstance(value, float):
-            return taosws.floats_to_column
-        if isinstance(value, str):
-            return taosws.nchar_to_column
-        raise cls._get_unsupported_error(value)
-
-    @classmethod
-    def _raw_value_to_value(cls, value):
-        if isinstance(value, datetime.datetime):
-            return int(value.timestamp() * 1000)
+            return int(value.timestamp() * 1000)  # use millisecond precision
         return value
 
-    def _get_batch_values(self, batch: list[dict]) -> list:
-        values = [[] for _ in range(self._number_of_values)]
-        to_column_funcs = []
-        regular_column_names = self._columns[self._number_of_tags :]
-        for event_ind, event in enumerate(batch):
-            for ind, col_name in enumerate(regular_column_names):
-                raw_value = event.get(col_name)
-                if event_ind == 0:
-                    to_column_funcs.append(self._raw_value_to_column_func(raw_value))
-                values[ind].append(self._raw_value_to_value(raw_value))
-        return [func(vals) for func, vals in zip(to_column_funcs, values)]
+    @classmethod
+    def _get_batch_values(
+        cls, reg_cols_schema: list[tuple[str, Callable[[list], "taosws.PyColumnView"]]], batch: list[dict]
+    ) -> list:
+        return [col_func([cls._raw_value_to_value(event.get(col_name)) for event in batch]) for col_name, col_func in reg_cols_schema]
 
     async def _emit(self, batch: list[dict], batch_key: str, batch_time, batch_events, last_event_time=None):
+        tags_schema, reg_cols_schema = self._get_table_schema(self._table or self._supertable)
+
         stmt = self._connection.statement()
         stmt.prepare(self._sql_template)
         try:
@@ -1006,9 +990,9 @@ class TDEngineTarget(_Batching, _Writer):
 
             if self._number_of_tags:
                 # take the tags from the first event in the batch
-                stmt.set_tags(self._get_tags_from_event(batch[0]))
+                stmt.set_tags(self._get_tags_from_event(tags_schema, batch[0]))
 
-            stmt.bind_param(self._get_batch_values(batch))
+            stmt.bind_param(self._get_batch_values(reg_cols_schema, batch))
             stmt.add_batch()
             stmt.execute()
         finally:
