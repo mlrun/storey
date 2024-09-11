@@ -819,8 +819,7 @@ class TDEngineTarget(_Batching, _Writer):
         tag_cols: Union[str, List[str], None] = None,
         time_format: Optional[str] = None,
         **kwargs,
-    ):
-
+    ) -> None:
         if table and table_col:
             raise ValueError("Cannot set both table and table_col")
 
@@ -878,6 +877,38 @@ class TDEngineTarget(_Batching, _Writer):
         self._user = user
         self._password = password
         self._database = database
+        self._tdengine_type_to_column_func = self._get_tdengine_type_to_column_func()
+        self._tdengine_type_to_tag_func = self._get_tdengine_type_to_tag_func()
+
+    @staticmethod
+    def _get_tdengine_type_to_column_func() -> dict[str, Callable[[list], "taosws.PyColumnView"]]:
+        import taosws
+
+        return {
+            "BINARY": taosws.binary_to_column,
+            "BOOL": taosws.bools_to_column,
+            "DOUBLE": taosws.doubles_to_column,
+            "FLOAT": taosws.floats_to_column,
+            "INT": taosws.ints_to_column,
+            "TIMESTAMP": taosws.millis_timestamps_to_column,
+            "NCHAR": taosws.nchar_to_column,
+            "VARCHAR": taosws.varchar_to_column,
+        }
+
+    @staticmethod
+    def _get_tdengine_type_to_tag_func() -> dict[str, Callable[[Any], "taosws.PyTagView"]]:
+        import taosws
+
+        return {
+            "BOOL": taosws.bool_to_tag,
+            "DOUBLE": taosws.double_to_tag,
+            "FLOAT": taosws.float_to_tag,
+            "INT": taosws.int_to_tag,
+            "JSON": taosws.json_to_tag,
+            "NCHAR": taosws.nchar_to_tag,
+            "TIMESTAMP": taosws.timestamp_to_tag,
+            "VARCHAR": taosws.varchar_to_tag,
+        }
 
     def _init(self):
         import taosws
