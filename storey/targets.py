@@ -24,7 +24,7 @@ import random
 import traceback
 import uuid
 from io import StringIO
-from typing import Any, Callable, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, List, Optional, Tuple, Union
 from urllib.parse import urlparse
 
 import pandas as pd
@@ -37,6 +37,9 @@ from .dtypes import Event, TDEngineTypeError, V3ioError, _TDEngineFieldData
 from .flow import Flow, _Batching, _split_path, _termination_obj
 from .table import Table, _PersistJob
 from .utils import stringify_key, url_to_file_system, wrap_event_for_serialization
+
+if TYPE_CHECKING:
+    import taosws
 
 
 class _Writer:
@@ -978,7 +981,10 @@ class TDEngineTarget(_Batching, _Writer):
     def _get_batch_values(
         cls, reg_cols_schema: list[tuple[str, Callable[[list], "taosws.PyColumnView"]]], batch: list[dict]
     ) -> list:
-        return [col_func([cls._raw_value_to_value(event.get(col_name)) for event in batch]) for col_name, col_func in reg_cols_schema]
+        return [
+            col_func([cls._raw_value_to_value(event.get(col_name)) for event in batch])
+            for col_name, col_func in reg_cols_schema
+        ]
 
     async def _emit(self, batch: list[dict], batch_key: str, batch_time, batch_events, last_event_time=None):
         tags_schema, reg_cols_schema = self._get_table_schema(self._table or self._supertable)
