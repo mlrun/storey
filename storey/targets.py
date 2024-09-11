@@ -958,13 +958,13 @@ class TDEngineTarget(_Batching, _Writer):
     def _get_batch_values(self, batch: list[dict]) -> list:
         values = [[] for _ in range(self._number_of_values)]
         to_column_funcs = []
-        val_names = self._columns[self._number_of_tags :]
+        regular_column_names = self._columns[self._number_of_tags :]
         for event_ind, event in enumerate(batch):
-            for val_ind, val_name in enumerate(val_names):
-                raw_value = event.get(val_name)
+            for ind, col_name in enumerate(regular_column_names):
+                raw_value = event.get(col_name)
                 if event_ind == 0:
                     to_column_funcs.append(self._raw_value_to_column_func(raw_value))
-                values[val_ind].append(self._raw_value_to_value(raw_value))
+                values[ind].append(self._raw_value_to_value(raw_value))
         return [func(vals) for func, vals in zip(to_column_funcs, values)]
 
     async def _emit(self, batch: list[dict], batch_key: str, batch_time, batch_events, last_event_time=None):
