@@ -452,7 +452,7 @@ class FixedWindowType(Enum):
     LastClosedWindow = 2
 
 
-class _TDEngineField(NamedTuple):
+class _TDEngineFieldData(NamedTuple):
     field: str
     # https://docs.tdengine.com/reference/taos-sql/data-type/
     type: Literal["TIMESTAMP", "INT", "FLOAT", "DOUBLE", "BINARY", "BOOL", "NCHAR", "JSON", "VARCHAR"]

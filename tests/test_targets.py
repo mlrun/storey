@@ -29,4 +29,3 @@ class TestTDEngineTarget:
             else:
                 assert func.__name__.startswith(type_.lower())
             assert func.__name__.endswith("_to_column")
-    
