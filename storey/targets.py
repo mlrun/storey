@@ -913,7 +913,7 @@ class TDEngineTarget(_Batching, _Writer):
             "VARCHAR": taosws.varchar_to_tag,
         }
 
-    def _init(self):
+    def _init(self) -> None:
         import taosws
 
         _Batching._init(self)
@@ -936,7 +936,7 @@ class TDEngineTarget(_Batching, _Writer):
         return f"({','.join(num_param * ['?'])})"
 
     def _get_table_schema(
-        self, table_name
+        self, table_name: str
     ) -> tuple[
         list[tuple[str, Callable[[Any], "taosws.PyTagView"]]], list[tuple[str, Callable[[list], "taosws.PyColumnView"]]]
     ]:
@@ -980,7 +980,7 @@ class TDEngineTarget(_Batching, _Writer):
     @classmethod
     def _get_batch_values(
         cls, reg_cols_schema: list[tuple[str, Callable[[list], "taosws.PyColumnView"]]], batch: list[dict]
-    ) -> list:
+    ) -> list["taosws.PyColumnView"]:
         return [
             col_func([cls._raw_value_to_value(event.get(col_name)) for event in batch])
             for col_name, col_func in reg_cols_schema
