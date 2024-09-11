@@ -158,7 +158,6 @@ def test_sql_injection(tdengine: TDEngineData) -> None:
                 user=user,
                 password=password,
                 database=db_name,
-                table=None,
                 table_col=table_col,
                 supertable=supertable_name,
                 tag_cols=["my_int"],
