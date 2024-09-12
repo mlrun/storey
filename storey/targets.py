@@ -33,7 +33,7 @@ import v3io_frames as frames
 import xxhash
 
 from . import Driver
-from .dtypes import Event, TDEngineTypeError, V3ioError, _TDEngineFieldData
+from .dtypes import Event, TDEngineTypeError, V3ioError, _TDEngineField
 from .flow import Flow, _Batching, _split_path, _termination_obj
 from .table import Table, _PersistJob
 from .utils import stringify_key, url_to_file_system, wrap_event_for_serialization
@@ -917,20 +917,20 @@ class TDEngineTarget(_Batching, _Writer):
     ) -> tuple[
         list[tuple[str, Callable[[Any], "taosws.PyTagView"]]], list[tuple[str, Callable[[list], "taosws.PyColumnView"]]]
     ]:
-        fields_data = [_TDEngineFieldData(*raw) for raw in self._connection.query(f"DESCRIBE {table_name};")]
+        fields = [_TDEngineField(*raw) for raw in self._connection.query(f"DESCRIBE {table_name};")]
         tags_schema = []
         reg_cols_schema = []
-        for field_data in fields_data:
-            name = field_data.field
-            type_ = field_data.type
+        for field in fields:
+            field_name = field.field
+            field_type = field.type
             try:
-                if field_data.note == "TAG":
-                    tags_schema.append((name, self._tdengine_type_to_tag_func[type_]))
+                if field.note == "TAG":
+                    tags_schema.append((field_name, self._tdengine_type_to_tag_func[field_type]))
                 else:
-                    reg_cols_schema.append((name, self._tdengine_type_to_column_func[type_]))
+                    reg_cols_schema.append((field_name, self._tdengine_type_to_column_func[field_type]))
             except KeyError:
                 raise TDEngineTypeError(
-                    f"Unsupported value type '{type_}' of field '{name}' in {self.__class__.__name__}"
+                    f"Unsupported value type '{field_type}' of field '{field_name}' in {self.__class__.__name__}"
                 )
         return tags_schema, reg_cols_schema
 

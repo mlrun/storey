@@ -21,7 +21,7 @@ from storey.dtypes import (
     EmitAfterWindow,
     EmitEveryEvent,
     _dict_to_emit_policy,
-    _TDEngineFieldData,
+    _TDEngineField,
 )
 
 
@@ -94,4 +94,4 @@ def test_emit_policy_period():
 )
 def test_description_parsing_to_tdengine_field(description: tuple) -> None:
     """Test that the parsing works"""
-    _TDEngineFieldData(*description)
+    _TDEngineField(*description)
