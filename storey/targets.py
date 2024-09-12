@@ -923,15 +923,18 @@ class TDEngineTarget(_Batching, _Writer):
         for field in fields:
             field_name = field.field
             field_type = field.type
-            try:
-                if field.note == "TAG":
+
+            if field.note == "TAG":
+                if field_type in self._tdengine_type_to_tag_func:
                     tags_schema.append((field_name, self._tdengine_type_to_tag_func[field_type]))
                 else:
+                    raise TDEngineTypeError(f"Unsupported tag type '{field_type}' of field '{field_name}'")
+            else:
+                if field_type in self._tdengine_type_to_column_func:
                     reg_cols_schema.append((field_name, self._tdengine_type_to_column_func[field_type]))
-            except KeyError:
-                raise TDEngineTypeError(
-                    f"Unsupported value type '{field_type}' of field '{field_name}' in {self.__class__.__name__}"
-                )
+                else:
+                    raise TDEngineTypeError(f"Unsupported column type '{field_type}' of field '{field_name}'")
+
         return tags_schema, reg_cols_schema
 
     def _init(self) -> None:
@@ -957,7 +960,6 @@ class TDEngineTarget(_Batching, _Writer):
     @staticmethod
     def _get_params_template(num_param: int) -> str:
         return f"({','.join(num_param * ['?'])})"
-
 
     def _get_sql_template(self) -> str:
         with StringIO() as sql:
