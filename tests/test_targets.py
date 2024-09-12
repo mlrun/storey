@@ -12,6 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Optional
+
+import pytest
+
+from storey.dtypes import TDEngineValueError
 from storey.targets import TDEngineTarget
 
 
@@ -29,3 +34,32 @@ class TestTDEngineTarget:
             else:
                 assert func.__name__.startswith(type_.lower())
             assert func.__name__.endswith("_to_column")
+
+    @staticmethod
+    @pytest.mark.parametrize(
+        ("database", "table", "supertable", "table_col", "tag_cols"),
+        [
+            (None, None, "my_super_tb", "pass_this_check", ["also_this_one"]),
+            ("mydb", None, "my super  tb", "pass_this_check", ["also_this_one"]),
+            ("_db", "9table", None, None, None),
+            ("_db", " cars", None, None, None),
+        ],
+    )
+    def test_invalid_names(
+        database: Optional[str],
+        table: Optional[str],
+        supertable: Optional[str],
+        table_col: Optional[str],
+        tag_cols: Optional[list[str]],
+    ) -> None:
+        with pytest.raises(TDEngineValueError):
+            TDEngineTarget(
+                url="taosws://root:taosdata@localhost:6041",
+                time_col="ts",
+                columns=["value"],
+                table_col=table_col,
+                tag_cols=tag_cols,
+                database=database,
+                table=table,
+                supertable=supertable,
+            )

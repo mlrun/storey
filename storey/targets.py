@@ -21,6 +21,7 @@ import json
 import os
 import queue
 import random
+import re
 import traceback
 import uuid
 from io import StringIO
@@ -33,7 +34,13 @@ import v3io_frames as frames
 import xxhash
 
 from . import Driver
-from .dtypes import Event, TDEngineTypeError, V3ioError, _TDEngineField
+from .dtypes import (
+    Event,
+    TDEngineTypeError,
+    TDEngineValueError,
+    V3ioError,
+    _TDEngineField,
+)
 from .flow import Flow, _Batching, _split_path, _termination_obj
 from .table import Table, _PersistJob
 from .utils import stringify_key, url_to_file_system, wrap_event_for_serialization
@@ -808,6 +815,10 @@ class TDEngineTarget(_Batching, _Writer):
     :type flush_after_seconds: int
     """
 
+    # https://docs.tdengine.com/reference/taos-sql/limit/
+    _DB_NAME_PATTERN = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]{0,63}$")
+    _TABLE_NAME_PATTERN = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]{0,191}$")
+
     def __init__(
         self,
         url: str,
@@ -879,8 +890,23 @@ class TDEngineTarget(_Batching, _Writer):
         self._user = user
         self._password = password
         self._database = database
+        self._validate_db_and_table_names()
         self._tdengine_type_to_column_func = self._get_tdengine_type_to_column_func()
         self._tdengine_type_to_tag_func = self._get_tdengine_type_to_tag_func()
+
+    def _validate_db_and_table_names(self) -> None:
+        """Check the names match their pattern"""
+        if not self._database:
+            raise TDEngineValueError("TDEngine database must be set")
+        if not self._DB_NAME_PATTERN.fullmatch(self._database):
+            raise TDEngineValueError(f"TDEngine database '{self._database}' does not comply with the naming convention")
+
+        for table_name in (self._table, self._supertable):
+            if table_name:
+                if not self._TABLE_NAME_PATTERN.fullmatch(table_name):
+                    raise TDEngineValueError(
+                        f"TDEngine table name '{table_name}' does not comply with the naming convention"
+                    )
 
     @staticmethod
     def _get_tdengine_type_to_column_func() -> dict[str, Callable[[list], "taosws.PyColumnView"]]:
