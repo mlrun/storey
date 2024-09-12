@@ -867,7 +867,6 @@ class TDEngineTarget(_Batching, _Writer):
         _Batching.__init__(self, **kwargs)
         self._time_col = time_col
         tag_cols = tag_cols or []
-        self._number_of_tags = len(tag_cols)
         _Writer.__init__(
             self,
             tag_cols + [time_col] + columns,
@@ -913,28 +912,6 @@ class TDEngineTarget(_Batching, _Writer):
             "VARCHAR": taosws.varchar_to_tag,
         }
 
-    def _init(self) -> None:
-        import taosws
-
-        _Batching._init(self)
-        _Writer._init(self)
-        if self._url.startswith("taosws://"):
-            self._connection = taosws.connect(self._url)
-        else:
-            self._connection = taosws.connect(url=self._url, user=self._user, password=self._password)
-        self._closeables.append(self._connection)
-        self._connection.execute(f"USE {self._database}")
-
-        self._number_of_values = len(self._columns) - self._number_of_tags
-        self._sql_template = self._get_sql_template()
-
-    def _event_to_batch_entry(self, event):
-        return self._event_to_writer_entry(event)
-
-    @staticmethod
-    def _get_params_template(num_param: int) -> str:
-        return f"({','.join(num_param * ['?'])})"
-
     def _get_table_schema(
         self, table_name: str
     ) -> tuple[
@@ -957,12 +934,37 @@ class TDEngineTarget(_Batching, _Writer):
                 )
         return tags_schema, reg_cols_schema
 
+    def _init(self) -> None:
+        import taosws
+
+        _Batching._init(self)
+        _Writer._init(self)
+        if self._url.startswith("taosws://"):
+            self._connection = taosws.connect(self._url)
+        else:
+            self._connection = taosws.connect(url=self._url, user=self._user, password=self._password)
+        self._closeables.append(self._connection)
+        self._connection.execute(f"USE {self._database}")
+
+        self._tags_schema, self._reg_cols_schema = self._get_table_schema(self._table or self._supertable)
+        self._number_of_tags = len(self._tags_schema)
+        self._number_of_reg_cols = len(self._reg_cols_schema)
+        self._sql_template = self._get_sql_template()
+
+    def _event_to_batch_entry(self, event):
+        return self._event_to_writer_entry(event)
+
+    @staticmethod
+    def _get_params_template(num_param: int) -> str:
+        return f"({','.join(num_param * ['?'])})"
+
+
     def _get_sql_template(self) -> str:
         with StringIO() as sql:
             sql.write("INSERT INTO ?")
             if self._supertable:
                 sql.write(f" USING {self._supertable} TAGS {self._get_params_template(self._number_of_tags)}")
-            sql.write(f" VALUES {self._get_params_template(self._number_of_values)};")
+            sql.write(f" VALUES {self._get_params_template(self._number_of_reg_cols)};")
             return sql.getvalue()
 
     @staticmethod
@@ -987,18 +989,16 @@ class TDEngineTarget(_Batching, _Writer):
         ]
 
     async def _emit(self, batch: list[dict], batch_key: str, batch_time, batch_events, last_event_time=None):
-        tags_schema, reg_cols_schema = self._get_table_schema(self._table or self._supertable)
-
         stmt = self._connection.statement()
         stmt.prepare(self._sql_template)
         try:
             stmt.set_tbname(self._table or batch_key)
 
-            if self._number_of_tags:
+            if self._supertable:
                 # take the tags from the first event in the batch
-                stmt.set_tags(self._get_tags_from_event(tags_schema, batch[0]))
+                stmt.set_tags(self._get_tags_from_event(self._tags_schema, batch[0]))
 
-            stmt.bind_param(self._get_batch_values(reg_cols_schema, batch))
+            stmt.bind_param(self._get_batch_values(self._reg_cols_schema, batch))
             stmt.add_batch()
             stmt.execute()
         finally:
