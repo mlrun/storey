@@ -348,7 +348,10 @@ class WithUUID:
 
 
 class Choice(Flow):
-    """Redirects each input element into any number of predetermined downstream steps."""
+    """
+    Redirects each input element into any number of predetermined downstream steps. Override select_outlets()
+    to route events to any number of downstream steps.
+    """
 
     def _init(self, **kwargs):
         super()._init()
@@ -361,6 +364,10 @@ class Choice(Flow):
         self._passthrough_for_preview = list(self._name_to_outlet) == ["dataframe"]
 
     def select_outlets(self, event):
+        """
+        Override this method to route events based on a customer logic. The default implementation will route all
+        events to all outlets.
+        """
         return list(self._name_to_outlet.keys())
 
     async def _do(self, event):
