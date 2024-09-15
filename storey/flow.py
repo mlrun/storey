@@ -357,6 +357,8 @@ class Choice(Flow):
             if outlet.name in self._name_to_outlet:
                 raise ValueError(f"Ambiguous outlet name '{outlet.name}' in Choice step")
             self._name_to_outlet[outlet.name] = outlet
+        # TODO: hacky way of supporting mlrun preview, which replaces targets with a DFTarget
+        self._passthrough_for_preview = list(self._name_to_outlet) == ["dataframe"]
 
     def select_outlets(self, event):
         return list(self._name_to_outlet.keys())
@@ -368,14 +370,18 @@ class Choice(Flow):
             event_body = event if self._full_event else event.body
             outlet_names = self.select_outlets(event_body)
             outlets = []
-            for outlet_name in outlet_names:
-                if outlet_name not in self._name_to_outlet:
-                    raise ValueError(
-                        f"select_outlets() returned outlet name '{outlet_name}', which is not one of the "
-                        f"defined outlets: " + ", ".join(self._name_to_outlet)
-                    )
-                outlet = self._name_to_outlet[outlet_name]
+            if self._passthrough_for_preview:
+                outlet = self._name_to_outlet["dataframe"]
                 outlets.append(outlet)
+            else:
+                for outlet_name in outlet_names:
+                    if outlet_name not in self._name_to_outlet:
+                        raise ValueError(
+                            f"select_outlets() returned outlet name '{outlet_name}', which is not one of the "
+                            f"defined outlets: " + ", ".join(self._name_to_outlet)
+                        )
+                    outlet = self._name_to_outlet[outlet_name]
+                    outlets.append(outlet)
             return await self._do_downstream(event, outlets=outlets)
 
 
