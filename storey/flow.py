@@ -371,7 +371,7 @@ class Choice(Flow):
             for outlet_name in outlet_names:
                 if outlet_name not in self._name_to_outlet:
                     raise ValueError(
-                        f"select_outlets() returned outlet name '{outlet_name}', which is not one of the"
+                        f"select_outlets() returned outlet name '{outlet_name}', which is not one of the "
                         f"defined outlets: " + ", ".join(self._name_to_outlet)
                     )
                 outlet = self._name_to_outlet[outlet_name]
