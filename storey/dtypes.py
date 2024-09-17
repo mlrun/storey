@@ -11,10 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
+
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Callable, List, Optional, Union
+from typing import Callable, List, Literal, NamedTuple, Optional, Union
 
 import numpy
 
@@ -100,6 +100,14 @@ class RedisError(Exception):
 
 
 class FlowError(Exception):
+    pass
+
+
+class TDEngineTypeError(TypeError):
+    pass
+
+
+class TDEngineValueError(ValueError):
     pass
 
 
@@ -446,3 +454,14 @@ class FieldAggregator:
 class FixedWindowType(Enum):
     CurrentOpenWindow = 1
     LastClosedWindow = 2
+
+
+class _TDEngineField(NamedTuple):
+    field: str
+    # https://docs.tdengine.com/reference/taos-sql/data-type/
+    type: Literal["TIMESTAMP", "INT", "FLOAT", "DOUBLE", "BINARY", "BOOL", "NCHAR", "JSON", "VARCHAR"]
+    length: int
+    note: Literal["", "TAG"]
+    encode: str
+    compress: str
+    level: str

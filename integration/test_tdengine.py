@@ -1,33 +1,33 @@
 import os
-from datetime import datetime
+from collections.abc import Iterator
+from datetime import datetime, timezone
+from typing import Optional
 
 import pytest
-import pytz
 import taosws
 
 from storey import SyncEmitSource, build_flow
 from storey.targets import TDEngineTarget
 
-url = os.getenv("TDENGINE_URL")
+url = os.getenv("TDENGINE_URL")  # e.g.: taosws://root:taosdata@localhost:6041
 user = os.getenv("TDENGINE_USER")
 password = os.getenv("TDENGINE_PASSWORD")
-has_tdengine_credentials = all([url, user, password]) or (url and url.startswith("taosws"))
+has_tdengine_credentials = all([url, user, password]) or (url and url.startswith("taosws://"))
+
+pytestmark = pytest.mark.skipif(not has_tdengine_credentials, reason="Missing TDEngine URL, user, and/or password")
+
+TDEngineData = tuple[taosws.Connection, str, Optional[str], Optional[str], str, str]
 
 
-@pytest.fixture()
-def tdengine():
+@pytest.fixture(params=[10])
+def tdengine(request: "pytest.FixtureRequest") -> Iterator[TDEngineData]:
     db_name = "storey"
     supertable_name = "test_supertable"
 
-    if url.startswith("taosws"):
+    if url.startswith("taosws://"):
         connection = taosws.connect(url)
     else:
-
-        connection = taosws.connect(
-            url=url,
-            user=user,
-            password=password,
-        )
+        connection = taosws.connect(url=url, user=user, password=password)
 
     try:
         connection.execute(f"DROP DATABASE {db_name};")
@@ -44,7 +44,9 @@ def tdengine():
         if "STable not exist" not in str(err):
             raise err
 
-    connection.execute(f"CREATE STABLE {supertable_name} (time TIMESTAMP, my_string NCHAR(10)) TAGS (my_int INT);")
+    connection.execute(
+        f"CREATE STABLE {supertable_name} (time TIMESTAMP, my_string NCHAR({request.param})) TAGS (my_int INT);"
+    )
 
     # Test runs
     yield connection, url, user, password, db_name, supertable_name
@@ -55,8 +57,7 @@ def tdengine():
 
 
 @pytest.mark.parametrize("table_col", [None, "$key", "table"])
-@pytest.mark.skipif(not has_tdengine_credentials, reason="Missing TDEngine URL, user, and/or password")
-def test_tdengine_target(tdengine, table_col):
+def test_tdengine_target(tdengine: TDEngineData, table_col: Optional[str]) -> None:
     connection, url, user, password, db_name, supertable_name = tdengine
     time_format = "%d/%m/%y %H:%M:%S UTC%z"
 
@@ -116,7 +117,7 @@ def test_tdengine_target(tdengine, table_col):
             if typ == "TIMESTAMP":
                 t = datetime.fromisoformat(row[field_index])
                 # websocket returns a timestamp with the local time zone
-                t = t.astimezone(pytz.UTC).replace(tzinfo=None)
+                t = t.astimezone(timezone.utc).replace(tzinfo=None)
                 row[field_index] = t
         result_list.append(row)
     if table_col:
@@ -133,3 +134,48 @@ def test_tdengine_target(tdengine, table_col):
             [datetime(2019, 9, 18, 1, 55, 14), "hello4", 4],
         ]
     assert result_list == expected_result
+
+
+@pytest.mark.parametrize("tdengine", [100], indirect=["tdengine"])
+def test_sql_injection(tdengine: TDEngineData) -> None:
+    connection, url, user, password, db_name, supertable_name = tdengine
+    # Create another table to be dropped via SQL injection
+    tb_name = "dont_drop_me"
+    connection.execute(f"CREATE TABLE IF NOT EXISTS {tb_name} USING {supertable_name} TAGS (101);")
+    extra_table_query = f"SHOW TABLES LIKE '{tb_name}';"
+    assert list(connection.query(extra_table_query)), "The extra table was not created"
+
+    # Try dropping the table
+    table_name = "test_table"
+    table_col = "table"
+    controller = build_flow(
+        [
+            SyncEmitSource(),
+            TDEngineTarget(
+                url=url,
+                time_col="time",
+                columns=["my_string"],
+                user=user,
+                password=password,
+                database=db_name,
+                table_col=table_col,
+                supertable=supertable_name,
+                tag_cols=["my_int"],
+                time_format="%d/%m/%y %H:%M:%S UTC%z",
+                max_events=10,
+            ),
+        ]
+    ).run()
+
+    date_time_str = "18/09/19 01:55:1"
+    for i in range(5):
+        timestamp = f"{date_time_str}{i} UTC-0000"
+        subtable_name = f"{table_name}{i}"
+        event_body = {"time": timestamp, "my_int": i, "my_string": f"s); DROP TABLE {tb_name};"}
+        event_body[table_col] = subtable_name
+        controller.emit(event_body)
+
+    controller.terminate()
+    controller.await_termination()
+
+    assert list(connection.query(extra_table_query)), "The extra table was dropped"
