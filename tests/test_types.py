@@ -21,7 +21,6 @@ from storey.dtypes import (
     EmitAfterWindow,
     EmitEveryEvent,
     _dict_to_emit_policy,
-    _TDEngineField,
 )
 
 
@@ -77,21 +76,3 @@ def test_emit_policy_period():
     policy = _dict_to_emit_policy(policy_dict)
     assert type(policy) == EmitAfterPeriod
     assert policy.delay_in_seconds == 8
-
-
-@pytest.mark.parametrize(
-    "description",
-    [
-        # taosBenchmark
-        # list(conn.query("describe test.d6241;"))
-        ("ts", "TIMESTAMP", 8, "", "delta-i", "lz4", "medium"),
-        ("current", "FLOAT", 4, "", "delta-d", "lz4", "medium"),
-        ("voltage", "INT", 4, "", "simple8b", "lz4", "medium"),
-        ("phase", "FLOAT", 4, "", "delta-d", "lz4", "medium"),
-        ("groupid", "INT", 4, "TAG", "disabled", "disabled", "disabled"),
-        ("location", "VARCHAR", 24, "TAG", "disabled", "disabled", "disabled"),
-    ],
-)
-def test_description_parsing_to_tdengine_field(description: tuple) -> None:
-    """Test that the parsing works"""
-    _TDEngineField(*description)
