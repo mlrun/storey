@@ -1004,7 +1004,8 @@ class TDEngineTarget(_Batching, _Writer):
     @staticmethod
     def _raw_value_to_value(value):
         if isinstance(value, datetime.datetime):
-            return int(value.timestamp() * 1000)  # use millisecond precision
+            # We currently support only the default millisecond precision
+            return int(value.timestamp() * 1000)
         return value
 
     @classmethod
