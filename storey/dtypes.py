@@ -14,7 +14,7 @@
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Callable, List, Literal, NamedTuple, Optional, Union
+from typing import Callable, List, Optional, Union
 
 import numpy
 
@@ -456,12 +456,16 @@ class FixedWindowType(Enum):
     LastClosedWindow = 2
 
 
-class _TDEngineField(NamedTuple):
-    field: str
-    # https://docs.tdengine.com/reference/taos-sql/data-type/
-    type: Literal["TIMESTAMP", "INT", "FLOAT", "DOUBLE", "BINARY", "BOOL", "NCHAR", "JSON", "VARCHAR"]
-    length: int
-    note: Literal["", "TAG"]
-    encode: str
-    compress: str
-    level: str
+class _TDEngineField:
+    def __init__(
+        self,
+        field: str,
+        field_type: str,
+        length: int,
+        note: str,
+        *args,
+    ):
+        self.field = field
+        self.field_type = field_type
+        self.length = length
+        self.note = note
