@@ -948,7 +948,7 @@ class TDEngineTarget(_Batching, _Writer):
         reg_cols_schema = []
         for field in fields:
             field_name = field.field
-            field_type = field.type
+            field_type = field.field_type
 
             if field.note == "TAG":
                 if field_type in self._tdengine_type_to_tag_func:
