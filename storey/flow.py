@@ -353,7 +353,7 @@ class Choice(Flow):
     to route events to any number of downstream steps.
     """
 
-    def _init(self, **kwargs):
+    def _init(self):
         super()._init()
         self._name_to_outlet = {}
         for outlet in self._outlets:
@@ -363,7 +363,7 @@ class Choice(Flow):
         # TODO: hacky way of supporting mlrun preview, which replaces targets with a DFTarget
         self._passthrough_for_preview = list(self._name_to_outlet) == ["dataframe"]
 
-    def select_outlets(self, event):
+    def select_outlets(self, event) -> List[str]:
         """
         Override this method to route events based on a customer logic. The default implementation will route all
         events to all outlets.
