@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
+
 import asyncio
 import copy
 import csv
@@ -21,10 +21,11 @@ import json
 import os
 import queue
 import random
+import re
 import traceback
 import uuid
 from io import StringIO
-from typing import Any, Callable, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, List, Optional, Tuple, Union
 from urllib.parse import urlparse
 
 import pandas as pd
@@ -33,10 +34,19 @@ import v3io_frames as frames
 import xxhash
 
 from . import Driver
-from .dtypes import Event, V3ioError
+from .dtypes import (
+    Event,
+    TDEngineTypeError,
+    TDEngineValueError,
+    V3ioError,
+    _TDEngineField,
+)
 from .flow import Flow, _Batching, _split_path, _termination_obj
 from .table import Table, _PersistJob
 from .utils import stringify_key, url_to_file_system, wrap_event_for_serialization
+
+if TYPE_CHECKING:
+    import taosws
 
 
 class _Writer:
@@ -805,6 +815,10 @@ class TDEngineTarget(_Batching, _Writer):
     :type flush_after_seconds: int
     """
 
+    # https://docs.tdengine.com/reference/taos-sql/limit/
+    _DB_NAME_PATTERN = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]{0,63}$")
+    _TABLE_NAME_PATTERN = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]{0,191}$")
+
     def __init__(
         self,
         url: str,
@@ -819,8 +833,7 @@ class TDEngineTarget(_Batching, _Writer):
         tag_cols: Union[str, List[str], None] = None,
         time_format: Optional[str] = None,
         **kwargs,
-    ):
-
+    ) -> None:
         if table and table_col:
             raise ValueError("Cannot set both table and table_col")
 
@@ -865,7 +878,6 @@ class TDEngineTarget(_Batching, _Writer):
         _Batching.__init__(self, **kwargs)
         self._time_col = time_col
         tag_cols = tag_cols or []
-        self._number_of_tags = len(tag_cols)
         _Writer.__init__(
             self,
             tag_cols + [time_col] + columns,
@@ -878,8 +890,80 @@ class TDEngineTarget(_Batching, _Writer):
         self._user = user
         self._password = password
         self._database = database
+        self._validate_db_and_table_names()
+        self._tdengine_type_to_column_func = self._get_tdengine_type_to_column_func()
+        self._tdengine_type_to_tag_func = self._get_tdengine_type_to_tag_func()
 
-    def _init(self):
+    def _validate_db_and_table_names(self) -> None:
+        """Check the names match their pattern"""
+        if not self._database:
+            raise TDEngineValueError("TDEngine database must be set")
+        if not self._DB_NAME_PATTERN.fullmatch(self._database):
+            raise TDEngineValueError(f"TDEngine database '{self._database}' does not comply with the naming convention")
+
+        for table_name in (self._table, self._supertable):
+            if table_name:
+                if not self._TABLE_NAME_PATTERN.fullmatch(table_name):
+                    raise TDEngineValueError(
+                        f"TDEngine table name '{table_name}' does not comply with the naming convention"
+                    )
+
+    @staticmethod
+    def _get_tdengine_type_to_column_func() -> dict[str, Callable[[list], "taosws.PyColumnView"]]:
+        import taosws
+
+        return {
+            "BINARY": taosws.binary_to_column,
+            "BOOL": taosws.bools_to_column,
+            "DOUBLE": taosws.doubles_to_column,
+            "FLOAT": taosws.floats_to_column,
+            "INT": taosws.ints_to_column,
+            "TIMESTAMP": taosws.millis_timestamps_to_column,
+            "NCHAR": taosws.nchar_to_column,
+            "VARCHAR": taosws.varchar_to_column,
+        }
+
+    @staticmethod
+    def _get_tdengine_type_to_tag_func() -> dict[str, Callable[[Any], "taosws.PyTagView"]]:
+        import taosws
+
+        return {
+            "BOOL": taosws.bool_to_tag,
+            "DOUBLE": taosws.double_to_tag,
+            "FLOAT": taosws.float_to_tag,
+            "INT": taosws.int_to_tag,
+            "JSON": taosws.json_to_tag,
+            "NCHAR": taosws.nchar_to_tag,
+            "TIMESTAMP": taosws.timestamp_to_tag,
+            "VARCHAR": taosws.varchar_to_tag,
+        }
+
+    def _get_table_schema(
+        self, table_name: str
+    ) -> tuple[
+        list[tuple[str, Callable[[Any], "taosws.PyTagView"]]], list[tuple[str, Callable[[list], "taosws.PyColumnView"]]]
+    ]:
+        fields = [_TDEngineField(*raw) for raw in self._connection.query(f"DESCRIBE {table_name};")]
+        tags_schema = []
+        reg_cols_schema = []
+        for field in fields:
+            field_name = field.field
+            field_type = field.field_type
+
+            if field.note == "TAG":
+                if field_type in self._tdengine_type_to_tag_func:
+                    tags_schema.append((field_name, self._tdengine_type_to_tag_func[field_type]))
+                else:
+                    raise TDEngineTypeError(f"Unsupported tag type '{field_type}' of field '{field_name}'")
+            else:
+                if field_type in self._tdengine_type_to_column_func:
+                    reg_cols_schema.append((field_name, self._tdengine_type_to_column_func[field_type]))
+                else:
+                    raise TDEngineTypeError(f"Unsupported column type '{field_type}' of field '{field_name}'")
+
+        return tags_schema, reg_cols_schema
+
+    def _init(self) -> None:
         import taosws
 
         _Batching._init(self)
@@ -888,48 +972,66 @@ class TDEngineTarget(_Batching, _Writer):
             self._connection = taosws.connect(self._url)
         else:
             self._connection = taosws.connect(url=self._url, user=self._user, password=self._password)
+        self._closeables.append(self._connection)
         self._connection.execute(f"USE {self._database}")
+
+        self._tags_schema, self._reg_cols_schema = self._get_table_schema(self._table or self._supertable)
+        self._number_of_tags = len(self._tags_schema)
+        self._number_of_reg_cols = len(self._reg_cols_schema)
+        self._sql_template = self._get_sql_template()
 
     def _event_to_batch_entry(self, event):
         return self._event_to_writer_entry(event)
 
     @staticmethod
-    def _sanitize_value(value):
-        if isinstance(value, datetime.datetime):
-            value = round(value.timestamp() * 1000)
-        elif isinstance(value, str):
-            value = f"'{value}'"
-        return str(value)
+    def _get_params_template(num_param: int) -> str:
+        return f"({','.join(num_param * ['?'])})"
 
-    async def _emit(self, batch, batch_key, batch_time, batch_events, last_event_time=None):
-        with StringIO() as b:
-            b.write("INSERT INTO ")
-            if self._table:
-                b.write(self._table)
-            else:  # table is dynamic
-                b.write(batch_key)
+    def _get_sql_template(self) -> str:
+        with StringIO() as sql:
+            sql.write("INSERT INTO ?")
             if self._supertable:
-                b.write(" USING ")
-                b.write(self._supertable)
-                b.write(" TAGS (")
-                for column_index in range(self._number_of_tags):
-                    value = batch[0].get(self._columns[column_index], "NULL")
-                    b.write(self._sanitize_value(value))
-                    if column_index < self._number_of_tags - 1:
-                        b.write(",")
-                b.write(")")
-            b.write(" VALUES ")
-            for record in batch:
-                b.write("(")
-                for column_index in range(self._number_of_tags, len(self._columns)):
-                    value = record.get(self._columns[column_index], "NULL")
-                    b.write(self._sanitize_value(value))
-                    if column_index < len(self._columns) - 1:
-                        b.write(",")
-                b.write(") ")
-            b.write(";")
-            insert_statement = b.getvalue()
-        self._connection.execute(insert_statement)
+                sql.write(f" USING {self._supertable} TAGS {self._get_params_template(self._number_of_tags)}")
+            sql.write(f" VALUES {self._get_params_template(self._number_of_reg_cols)};")
+            return sql.getvalue()
+
+    @staticmethod
+    def _get_tags_from_event(
+        tags_schema: list[tuple[str, Callable[[Any], "taosws.PyTagView"]]], event: dict
+    ) -> list["taosws.PyTagView"]:
+        return [tag_func(event.get(tag_name)) for tag_name, tag_func in tags_schema]
+
+    @staticmethod
+    def _raw_value_to_value(value):
+        if isinstance(value, datetime.datetime):
+            # We currently support only the default millisecond precision
+            return int(value.timestamp() * 1000)
+        return value
+
+    @classmethod
+    def _get_batch_values(
+        cls, reg_cols_schema: list[tuple[str, Callable[[list], "taosws.PyColumnView"]]], batch: list[dict]
+    ) -> list["taosws.PyColumnView"]:
+        return [
+            col_func([cls._raw_value_to_value(event.get(col_name)) for event in batch])
+            for col_name, col_func in reg_cols_schema
+        ]
+
+    async def _emit(self, batch: list[dict], batch_key: str, batch_time, batch_events, last_event_time=None):
+        stmt = self._connection.statement()
+        stmt.prepare(self._sql_template)
+        try:
+            stmt.set_tbname(self._table or batch_key)
+
+            if self._supertable:
+                # take the tags from the first event in the batch
+                stmt.set_tags(self._get_tags_from_event(self._tags_schema, batch[0]))
+
+            stmt.bind_param(self._get_batch_values(self._reg_cols_schema, batch))
+            stmt.add_batch()
+            stmt.execute()
+        finally:
+            stmt.close()
 
 
 class StreamTarget(Flow, _Writer):

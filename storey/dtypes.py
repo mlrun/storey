@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
+
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Callable, List, Optional, Union
@@ -100,6 +100,14 @@ class RedisError(Exception):
 
 
 class FlowError(Exception):
+    pass
+
+
+class TDEngineTypeError(TypeError):
+    pass
+
+
+class TDEngineValueError(ValueError):
     pass
 
 
@@ -446,3 +454,18 @@ class FieldAggregator:
 class FixedWindowType(Enum):
     CurrentOpenWindow = 1
     LastClosedWindow = 2
+
+
+class _TDEngineField:
+    def __init__(
+        self,
+        field: str,
+        field_type: str,
+        length: int,
+        note: str,
+        *args,
+    ):
+        self.field = field
+        self.field_type = field_type
+        self.length = length
+        self.note = note
