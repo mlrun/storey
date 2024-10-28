@@ -313,7 +313,6 @@ class SyncEmitSource(Flow):
                     await _commit_handled_events(self._outstanding_offsets, committer, commit_all=True)
                     self._termination_future.set_result(termination_result)
             except BaseException as ex:
-                traceback.print_exc()
                 if self.logger:
                     message = "An error was raised"
                     raised_by = getattr(ex, "_raised_by_storey_step", None)
