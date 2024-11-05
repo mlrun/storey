@@ -1435,6 +1435,9 @@ class Context:
 class ParallelExecutionRunnable:
     execution_mechanism = "multiprocessing"
 
+    def __init__(self, name):
+        self.name = name
+
     def init(self):
         pass
 
@@ -1451,7 +1454,11 @@ class ParallelExecution(Flow):
         super()._init()
         num_process = 0
         num_thread = 0
+        names = set()
         for runnable in self._runnables:
+            if runnable.name in names:
+                raise ValueError(f"ParallelExecutionRunnable name '{runnable.name}' is not unique")
+            names.add(runnable.name)
             runnable.init()
             if runnable.execution_mechanism == "multiprocessing":
                 num_process += 1
@@ -1477,5 +1484,8 @@ class ParallelExecution(Flow):
                     executor = self._executors[runnable.execution_mechanism]
                     task = asyncio.get_running_loop().run_in_executor(executor, runnable.run, event)
                 tasks.append(task)
-            event.body = await asyncio.gather(*tasks)
+            results = await asyncio.gather(*tasks)
+            event.body = {"inputs": event.body, "outputs": {}}
+            for index, result in enumerate(results):
+                event.body["outputs"][self._runnables[index].name] = result
             return await self._do_downstream(event)

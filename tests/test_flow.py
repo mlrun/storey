@@ -4652,8 +4652,7 @@ def test_filters_type():
 
 
 class RunnableBusyWait(ParallelExecutionRunnable):
-    def __init__(self):
-        self._result = 0
+    _result = 0
 
     def init(self):
         self._result = 1
@@ -4667,9 +4666,7 @@ class RunnableBusyWait(ParallelExecutionRunnable):
 
 class RunnableSleep(ParallelExecutionRunnable):
     execution_mechanism = "thread"
-
-    def __init__(self):
-        self._result = 0
+    _result = 0
 
     def init(self):
         self._result = 1
@@ -4681,9 +4678,7 @@ class RunnableSleep(ParallelExecutionRunnable):
 
 class RunnableAsyncSleep(ParallelExecutionRunnable):
     execution_mechanism = "async"
-
-    def __init__(self):
-        self._result = 0
+    _result = 0
 
     def init(self):
         self._result = 1
@@ -4693,13 +4688,27 @@ class RunnableAsyncSleep(ParallelExecutionRunnable):
         return self._result
 
 
-def test_parallel_execution():
-    runnable_busy_wait = RunnableBusyWait()
-    runnable_sleep = RunnableSleep()
-    runnable_async_sleep = RunnableAsyncSleep()
-    runnables = [runnable_busy_wait, runnable_sleep, runnable_async_sleep] * 2
+def test_parallel_execution_uniqueness():
+    runnables = [
+        RunnableBusyWait("x"),
+        RunnableBusyWait("x"),
+    ]
     parallel_execution = ParallelExecution(runnables)
-    reduce = Reduce(0, lambda acc, x: acc + sum(x))
+    with pytest.raises(ValueError):
+        parallel_execution._init()
+
+
+def test_parallel_execution():
+    runnables = [
+        RunnableBusyWait("busy1"),
+        RunnableBusyWait("busy2"),
+        RunnableSleep("sleep1"),
+        RunnableSleep("sleep2"),
+        RunnableAsyncSleep("asleep1"),
+        RunnableAsyncSleep("asleep2"),
+    ]
+    parallel_execution = ParallelExecution(runnables)
+    reduce = Reduce([], lambda acc, x: acc + [x])
 
     source = SyncEmitSource()
     source.to(parallel_execution).to(reduce)
@@ -4712,4 +4721,6 @@ def test_parallel_execution():
     end = time.monotonic()
 
     assert end - start < len(runnables)
-    assert result == len(runnables)
+    assert result == [
+        {"inputs": 0, "outputs": {"busy1": 1, "busy2": 1, "sleep1": 1, "sleep2": 1, "asleep1": 1, "asleep2": 1}}
+    ]
