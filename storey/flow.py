@@ -1430,3 +1430,52 @@ class Context:
 
     def set_table(self, key, table):
         self._tables[key] = table
+
+
+class ParallelExecutionRunnable:
+    execution_mechanism = "multiprocessing"
+
+    def init(self):
+        pass
+
+    def run(self, event):
+        return event
+
+
+class ParallelExecution(Flow):
+    def __init__(self, runnables, **kwargs):
+        super().__init__(**kwargs)
+        self._runnables = runnables
+
+    def _init(self):
+        super()._init()
+        num_process = 0
+        num_thread = 0
+        for runnable in self._runnables:
+            runnable.init()
+            if runnable.execution_mechanism == "multiprocessing":
+                num_process += 1
+            elif runnable.execution_mechanism == "thread":
+                num_thread += 1
+            elif runnable.execution_mechanism != "async":
+                raise ValueError(f"Unsupported execution mechanism: {runnable.execution_mechanism}")
+        self._executors = {}
+        if num_process:
+            self._executors["multiprocessing"] = ProcessPoolExecutor(max_workers=num_process)
+        if num_thread:
+            self._executors["thread"] = ThreadPoolExecutor(max_workers=num_thread)
+
+    async def _do(self, event):
+        if event is _termination_obj:
+            return await self._do_downstream(_termination_obj)
+        else:
+            tasks = []
+            for runnable in self._runnables:
+                if runnable.execution_mechanism == "async":
+                    task = asyncio.get_running_loop().create_task(runnable.run(event))
+                else:
+                    executor = self._executors[runnable.execution_mechanism]
+                    task = asyncio.get_running_loop().run_in_executor(executor, runnable.run, event)
+                tasks.append(task)
+            event.body = await asyncio.gather(*tasks)
+            return await self._do_downstream(event)

@@ -70,7 +70,14 @@ from storey import (
     V3ioDriver,
     build_flow,
 )
-from storey.flow import Context, ReifyMetadata, Rename, _ConcurrentJobExecution
+from storey.flow import (
+    Context,
+    ParallelExecution,
+    ParallelExecutionRunnable,
+    ReifyMetadata,
+    Rename,
+    _ConcurrentJobExecution,
+)
 
 
 class ATestException(Exception):
@@ -4642,3 +4649,67 @@ def test_filters_type():
             additional_filters=[[("city", "=", "Tel Aviv")], [("age", ">=", "40")]],
             filter_column="start_time",
         )
+
+
+class RunnableBusyWait(ParallelExecutionRunnable):
+    def __init__(self):
+        self._result = 0
+
+    def init(self):
+        self._result = 1
+
+    def run(self, event):
+        start = time.monotonic()
+        while time.monotonic() - start < 1:
+            pass
+        return self._result
+
+
+class RunnableSleep(ParallelExecutionRunnable):
+    execution_mechanism = "thread"
+
+    def __init__(self):
+        self._result = 0
+
+    def init(self):
+        self._result = 1
+
+    def run(self, event):
+        time.sleep(1)
+        return self._result
+
+
+class RunnableAsyncSleep(ParallelExecutionRunnable):
+    execution_mechanism = "async"
+
+    def __init__(self):
+        self._result = 0
+
+    def init(self):
+        self._result = 1
+
+    async def run(self, event):
+        await asyncio.sleep(1)
+        return self._result
+
+
+def test_parallel_execution():
+    runnable_busy_wait = RunnableBusyWait()
+    runnable_sleep = RunnableSleep()
+    runnable_async_sleep = RunnableAsyncSleep()
+    runnables = [runnable_busy_wait, runnable_sleep, runnable_async_sleep] * 2
+    parallel_execution = ParallelExecution(runnables)
+    reduce = Reduce(0, lambda acc, x: acc + sum(x))
+
+    source = SyncEmitSource()
+    source.to(parallel_execution).to(reduce)
+
+    start = time.monotonic()
+    controller = source.run()
+    controller.emit(0)
+    controller.terminate()
+    result = controller.await_termination()
+    end = time.monotonic()
+
+    assert end - start < len(runnables)
+    assert result == len(runnables)
