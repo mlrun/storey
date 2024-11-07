@@ -4652,6 +4652,7 @@ def test_filters_type():
 
 
 class RunnableBusyWait(ParallelExecutionRunnable):
+    execution_mechanism = "multiprocessing"
     _result = 0
 
     def init(self):
@@ -4665,7 +4666,7 @@ class RunnableBusyWait(ParallelExecutionRunnable):
 
 
 class RunnableSleep(ParallelExecutionRunnable):
-    execution_mechanism = "thread"
+    execution_mechanism = "threading"
     _result = 0
 
     def init(self):
@@ -4677,7 +4678,7 @@ class RunnableSleep(ParallelExecutionRunnable):
 
 
 class RunnableAsyncSleep(ParallelExecutionRunnable):
-    execution_mechanism = "async"
+    execution_mechanism = "asyncio"
     _result = 0
 
     def init(self):
@@ -4686,6 +4687,24 @@ class RunnableAsyncSleep(ParallelExecutionRunnable):
     async def run(self, event):
         await asyncio.sleep(1)
         return self._result
+
+
+class RunnableAsyncNaive(ParallelExecutionRunnable):
+    execution_mechanism = "naive"
+    _result = 0
+
+    def init(self):
+        self._result = 1
+
+    def run(self, event):
+        return self._result
+
+
+class RunnableWithError(ParallelExecutionRunnable):
+    execution_mechanism = "naive"
+
+    def run(self, event):
+        raise Exception("This shouldn't run!")
 
 
 def test_parallel_execution_uniqueness():
@@ -4706,8 +4725,15 @@ def test_parallel_execution():
         RunnableSleep("sleep2"),
         RunnableAsyncSleep("asleep1"),
         RunnableAsyncSleep("asleep2"),
+        RunnableAsyncSleep("naive"),
+        RunnableWithError("error"),
     ]
-    parallel_execution = ParallelExecution(runnables)
+
+    class MyParallelExecution(ParallelExecution):
+        def select_runnables(self, event):
+            return [runnable.name for runnable in runnables if runnable.name != "error"]
+
+    parallel_execution = MyParallelExecution(runnables)
     reduce = Reduce([], lambda acc, x: acc + [x])
 
     source = SyncEmitSource()
@@ -4720,7 +4746,10 @@ def test_parallel_execution():
     result = controller.await_termination()
     end = time.monotonic()
 
-    assert end - start < len(runnables)
+    assert end - start < 6
     assert result == [
-        {"inputs": 0, "outputs": {"busy1": 1, "busy2": 1, "sleep1": 1, "sleep2": 1, "asleep1": 1, "asleep2": 1}}
+        {
+            "inputs": 0,
+            "outputs": {"busy1": 1, "busy2": 1, "sleep1": 1, "sleep2": 1, "asleep1": 1, "asleep2": 1, "naive": 1},
+        }
     ]
