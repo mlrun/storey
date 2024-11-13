@@ -23,7 +23,7 @@ import uuid
 from asyncio import Task
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
-from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Union
+from typing import Any, Callable, Collection, Dict, Iterable, List, Optional, Set, Union
 
 import aiohttp
 
@@ -363,12 +363,12 @@ class Choice(Flow):
         # TODO: hacky way of supporting mlrun preview, which replaces targets with a DFTarget
         self._passthrough_for_preview = list(self._name_to_outlet) == ["dataframe"]
 
-    def select_outlets(self, event) -> List[str]:
+    def select_outlets(self, event) -> Collection[str]:
         """
         Override this method to route events based on a customer logic. The default implementation will route all
         events to all outlets.
         """
-        return list(self._name_to_outlet.keys())
+        return self._name_to_outlet.keys()
 
     async def _do(self, event):
         if event is _termination_obj:
@@ -376,6 +376,8 @@ class Choice(Flow):
         else:
             event_body = event if self._full_event else event.body
             outlet_names = self.select_outlets(event_body)
+            if len(set(outlet_names)) != len(outlet_names):
+                raise ValueError(f"select_outlets() returned duplicate outlets: {outlet_names}")
             outlets = []
             if self._passthrough_for_preview:
                 outlet = self._name_to_outlet["dataframe"]
