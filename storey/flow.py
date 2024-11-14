@@ -382,7 +382,10 @@ class Choice(Flow):
                 outlets.append(outlet)
             else:
                 if len(set(outlet_names)) != len(outlet_names):
-                    raise ValueError(f"select_outlets() returned duplicate outlets: {outlet_names}")
+                    raise ValueError(
+                        "select_outlets() returned duplicate outlets among the defined outlets: "
+                        + ", ".join(outlet_names)
+                    )
                 for outlet_name in outlet_names:
                     if outlet_name not in self._name_to_outlet:
                         raise ValueError(
