@@ -376,13 +376,13 @@ class Choice(Flow):
         else:
             event_body = event if self._full_event else event.body
             outlet_names = self.select_outlets(event_body)
-            if len(set(outlet_names)) != len(outlet_names):
-                raise ValueError(f"select_outlets() returned duplicate outlets: {outlet_names}")
             outlets = []
             if self._passthrough_for_preview:
                 outlet = self._name_to_outlet["dataframe"]
                 outlets.append(outlet)
             else:
+                if len(set(outlet_names)) != len(outlet_names):
+                    raise ValueError(f"select_outlets() returned duplicate outlets: {outlet_names}")
                 for outlet_name in outlet_names:
                     if outlet_name not in self._name_to_outlet:
                         raise ValueError(
