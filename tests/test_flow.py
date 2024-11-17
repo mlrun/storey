@@ -4689,7 +4689,7 @@ class RunnableAsyncSleep(ParallelExecutionRunnable):
         return self._result
 
 
-class RunnableAsyncNaive(ParallelExecutionRunnable):
+class RunnableNaiveNoOp(ParallelExecutionRunnable):
     execution_mechanism = "naive"
     _result = 0
 
@@ -4707,14 +4707,36 @@ class RunnableWithError(ParallelExecutionRunnable):
         raise Exception("This shouldn't run!")
 
 
-def test_parallel_execution_uniqueness():
+def test_parallel_execution_runnable_uniqueness():
     runnables = [
         RunnableBusyWait("x"),
         RunnableBusyWait("x"),
     ]
     parallel_execution = ParallelExecution(runnables)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="ParallelExecutionRunnable name 'x' is not unique"):
         parallel_execution._init()
+
+
+def test_select_runnable_uniqueness():
+    runnables = [
+        RunnableNaiveNoOp("x"),
+        RunnableNaiveNoOp("y"),
+    ]
+
+    class MyParallelExecution(ParallelExecution):
+        def select_runnables(self, event):
+            return ["x", "x"]
+
+    parallel_execution = MyParallelExecution(runnables)
+
+    source = SyncEmitSource()
+    source.to(parallel_execution)
+
+    controller = source.run()
+    controller.emit(0)
+    controller.terminate()
+    with pytest.raises(ValueError, match=r"select_runnables\(\) returned more than one outlet named 'x'"):
+        controller.await_termination()
 
 
 def test_parallel_execution():

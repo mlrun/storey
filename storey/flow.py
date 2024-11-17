@@ -1483,9 +1483,13 @@ class ParallelExecution(Flow):
         else:
             runnables = self.select_runnables(event)
             futures = []
+            runnables_encountered = set()
             for runnable in runnables:
                 if isinstance(runnable, str):
                     runnable = self._runnable_by_name[runnable]
+                if id(runnable) in runnables_encountered:
+                    raise ValueError(f"select_runnables() returned more than one outlet named '{runnable.name}'")
+                runnables_encountered.add(id(runnable))
                 if runnable.execution_mechanism == "asyncio":
                     future = asyncio.get_running_loop().create_task(runnable.run(event))
                 elif runnable.execution_mechanism == "naive":
