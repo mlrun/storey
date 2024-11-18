@@ -21,7 +21,7 @@ on:
 
 jobs:
   release:
-    runs-on: [ self-hosted, Linux ]
+    runs-on: ubuntu-latest
     container:
       image: python:3.9.18
     steps:
@@ -32,12 +32,6 @@ jobs:
         run: make lint
       - name: test
         run: make test
-      - name: integration
-        env:
-          V3IO_API: ${{ secrets.V3IO_API }}
-          V3IO_ACCESS_KEY: ${{ secrets.V3IO_ACCESS_KEY }}
-          V3IO_FRAMESD: ${{ secrets.V3IO_FRAMESD }}
-        run: make integration
       - name: Set version
         run: make set-version
       - name: Build binary wheel and source tarball
