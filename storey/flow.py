@@ -1450,17 +1450,17 @@ class ParallelExecutionRunnable:
 class ParallelExecution(Flow):
     def __init__(self, runnables, **kwargs):
         super().__init__(**kwargs)
-        self._runnables = runnables
+        self.runnables = runnables
         self._runnable_by_name = {}
 
     def select_runnables(self, event):
-        return self._runnables
+        return self.runnables
 
     def _init(self):
         super()._init()
         num_process = 0
         num_thread = 0
-        for runnable in self._runnables:
+        for runnable in self.runnables:
             if runnable.name in self._runnable_by_name:
                 raise ValueError(f"ParallelExecutionRunnable name '{runnable.name}' is not unique")
             self._runnable_by_name[runnable.name] = runnable
@@ -1502,5 +1502,5 @@ class ParallelExecution(Flow):
             results = await asyncio.gather(*futures)
             event.body = {"inputs": event.body, "outputs": {}}
             for index, result in enumerate(results):
-                event.body["outputs"][self._runnables[index].name] = result
+                event.body["outputs"][self.runnables[index].name] = result
             return await self._do_downstream(event)
