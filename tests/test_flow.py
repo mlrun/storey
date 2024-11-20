@@ -1735,6 +1735,50 @@ def test_choice():
     assert termination_result == expected
 
 
+def test_duplicate_choice():
+    class DuplicateChoice(Choice):
+        def select_outlets(self, event):
+            outlets = ["all_events", "all_events"]
+            return outlets
+
+    source = SyncEmitSource()
+    duplicate_choice = DuplicateChoice(termination_result_fn=lambda x, y: x + y)
+    all_events = Map(lambda x: x, name="all_events")
+
+    source.to(duplicate_choice).to(all_events)
+
+    controller = source.run()
+    controller.emit(0)
+    controller.terminate()
+    with pytest.raises(
+        ValueError,
+        match=r"select_outlets\(\) returned duplicate outlets among the defined outlets: all_events, all_events",
+    ):
+        controller.await_termination()
+
+
+def test_nonexistent_choice():
+    class NonexistentChoice(Choice):
+        def select_outlets(self, event):
+            outlets = ["wrong"]
+            return outlets
+
+    source = SyncEmitSource()
+    nonexistent_choice = NonexistentChoice(termination_result_fn=lambda x, y: x + y)
+    all_events = Map(lambda x: x, name="all_events")
+
+    source.to(nonexistent_choice).to(all_events)
+
+    controller = source.run()
+    controller.emit(0)
+    controller.terminate()
+    with pytest.raises(
+        ValueError,
+        match=r"select_outlets\(\) returned outlet name 'wrong', which is not one of the defined outlets: all_events",
+    ):
+        controller.await_termination()
+
+
 def test_metadata():
     def mapf(x):
         x.key = x.key + 1
