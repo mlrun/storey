@@ -4809,13 +4809,15 @@ def test_parallel_execution():
     controller = source.run()
     controller.emit(0)
     controller.terminate()
-    result = controller.await_termination()
+    termination_result = controller.await_termination()
     end = time.monotonic()
 
     assert end - start < 6
-    assert result == [
-        {
-            "inputs": 0,
-            "outputs": {"busy1": 1, "busy2": 1, "sleep1": 1, "sleep2": 1, "asleep1": 1, "asleep2": 1, "naive": 1},
-        }
-    ]
+    termination_result = termination_result[0]
+    assert termination_result.keys() == {"input", "results"}
+    assert termination_result["input"] == 0
+    results = termination_result["results"]
+    assert results.keys() == {"busy1", "busy2", "sleep1", "sleep2", "asleep1", "asleep2", "naive"}
+    for result in results.values():
+        assert result["output"] == 1
+        assert 1 < result["runtime"] < 2
