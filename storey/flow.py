@@ -16,6 +16,7 @@ import asyncio
 import copy
 import datetime
 import inspect
+import multiprocessing
 import pickle
 import time
 import traceback
@@ -1453,34 +1454,53 @@ class ParallelExecutionRunnable:
 
 
 class ParallelExecution(Flow):
-    def __init__(self, runnables, **kwargs):
+    """
+    Runs multiple jobs in parallel for each event.
+
+    :param runnables: A list of ParallelExecutionRunnable instances.
+    :param max_processes: Maximum number of processes to spawn.
+    :param max_threads: Maximum number of threads to start.
+    """
+
+    def __init__(self, runnables, max_processes=None, max_threads=None, **kwargs):
         super().__init__(**kwargs)
         self.runnables = runnables
         self._runnable_by_name = {}
+
+        self.max_processes = max_processes
+        self.max_threads = max_threads
 
     def select_runnables(self, event):
         return self.runnables
 
     def _init(self):
         super()._init()
-        num_process = 0
-        num_thread = 0
+        num_processes = 0
+        num_threads = 0
         for runnable in self.runnables:
             if runnable.name in self._runnable_by_name:
                 raise ValueError(f"ParallelExecutionRunnable name '{runnable.name}' is not unique")
             self._runnable_by_name[runnable.name] = runnable
             runnable.init()
             if runnable.execution_mechanism == "multiprocessing":
-                num_process += 1
+                num_processes += 1
             elif runnable.execution_mechanism == "threading":
-                num_thread += 1
+                num_threads += 1
             elif runnable.execution_mechanism not in ("asyncio", "naive"):
                 raise ValueError(f"Unsupported execution mechanism: {runnable.execution_mechanism}")
+
+        # enforce max
+        if self.max_processes:
+            num_processes = min(num_processes, self.max_processes)
+        if self.max_threads:
+            num_threads = min(num_threads, self.max_threads)
+
         self._executors = {}
-        if num_process:
-            self._executors["multiprocessing"] = ProcessPoolExecutor(max_workers=num_process)
-        if num_thread:
-            self._executors["threading"] = ThreadPoolExecutor(max_workers=num_thread)
+        if num_processes:
+            mp_context = multiprocessing.get_context("spawn")
+            self._executors["multiprocessing"] = ProcessPoolExecutor(max_workers=num_processes, mp_context=mp_context)
+        if num_threads:
+            self._executors["threading"] = ThreadPoolExecutor(max_workers=num_threads)
 
     async def _do(self, event):
         if event is _termination_obj:
