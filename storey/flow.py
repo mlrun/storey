@@ -1520,7 +1520,11 @@ class ParallelExecution(Flow):
         self.max_threads = max_threads
 
     def select_runnables(self, event):
-        return self.runnables
+        """
+        Given an event, returns a list of runnables (or a list of runnable names) to execute on it. It can also return
+        None, in which case all runnables are executed on the event, which is also the default.
+        """
+        pass
 
     def _init(self):
         super()._init()
@@ -1556,6 +1560,8 @@ class ParallelExecution(Flow):
             return await self._do_downstream(_termination_obj)
         else:
             runnables = self.select_runnables(event)
+            if runnables is None:
+                runnables = self.runnables
             futures = []
             runnables_encountered = set()
             for runnable in runnables:
