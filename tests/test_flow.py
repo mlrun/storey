@@ -4821,3 +4821,12 @@ def test_parallel_execution():
     for result in results.values():
         assert result["output"] == 1
         assert 1 < result["runtime"] < 2
+
+
+def test_invalid_runnable():
+    with pytest.raises(
+        ValueError,
+        match="ParallelExecutionRunnable's execution_mechanism attribute must be overridden with one of: "
+        '"multiprocessing", "threading", "asyncio", "naive"',
+    ):
+        ParallelExecutionRunnable("my_runnable")

@@ -1465,8 +1465,12 @@ class ParallelExecutionRunnable:
     execution_mechanism = None
 
     def __init__(self, name):
-        if not self.execution_mechanism:
-            raise ValueError("ParallelExecutionRunnable's execution_mechanism attribute must be overridden")
+        supported_mechanisms = ("multiprocessing", "threading", "asyncio", "naive")
+        if self.execution_mechanism not in supported_mechanisms:
+            raise ValueError(
+                "ParallelExecutionRunnable's execution_mechanism attribute must be overridden with one of: "
+                '"multiprocessing", "threading", "asyncio", "naive"'
+            )
         self.name = name
 
     def init(self):
