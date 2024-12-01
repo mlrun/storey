@@ -1464,7 +1464,7 @@ class ParallelExecutionRunnable:
 
     execution_mechanism = None
 
-    def __init__(self, name):
+    def __init__(self, name: str):
         supported_mechanisms = ("multiprocessing", "threading", "asyncio", "naive")
         if self.execution_mechanism not in supported_mechanisms:
             raise ValueError(
@@ -1501,8 +1501,18 @@ class ParallelExecution(Flow):
     :param max_threads: Maximum number of threads to start.
     """
 
-    def __init__(self, runnables, max_processes=None, max_threads=None, **kwargs):
+    def __init__(
+        self,
+        runnables: list[ParallelExecutionRunnable],
+        max_processes: Optional[int] = None,
+        max_threads: Optional[int] = None,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
+
+        if not runnables:
+            raise ValueError("ParallelExecution cannot be instantiated without at least one runnable")
+
         self.runnables = runnables
         self._runnable_by_name = {}
 
