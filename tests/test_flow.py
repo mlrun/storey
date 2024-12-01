@@ -4702,7 +4702,7 @@ class RunnableBusyWait(ParallelExecutionRunnable):
     def init(self):
         self._result = 1
 
-    def run(self, event):
+    def run(self, event, path):
         start = time.monotonic()
         while time.monotonic() - start < 1:
             pass
@@ -4716,7 +4716,7 @@ class RunnableSleep(ParallelExecutionRunnable):
     def init(self):
         self._result = 1
 
-    def run(self, event):
+    def run(self, event, path):
         time.sleep(1)
         return self._result
 
@@ -4728,7 +4728,7 @@ class RunnableAsyncSleep(ParallelExecutionRunnable):
     def init(self):
         self._result = 1
 
-    async def run(self, event):
+    async def run(self, event, path):
         await asyncio.sleep(1)
         return self._result
 
@@ -4740,14 +4740,14 @@ class RunnableNaiveNoOp(ParallelExecutionRunnable):
     def init(self):
         self._result = 1
 
-    def run(self, event):
+    def run(self, event, path):
         return self._result
 
 
 class RunnableWithError(ParallelExecutionRunnable):
     execution_mechanism = "naive"
 
-    def run(self, event):
+    def run(self, event, path):
         raise Exception("This shouldn't run!")
 
 
@@ -4830,3 +4830,34 @@ def test_invalid_runnable():
         '"multiprocessing", "threading", "asyncio", "naive"',
     ):
         ParallelExecutionRunnable("my_runnable")
+
+
+class RunnableNaiveWithMutation(ParallelExecutionRunnable):
+    execution_mechanism = "naive"
+
+    def run(self, event, path):
+        event["n"] += 1
+        return event
+
+
+def test_event_input_preservation():
+    runnables = [
+        RunnableNaiveWithMutation("x"),
+    ]
+    reduce = Reduce([], lambda acc, x: acc + [x])
+
+    source = SyncEmitSource()
+    source.to(ParallelExecution(runnables)).to(reduce)
+
+    controller = source.run()
+    controller.emit({"n": 1})
+    controller.terminate()
+    termination_result = controller.await_termination()
+    termination_result = termination_result[0]
+    assert termination_result.keys() == {"input", "results"}
+    assert termination_result["input"] == {"n": 1}
+    results = termination_result["results"]
+    assert results.keys() == {"x"}
+    result = results["x"]
+    assert result.keys() == {"runtime", "output"}
+    assert result["output"] == {"n": 2}

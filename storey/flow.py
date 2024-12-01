@@ -1476,18 +1476,18 @@ class ParallelExecutionRunnable:
     def init(self):
         pass
 
-    def run(self, event):
+    def run(self, event, path: str):
         return event
 
-    def _run(self, event):
+    def _run(self, event, path: str):
         start = time.monotonic()
-        data = self.run(event)
+        data = self.run(event, path)
         end = time.monotonic()
         return _ParallelExecutionRunnableResult(data, end - start)
 
-    async def _async_run(self, event):
+    async def _async_run(self, event, path: str):
         start = time.monotonic()
-        data = await self.run(event)
+        data = await self.run(event, path)
         end = time.monotonic()
         return _ParallelExecutionRunnableResult(data, end - start)
 
@@ -1563,15 +1563,21 @@ class ParallelExecution(Flow):
                     runnable = self._runnable_by_name[runnable]
                 if id(runnable) in runnables_encountered:
                     raise ValueError(f"select_runnables() returned more than one outlet named '{runnable.name}'")
+                input = event.body if runnable.execution_mechanism == "multiprocessing" else copy.deepcopy(event.body)
                 runnables_encountered.add(id(runnable))
                 if runnable.execution_mechanism == "asyncio":
-                    future = asyncio.get_running_loop().create_task(runnable._async_run(event))
+                    future = asyncio.get_running_loop().create_task(runnable._async_run(input, event.path))
                 elif runnable.execution_mechanism == "naive":
                     future = asyncio.get_running_loop().create_future()
-                    future.set_result(runnable._run(event))
+                    future.set_result(runnable._run(input, event.path))
                 else:
                     executor = self._executors[runnable.execution_mechanism]
-                    future = asyncio.get_running_loop().run_in_executor(executor, runnable._run, event)
+                    future = asyncio.get_running_loop().run_in_executor(
+                        executor,
+                        runnable._run,
+                        input,
+                        event.path,
+                    )
                 futures.append(future)
             results: list[_ParallelExecutionRunnableResult] = await asyncio.gather(*futures)
             event.body = {"input": event.body, "results": {}}
