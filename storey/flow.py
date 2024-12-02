@@ -1463,10 +1463,10 @@ class ParallelExecutionRunnable:
     """
 
     execution_mechanism = None
+    supported_mechanisms = ("multiprocessing", "threading", "asyncio", "naive")
 
     def __init__(self, name: str):
-        supported_mechanisms = ("multiprocessing", "threading", "asyncio", "naive")
-        if self.execution_mechanism not in supported_mechanisms:
+        if self.execution_mechanism not in self.supported_mechanisms:
             raise ValueError(
                 "ParallelExecutionRunnable's execution_mechanism attribute must be overridden with one of: "
                 '"multiprocessing", "threading", "asyncio", "naive"'
@@ -1479,6 +1479,9 @@ class ParallelExecutionRunnable:
     def run(self, event, path: str):
         return event
 
+    async def run_async(self, event, path: str):
+        return event
+
     def _run(self, event, path: str):
         start = time.monotonic()
         data = self.run(event, path)
@@ -1487,7 +1490,7 @@ class ParallelExecutionRunnable:
 
     async def _async_run(self, event, path: str):
         start = time.monotonic()
-        data = await self.run(event, path)
+        data = await self.run_async(event, path)
         end = time.monotonic()
         return _ParallelExecutionRunnableResult(data, end - start)
 
