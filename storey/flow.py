@@ -1439,7 +1439,8 @@ class Context:
 
 
 class _ParallelExecutionRunnableResult:
-    def __init__(self, data, runtime):
+    def __init__(self, runnable_name, data, runtime):
+        self.runnable_name = runnable_name
         self.data = data
         self.runtime = runtime
 
@@ -1486,13 +1487,13 @@ class ParallelExecutionRunnable:
         start = time.monotonic()
         data = self.run(event, path)
         end = time.monotonic()
-        return _ParallelExecutionRunnableResult(data, end - start)
+        return _ParallelExecutionRunnableResult(self.name, data, end - start)
 
     async def _async_run(self, event, path: str):
         start = time.monotonic()
         data = await self.run_async(event, path)
         end = time.monotonic()
-        return _ParallelExecutionRunnableResult(data, end - start)
+        return _ParallelExecutionRunnableResult(self.name, data, end - start)
 
 
 class ParallelExecution(Flow):
@@ -1537,6 +1538,7 @@ class ParallelExecution(Flow):
             if runnable.name in self._runnable_by_name:
                 raise ValueError(f"ParallelExecutionRunnable name '{runnable.name}' is not unique")
             self._runnable_by_name[runnable.name] = runnable
+            print(f"initializing runnable {runnable.name}")
             runnable.init()
             if runnable.execution_mechanism == "multiprocessing":
                 num_processes += 1
@@ -1590,6 +1592,6 @@ class ParallelExecution(Flow):
                 futures.append(future)
             results: list[_ParallelExecutionRunnableResult] = await asyncio.gather(*futures)
             event.body = {"input": event.body, "results": {}}
-            for index, result in enumerate(results):
-                event.body["results"][self.runnables[index].name] = {"runtime": result.runtime, "output": result.data}
+            for result in results:
+                event.body["results"][result.runnable_name] = {"runtime": result.runtime, "output": result.data}
             return await self._do_downstream(event)

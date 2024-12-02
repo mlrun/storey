@@ -4730,6 +4730,7 @@ class RunnableAsyncSleep(ParallelExecutionRunnable):
 
     async def run_async(self, event, path):
         await asyncio.sleep(1)
+        print(f"{self.name} returning {self._result}")
         return self._result
 
 
@@ -4785,6 +4786,7 @@ def test_select_runnable_uniqueness():
 
 def test_parallel_execution():
     runnables = [
+        RunnableWithError("error"),
         RunnableBusyWait("busy1"),
         RunnableBusyWait("busy2"),
         RunnableSleep("sleep1"),
@@ -4792,7 +4794,6 @@ def test_parallel_execution():
         RunnableAsyncSleep("asleep1"),
         RunnableAsyncSleep("asleep2"),
         RunnableAsyncSleep("naive"),
-        RunnableWithError("error"),
     ]
 
     class MyParallelExecution(ParallelExecution):
