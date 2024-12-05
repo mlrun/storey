@@ -4702,7 +4702,7 @@ class RunnableBusyWait(ParallelExecutionRunnable):
     def init(self):
         self._result = 1
 
-    def run(self, event, path):
+    def run(self, data, path):
         start = time.monotonic()
         while time.monotonic() - start < 1:
             pass
@@ -4716,7 +4716,7 @@ class RunnableSleep(ParallelExecutionRunnable):
     def init(self):
         self._result = 1
 
-    def run(self, event, path):
+    def run(self, data, path):
         time.sleep(1)
         return self._result
 
@@ -4728,7 +4728,7 @@ class RunnableAsyncSleep(ParallelExecutionRunnable):
     def init(self):
         self._result = 1
 
-    async def run_async(self, event, path):
+    async def run_async(self, data, path):
         await asyncio.sleep(1)
         print(f"{self.name} returning {self._result}")
         return self._result
@@ -4741,14 +4741,14 @@ class RunnableNaiveNoOp(ParallelExecutionRunnable):
     def init(self):
         self._result = 1
 
-    def run(self, event, path):
+    def run(self, data, path):
         return self._result
 
 
 class RunnableWithError(ParallelExecutionRunnable):
     execution_mechanism = "naive"
 
-    def run(self, event, path):
+    def run(self, data, path):
         raise Exception("This shouldn't run!")
 
 
@@ -4836,9 +4836,9 @@ def test_invalid_runnable():
 class RunnableNaiveWithMutation(ParallelExecutionRunnable):
     execution_mechanism = "naive"
 
-    def run(self, event, path):
-        event["n"] += 1
-        return event
+    def run(self, data, path):
+        data["n"] += 1
+        return data
 
 
 def test_event_input_preservation():
