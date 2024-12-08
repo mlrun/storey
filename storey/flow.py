@@ -1445,6 +1445,9 @@ class _ParallelExecutionRunnableResult:
         self.runtime = runtime
 
 
+parallel_execution_mechanisms = ("multiprocessing", "threading", "asyncio", "naive")
+
+
 class ParallelExecutionRunnable:
     """
     Runnable to be run by a ParallelExecution step. Subclasses must assign execution_mechanism with one of:
@@ -1466,11 +1469,10 @@ class ParallelExecutionRunnable:
     """
 
     execution_mechanism: Optional[str] = None
-    supported_mechanisms = ("multiprocessing", "threading", "asyncio", "naive")
 
     # ignore unused keyword arguments such as context which may be passed in by mlrun
     def __init__(self, name: str, **kwargs):
-        if self.execution_mechanism not in self.supported_mechanisms:
+        if self.execution_mechanism not in parallel_execution_mechanisms:
             raise ValueError(
                 "ParallelExecutionRunnable's execution_mechanism attribute must be overridden with one of: "
                 '"multiprocessing", "threading", "asyncio", "naive"'
