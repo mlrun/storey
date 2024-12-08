@@ -1461,6 +1461,8 @@ class ParallelExecutionRunnable:
 
     Subclasses may optionally override the init() method if the user's implementation of run() requires prior
     initialization.
+
+    :param name: Runnable name
     """
 
     execution_mechanism = None
@@ -1476,25 +1478,40 @@ class ParallelExecutionRunnable:
         self.name = name
 
     def init(self):
+        """Override this method to add initialization logic."""
         pass
 
-    def run(self, data, path: str):
-        return data
+    def run(self, body, path: str):
+        """
+        Override this method with the code this runnable should run. If execution_mechanism is "asyncio", override
+        run_async() instead.
 
-    async def run_async(self, data, path: str):
-        return data
+        :param body: Event body
+        :param path: Event path
+        """
+        return body
 
-    def _run(self, data, path: str):
+    async def run_async(self, body, path: str):
+        """
+        If execution_mechanism is "asyncio", override this method with the code this runnable should run. Otherwise,
+        override run() instead.
+
+        :param body: Event body
+        :param path: Event path
+        """
+        return body
+
+    def _run(self, body, path: str):
         start = time.monotonic()
-        data = self.run(data, path)
+        body = self.run(body, path)
         end = time.monotonic()
-        return _ParallelExecutionRunnableResult(self.name, data, end - start)
+        return _ParallelExecutionRunnableResult(self.name, body, end - start)
 
-    async def _async_run(self, data, path: str):
+    async def _async_run(self, body, path: str):
         start = time.monotonic()
-        data = await self.run_async(data, path)
+        body = await self.run_async(body, path)
         end = time.monotonic()
-        return _ParallelExecutionRunnableResult(self.name, data, end - start)
+        return _ParallelExecutionRunnableResult(self.name, body, end - start)
 
 
 class ParallelExecution(Flow):
@@ -1528,6 +1545,8 @@ class ParallelExecution(Flow):
         """
         Given an event, returns a list of runnables (or a list of runnable names) to execute on it. It can also return
         None, in which case all runnables are executed on the event, which is also the default.
+
+        :param event: Event object
         """
         pass
 
