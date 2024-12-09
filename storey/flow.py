@@ -17,6 +17,7 @@ import copy
 import datetime
 import inspect
 import multiprocessing
+import os
 import pickle
 import time
 import traceback
@@ -1521,8 +1522,9 @@ class ParallelExecution(Flow):
     Runs multiple jobs in parallel for each event.
 
     :param runnables: A list of ParallelExecutionRunnable instances.
-    :param max_processes: Maximum number of processes to spawn.
-    :param max_threads: Maximum number of threads to start.
+    :param max_processes: Maximum number of processes to spawn. Defaults to the number of available CPUs, or 16 if
+      number of CPUs can't be determined.
+    :param max_threads: Maximum number of threads to start. Defaults to 32.
     """
 
     def __init__(
@@ -1540,8 +1542,8 @@ class ParallelExecution(Flow):
         self.runnables = runnables
         self._runnable_by_name = {}
 
-        self.max_processes = max_processes
-        self.max_threads = max_threads
+        self.max_processes = max_processes or os.cpu_count() or 16
+        self.max_threads = max_threads or 32
 
     def select_runnables(self, event) -> Optional[Union[list[str], list[ParallelExecutionRunnable]]]:
         """
