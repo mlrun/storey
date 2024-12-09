@@ -1461,7 +1461,8 @@ class ParallelExecutionRunnable:
     * "naive" – To run in the main event loop. This is appropriate only for trivial computation and/or file I/O. It
         means that the runnable will not actually be run in parallel to anything else.
 
-    Subclasses must also override the run() method with user code that handles the event and returns a result.
+    Subclasses must also override the run() method, or run_async() when execution_mechanism="asyncio", with user code
+    that handles the event and returns a result.
 
     Subclasses may optionally override the init() method if the user's implementation of run() requires prior
     initialization.
@@ -1562,7 +1563,6 @@ class ParallelExecution(Flow):
             if runnable.name in self._runnable_by_name:
                 raise ValueError(f"ParallelExecutionRunnable name '{runnable.name}' is not unique")
             self._runnable_by_name[runnable.name] = runnable
-            print(f"initializing runnable {runnable.name}")
             runnable.init()
             if runnable.execution_mechanism == "multiprocessing":
                 num_processes += 1
