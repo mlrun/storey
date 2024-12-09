@@ -1572,10 +1572,8 @@ class ParallelExecution(Flow):
                 raise ValueError(f"Unsupported execution mechanism: {runnable.execution_mechanism}")
 
         # enforce max
-        if self.max_processes:
-            num_processes = min(num_processes, self.max_processes)
-        if self.max_threads:
-            num_threads = min(num_threads, self.max_threads)
+        num_processes = min(num_processes, self.max_processes)
+        num_threads = min(num_threads, self.max_threads)
 
         self._executors = {}
         if num_processes:
