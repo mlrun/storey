@@ -70,7 +70,14 @@ from storey import (
     V3ioDriver,
     build_flow,
 )
-from storey.flow import Context, ReifyMetadata, Rename, _ConcurrentJobExecution
+from storey.flow import (
+    Context,
+    ParallelExecution,
+    ParallelExecutionRunnable,
+    ReifyMetadata,
+    Rename,
+    _ConcurrentJobExecution,
+)
 
 
 class ATestException(Exception):
@@ -4686,3 +4693,172 @@ def test_filters_type():
             additional_filters=[[("city", "=", "Tel Aviv")], [("age", ">=", "40")]],
             filter_column="start_time",
         )
+
+
+class RunnableBusyWait(ParallelExecutionRunnable):
+    execution_mechanism = "multiprocessing"
+    _result = 0
+
+    def init(self):
+        self._result = 1
+
+    def run(self, data, path):
+        start = time.monotonic()
+        while time.monotonic() - start < 1:
+            pass
+        return self._result
+
+
+class RunnableSleep(ParallelExecutionRunnable):
+    execution_mechanism = "threading"
+    _result = 0
+
+    def init(self):
+        self._result = 1
+
+    def run(self, data, path):
+        time.sleep(1)
+        return self._result
+
+
+class RunnableAsyncSleep(ParallelExecutionRunnable):
+    execution_mechanism = "asyncio"
+    _result = 0
+
+    def init(self):
+        self._result = 1
+
+    async def run_async(self, data, path):
+        await asyncio.sleep(1)
+        print(f"{self.name} returning {self._result}")
+        return self._result
+
+
+class RunnableNaiveNoOp(ParallelExecutionRunnable):
+    execution_mechanism = "naive"
+    _result = 0
+
+    def init(self):
+        self._result = 1
+
+    def run(self, data, path):
+        return self._result
+
+
+class RunnableWithError(ParallelExecutionRunnable):
+    execution_mechanism = "naive"
+
+    def run(self, data, path):
+        raise Exception("This shouldn't run!")
+
+
+def test_parallel_execution_runnable_uniqueness():
+    runnables = [
+        RunnableBusyWait("x"),
+        RunnableBusyWait("x"),
+    ]
+    parallel_execution = ParallelExecution(runnables)
+    with pytest.raises(ValueError, match="ParallelExecutionRunnable name 'x' is not unique"):
+        parallel_execution._init()
+
+
+def test_select_runnable_uniqueness():
+    runnables = [
+        RunnableNaiveNoOp("x"),
+        RunnableNaiveNoOp("y"),
+    ]
+
+    class MyParallelExecution(ParallelExecution):
+        def select_runnables(self, event):
+            return ["x", "x"]
+
+    parallel_execution = MyParallelExecution(runnables)
+
+    source = SyncEmitSource()
+    source.to(parallel_execution)
+
+    controller = source.run()
+    controller.emit(0)
+    controller.terminate()
+    with pytest.raises(ValueError, match=r"select_runnables\(\) returned more than one outlet named 'x'"):
+        controller.await_termination()
+
+
+def test_parallel_execution():
+    runnables = [
+        RunnableWithError("error"),
+        RunnableBusyWait("busy1"),
+        RunnableBusyWait("busy2"),
+        RunnableSleep("sleep1"),
+        RunnableSleep("sleep2"),
+        RunnableAsyncSleep("asleep1"),
+        RunnableAsyncSleep("asleep2"),
+        RunnableAsyncSleep("naive"),
+    ]
+
+    class MyParallelExecution(ParallelExecution):
+        def select_runnables(self, event):
+            return [runnable.name for runnable in runnables if runnable.name != "error"]
+
+    parallel_execution = MyParallelExecution(runnables)
+    reduce = Reduce([], lambda acc, x: acc + [x])
+
+    source = SyncEmitSource()
+    source.to(parallel_execution).to(reduce)
+
+    start = time.monotonic()
+    controller = source.run()
+    controller.emit(0)
+    controller.terminate()
+    termination_result = controller.await_termination()
+    end = time.monotonic()
+
+    assert end - start < 6
+    termination_result = termination_result[0]
+    assert termination_result.keys() == {"input", "results"}
+    assert termination_result["input"] == 0
+    results = termination_result["results"]
+    assert results.keys() == {"busy1", "busy2", "sleep1", "sleep2", "asleep1", "asleep2", "naive"}
+    for result in results.values():
+        assert result["output"] == 1
+        assert 1 < result["runtime"] < 2
+
+
+def test_invalid_runnable():
+    with pytest.raises(
+        ValueError,
+        match="ParallelExecutionRunnable's execution_mechanism attribute must be overridden with one of: "
+        '"multiprocessing", "threading", "asyncio", "naive"',
+    ):
+        ParallelExecutionRunnable("my_runnable")
+
+
+class RunnableNaiveWithMutation(ParallelExecutionRunnable):
+    execution_mechanism = "naive"
+
+    def run(self, data, path):
+        data["n"] += 1
+        return data
+
+
+def test_event_input_preservation():
+    runnables = [
+        RunnableNaiveWithMutation("x"),
+    ]
+    reduce = Reduce([], lambda acc, x: acc + [x])
+
+    source = SyncEmitSource()
+    source.to(ParallelExecution(runnables)).to(reduce)
+
+    controller = source.run()
+    controller.emit({"n": 1})
+    controller.terminate()
+    termination_result = controller.await_termination()
+    termination_result = termination_result[0]
+    assert termination_result.keys() == {"input", "results"}
+    assert termination_result["input"] == {"n": 1}
+    results = termination_result["results"]
+    assert results.keys() == {"x"}
+    result = results["x"]
+    assert result.keys() == {"runtime", "output"}
+    assert result["output"] == {"n": 2}
