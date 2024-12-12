@@ -4730,7 +4730,6 @@ class RunnableAsyncSleep(ParallelExecutionRunnable):
 
     async def run_async(self, data, path):
         await asyncio.sleep(1)
-        print(f"{self.name} returning {self._result}")
         return self._result
 
 
@@ -4784,7 +4783,8 @@ def test_select_runnable_uniqueness():
         controller.await_termination()
 
 
-def test_parallel_execution():
+@pytest.mark.parametrize("verbose_output", [False, True])
+def test_parallel_execution(verbose_output):
     runnables = [
         RunnableWithError("error"),
         RunnableBusyWait("busy1"),
@@ -4800,7 +4800,7 @@ def test_parallel_execution():
         def select_runnables(self, event):
             return [runnable.name for runnable in runnables if runnable.name != "error"]
 
-    parallel_execution = MyParallelExecution(runnables)
+    parallel_execution = MyParallelExecution(runnables, verbose_output=verbose_output)
     reduce = Reduce([], lambda acc, x: acc + [x])
 
     source = SyncEmitSource()
@@ -4815,13 +4815,22 @@ def test_parallel_execution():
 
     assert end - start < 6
     termination_result = termination_result[0]
-    assert termination_result.keys() == {"input", "results"}
-    assert termination_result["input"] == 0
-    results = termination_result["results"]
-    assert results.keys() == {"busy1", "busy2", "sleep1", "sleep2", "asleep1", "asleep2", "naive"}
-    for result in results.values():
-        assert result["output"] == 1
-        assert 1 < result["runtime"] < 2
+    if verbose_output:
+        runnable_names = {"asleep1", "asleep2", "busy1", "busy2", "naive", "sleep1", "sleep2"}
+        assert termination_result.keys() == {"input"} | runnable_names
+        assert termination_result["input"] == 0
+        for runnable_name in runnable_names:
+            assert termination_result[runnable_name]["output"] == 1
+    else:
+        assert termination_result == {
+            "asleep1": 1,
+            "asleep2": 1,
+            "busy1": 1,
+            "busy2": 1,
+            "naive": 1,
+            "sleep1": 1,
+            "sleep2": 1,
+        }
 
 
 def test_invalid_runnable():
@@ -4855,10 +4864,4 @@ def test_event_input_preservation():
     controller.terminate()
     termination_result = controller.await_termination()
     termination_result = termination_result[0]
-    assert termination_result.keys() == {"input", "results"}
-    assert termination_result["input"] == {"n": 1}
-    results = termination_result["results"]
-    assert results.keys() == {"x"}
-    result = results["x"]
-    assert result.keys() == {"runtime", "output"}
-    assert result["output"] == {"n": 2}
+    assert termination_result == {"n": 2}

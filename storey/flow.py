@@ -1526,6 +1526,10 @@ class ParallelExecution(Flow):
     :param max_processes: Maximum number of processes to spawn. Defaults to the number of available CPUs, or 16 if
       number of CPUs can't be determined.
     :param max_threads: Maximum number of threads to start. Defaults to 32.
+    :param verbose_output: If False (the default), output format will be {"runnable_name": <runnable output>, ...}
+      unless runnables is of size 1, then the output will be the runnable's output only. If True, output format will be
+      {"input": <original input>, "<runnable name>": {"output": <runnable output>, "runtime": 123}, ...},
+      where runtime denotes the number of seconds the runnable took to complete.
     """
 
     def __init__(
@@ -1533,6 +1537,7 @@ class ParallelExecution(Flow):
         runnables: list[ParallelExecutionRunnable],
         max_processes: Optional[int] = None,
         max_threads: Optional[int] = None,
+        verbose_output: Optional[bool] = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -1545,6 +1550,8 @@ class ParallelExecution(Flow):
 
         self.max_processes = max_processes or os.cpu_count() or 16
         self.max_threads = max_threads or 32
+
+        self.verbose_output = verbose_output
 
     def select_runnables(self, event) -> Optional[Union[list[str], list[ParallelExecutionRunnable]]]:
         """
@@ -1613,7 +1620,12 @@ class ParallelExecution(Flow):
                     )
                 futures.append(future)
             results: list[_ParallelExecutionRunnableResult] = await asyncio.gather(*futures)
-            event.body = {"input": event.body, "results": {}}
-            for result in results:
-                event.body["results"][result.runnable_name] = {"runtime": result.runtime, "output": result.data}
+            if self.verbose_output:
+                event.body = {"input": event.body}
+                for result in results:
+                    event.body[result.runnable_name] = {"output": result.data, "runtime": result.runtime}
+            elif len(self.runnables) == 1:
+                event.body = results[0].data if results else None
+            else:
+                event.body = {result.runnable_name: result.data for result in results}
             return await self._do_downstream(event)
