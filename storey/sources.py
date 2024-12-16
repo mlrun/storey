@@ -175,9 +175,17 @@ class FlowController(FlowControllerBase):
         self._emit_fn(event)
         return awaitable_result
 
-    def terminate(self):
-        """Terminates the associated flow."""
+    def terminate(self, wait=False):
+        """
+        Terminates the associated flow.
+
+        :param wait: Whether to wait for the flow to terminate before returning.
+
+        :returns: None if wait=False. If wait=True, the termination result will be returned.
+        """
         self._emit_fn(_termination_obj)
+        if wait:
+            return self._await_termination_fn()
 
     def await_termination(self):
         """Awaits the termination of the flow. To be called after terminate. Returns the termination result of the
@@ -482,9 +490,17 @@ class AsyncFlowController(FlowControllerBase):
                 raise result
             return result
 
-    async def terminate(self):
-        """Terminates the associated flow."""
+    async def terminate(self, wait=False):
+        """
+        Terminates the associated flow.
+
+        :param wait: Whether to wait for the flow to terminate before returning.
+
+        :returns: None if wait=False. If wait=True, the termination result will be returned.
+        """
         await self._emit_fn(_termination_obj)
+        if wait:
+            return await self.await_termination()
 
     async def await_termination(self):
         """
