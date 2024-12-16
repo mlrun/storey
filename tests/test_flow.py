@@ -185,8 +185,7 @@ def test_offset_commit():
             event.shard_id = shard
             event.offset = offset
             controller.emit(event)
-    controller.terminate()
-    termination_result = controller.await_termination()
+    termination_result = controller.terminate(wait=True)
     assert termination_result == 330
 
     offsets = copy.copy(platform.offsets)
@@ -225,9 +224,8 @@ async def async_offset_commit():
     try:
         assert offsets == {("/", i): num_records_per_shard for i in range(num_shards)}
     finally:
-        await controller.terminate()
+        termination_result = await controller.terminate(wait=True)
 
-    termination_result = await controller.await_termination()
     assert termination_result == 330
 
 
