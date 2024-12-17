@@ -432,6 +432,7 @@ class Table:
                 for done_job in self._pending_by_key[job.key].in_flight:
                     if done_job.callback:
                         await done_job.callback(done_job.extra_data, completed)
+                del done_job  # Allow job to be garbage collected
                 self._pending_by_key[job.key].in_flight = []
 
                 # If we got more pending events for the same key process them
@@ -444,8 +445,14 @@ class Table:
                     jobs_at_tail = self_sent_jobs.get(tail_position, [])
                     jobs_at_tail.append((job, asyncio.get_running_loop().create_task(future_task)))
                     self_sent_jobs[tail_position] = jobs_at_tail
+                    # Allow these jobs to be garbage collected
+                    del jobs_at_tail
                 else:
                     del self._pending_by_key[job.key]
+
+                # Allow job to be garbage collected
+                del job
+                task = None
         except BaseException as ex:
             if task and task is not _termination_obj:
                 if task[0].extra_data and task[0].extra_data._awaitable_result:

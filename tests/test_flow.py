@@ -185,8 +185,7 @@ def test_offset_commit():
             event.shard_id = shard
             event.offset = offset
             controller.emit(event)
-    controller.terminate()
-    termination_result = controller.await_termination()
+    termination_result = controller.terminate(wait=True)
     assert termination_result == 330
 
     offsets = copy.copy(platform.offsets)
@@ -225,9 +224,8 @@ async def async_offset_commit():
     try:
         assert offsets == {("/", i): num_records_per_shard for i in range(num_shards)}
     finally:
-        await controller.terminate()
+        termination_result = await controller.terminate(wait=True)
 
-    termination_result = await controller.await_termination()
     assert termination_result == 330
 
 
@@ -317,6 +315,49 @@ async def async_offset_commit_before_termination():
 
 def test_async_offset_commit_before_termination():
     asyncio.run(async_offset_commit_before_termination())
+
+
+async def async_offset_commit_before_termination_with_nosqltarget():
+    platform = Committer()
+    context = CommitterContext(platform)
+
+    max_wait_before_commit = 1
+
+    controller = build_flow(
+        [
+            AsyncEmitSource(context=context, explicit_ack=True, max_wait_before_commit=max_wait_before_commit),
+            Map(lambda x: x + 1),
+            Filter(lambda x: x < 3),
+            FlatMap(lambda x: [x, x * 10]),
+            NoSqlTarget(Table("/", NoopDriver(), flush_interval_secs=None)),
+        ]
+    ).run()
+
+    num_shards = 10
+    num_records_per_shard = 10
+
+    for offset in range(1, num_records_per_shard + 1):
+        for shard in range(num_shards):
+            event = Event(shard, "abc")
+            event.shard_id = shard
+            event.offset = offset
+            await controller.emit(event)
+
+    del event
+
+    await asyncio.sleep(max_wait_before_commit + 1)
+
+    try:
+        offsets = copy.copy(platform.offsets)
+        assert offsets == {("/", i): num_records_per_shard for i in range(num_shards)}
+    finally:
+        await controller.terminate()
+    await controller.await_termination()
+
+
+# ML-4421
+def test_async_offset_commit_before_termination_with_nosqltarget():
+    asyncio.run(async_offset_commit_before_termination_with_nosqltarget())
 
 
 def test_offset_not_committed_prematurely():
