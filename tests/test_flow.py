@@ -4783,8 +4783,7 @@ def test_select_runnable_uniqueness():
         controller.await_termination()
 
 
-@pytest.mark.parametrize("verbose_output", [False, True])
-def test_parallel_execution(verbose_output):
+def test_parallel_execution():
     runnables = [
         RunnableWithError("error"),
         RunnableBusyWait("busy1"),
@@ -4800,7 +4799,7 @@ def test_parallel_execution(verbose_output):
         def select_runnables(self, event):
             return [runnable.name for runnable in runnables if runnable.name != "error"]
 
-    parallel_execution = MyParallelExecution(runnables, verbose_output=verbose_output)
+    parallel_execution = MyParallelExecution(runnables)
     reduce = Reduce([], lambda acc, x: acc + [x])
 
     source = SyncEmitSource()
@@ -4815,22 +4814,15 @@ def test_parallel_execution(verbose_output):
 
     assert end - start < 6
     termination_result = termination_result[0]
-    if verbose_output:
-        runnable_names = {"asleep1", "asleep2", "busy1", "busy2", "naive", "sleep1", "sleep2"}
-        assert termination_result.keys() == {"input"} | runnable_names
-        assert termination_result["input"] == 0
-        for runnable_name in runnable_names:
-            assert termination_result[runnable_name]["output"] == 1
-    else:
-        assert termination_result == {
-            "asleep1": 1,
-            "asleep2": 1,
-            "busy1": 1,
-            "busy2": 1,
-            "naive": 1,
-            "sleep1": 1,
-            "sleep2": 1,
-        }
+    assert termination_result == {
+        "asleep1": 1,
+        "asleep2": 1,
+        "busy1": 1,
+        "busy2": 1,
+        "naive": 1,
+        "sleep1": 1,
+        "sleep2": 1,
+    }
 
 
 def test_invalid_runnable():
