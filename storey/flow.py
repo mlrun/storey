@@ -1613,7 +1613,8 @@ class ParallelExecution(Flow):
                     )
                 futures.append(future)
             results: list[_ParallelExecutionRunnableResult] = await asyncio.gather(*futures)
-            event.body = {"input": event.body, "results": {}}
-            for result in results:
-                event.body["results"][result.runnable_name] = {"runtime": result.runtime, "output": result.data}
+            if len(self.runnables) == 1:
+                event.body = results[0].data if results else None
+            else:
+                event.body = {result.runnable_name: result.data for result in results}
             return await self._do_downstream(event)
