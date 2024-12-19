@@ -840,9 +840,12 @@ class _ConcurrentJobExecution(Flow):
         self._lazy_init_complete = False
 
     async def _worker(self):
-        event = None
         try:
             while True:
+                # Allow event to be garbage collected
+                job = None  # noqa
+                event = None
+                completed = None  # noqa
                 try:
                     # If we don't handle the event before we remove it from the queue, the effective max_in_flight will
                     # be 1 higher than requested. Hence, we peek.
