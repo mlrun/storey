@@ -13,6 +13,7 @@
 # limitations under the License.
 #
 from ..aggregations import AggregateByKey  # noqa: F401
+from ..aggregations import QueryByKey  # noqa: F401
 from ..dataframe import ToDataFrame  # noqa: F401
 from ..flow import Batch  # noqa: F401
 from ..flow import Choice  # noqa: F401
