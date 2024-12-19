@@ -71,6 +71,7 @@ from storey import (
     build_flow,
 )
 from storey.flow import (
+    ConcurrentExecution,
     Context,
     ParallelExecution,
     ParallelExecutionRunnable,
@@ -358,6 +359,50 @@ async def async_offset_commit_before_termination_with_nosqltarget():
 # ML-4421
 def test_async_offset_commit_before_termination_with_nosqltarget():
     asyncio.run(async_offset_commit_before_termination_with_nosqltarget())
+
+
+async def async_offset_commit_before_termination_with_concurrent_execution():
+    platform = Committer()
+    context = CommitterContext(platform)
+
+    max_wait_before_commit = 1
+
+    controller = build_flow(
+        [
+            AsyncEmitSource(context=context, explicit_ack=True, max_wait_before_commit=max_wait_before_commit),
+            ConcurrentExecution(event_processor=lambda x: x + 1),
+            Filter(lambda x: x < 3),
+            FlatMap(lambda x: [x, x * 10]),
+            Reduce(0, lambda acc, x: acc + x),
+        ]
+    ).run()
+
+    num_shards = 10
+    num_records_per_shard = 10
+
+    for offset in range(1, num_records_per_shard + 1):
+        for shard in range(num_shards):
+            event = Event(shard)
+            event.shard_id = shard
+            event.offset = offset
+            await controller.emit(event)
+
+    del event
+
+    await asyncio.sleep(max_wait_before_commit + 1)
+
+    try:
+        offsets = copy.copy(platform.offsets)
+        assert offsets == {("/", i): num_records_per_shard for i in range(num_shards)}
+    finally:
+        await controller.terminate()
+    termination_result = await controller.await_termination()
+    assert termination_result == 330
+
+
+# ML-8799
+def test_async_offset_commit_before_termination_with_concurrent_execution():
+    asyncio.run(async_offset_commit_before_termination_with_concurrent_execution())
 
 
 def test_offset_not_committed_prematurely():
