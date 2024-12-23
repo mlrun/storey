@@ -17,7 +17,6 @@ import copy
 import datetime
 import inspect
 import multiprocessing
-import os
 import pickle
 import time
 import traceback
@@ -1521,20 +1520,30 @@ class ParallelExecutionRunnable:
         return _ParallelExecutionRunnableResult(self.name, body, end - start)
 
 
+_sval = None
+
+
+def _set_global(sval):
+    global _sval
+    _sval = sval
+
+
+def _static_run(*args, **kwargs):
+    global _sval
+    return _sval._run(*args, **kwargs)
+
+
 class ParallelExecution(Flow):
     """
     Runs multiple jobs in parallel for each event.
 
     :param runnables: A list of ParallelExecutionRunnable instances.
-    :param max_processes: Maximum number of processes to spawn. Defaults to the number of available CPUs, or 16 if
-      number of CPUs can't be determined.
     :param max_threads: Maximum number of threads to start. Defaults to 32.
     """
 
     def __init__(
         self,
         runnables: list[ParallelExecutionRunnable],
-        max_processes: Optional[int] = None,
         max_threads: Optional[int] = None,
         **kwargs,
     ):
@@ -1546,8 +1555,9 @@ class ParallelExecution(Flow):
         self.runnables = runnables
         self._runnable_by_name = {}
 
-        self.max_processes = max_processes or os.cpu_count() or 16
         self.max_threads = max_threads or 32
+
+        self._process_executor_by_runnable_name = {}
 
     def select_runnables(self, event) -> Optional[Union[list[str], list[ParallelExecutionRunnable]]]:
         """
@@ -1560,28 +1570,29 @@ class ParallelExecution(Flow):
 
     def _init(self):
         super()._init()
-        num_processes = 0
         num_threads = 0
+        mp_context = multiprocessing.get_context("spawn")
         for runnable in self.runnables:
             if runnable.name in self._runnable_by_name:
                 raise ValueError(f"ParallelExecutionRunnable name '{runnable.name}' is not unique")
-            self._runnable_by_name[runnable.name] = runnable
             runnable.init()
+            self._runnable_by_name[runnable.name] = runnable
             if runnable.execution_mechanism == "multiprocessing":
-                num_processes += 1
+                self._process_executor_by_runnable_name[runnable.name] = ProcessPoolExecutor(
+                    max_workers=1,
+                    mp_context=mp_context,
+                    initializer=_set_global,
+                    initargs=(runnable,),
+                )
             elif runnable.execution_mechanism == "threading":
                 num_threads += 1
             elif runnable.execution_mechanism not in ("asyncio", "naive"):
                 raise ValueError(f"Unsupported execution mechanism: {runnable.execution_mechanism}")
 
         # enforce max
-        num_processes = min(num_processes, self.max_processes)
         num_threads = min(num_threads, self.max_threads)
 
         self._executors = {}
-        if num_processes:
-            mp_context = multiprocessing.get_context("spawn")
-            self._executors["multiprocessing"] = ProcessPoolExecutor(max_workers=num_processes, mp_context=mp_context)
         if num_threads:
             self._executors["threading"] = ThreadPoolExecutor(max_workers=num_threads)
 
@@ -1606,11 +1617,19 @@ class ParallelExecution(Flow):
                 elif runnable.execution_mechanism == "naive":
                     future = asyncio.get_running_loop().create_future()
                     future.set_result(runnable._run(input, event.path))
-                else:
-                    executor = self._executors[runnable.execution_mechanism]
+                elif runnable.execution_mechanism == "threading":
+                    executor = self._executors["threading"]
                     future = asyncio.get_running_loop().run_in_executor(
                         executor,
                         runnable._run,
+                        input,
+                        event.path,
+                    )
+                else:
+                    executor = self._process_executor_by_runnable_name[runnable.name]
+                    future = asyncio.get_running_loop().run_in_executor(
+                        executor,
+                        _static_run,
                         input,
                         event.path,
                     )

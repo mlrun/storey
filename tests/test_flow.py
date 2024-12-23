@@ -4920,26 +4920,43 @@ def test_invalid_runnable():
         ParallelExecutionRunnable("my_runnable")
 
 
-class RunnableNaiveWithMutation(ParallelExecutionRunnable):
-    execution_mechanism = "naive"
+class RunnableMultiprocessingWithLargeData(ParallelExecutionRunnable):
+    execution_mechanism = "multiprocessing"
+
+    def __init__(self, data_size, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.data = None
+        self.data_size = data_size
+
+    def init(self):
+        self.data = list(range(self.data_size))
 
     def run(self, data, path):
-        data["n"] += 1
+        data["data_size"] = len(self.data)
         return data
 
 
-def test_event_input_preservation():
-    runnables = [
-        RunnableNaiveWithMutation("x"),
-    ]
+def test_parallel_execution_with_large_data():
+    data_size = 1_000_000
+    num_records = 100
+    num_runnables = 3
+
+    runnables = [RunnableMultiprocessingWithLargeData(data_size, name=f"runnable_{i}") for i in range(num_runnables)]
     reduce = Reduce([], lambda acc, x: acc + [x])
 
     source = SyncEmitSource()
-    source.to(ParallelExecution(runnables)).to(reduce)
+    source.to(ParallelExecution(runnables, max_processes=1)).to(reduce)
 
     controller = source.run()
-    controller.emit({"n": 1})
-    controller.terminate()
-    termination_result = controller.await_termination()
-    termination_result = termination_result[0]
-    assert termination_result == {"n": 2}
+
+    for n in range(num_records):
+        controller.emit({"n": n})
+    termination_result = controller.terminate(wait=True)
+
+    assert len(termination_result) == num_records
+    for n, result in enumerate(termination_result):
+        if num_runnables == 1:
+            assert result == {"data_size": data_size, "n": n}
+        else:
+            for runnable_result in result.values():
+                assert runnable_result == {"data_size": data_size, "n": n}
