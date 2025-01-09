@@ -4782,7 +4782,7 @@ def test_filters_type():
 
 
 class RunnableBusyWait(ParallelExecutionRunnable):
-    execution_mechanism = "multiprocessing"
+    execution_mechanism = "process_pool"
     _result = 0
 
     def init(self):
@@ -4796,7 +4796,7 @@ class RunnableBusyWait(ParallelExecutionRunnable):
 
 
 class RunnableSleep(ParallelExecutionRunnable):
-    execution_mechanism = "threading"
+    execution_mechanism = "thread_pool"
     _result = 0
 
     def init(self):
@@ -4870,10 +4870,14 @@ def test_select_runnable_uniqueness():
 
 
 def test_parallel_execution():
+    busy_wait_pool = RunnableBusyWait("busy1")
+    busy_wait_dedicated = RunnableBusyWait("busy2")
+    busy_wait_dedicated.execution_mechanism = "dedicated_process"
+
     runnables = [
         RunnableWithError("error"),
-        RunnableBusyWait("busy1"),
-        RunnableBusyWait("busy2"),
+        busy_wait_pool,
+        busy_wait_dedicated,
         RunnableSleep("sleep1"),
         RunnableSleep("sleep2"),
         RunnableAsyncSleep("asleep1"),
@@ -4915,13 +4919,13 @@ def test_invalid_runnable():
     with pytest.raises(
         ValueError,
         match="ParallelExecutionRunnable's execution_mechanism attribute must be overridden with one of: "
-        '"multiprocessing", "threading", "asyncio", "naive"',
+        '"process_pool", "dedicated_process", "thread_pool", "asyncio", "naive"',
     ):
         ParallelExecutionRunnable("my_runnable")
 
 
 class RunnableMultiprocessingWithLargeData(ParallelExecutionRunnable):
-    execution_mechanism = "multiprocessing"
+    execution_mechanism = "dedicated_process"
 
     def __init__(self, data_size, *args, **kwargs):
         super().__init__(*args, **kwargs)
