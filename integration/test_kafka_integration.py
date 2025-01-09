@@ -92,13 +92,13 @@ def test_kafka_target(kafka_topic_setup_teardown):
         assert record.value.decode("UTF-8") == json.dumps(event.body, default=str)
 
 
-async def async_test_write_to_kafka_full_event_readback(kafka_topic_setup_teardown):
+async def async_test_write_to_kafka_full_event_readback(kafka_topic_setup_teardown, partition_key):
     kafka_consumer = kafka_topic_setup_teardown
 
     controller = build_flow(
         [
             AsyncEmitSource(),
-            KafkaTarget(kafka_brokers, topic, sharding_func=lambda _: 0, full_event=True),
+            KafkaTarget(kafka_brokers, topic, sharding_func=lambda _: partition_key, full_event=True),
         ]
     ).run()
     events = []
@@ -115,7 +115,10 @@ async def async_test_write_to_kafka_full_event_readback(kafka_topic_setup_teardo
         record = next(kafka_consumer)
         if event.key is None:
             if event.key is None:
-                assert record.key is None
+                if isinstance(partition_key, int):
+                    assert record.key is None
+                else:
+                    assert record.key.decode("UTF-8") == partition_key
             else:
                 assert record.key.decode("UTF-8") == event.key
         readback_records.append(json.loads(record.value.decode("UTF-8")))
@@ -143,5 +146,6 @@ async def async_test_write_to_kafka_full_event_readback(kafka_topic_setup_teardo
     not kafka_brokers,
     reason="KAFKA_BROKERS must be defined to run kafka tests",
 )
-def test_async_test_write_to_kafka_full_event_readback(kafka_topic_setup_teardown):
-    asyncio.run(async_test_write_to_kafka_full_event_readback(kafka_topic_setup_teardown))
+@pytest.mark.parametrize("partition_key", [0, "some_string"])
+def test_async_test_write_to_kafka_full_event_readback(kafka_topic_setup_teardown, partition_key):
+    asyncio.run(async_test_write_to_kafka_full_event_readback(kafka_topic_setup_teardown, partition_key))
