@@ -1345,9 +1345,7 @@ class KafkaTarget(Flow, _Writer):
             self._producer.close()
             return await self._do_downstream(_termination_obj)
         else:
-            key = None
-            if event.key is not None:
-                key = stringify_key(event.key).encode("UTF-8")
+            key = event.key
             record = self._event_to_writer_entry(event)
             if self._full_event:
                 record = wrap_event_for_serialization(event, record)
@@ -1359,6 +1357,10 @@ class KafkaTarget(Flow, _Writer):
                     partition = sharding_func_result
                 else:
                     key = sharding_func_result
+
+            if key is not None:
+                key = stringify_key(key).encode("UTF-8")
+
             future = self._producer.send(self._topic, record, key, partition=partition)
             # Prevent garbage collection of event until persisted to kafka
             future.add_callback(lambda x: event)
