@@ -4927,16 +4927,18 @@ def test_invalid_runnable():
 class RunnableMultiprocessingWithLargeData(ParallelExecutionRunnable):
     execution_mechanism = "dedicated_process"
 
-    def __init__(self, data_size, *args, **kwargs):
+    def __init__(self, data_size: int, gpu_number: int, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.data = None
         self.data_size = data_size
+        self.gpu_number = gpu_number
 
     def init(self):
         self.data = list(range(self.data_size))
 
     def run(self, data, path):
         data["data_size"] = len(self.data)
+        data["gpu"] = self.gpu_number
         return data
 
 
@@ -4945,7 +4947,10 @@ def test_parallel_execution_with_large_data():
     num_records = 100
     num_runnables = 3
 
-    runnables = [RunnableMultiprocessingWithLargeData(data_size, name=f"runnable_{i}") for i in range(num_runnables)]
+    runnables = [
+        RunnableMultiprocessingWithLargeData(data_size, gpu_number=i, name=f"runnable_{i}")
+        for i in range(num_runnables)
+    ]
     reduce = Reduce([], lambda acc, x: acc + [x])
 
     source = SyncEmitSource()
@@ -4960,7 +4965,7 @@ def test_parallel_execution_with_large_data():
     assert len(termination_result) == num_records
     for n, result in enumerate(termination_result):
         if num_runnables == 1:
-            assert result == {"data_size": data_size, "n": n}
+            assert result == {"data_size": data_size, "n": n, "gpu": 0}
         else:
-            for runnable_result in result.values():
-                assert runnable_result == {"data_size": data_size, "n": n}
+            for expected_gpu, runnable_result in enumerate(result.values()):
+                assert runnable_result == {"data_size": data_size, "n": n, "gpu": expected_gpu}
