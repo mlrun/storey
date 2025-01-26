@@ -4782,7 +4782,7 @@ def test_filters_type():
 
 
 class RunnableBusyWait(ParallelExecutionRunnable):
-    execution_mechanism = "multiprocessing"
+    execution_mechanism = "process_pool"
     _result = 0
 
     def init(self):
@@ -4796,7 +4796,7 @@ class RunnableBusyWait(ParallelExecutionRunnable):
 
 
 class RunnableSleep(ParallelExecutionRunnable):
-    execution_mechanism = "threading"
+    execution_mechanism = "thread_pool"
     _result = 0
 
     def init(self):
@@ -4870,10 +4870,14 @@ def test_select_runnable_uniqueness():
 
 
 def test_parallel_execution():
+    busy_wait_pool = RunnableBusyWait("busy1")
+    busy_wait_dedicated = RunnableBusyWait("busy2")
+    busy_wait_dedicated.execution_mechanism = "dedicated_process"
+
     runnables = [
         RunnableWithError("error"),
-        RunnableBusyWait("busy1"),
-        RunnableBusyWait("busy2"),
+        busy_wait_pool,
+        busy_wait_dedicated,
         RunnableSleep("sleep1"),
         RunnableSleep("sleep2"),
         RunnableAsyncSleep("asleep1"),
@@ -4915,31 +4919,53 @@ def test_invalid_runnable():
     with pytest.raises(
         ValueError,
         match="ParallelExecutionRunnable's execution_mechanism attribute must be overridden with one of: "
-        '"multiprocessing", "threading", "asyncio", "naive"',
+        '"process_pool", "dedicated_process", "thread_pool", "asyncio", "naive"',
     ):
         ParallelExecutionRunnable("my_runnable")
 
 
-class RunnableNaiveWithMutation(ParallelExecutionRunnable):
-    execution_mechanism = "naive"
+class RunnableMultiprocessingWithLargeData(ParallelExecutionRunnable):
+    execution_mechanism = "dedicated_process"
+
+    def __init__(self, data_size: int, gpu_number: int, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.data = None
+        self.data_size = data_size
+        self.gpu_number = gpu_number
+
+    def init(self):
+        self.data = list(range(self.data_size))
 
     def run(self, data, path):
-        data["n"] += 1
+        data["data_size"] = len(self.data)
+        data["gpu"] = self.gpu_number
         return data
 
 
-def test_event_input_preservation():
+def test_parallel_execution_with_large_data():
+    data_size = 1_000_000
+    num_records = 100
+    num_runnables = 3
+
     runnables = [
-        RunnableNaiveWithMutation("x"),
+        RunnableMultiprocessingWithLargeData(data_size, gpu_number=i, name=f"runnable_{i}")
+        for i in range(num_runnables)
     ]
     reduce = Reduce([], lambda acc, x: acc + [x])
 
     source = SyncEmitSource()
-    source.to(ParallelExecution(runnables)).to(reduce)
+    source.to(ParallelExecution(runnables, max_processes=1)).to(reduce)
 
     controller = source.run()
-    controller.emit({"n": 1})
-    controller.terminate()
-    termination_result = controller.await_termination()
-    termination_result = termination_result[0]
-    assert termination_result == {"n": 2}
+
+    for n in range(num_records):
+        controller.emit({"n": n})
+    termination_result = controller.terminate(wait=True)
+
+    assert len(termination_result) == num_records
+    for n, result in enumerate(termination_result):
+        if num_runnables == 1:
+            assert result == {"data_size": data_size, "n": n, "gpu": 0}
+        else:
+            for expected_gpu, runnable_result in enumerate(result.values()):
+                assert runnable_result == {"data_size": data_size, "n": n, "gpu": expected_gpu}
