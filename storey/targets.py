@@ -963,6 +963,23 @@ class TDEngineTarget(_Batching, _Writer):
 
         return tags_schema, reg_cols_schema
 
+    def _get_db_timestamp_precision_factor(self) -> int:
+        precision_result = self._connection.query(
+            f"SELECT `precision` FROM information_schema.ins_databases WHERE name='{self._database}'"
+        )
+        precision_result_list = list(precision_result)
+        if not precision_result_list:
+            # Should not happen at this point, as we already executed USE database
+            raise TDEngineValueError(f"Database '{self._database}' not found")
+        precision_str = precision_result_list[0][0]
+        exp_factors = {"ms": 3, "us": 6, "ns": 9}
+        exp_factor = exp_factors.get(precision_str)
+        if exp_factor is None:
+            # Should never happen, as the database should be configured with one of the supported precisions.
+            # Might happen if TDengine changes the precision values.
+            raise TDEngineValueError(f"Unsupported timestamp precision '{precision_str}'")
+        return 10**exp_factor
+
     def _init(self) -> None:
         import taosws
 
@@ -979,6 +996,7 @@ class TDEngineTarget(_Batching, _Writer):
         self._number_of_tags = len(self._tags_schema)
         self._number_of_reg_cols = len(self._reg_cols_schema)
         self._sql_template = self._get_sql_template()
+        self._ts_precision_factor = self._get_db_timestamp_precision_factor()
 
     def _event_to_batch_entry(self, event):
         return self._event_to_writer_entry(event)
@@ -1001,19 +1019,16 @@ class TDEngineTarget(_Batching, _Writer):
     ) -> list["taosws.PyTagView"]:
         return [tag_func(event.get(tag_name)) for tag_name, tag_func in tags_schema]
 
-    @staticmethod
-    def _raw_value_to_value(value):
+    def _raw_value_to_value(self, value):
         if isinstance(value, datetime.datetime):
-            # We currently support only the default millisecond precision
-            return int(value.timestamp() * 1000)
+            return int(value.timestamp() * self._ts_precision_factor)
         return value
 
-    @classmethod
     def _get_batch_values(
-        cls, reg_cols_schema: list[tuple[str, Callable[[list], "taosws.PyColumnView"]]], batch: list[dict]
+        self, reg_cols_schema: list[tuple[str, Callable[[list], "taosws.PyColumnView"]]], batch: list[dict]
     ) -> list["taosws.PyColumnView"]:
         return [
-            col_func([cls._raw_value_to_value(event.get(col_name)) for event in batch])
+            col_func([self._raw_value_to_value(event.get(col_name)) for event in batch])
             for col_name, col_func in reg_cols_schema
         ]
 
