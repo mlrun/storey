@@ -19,8 +19,11 @@ pytestmark = pytest.mark.skipif(not has_tdengine_credentials, reason="Missing TD
 TDEngineData = tuple[taosws.Connection, str, Optional[str], Optional[str], str, str]
 
 
-@pytest.fixture(params=[10])
+@pytest.fixture(params=[("ms", 10), ("us", 10)])
 def tdengine(request: "pytest.FixtureRequest") -> Iterator[TDEngineData]:
+    timestamp_precision = request.param[0]
+    nchar_size = request.param[1]
+
     db_name = "storey"
     supertable_name = "test_supertable"
 
@@ -35,7 +38,7 @@ def tdengine(request: "pytest.FixtureRequest") -> Iterator[TDEngineData]:
         if "Database not exist" not in str(err):
             raise err
 
-    connection.execute(f"CREATE DATABASE {db_name};")
+    connection.execute(f"CREATE DATABASE {db_name} PRECISION '{timestamp_precision}';")
     connection.execute(f"USE {db_name}")
 
     try:
@@ -45,7 +48,7 @@ def tdengine(request: "pytest.FixtureRequest") -> Iterator[TDEngineData]:
             raise err
 
     connection.execute(
-        f"CREATE STABLE {supertable_name} (time TIMESTAMP, my_string NCHAR({request.param})) TAGS (my_int INT);"
+        f"CREATE STABLE {supertable_name} (time TIMESTAMP, my_string NCHAR({nchar_size})) TAGS (my_int INT);"
     )
 
     # Test runs
@@ -136,7 +139,7 @@ def test_tdengine_target(tdengine: TDEngineData, table_col: Optional[str]) -> No
     assert result_list == expected_result
 
 
-@pytest.mark.parametrize("tdengine", [100], indirect=["tdengine"])
+@pytest.mark.parametrize("tdengine", [("ms", 100)], indirect=["tdengine"])
 def test_sql_injection(tdengine: TDEngineData) -> None:
     connection, url, user, password, db_name, supertable_name = tdengine
     # Create another table to be dropped via SQL injection
