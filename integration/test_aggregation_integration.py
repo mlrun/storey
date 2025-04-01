@@ -1138,11 +1138,10 @@ def test_aggregate_and_query_with_different_fixed_windows(setup_teardown_test, p
         ), f"actual did not match expected. \n actual: {actual} \n expected: {expected_results}"
 
 
-@pytest.mark.parametrize("use_parallel_operations", [True, False])
-def test_query_virtual_aggregations_flow(setup_teardown_test, use_parallel_operations):
+def test_query_virtual_aggregations_flow(setup_teardown_test):
     table = Table(
         setup_teardown_test.table_name,
-        setup_teardown_test.driver(use_parallel_operations=use_parallel_operations),
+        setup_teardown_test.driver(),
     )
     controller = build_flow(
         [
@@ -1250,7 +1249,7 @@ def test_query_virtual_aggregations_flow(setup_teardown_test, use_parallel_opera
 
     other_table = Table(
         setup_teardown_test.table_name,
-        setup_teardown_test.driver(use_parallel_operations=use_parallel_operations),
+        setup_teardown_test.driver(),
     )
     controller = build_flow(
         [
