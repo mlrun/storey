@@ -61,7 +61,6 @@ class RedisDriver(NeedsRedisAccess, Driver):
         redis_client: Optional[Union[redis.Redis, redis.cluster.RedisCluster]] = None,
         key_prefix: str = None,
         redis_url: Optional[str] = None,
-        use_parallel_operations: bool = True,  # unused
     ):
         # if client provided a redis-client object, use it. otherwise store the redis url, and create redis-client
         # upon demand (any access to self.redis)

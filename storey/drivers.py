@@ -94,7 +94,6 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
         self,
         webapi: Optional[str] = None,
         access_key: Optional[str] = None,
-        use_parallel_operations=True,
         v3io_client_kwargs=None,
     ):
         NeedsV3ioAccess.__init__(self, webapi, access_key)
@@ -107,7 +106,6 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
         self._error_code_string = "ErrorCode"
         self._false_condition_error_code = "16777244"
         self._mtime_header_name = "X-v3io-transaction-verifier"
-        self._parallel_ops = use_parallel_operations
 
     def _lazy_init(self):
         self._closed = False
@@ -220,23 +218,6 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
         additional_data=None,
     ):
         self._lazy_init()
-
-        # test whether server support parallel operations
-        if self._parallel_ops:
-            try:
-                test_expression = "a=init_array(2,'double',0.0);a[0..1]=pmax(a[0..1], a[0..1]);delete(a);"
-                response = await self._v3io_client.kv.update(
-                    container,
-                    table_path,
-                    str(key),
-                    expression=test_expression,
-                    condition="",
-                    raise_for_status=v3io.aio.dataplane.RaiseForStatus.never,
-                )
-                if response.status_code != 200:
-                    self._parallel_ops = False
-            except Exception:
-                pass
 
         should_raise_error = False
         (
@@ -458,7 +439,7 @@ class V3ioDriver(NeedsV3ioAccess, Driver):
         pending_updates = {}
         initialized_attributes = {}
         pexpressions = {}
-        use_parallel = self._parallel_ops
+        use_parallel = True
 
         for name, bucket in aggregation_element.aggregation_buckets.items():
 
