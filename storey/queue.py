@@ -23,6 +23,7 @@ class AsyncQueue(asyncio.Queue):
 
     async def peek(self):
         while self.empty():
+            self._loop = self._loop or asyncio.get_event_loop()
             getter = self._loop.create_future()
             self._getters.append(getter)
             try:
@@ -68,7 +69,7 @@ class SimpleAsyncQueue:
         self._capacity = capacity
         self._deque = collections.deque()
         self._not_empty_futures = collections.deque()
-        self._loop = asyncio.get_running_loop()
+        self._loop = asyncio.get_running_loop() or asyncio.set_event_loop(None)
 
     async def get(self, timeout=None):
         if not self._deque:
