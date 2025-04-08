@@ -69,7 +69,7 @@ class SimpleAsyncQueue:
         self._capacity = capacity
         self._deque = collections.deque()
         self._not_empty_futures = collections.deque()
-        self._loop = asyncio.get_running_loop() or asyncio.set_event_loop(None)
+        self._loop = asyncio.get_running_loop()
 
     async def get(self, timeout=None):
         if not self._deque:
