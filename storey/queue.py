@@ -23,7 +23,7 @@ class AsyncQueue(asyncio.Queue):
 
     async def peek(self):
         while self.empty():
-            self._loop = self._loop or asyncio.get_event_loop()
+            self._loop = self._loop or asyncio.get_running_loop()
             getter = self._loop.create_future()
             self._getters.append(getter)
             try:
