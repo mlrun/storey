@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - development
+      - 1.8.x
 
 jobs:
   test:
