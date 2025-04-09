@@ -14,19 +14,12 @@
 #
 name: CI
 
-on:
-  pull_request:
-    branches:
-      - development
-      - 1.8.x
+on: pull_request_target
 
 jobs:
   lint:
-    name: Lint code (Python ${{ matrix.python-version }})
+    name: Lint code
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: [3.9, 3.11]
     steps:
       - uses: actions/checkout@v3
         with:
@@ -34,7 +27,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: 3.9
           cache: pip
       - name: Install dependencies
         run: make dev-env
@@ -42,11 +35,8 @@ jobs:
         run: make lint
 
   test:
-    name: Unit tests (Python ${{ matrix.python-version }})
+    name: Unit tests
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: [3.9, 3.11]
     steps:
       - uses: actions/checkout@v3
         with:
@@ -54,7 +44,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: 3.9
           cache: pip
       - name: Install dependencies
         run: make dev-env
@@ -62,18 +52,10 @@ jobs:
         run: make test
 
   integration:
-    name: Integration tests (Python ${{ matrix.python-version }})
+    name: Integration tests
     runs-on: [ self-hosted, Linux ]
-    strategy:
-      matrix:
-        python-version: [3.9, 3.11]
-        include:
-          - python-version: 3.9
-            image: python:3.9.18
-          - python-version: 3.11
-            image: python:3.11.8
     container:
-      image: ${{ matrix.image }}
+      image: python:3.9.18
     steps:
       - uses: actions/checkout@v3
         with:

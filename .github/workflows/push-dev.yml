@@ -1,0 +1,90 @@
+name: Dev Changes
+
+on:
+  push:
+    branches:
+      - development
+
+jobs:
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.9
+          cache: pip
+      - name: Install dependencies
+        run: make dev-env
+      - name: Run unit tests
+        run: make test-coverage
+      # In order to get unique identifier we use github.run_id with artifact name.
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage_unit_tests_report-${{ github.run_id }}
+          path: coverage_reports/unit_tests.coverage
+          retention-days: 90
+
+  integration:
+    name: Integration tests
+    runs-on: [ self-hosted, Linux ]
+    container:
+      image: python:3.9.18
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install dependencies
+        run: make dev-env
+
+      - name: Run integration tests
+        env:
+          V3IO_API: ${{ secrets.V3IO_API }}
+          V3IO_ACCESS_KEY: ${{ secrets.V3IO_ACCESS_KEY }}
+          V3IO_FRAMESD: ${{ secrets.V3IO_FRAMESD }}
+        run: make integration-coverage
+        # In order to get unique identifier we use github.run_id with artifact name.
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage_integration_report-${{ github.run_id }}
+          path: coverage_reports/integration.coverage
+          retention-days: 90
+
+  coverage:
+    name: Full coverage
+    runs-on: ubuntu-latest
+    needs: [test, integration]
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.9
+          cache: pip
+      - name: Install dependencies
+        run: make dev-env
+      # File name is not effected by the artifact name (=identifier only)
+      - name: Download unit tests coverage report
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage_unit_tests_report-${{ github.run_id }}
+          # Where to download. file downloaded by name.
+          path: coverage_reports/
+      - name: Download integration coverage report
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage_integration_report-${{ github.run_id }}
+          # Where to download. file downloaded by name.
+          path: coverage_reports/
+      - name: Combine coverage
+        run: make coverage-combine
+
+      # In order to be able to download it from the github run:
+      - name: Upload coverage combined report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage_combined_report-${{ github.run_id }}
+          path: coverage_reports/combined.coverage
+          retention-days: 90
