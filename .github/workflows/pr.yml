@@ -80,6 +80,13 @@ jobs:
           ref: refs/pull/${{ github.event.number }}/merge
       - name: Install dependencies
         run: make dev-env
+      - name: Check if V3IO_API is set
+        run: |
+          if [ -z "$V3IO_API" ]; then
+            echo "V3IO_API is NOT set"
+          else
+            echo "V3IO_API is set"
+          fi
       - name: Run integration tests
         env:
           V3IO_API: ${{ secrets.V3IO_API }}
