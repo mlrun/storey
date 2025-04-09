@@ -3,7 +3,7 @@ black~=24.3
 flake8~=5.0
 flake8-bugbear~=22.9
 isort~=5.7
-pytest~=5.4.3
+pytest~=6.2.5
 coverage~=7.5
 pytest-benchmark~=3.2.3
 # Note: you might need a Lua installation to install lupa on Mac.
