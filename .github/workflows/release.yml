@@ -22,8 +22,16 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - branch: development
+            python_version: 3.11
+          - branch: 1.8.x
+            python_version: 3.9
+    if: github.ref_name == matrix.branch
     container:
-      image: python:3.9.18
+      image: python:${{ matrix.python_version }}
     steps:
       - uses: actions/checkout@v3
       - name: Install dependencies
