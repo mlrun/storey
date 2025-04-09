@@ -64,6 +64,10 @@ jobs:
   integration:
     name: Integration tests (Python ${{ matrix.python-version }})
     runs-on: [ self-hosted, Linux ]
+    env:
+      V3IO_API: ${{ secrets.V3IO_API }}
+      V3IO_ACCESS_KEY: ${{ secrets.V3IO_ACCESS_KEY }}
+      V3IO_FRAMESD: ${{ secrets.V3IO_FRAMESD }}
     strategy:
       matrix:
         python-version: [3.9, 3.11]
@@ -88,8 +92,8 @@ jobs:
             echo "V3IO_API is set"
           fi
       - name: Run integration tests
-        env:
-          V3IO_API: ${{ secrets.V3IO_API }}
-          V3IO_ACCESS_KEY: ${{ secrets.V3IO_ACCESS_KEY }}
-          V3IO_FRAMESD: ${{ secrets.V3IO_FRAMESD }}
+#        env:
+#          V3IO_API: ${{ secrets.V3IO_API }}
+#          V3IO_ACCESS_KEY: ${{ secrets.V3IO_ACCESS_KEY }}
+#          V3IO_FRAMESD: ${{ secrets.V3IO_FRAMESD }}
         run: make integration
