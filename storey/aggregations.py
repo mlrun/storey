@@ -320,7 +320,6 @@ class QueryByKey(AggregateByKey):
     :param options: Enum flags specifying query options. (Optional)
     """
 
-
     def __init__(
         self,
         features: List[str],
