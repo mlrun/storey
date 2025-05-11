@@ -1443,10 +1443,11 @@ class Context:
 
 
 class _ParallelExecutionRunnableResult:
-    def __init__(self, runnable_name: str, data: Any, runtime: float):
+    def __init__(self, runnable_name: str, data: Any, runtime: float, timestamp: datetime.datetime):
         self.runnable_name = runnable_name
         self.data = data
         self.runtime = runtime
+        self.timestamp = timestamp
 
 
 parallel_execution_mechanisms = ("process_pool", "dedicated_process", "thread_pool", "asyncio", "naive")
@@ -1485,6 +1486,7 @@ class ParallelExecutionRunnable:
                 '"process_pool", "dedicated_process", "thread_pool", "asyncio", "naive"'
             )
         self.name = name
+        self._raise_exception = kwargs.get("raise_exception", True)
 
     def init(self) -> None:
         """Override this method to add initialization logic."""
@@ -1511,16 +1513,30 @@ class ParallelExecutionRunnable:
         return body
 
     def _run(self, body: Any, path: str) -> Any:
+        timestamp = datetime.datetime.now(tz=datetime.timezone.utc)
         start = time.monotonic()
-        body = self.run(body, path)
+        try:
+            body = self.run(body, path)
+        except Exception as e:
+            if not self._raise_exception:
+                body = {"error": str(e)}
+            else:
+                raise e
         end = time.monotonic()
-        return _ParallelExecutionRunnableResult(self.name, body, end - start)
+        return _ParallelExecutionRunnableResult(self.name, body, end - start, timestamp)
 
     async def _async_run(self, body: Any, path: str) -> Any:
+        timestamp = datetime.datetime.now(tz=datetime.timezone.utc)
         start = time.monotonic()
-        body = await self.run_async(body, path)
+        try:
+            body = await self.run_async(body, path)
+        except Exception as e:
+            if not self._raise_exception:
+                body = {"error": str(e)}
+            else:
+                raise e
         end = time.monotonic()
-        return _ParallelExecutionRunnableResult(self.name, body, end - start)
+        return _ParallelExecutionRunnableResult(self.name, body, end - start, timestamp)
 
 
 _sval = None
@@ -1565,6 +1581,8 @@ class ParallelExecution(Flow):
         self.max_threads = max_threads or 32
 
         self._process_executor_by_runnable_name = {}
+
+        self.monitored = kwargs.get("track", False)
 
     def select_runnables(self, event) -> Optional[Union[list[str], list[ParallelExecutionRunnable]]]:
         """
@@ -1646,9 +1664,35 @@ class ParallelExecution(Flow):
                         event.path,
                     )
                 futures.append(future)
-            results: list[_ParallelExecutionRunnableResult] = await asyncio.gather(*futures)
+            results: list[_ParallelExecutionRunnableResult] = await asyncio.gather(
+                *futures, return_exceptions=self._return_exceptions
+            )
             if len(self.runnables) == 1:
                 event.body = results[0].data if results else None
+                if self.monitored:
+                    setattr(
+                        event,
+                        "monitoring_data",
+                        {
+                            "microsec": results[0].runtime,
+                            "when": results[0].timestamp.isoformat(sep=" ", timespec="microseconds"),
+                            "error": event.body.get("error") if isinstance(event.body, dict) else None,
+                        },
+                    )
             else:
                 event.body = {result.runnable_name: result.data for result in results}
+                if self.monitored:
+                    monitoring_data = {
+                        result.runnable_name: {
+                            "microsec": result.runtime,
+                            "when": result.timestamp.isoformat(sep=" ", timespec="microseconds"),
+                            "error": (
+                                event.body.get(result.runnable_name).get("error")
+                                if isinstance(event.body.get(result.runnable_name), dict)
+                                else None
+                            ),
+                        }
+                        for result in results
+                    }
+                    setattr(event, "monitoring_data", monitoring_data)
             return await self._do_downstream(event)
