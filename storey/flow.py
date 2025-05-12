@@ -1664,9 +1664,7 @@ class ParallelExecution(Flow):
                         event.path,
                     )
                 futures.append(future)
-            results: list[_ParallelExecutionRunnableResult] = await asyncio.gather(
-                *futures
-            )
+            results: list[_ParallelExecutionRunnableResult] = await asyncio.gather(*futures)
             if len(self.runnables) == 1:
                 event.body = results[0].data if results else None
                 if self.monitored:
