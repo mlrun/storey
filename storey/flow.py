@@ -1479,14 +1479,14 @@ class ParallelExecutionRunnable:
     execution_mechanism: Optional[str] = None
 
     # ignore unused keyword arguments such as context which may be passed in by mlrun
-    def __init__(self, name: str, **kwargs):
+    def __init__(self, name: str, raise_exception: bool = True, **kwargs):
         if self.execution_mechanism not in parallel_execution_mechanisms:
             raise ValueError(
                 "ParallelExecutionRunnable's execution_mechanism attribute must be overridden with one of: "
                 '"process_pool", "dedicated_process", "thread_pool", "asyncio", "naive"'
             )
         self.name = name
-        self._raise_exception = kwargs.get("raise_exception", True)
+        self._raise_exception = raise_exception
 
     def init(self) -> None:
         """Override this method to add initialization logic."""
@@ -1519,7 +1519,7 @@ class ParallelExecutionRunnable:
             body = self.run(body, path)
         except Exception as e:
             if not self._raise_exception:
-                body = {"error": str(e)}
+                body = {"error": f"{type(e)}: {e}"}
             else:
                 raise e
         end = time.monotonic()
@@ -1532,7 +1532,7 @@ class ParallelExecutionRunnable:
             body = await self.run_async(body, path)
         except Exception as e:
             if not self._raise_exception:
-                body = {"error": str(e)}
+                body = {"error": f"{type(e)}: {e}"}
             else:
                 raise e
         end = time.monotonic()
@@ -1567,6 +1567,7 @@ class ParallelExecution(Flow):
         runnables: list[ParallelExecutionRunnable],
         max_processes: Optional[int] = None,
         max_threads: Optional[int] = None,
+        monitored: Optional[bool] = False,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -1582,7 +1583,7 @@ class ParallelExecution(Flow):
 
         self._process_executor_by_runnable_name = {}
 
-        self.monitored = kwargs.get("track", False)
+        self.monitored = monitored
 
     def select_runnables(self, event) -> Optional[Union[list[str], list[ParallelExecutionRunnable]]]:
         """
@@ -1678,7 +1679,7 @@ class ParallelExecution(Flow):
             else:
                 event.body = {result.runnable_name: result.data for result in results}
                 if self.monitored:
-                    monitoring_data = {
+                    event.monitoring_data = {
                         result.runnable_name: {
                             "microsec": result.runtime,
                             "when": result.timestamp.isoformat(sep=" ", timespec="microseconds"),
@@ -1690,5 +1691,4 @@ class ParallelExecution(Flow):
                         }
                         for result in results
                     }
-                    event.monitoring_data = monitoring_data
             return await self._do_downstream(event)
