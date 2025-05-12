@@ -1518,10 +1518,10 @@ class ParallelExecutionRunnable:
         try:
             body = self.run(body, path)
         except Exception as e:
-            if not self._raise_exception:
-                body = {"error": f"{type(e)}: {e}"}
-            else:
+            if self._raise_exception:
                 raise e
+            else:
+                body = {"error": f"{type(e)}: {e}"}
         end = time.monotonic()
         return _ParallelExecutionRunnableResult(self.name, body, end - start, timestamp)
 
@@ -1531,10 +1531,10 @@ class ParallelExecutionRunnable:
         try:
             body = await self.run_async(body, path)
         except Exception as e:
-            if not self._raise_exception:
-                body = {"error": f"{type(e)}: {e}"}
-            else:
+            if self._raise_exception:
                 raise e
+            else:
+                body = {"error": f"{type(e)}: {e}"}
         end = time.monotonic()
         return _ParallelExecutionRunnableResult(self.name, body, end - start, timestamp)
 
@@ -1669,7 +1669,7 @@ class ParallelExecution(Flow):
             if len(self.runnables) == 1:
                 event.body = results[0].data if results else None
                 if self.monitored:
-                    event.monitoring_data = (
+                    event._monitoring_data = (
                         {
                             "microsec": results[0].runtime,
                             "when": results[0].timestamp.isoformat(sep=" ", timespec="microseconds"),
@@ -1679,7 +1679,7 @@ class ParallelExecution(Flow):
             else:
                 event.body = {result.runnable_name: result.data for result in results}
                 if self.monitored:
-                    event.monitoring_data = {
+                    event._monitoring_data = {
                         result.runnable_name: {
                             "microsec": result.runtime,
                             "when": result.timestamp.isoformat(sep=" ", timespec="microseconds"),
