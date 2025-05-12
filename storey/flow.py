@@ -1665,14 +1665,12 @@ class ParallelExecution(Flow):
                     )
                 futures.append(future)
             results: list[_ParallelExecutionRunnableResult] = await asyncio.gather(
-                *futures, return_exceptions=self._return_exceptions
+                *futures
             )
             if len(self.runnables) == 1:
                 event.body = results[0].data if results else None
                 if self.monitored:
-                    setattr(
-                        event,
-                        "monitoring_data",
+                    event.monitoring_data = (
                         {
                             "microsec": results[0].runtime,
                             "when": results[0].timestamp.isoformat(sep=" ", timespec="microseconds"),
@@ -1694,5 +1692,5 @@ class ParallelExecution(Flow):
                         }
                         for result in results
                     }
-                    setattr(event, "monitoring_data", monitoring_data)
+                    event.monitoring_data = monitoring_data
             return await self._do_downstream(event)
