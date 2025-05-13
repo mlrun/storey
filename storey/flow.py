@@ -1567,7 +1567,6 @@ class ParallelExecution(Flow):
         runnables: list[ParallelExecutionRunnable],
         max_processes: Optional[int] = None,
         max_threads: Optional[int] = None,
-        monitored: Optional[bool] = False,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -1582,8 +1581,6 @@ class ParallelExecution(Flow):
         self.max_threads = max_threads or 32
 
         self._process_executor_by_runnable_name = {}
-
-        self.monitored = monitored
 
     def select_runnables(self, event) -> Optional[Union[list[str], list[ParallelExecutionRunnable]]]:
         """
@@ -1668,27 +1665,19 @@ class ParallelExecution(Flow):
             results: list[_ParallelExecutionRunnableResult] = await asyncio.gather(*futures)
             if len(self.runnables) == 1:
                 event.body = results[0].data if results else None
-                if self.monitored:
-                    event._monitoring_data = (
-                        {
-                            "microsec": results[0].runtime,
-                            "when": results[0].timestamp.isoformat(sep=" ", timespec="microseconds"),
-                            "error": event.body.get("error") if isinstance(event.body, dict) else None,
-                        },
-                    )
+                event._metadata = (
+                    {
+                        "microsec": results[0].runtime,
+                        "when": results[0].timestamp.isoformat(sep=" ", timespec="microseconds"),
+                    },
+                )
             else:
                 event.body = {result.runnable_name: result.data for result in results}
-                if self.monitored:
-                    event._monitoring_data = {
-                        result.runnable_name: {
-                            "microsec": result.runtime,
-                            "when": result.timestamp.isoformat(sep=" ", timespec="microseconds"),
-                            "error": (
-                                event.body.get(result.runnable_name).get("error")
-                                if isinstance(event.body.get(result.runnable_name), dict)
-                                else None
-                            ),
-                        }
-                        for result in results
+                event._metadata = {
+                    result.runnable_name: {
+                        "microsec": result.runtime,
+                        "when": result.timestamp.isoformat(sep=" ", timespec="microseconds"),
                     }
+                    for result in results
+                }
             return await self._do_downstream(event)
