@@ -1443,10 +1443,11 @@ class Context:
 
 
 class _ParallelExecutionRunnableResult:
-    def __init__(self, runnable_name: str, data: Any, runtime: float):
+    def __init__(self, runnable_name: str, data: Any, runtime: float, timestamp: datetime.datetime):
         self.runnable_name = runnable_name
         self.data = data
         self.runtime = runtime
+        self.timestamp = timestamp
 
 
 parallel_execution_mechanisms = ("process_pool", "dedicated_process", "thread_pool", "asyncio", "naive")
@@ -1478,13 +1479,14 @@ class ParallelExecutionRunnable:
     execution_mechanism: Optional[str] = None
 
     # ignore unused keyword arguments such as context which may be passed in by mlrun
-    def __init__(self, name: str, **kwargs):
+    def __init__(self, name: str, raise_exception: bool = True, **kwargs):
         if self.execution_mechanism not in parallel_execution_mechanisms:
             raise ValueError(
                 "ParallelExecutionRunnable's execution_mechanism attribute must be overridden with one of: "
                 '"process_pool", "dedicated_process", "thread_pool", "asyncio", "naive"'
             )
         self.name = name
+        self._raise_exception = raise_exception
 
     def init(self) -> None:
         """Override this method to add initialization logic."""
@@ -1511,16 +1513,30 @@ class ParallelExecutionRunnable:
         return body
 
     def _run(self, body: Any, path: str) -> Any:
+        timestamp = datetime.datetime.now(tz=datetime.timezone.utc)
         start = time.monotonic()
-        body = self.run(body, path)
+        try:
+            body = self.run(body, path)
+        except Exception as e:
+            if self._raise_exception:
+                raise e
+            else:
+                body = {"error": f"{type(e)}: {e}"}
         end = time.monotonic()
-        return _ParallelExecutionRunnableResult(self.name, body, end - start)
+        return _ParallelExecutionRunnableResult(self.name, body, end - start, timestamp)
 
     async def _async_run(self, body: Any, path: str) -> Any:
+        timestamp = datetime.datetime.now(tz=datetime.timezone.utc)
         start = time.monotonic()
-        body = await self.run_async(body, path)
+        try:
+            body = await self.run_async(body, path)
+        except Exception as e:
+            if self._raise_exception:
+                raise e
+            else:
+                body = {"error": f"{type(e)}: {e}"}
         end = time.monotonic()
-        return _ParallelExecutionRunnableResult(self.name, body, end - start)
+        return _ParallelExecutionRunnableResult(self.name, body, end - start, timestamp)
 
 
 _sval = None
@@ -1649,6 +1665,19 @@ class ParallelExecution(Flow):
             results: list[_ParallelExecutionRunnableResult] = await asyncio.gather(*futures)
             if len(self.runnables) == 1:
                 event.body = results[0].data if results else None
+                event._metadata = (
+                    {
+                        "microsec": results[0].runtime,
+                        "when": results[0].timestamp.isoformat(sep=" ", timespec="microseconds"),
+                    },
+                )
             else:
                 event.body = {result.runnable_name: result.data for result in results}
+                event._metadata = {
+                    result.runnable_name: {
+                        "microsec": result.runtime,
+                        "when": result.timestamp.isoformat(sep=" ", timespec="microseconds"),
+                    }
+                    for result in results
+                }
             return await self._do_downstream(event)
