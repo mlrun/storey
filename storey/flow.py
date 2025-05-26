@@ -23,7 +23,7 @@ import time
 import traceback
 import uuid
 import enum
-from asyncio import Task, Future
+from asyncio import Task
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from typing import Any, Callable, Collection, Dict, Iterable, List, Optional, Set, Union
