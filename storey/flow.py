@@ -1451,9 +1451,6 @@ class _ParallelExecutionRunnableResult:
         self.timestamp = timestamp
 
 
-parallel_execution_mechanisms = ("process_pool", "dedicated_process", "thread_pool", "asyncio", "shared_proxy", "naive")
-
-
 class ParallelExecutionMechanisms(str, enum.Enum):
     process_pool = "process_pool"
     dedicated_process = "dedicated_process"
@@ -1505,7 +1502,7 @@ class ParallelExecutionRunnable:
         block the main event loop thread.
     * "asyncio" – To run in an asyncio task. This is appropriate for I/O tasks that use asyncio, allowing the event
         loop to continue running while waiting for a response.
-    * "shared_proxy" - To run the shared model of the graph.
+    * "shared_proxy" - To run the shared runnable of the flow graph.
     * "naive" – To run in the main event loop. This is appropriate only for trivial computation and/or file I/O. It
         means that the runnable will not actually be run in parallel to anything else.
 
