@@ -32,6 +32,7 @@ import pytest
 from aiohttp import ClientConnectorError, InvalidURL
 from packaging import version
 from pandas.testing import assert_frame_equal
+from pyarrow.hdfs import connect
 
 import integration.conftest
 import storey
@@ -77,6 +78,7 @@ from storey.flow import (
     ParallelExecutionRunnable,
     ReifyMetadata,
     Rename,
+    Executor,
     _ConcurrentJobExecution,
 )
 
@@ -4969,3 +4971,50 @@ def test_parallel_execution_with_large_data():
         else:
             for expected_gpu, runnable_result in enumerate(result.values()):
                 assert runnable_result == {"data_size": data_size, "n": n, "gpu": expected_gpu}
+
+
+class RunnableShared(ParallelExecutionRunnable):
+    execution_mechanism = "shared_proxy"
+
+
+def test_parallel_execution_with_shared():
+    busy_wait_pool = RunnableBusyWait("busy1")
+    busy_wait_dedicated = RunnableBusyWait("busy2")
+    busy_wait_dedicated.execution_mechanism = "dedicated_process"
+
+    runnables = [
+        RunnableShared("busy2"),
+        busy_wait_pool,
+    ]
+
+    class MyParallelExecution(ParallelExecution):
+        def select_runnables(self, event):
+            return None
+
+    class MyContext:
+        def __init__(self, executor: Executor):
+            self.executor = executor
+
+    my_executor = Executor()
+    my_executor.add_runnable(busy_wait_dedicated)
+    my_context = MyContext(executor=my_executor)
+
+    parallel_execution = MyParallelExecution(runnables, context=my_context)
+    reduce = Reduce([], lambda acc, x: acc + [x])
+
+    source = SyncEmitSource()
+    source.to(parallel_execution).to(reduce)
+
+    start = time.monotonic()
+    controller = source.run()
+    controller.emit(0)
+    controller.terminate()
+    termination_result = controller.await_termination()
+    end = time.monotonic()
+
+    assert end - start < 6
+    termination_result = termination_result[0]
+    assert termination_result == {
+        "busy1": 1,
+        "busy2": 1,
+    }
