@@ -15,6 +15,7 @@
 import asyncio
 import copy
 import datetime
+import enum
 import inspect
 import multiprocessing
 import os
@@ -22,13 +23,13 @@ import pickle
 import time
 import traceback
 import uuid
-import enum
 from asyncio import Task
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from typing import Any, Callable, Collection, Dict, Iterable, List, Optional, Set, Union
 
 import aiohttp
+
 from .dtypes import Event, FlowError, V3ioError, _termination_obj, known_driver_schemes
 from .queue import AsyncQueue
 from .table import Table

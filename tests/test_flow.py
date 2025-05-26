@@ -32,7 +32,6 @@ import pytest
 from aiohttp import ClientConnectorError, InvalidURL
 from packaging import version
 from pandas.testing import assert_frame_equal
-from pyarrow.hdfs import connect
 
 import integration.conftest
 import storey
@@ -74,11 +73,11 @@ from storey import (
 from storey.flow import (
     ConcurrentExecution,
     Context,
+    Executor,
     ParallelExecution,
     ParallelExecutionRunnable,
     ReifyMetadata,
     Rename,
-    Executor,
     _ConcurrentJobExecution,
 )
 
