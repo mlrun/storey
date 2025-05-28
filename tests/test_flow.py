@@ -73,11 +73,12 @@ from storey import (
 from storey.flow import (
     ConcurrentExecution,
     Context,
-    Executor,
     ParallelExecution,
+    ParallelExecutionMechanisms,
     ParallelExecutionRunnable,
     ReifyMetadata,
     Rename,
+    RunnableExecutor,
     _ConcurrentJobExecution,
 )
 
@@ -4919,8 +4920,6 @@ def test_parallel_execution():
 def test_invalid_runnable():
     with pytest.raises(
         ValueError,
-        match="ParallelExecutionRunnable's execution_mechanism attribute must be overridden with one of: "
-        '"process_pool", "dedicated_process", "thread_pool", "asyncio", "naive"',
     ):
         ParallelExecutionRunnable("my_runnable")
 
@@ -4973,7 +4972,7 @@ def test_parallel_execution_with_large_data():
 
 
 class RunnableShared(ParallelExecutionRunnable):
-    execution_mechanism = "shared_proxy"
+    execution_mechanism = ParallelExecutionMechanisms.shared_executor
 
 
 def test_parallel_execution_with_shared():
@@ -4981,21 +4980,19 @@ def test_parallel_execution_with_shared():
     busy_wait_dedicated = RunnableBusyWait("busy2")
     busy_wait_dedicated.execution_mechanism = "dedicated_process"
 
-    runnables = [
-        RunnableShared("busy2"),
-        busy_wait_pool,
-    ]
+    runnables = [RunnableShared("busy2"), busy_wait_pool, RunnableShared("thread1")]
 
     class MyParallelExecution(ParallelExecution):
         def select_runnables(self, event):
             return None
 
     class MyContext:
-        def __init__(self, executor: Executor):
+        def __init__(self, executor: RunnableExecutor):
             self.executor = executor
 
-    my_executor = Executor()
+    my_executor = RunnableExecutor()
     my_executor.add_runnable(busy_wait_dedicated)
+    my_executor.add_runnable(RunnableSleep("thread1"))
     my_context = MyContext(executor=my_executor)
 
     parallel_execution = MyParallelExecution(runnables, context=my_context)
@@ -5016,4 +5013,5 @@ def test_parallel_execution_with_shared():
     assert termination_result == {
         "busy1": 1,
         "busy2": 1,
+        "thread1": 1,
     }

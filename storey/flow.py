@@ -26,9 +26,11 @@ import uuid
 from asyncio import Task
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from lib2to3.fixes.fix_input import context
 from typing import Any, Callable, Collection, Dict, Iterable, List, Optional, Set, Union
 
 import aiohttp
+from blackd import executor
 
 from .dtypes import Event, FlowError, V3ioError, _termination_obj, known_driver_schemes
 from .queue import AsyncQueue
@@ -1456,7 +1458,7 @@ class ParallelExecutionMechanisms(str, enum.Enum):
     dedicated_process = "dedicated_process"
     thread_pool = "thread_pool"
     asyncio = "asyncio"
-    shared_proxy = "shared_proxy"
+    shared_executor = "shared_executor"
     naive = "naive"
 
     def __str__(self):
@@ -1472,7 +1474,7 @@ class ParallelExecutionMechanisms(str, enum.Enum):
             ParallelExecutionMechanisms.dedicated_process,
             ParallelExecutionMechanisms.thread_pool,
             ParallelExecutionMechanisms.asyncio,
-            ParallelExecutionMechanisms.shared_proxy,
+            ParallelExecutionMechanisms.shared_executor,
             ParallelExecutionMechanisms.naive,
         ]
 
@@ -1502,7 +1504,7 @@ class ParallelExecutionRunnable:
         block the main event loop thread.
     * "asyncio" – To run in an asyncio task. This is appropriate for I/O tasks that use asyncio, allowing the event
         loop to continue running while waiting for a response.
-    * "shared_proxy" - To run the shared runnable of the flow graph.
+    * "shared_executor" - To run the shared runnable of the flow graph.
     * "naive" – To run in the main event loop. This is appropriate only for trivial computation and/or file I/O. It
         means that the runnable will not actually be run in parallel to anything else.
 
@@ -1522,7 +1524,7 @@ class ParallelExecutionRunnable:
         if self.execution_mechanism not in ParallelExecutionMechanisms.all():
             raise ValueError(
                 "ParallelExecutionRunnable's execution_mechanism attribute must be overridden with one of: "
-                '"process_pool", "dedicated_process", "thread_pool", "asyncio", "naive"'
+                f"{ParallelExecutionMechanisms.all()}"
             )
         self.name = name
         self._raise_exception = raise_exception
@@ -1591,41 +1593,39 @@ def _static_run(*args, **kwargs):
     return _sval._run(*args, **kwargs)
 
 
-class Executor:
+class RunnableExecutor:
     def __init__(
         self,
         max_processes: Optional[int] = None,
         max_threads: Optional[int] = None,
+        pool_factor: Optional[int] = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
 
-        self.runnables: dict[str, ParallelExecutionRunnable] = {}
-        self._runnable_by_name = {}
-
+        self._runnable_by_name: dict[str, ParallelExecutionRunnable] = {}
         self.max_processes = max_processes or os.cpu_count() or 16
         self.max_threads = max_threads or 32
+        self.pool_factor = pool_factor or 1
         self.num_processes = 0
         self.num_threads = 0
 
         self._process_executor_by_runnable_name = {}
         self._mp_context = None
+        self._executors = {}
 
     def add_runnable(self, runnable: ParallelExecutionRunnable) -> None:
-        if runnable.name not in self.runnables:
-            self.runnables[runnable.name] = runnable
+        if runnable.name not in self._runnable_by_name:
+            self._runnable_by_name[runnable.name] = runnable
         else:
-            raise ValueError(f"Model name '{runnable.name}' is not unique")
+            raise ValueError(f"ParallelExecutionRunnable name '{runnable.name}' is not unique")
 
     def init_runnable(self, runnable: Union[str, ParallelExecutionRunnable]) -> None:
-        if isinstance(runnable, ParallelExecutionRunnable) and runnable.name in self._runnable_by_name:
-            raise ValueError(f"ParallelExecutionRunnable name '{runnable.name}' is not unique")
-        if isinstance(runnable, str) and runnable not in self.runnables:
-            raise ValueError(f"{runnable} is not exists")
-        elif isinstance(runnable, str) and runnable in self._runnable_by_name:
-            return
-        elif isinstance(runnable, str):
-            runnable = self.runnables[runnable]
+        if isinstance(runnable, str):
+            if runnable not in self._runnable_by_name:
+                raise ValueError(f"{runnable} does not exist")
+            else:
+                runnable = self._runnable_by_name[runnable]
 
         runnable.init()
         self._runnable_by_name[runnable.name] = runnable
@@ -1641,35 +1641,31 @@ class Executor:
             )
         elif runnable.execution_mechanism == ParallelExecutionMechanisms.thread_pool:
             self.num_threads += 1
-        elif runnable.execution_mechanism == ParallelExecutionMechanisms.shared_proxy and isinstance(
-            self, ParallelExecution
-        ):
-            self.context.executor.init_runnable(runnable=runnable.name)
         elif runnable.execution_mechanism not in ParallelExecutionMechanisms.single_thread():
             raise ValueError(f"Unsupported execution mechanism: {runnable.execution_mechanism}")
 
     def init_executors(self):
-        # enforce max
-        num_threads = min(self.num_threads * 2, self.max_threads)
-        num_processes = min(self.num_processes * 2, self.max_processes)
+        if not self._executors:
+            # enforce max
+            num_threads = min(self.num_threads * self.pool_factor, self.max_threads)
+            num_processes = min(self.num_processes * self.pool_factor, self.max_processes)
 
-        self._executors = {}
-        if num_processes:
-            self._executors[ParallelExecutionMechanisms.process_pool] = ProcessPoolExecutor(
-                max_workers=num_processes, mp_context=self._mp_context
-            )
-        if num_threads:
-            self._executors[ParallelExecutionMechanisms.thread_pool] = ThreadPoolExecutor(max_workers=num_threads)
+            self._executors = {}
+            if num_processes:
+                self._executors[ParallelExecutionMechanisms.process_pool] = ProcessPoolExecutor(
+                    max_workers=num_processes, mp_context=self._mp_context
+                )
+            if num_threads:
+                self._executors[ParallelExecutionMechanisms.thread_pool] = ThreadPoolExecutor(max_workers=num_threads)
 
     def run_executor(
-        self, runnable_name: ParallelExecutionRunnable, runnables_encountered: set[str], event
+        self, runnable: Union[ParallelExecutionRunnable, str], runnables_encountered: set[int], event
     ) -> asyncio.Future:
-        if isinstance(runnable_name, str):
-            runnable = self._runnable_by_name[runnable_name]
-        elif isinstance(runnable_name, ParallelExecutionRunnable):
-            runnable = runnable_name
-        else:
-            raise ValueError("Unexpected runnable type")
+        self.init_executors()
+        if isinstance(runnable, str):
+            runnable = self._runnable_by_name[runnable]
+        elif not isinstance(runnable, ParallelExecutionRunnable):
+            raise TypeError(f"Unexpected runnable type, got runnable of type {type(runnable)}")
         if id(runnable) in runnables_encountered:
             raise ValueError(f"select_runnables() returned more than one outlet named '{runnable.name}'")
         input = (
@@ -1691,12 +1687,6 @@ class Executor:
                 input,
                 event.path,
             )
-        elif runnable.execution_mechanism == ParallelExecutionMechanisms.shared_proxy and isinstance(
-            self, ParallelExecution
-        ):
-            future = self.context.executor.run_executor(
-                runnable_name=runnable.name, runnables_encountered=runnables_encountered, event=event
-            )
         else:
             executor = self._executors[runnable.execution_mechanism]
             future = asyncio.get_running_loop().run_in_executor(
@@ -1708,7 +1698,7 @@ class Executor:
         return future
 
 
-class ParallelExecution(Executor, Flow):
+class ParallelExecution(RunnableExecutor, Flow):
     """
     Runs multiple jobs in parallel for each event.
 
@@ -1742,7 +1732,11 @@ class ParallelExecution(Executor, Flow):
     def _init(self):
         super()._init()
         for runnable in self.runnables:
-            self.init_runnable(runnable=runnable)
+            if runnable.execution_mechanism == ParallelExecutionMechanisms.shared_executor:
+                self.context.executor.init_runnable(runnable=runnable.name)
+            else:
+                self.add_runnable(runnable=runnable)
+                self.init_runnable(runnable=runnable)
         self.init_executors()
 
     async def _do(self, event):
@@ -1755,10 +1749,18 @@ class ParallelExecution(Executor, Flow):
             futures = []
             runnables_encountered = set()
             for runnable in runnables:
-                future = self.run_executor(
-                    runnable_name=runnable, runnables_encountered=runnables_encountered, event=event
+                runnable: ParallelExecutionRunnable = (
+                    runnable if isinstance(runnable, ParallelExecutionRunnable) else self._runnable_by_name[runnable]
                 )
-                runnables_encountered.add(runnable if isinstance(runnable, str) else runnable.name)
+                if runnable.execution_mechanism == ParallelExecutionMechanisms.shared_executor:
+                    future = self.context.executor.run_executor(
+                        runnable=runnable.name, runnables_encountered=runnables_encountered, event=event
+                    )
+                else:
+                    future = self.run_executor(
+                        runnable=runnable, runnables_encountered=runnables_encountered, event=event
+                    )
+                runnables_encountered.add(id(runnable))
                 futures.append(future)
             results: list[_ParallelExecutionRunnableResult] = await asyncio.gather(*futures)
             if len(self.runnables) == 1:
