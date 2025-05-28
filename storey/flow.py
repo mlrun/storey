@@ -26,11 +26,9 @@ import uuid
 from asyncio import Task
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
-from lib2to3.fixes.fix_input import context
 from typing import Any, Callable, Collection, Dict, Iterable, List, Optional, Set, Union
 
 import aiohttp
-from blackd import executor
 
 from .dtypes import Event, FlowError, V3ioError, _termination_obj, known_driver_schemes
 from .queue import AsyncQueue
