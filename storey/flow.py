@@ -1799,7 +1799,9 @@ class ParallelExecution(Flow):
             runnables_encountered = set()
             for runnable in runnables:
                 runnable: ParallelExecutionRunnable = (
-                    runnable if isinstance(runnable, ParallelExecutionRunnable) else self._runnable_by_name[runnable]
+                    runnable
+                    if isinstance(runnable, ParallelExecutionRunnable)
+                    else self.runnable_executor._runnable_by_name[runnable]
                 )
                 if runnable.execution_mechanism == ParallelExecutionMechanisms.shared_executor:
                     future = self.context.executor.run_executor(
