@@ -1612,10 +1612,7 @@ class RunnableExecutor:
         max_processes: Optional[int] = None,
         max_threads: Optional[int] = None,
         pool_factor: Optional[int] = None,
-        **kwargs,
     ):
-        super().__init__(**kwargs)
-
         self._runnable_by_name: dict[str, ParallelExecutionRunnable] = {}
         self.max_processes = max_processes or os.cpu_count() or 16
         self.max_threads = max_threads or 32
@@ -1744,7 +1741,7 @@ class RunnableExecutor:
         return future
 
 
-class ParallelExecution(RunnableExecutor, Flow):
+class ParallelExecution(Flow):
     """
     Runs multiple jobs in parallel for each event.
 
@@ -1757,6 +1754,9 @@ class ParallelExecution(RunnableExecutor, Flow):
     def __init__(
         self,
         runnables: list[ParallelExecutionRunnable],
+        max_processes: Optional[int] = None,
+        max_threads: Optional[int] = None,
+        pool_factor: Optional[int] = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -1765,6 +1765,9 @@ class ParallelExecution(RunnableExecutor, Flow):
             raise ValueError("ParallelExecution cannot be instantiated without at least one runnable")
 
         self.runnables = runnables
+        self.runnable_executor = RunnableExecutor(
+            max_processes=max_processes, max_threads=max_threads, pool_factor=pool_factor
+        )
 
     def select_runnables(self, event) -> Optional[Union[list[str], list[ParallelExecutionRunnable]]]:
         """
@@ -1781,9 +1784,9 @@ class ParallelExecution(RunnableExecutor, Flow):
             if runnable.execution_mechanism == ParallelExecutionMechanisms.shared_executor:
                 self.context.executor.init_runnable(runnable=runnable.name)
             else:
-                self.add_runnable(runnable=runnable)
-                self.init_runnable(runnable=runnable)
-        self.init_executors()
+                self.runnable_executor.add_runnable(runnable=runnable)
+                self.runnable_executor.init_runnable(runnable=runnable)
+        self.runnable_executor.init_executors()
 
     async def _do(self, event):
         if event is _termination_obj:
@@ -1803,7 +1806,7 @@ class ParallelExecution(RunnableExecutor, Flow):
                         runnable=runnable.name, runnables_encountered=runnables_encountered, event=event
                     )
                 else:
-                    future = self.run_executor(
+                    future = self.runnable_executor.run_executor(
                         runnable=runnable, runnables_encountered=runnables_encountered, event=event
                     )
                 runnables_encountered.add(id(runnable))
