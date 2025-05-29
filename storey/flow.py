@@ -1591,6 +1591,14 @@ class ParallelExecution(Flow):
         """
         pass
 
+    def enrich_event(self, event):
+        """
+        Given an event, enriches it with user code.
+        Should return the new enriched event.
+        :param event: Event object
+        """
+        return event
+
     def _init(self):
         super()._init()
         num_processes = 0
@@ -1628,6 +1636,7 @@ class ParallelExecution(Flow):
         if event is _termination_obj:
             return await self._do_downstream(_termination_obj)
         else:
+            event = self.enrich_event(event)
             runnables = self.select_runnables(event)
             if runnables is None:
                 runnables = self.runnables

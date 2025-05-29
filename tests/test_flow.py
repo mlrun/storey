@@ -4969,3 +4969,62 @@ def test_parallel_execution_with_large_data():
         else:
             for expected_gpu, runnable_result in enumerate(result.values()):
                 assert runnable_result == {"data_size": data_size, "n": n, "gpu": expected_gpu}
+
+
+def test_enrichment():
+    busy_wait_pool = RunnableBusyWait("busy1")
+    busy_wait_dedicated = RunnableBusyWait("busy2")
+    busy_wait_dedicated.execution_mechanism = "dedicated_process"
+
+    runnables = [
+        RunnableWithError("error"),
+        busy_wait_pool,
+        busy_wait_dedicated,
+        RunnableSleep("sleep1"),
+        RunnableSleep("sleep2"),
+        RunnableAsyncSleep("asleep1"),
+        RunnableAsyncSleep("asleep2"),
+        RunnableAsyncSleep("naive"),
+    ]
+
+    class MyParallelExecution(ParallelExecution):
+
+        def enrich_event(self, event):
+            event._metadata = {"name": self.name}
+            return event
+
+        def select_runnables(self, event):
+            return [runnable.name for runnable in runnables if runnable.name != "error"]
+
+    parallel_execution = MyParallelExecution(runnables, full_event=True)
+    reduce = Reduce([], lambda acc, x: acc + [x], full_event=True)
+
+    source = SyncEmitSource()
+    source.to(parallel_execution).to(reduce)
+
+    start = time.monotonic()
+    controller = source.run()
+    controller.emit(0)
+    controller.terminate()
+    termination_result = controller.await_termination()
+    end = time.monotonic()
+
+    assert end - start < 6
+    result = termination_result[0].body
+    total_metadata = termination_result[0]._metadata
+
+    assert result == {
+        "asleep1": 1,
+        "asleep2": 1,
+        "busy1": 1,
+        "busy2": 1,
+        "naive": 1,
+        "sleep1": 1,
+        "sleep2": 1,
+    }
+    assert (
+        "name" in total_metadata and total_metadata.pop("name") == "MyParallelExecution"
+    ), "Expected name in _metadata field"
+    assert all(
+        list(("when" in metadata and "microsec" in metadata) for metadata in total_metadata.values())
+    ), "Expected _metadata to include 'when' and 'microsec' fields "
