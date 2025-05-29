@@ -1502,8 +1502,9 @@ class ParallelExecutionRunnable:
         block the main event loop thread.
     * "asyncio" – To run in an asyncio task. This is appropriate for I/O tasks that use asyncio, allowing the event
         loop to continue running while waiting for a response.
-    * "shared_executor" – Reuses an external executor (typically managed by the flow or context)
-      to execute the runnable. This is especially useful when:
+    * "shared_executor" – Reuses an external executor (typically managed by the flow or context) to execute the
+        runnable. Should be used only if you have multiply `ParallelExecution` in the same flow and especially
+        useful when:
         - You want to share a heavy resource like a large model loaded onto a GPU.
         - You want to centralize task scheduling or coordination for multiple lightweight tasks.
         - You aim to minimize overhead from creating new executors or processes/threads per runnable.
@@ -1765,9 +1766,9 @@ class ParallelExecution(Flow):
             raise ValueError("ParallelExecution cannot be instantiated without at least one runnable")
 
         self.runnables = runnables
-        self.runnable_executor = RunnableExecutor(
-            max_processes=max_processes, max_threads=max_threads, pool_factor=pool_factor
-        )
+        self.max_processes = max_processes or os.cpu_count() or 16
+        self.max_threads = max_threads or 32
+        self.pool_factor = pool_factor or 1
 
     def select_runnables(self, event) -> Optional[Union[list[str], list[ParallelExecutionRunnable]]]:
         """
@@ -1780,6 +1781,9 @@ class ParallelExecution(Flow):
 
     def _init(self):
         super()._init()
+        self.runnable_executor = RunnableExecutor(
+            max_processes=self.max_processes, max_threads=self.max_threads, pool_factor=self.pool_factor
+        )
         for runnable in self.runnables:
             if runnable.execution_mechanism == ParallelExecutionMechanisms.shared_executor:
                 self.context.executor.init_runnable(runnable=runnable.name)

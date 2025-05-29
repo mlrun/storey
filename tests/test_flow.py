@@ -5008,7 +5008,7 @@ def test_parallel_execution_with_shared():
     termination_result = controller.await_termination()
     end = time.monotonic()
 
-    assert end - start < 6
+    assert end - start < 3
     termination_result = termination_result[0]
     assert termination_result == {
         "busy1": 1,
