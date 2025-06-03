@@ -5056,10 +5056,9 @@ def test_enrichment():
     assert result == {
         "busy1": 1,
         "busy2": 1,
-
     }
     assert (
-            "name" in total_metadata and total_metadata.pop("name") == "MyParallelExecution"
+        "name" in total_metadata and total_metadata.pop("name") == "MyParallelExecution"
     ), "Expected name in _metadata field"
     assert all(
         list(("when" in metadata and "microsec" in metadata) for metadata in total_metadata.values())
@@ -5101,7 +5100,6 @@ def test_without_enrichment():
     assert result == {
         "busy1": 1,
         "busy2": 1,
-
     }
     assert all(
         list(("when" in metadata and "microsec" in metadata) for metadata in total_metadata.values())
