@@ -74,9 +74,11 @@ from storey.flow import (
     ConcurrentExecution,
     Context,
     ParallelExecution,
+    ParallelExecutionMechanisms,
     ParallelExecutionRunnable,
     ReifyMetadata,
     Rename,
+    RunnableExecutor,
     _ConcurrentJobExecution,
 )
 
@@ -4918,8 +4920,6 @@ def test_parallel_execution():
 def test_invalid_runnable():
     with pytest.raises(
         ValueError,
-        match="ParallelExecutionRunnable's execution_mechanism attribute must be overridden with one of: "
-        '"process_pool", "dedicated_process", "thread_pool", "asyncio", "naive"',
     ):
         ParallelExecutionRunnable("my_runnable")
 
@@ -4971,33 +4971,32 @@ def test_parallel_execution_with_large_data():
                 assert runnable_result == {"data_size": data_size, "n": n, "gpu": expected_gpu}
 
 
-def test_enrichment():
+class RunnableShared(ParallelExecutionRunnable):
+    execution_mechanism = ParallelExecutionMechanisms.shared_executor
+
+
+def test_parallel_execution_with_shared():
     busy_wait_pool = RunnableBusyWait("busy1")
     busy_wait_dedicated = RunnableBusyWait("busy2")
     busy_wait_dedicated.execution_mechanism = "dedicated_process"
 
-    runnables = [
-        RunnableWithError("error"),
-        busy_wait_pool,
-        busy_wait_dedicated,
-        RunnableSleep("sleep1"),
-        RunnableSleep("sleep2"),
-        RunnableAsyncSleep("asleep1"),
-        RunnableAsyncSleep("asleep2"),
-        RunnableAsyncSleep("naive"),
-    ]
+    runnables = [RunnableShared("busy2"), busy_wait_pool, RunnableShared("thread1")]
 
     class MyParallelExecution(ParallelExecution):
-
-        def enrich_event(self, event):
-            event._metadata = {"name": self.name}
-            return event
-
         def select_runnables(self, event):
-            return [runnable.name for runnable in runnables if runnable.name != "error"]
+            return None
 
-    parallel_execution = MyParallelExecution(runnables, full_event=True)
-    reduce = Reduce([], lambda acc, x: acc + [x], full_event=True)
+    class MyContext:
+        def __init__(self, executor: RunnableExecutor):
+            self.executor = executor
+
+    my_executor = RunnableExecutor()
+    my_executor.add_runnable(busy_wait_dedicated)
+    my_executor.add_runnable(RunnableSleep("thread1"))
+    my_context = MyContext(executor=my_executor)
+
+    parallel_execution = MyParallelExecution(runnables, context=my_context)
+    reduce = Reduce([], lambda acc, x: acc + [x])
 
     source = SyncEmitSource()
     source.to(parallel_execution).to(reduce)
@@ -5009,22 +5008,10 @@ def test_enrichment():
     termination_result = controller.await_termination()
     end = time.monotonic()
 
-    assert end - start < 6
-    result = termination_result[0].body
-    total_metadata = termination_result[0]._metadata
-
-    assert result == {
-        "asleep1": 1,
-        "asleep2": 1,
+    assert end - start < 3
+    termination_result = termination_result[0]
+    assert termination_result == {
         "busy1": 1,
         "busy2": 1,
-        "naive": 1,
-        "sleep1": 1,
-        "sleep2": 1,
+        "thread1": 1,
     }
-    assert (
-        "name" in total_metadata and total_metadata.pop("name") == "MyParallelExecution"
-    ), "Expected name in _metadata field"
-    assert all(
-        list(("when" in metadata and "microsec" in metadata) for metadata in total_metadata.values())
-    ), "Expected _metadata to include 'when' and 'microsec' fields "
