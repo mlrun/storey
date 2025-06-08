@@ -1782,7 +1782,7 @@ class ParallelExecution(Flow):
     def preprocess_event(self, event):
         """
         Given an event, preprocess it with user code.
-        runs before the runnable selector.
+        Runs before the runnable selector.
         Should return the new enriched event.
         :param event: Event object
         """
