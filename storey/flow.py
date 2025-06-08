@@ -1779,9 +1779,10 @@ class ParallelExecution(Flow):
         """
         pass
 
-    def enrich_event(self, event):
+    def preprocess_event(self, event):
         """
-        Given an event, enriches it with user code.
+        Given an event, preprocess it with user code.
+        runs before the runnable selector.
         Should return the new enriched event.
         :param event: Event object
         """
@@ -1804,7 +1805,7 @@ class ParallelExecution(Flow):
         if event is _termination_obj:
             return await self._do_downstream(_termination_obj)
         else:
-            event = self.enrich_event(event)
+            event = self.preprocess_event(event)
             runnables = self.select_runnables(event)
             if runnables is None:
                 runnables = self.runnables

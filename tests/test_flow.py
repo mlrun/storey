@@ -5029,14 +5029,12 @@ def test_enrichment():
 
     class MyParallelExecution(ParallelExecution):
 
-        def enrich_event(self, event):
+        def preprocess_event(self, event):
             event._metadata = {"name": self.name}
             return event
 
-        def select_runnables(self, event):
-            return [runnable.name for runnable in runnables if runnable.name != "error"]
 
-    parallel_execution = MyParallelExecution(runnables, full_event=True)
+    parallel_execution = MyParallelExecution(runnables)
     reduce = Reduce([], lambda acc, x: acc + [x], full_event=True)
 
     source = SyncEmitSource()
@@ -5065,7 +5063,7 @@ def test_enrichment():
     ), "Expected _metadata to include 'when' and 'microsec' fields "
 
 
-def test_without_enrichment():
+def test_metadata_without_enrichment():
     busy_wait_pool = RunnableBusyWait("busy1")
     busy_wait_dedicated = RunnableBusyWait("busy2")
     busy_wait_dedicated.execution_mechanism = "dedicated_process"
@@ -5075,12 +5073,7 @@ def test_without_enrichment():
         busy_wait_dedicated,
     ]
 
-    class MyParallelExecution(ParallelExecution):
-
-        def select_runnables(self, event):
-            return [runnable.name for runnable in runnables if runnable.name != "error"]
-
-    parallel_execution = MyParallelExecution(runnables, full_event=True)
+    parallel_execution = ParallelExecution(runnables)
     reduce = Reduce([], lambda acc, x: acc + [x], full_event=True)
 
     source = SyncEmitSource()
