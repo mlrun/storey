@@ -5033,7 +5033,6 @@ def test_enrichment():
             event._metadata = {"name": self.name}
             return event
 
-
     parallel_execution = MyParallelExecution(runnables)
     reduce = Reduce([], lambda acc, x: acc + [x], full_event=True)
 
