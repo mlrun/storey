@@ -1,4 +1,4 @@
-# Copyright 2020 Iguazio
+# Copyright 2025 Iguazio
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import asyncio
-from typing import List, Optional
+from typing import Optional
 
 import asyncpg
 
@@ -33,11 +33,11 @@ class TimescaleDBTarget(_Batching, _Writer):
     :param time_col: Name of the time column that will be used as the primary time dimension for the hypertable.
         This column must contain timestamp data and will be used for time-based partitioning.
     :type time_col: str
-    :param columns: List of column names to be written to the hypertable. Will be extracted from events when an event
+    :param columns: list of column names to be written to the hypertable. Will be extracted from events when an event
         is a dictionary. Use = notation for renaming fields (e.g. write_this=event_field). Use $ notation to refer to
         metadata ($key, event_time=$time). The time column should not be included in this list as it's specified
         separately via time_col parameter.
-    :type columns: List[str]
+    :type columns: list[str]
     :param time_format: If time_col contains string timestamps, this parameter specifies the format for parsing.
         If not provided, timestamps will be parsed according to ISO-8601 format. Common formats include:
         "%Y-%m-%d %H:%M:%S", "%d/%m/%y %H:%M:%S UTC%z", etc.
@@ -90,7 +90,7 @@ class TimescaleDBTarget(_Batching, _Writer):
         self,
         dsn: str,
         time_col: str,
-        columns: List[str],
+        columns: list[str],
         time_format: Optional[str] = None,
         table: Optional[str] = None,
         max_connections: int = 10,
@@ -255,10 +255,10 @@ class TimescaleDBTarget(_Batching, _Writer):
         4. Maintains proper column ordering for TimescaleDB compatibility
 
         Args:
-            batch: List of events to write
+            batch: list of events to write
             batch_key: Key used for batching (unused in this implementation)
             batch_time: Timestamp when batch was created
-            batch_events: List of original event objects
+            batch_events: list of original event objects
             last_event_time: Timestamp of the most recent event in the batch
         """
         # Ensure connection pool is created
@@ -300,7 +300,7 @@ class TimescaleDBTarget(_Batching, _Writer):
             await self._pool.close()
             self._pool = None
 
-    def _get_column_names(self) -> List[str]:
+    def _get_column_names(self) -> list[str]:
         """Get list of column names in the correct order for database operations.
 
         TimescaleDB hypertables require the time column to be first for optimal performance
@@ -308,7 +308,7 @@ class TimescaleDBTarget(_Batching, _Writer):
         preventing duplicate column names.
 
         Returns:
-            List[str]: Column names with time column first, followed by data columns
+            list[str]: Column names with time column first, followed by data columns
         """
         # Start with time column
         column_names = [self._time_col]
