@@ -1779,6 +1779,15 @@ class ParallelExecution(Flow):
         """
         pass
 
+    def preprocess_event(self, event):
+        """
+        Given an event, preprocess it with user code.
+        Runs before the runnable selector.
+        Should return the new enriched event.
+        :param event: Event object
+        """
+        return event
+
     def _init(self):
         super()._init()
         self.runnable_executor = RunnableExecutor(
@@ -1796,6 +1805,7 @@ class ParallelExecution(Flow):
         if event is _termination_obj:
             return await self._do_downstream(_termination_obj)
         else:
+            event = self.preprocess_event(event)
             runnables = self.select_runnables(event)
             if runnables is None:
                 runnables = self.runnables
@@ -1820,19 +1830,23 @@ class ParallelExecution(Flow):
             results: list[_ParallelExecutionRunnableResult] = await asyncio.gather(*futures)
             if len(self.runnables) == 1:
                 event.body = results[0].data if results else None
-                event._metadata = (
-                    {
-                        "microsec": results[0].runtime,
-                        "when": results[0].timestamp.isoformat(sep=" ", timespec="microseconds"),
-                    },
-                )
+
+                metadata = {
+                    "microsec": results[0].runtime,
+                    "when": results[0].timestamp.isoformat(sep=" ", timespec="microseconds"),
+                }
             else:
                 event.body = {result.runnable_name: result.data for result in results}
-                event._metadata = {
+                metadata = {
                     result.runnable_name: {
                         "microsec": result.runtime,
                         "when": result.timestamp.isoformat(sep=" ", timespec="microseconds"),
                     }
                     for result in results
                 }
+
+            if hasattr(event, "_metadata") and isinstance(event._metadata, dict):
+                event._metadata.update(metadata)
+            else:
+                event._metadata = metadata
             return await self._do_downstream(event)

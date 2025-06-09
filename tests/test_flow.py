@@ -5015,3 +5015,84 @@ def test_parallel_execution_with_shared():
         "busy2": 1,
         "thread1": 1,
     }
+
+
+def test_enrichment():
+    busy_wait_pool = RunnableBusyWait("busy1")
+    busy_wait_dedicated = RunnableBusyWait("busy2")
+    busy_wait_dedicated.execution_mechanism = "dedicated_process"
+
+    runnables = [
+        busy_wait_pool,
+        busy_wait_dedicated,
+    ]
+
+    class MyParallelExecution(ParallelExecution):
+
+        def preprocess_event(self, event):
+            event._metadata = {"name": self.name}
+            return event
+
+    parallel_execution = MyParallelExecution(runnables)
+    reduce = Reduce([], lambda acc, x: acc + [x], full_event=True)
+
+    source = SyncEmitSource()
+    source.to(parallel_execution).to(reduce)
+
+    start = time.monotonic()
+    controller = source.run()
+    controller.emit(0)
+    controller.terminate()
+    termination_result = controller.await_termination()
+    end = time.monotonic()
+
+    assert end - start < 3
+    result = termination_result[0].body
+    total_metadata = termination_result[0]._metadata
+
+    assert result == {
+        "busy1": 1,
+        "busy2": 1,
+    }
+    assert (
+        "name" in total_metadata and total_metadata.pop("name") == "MyParallelExecution"
+    ), "Expected name in _metadata field"
+    assert all(
+        list(("when" in metadata and "microsec" in metadata) for metadata in total_metadata.values())
+    ), "Expected _metadata to include 'when' and 'microsec' fields "
+
+
+def test_metadata_without_enrichment():
+    busy_wait_pool = RunnableBusyWait("busy1")
+    busy_wait_dedicated = RunnableBusyWait("busy2")
+    busy_wait_dedicated.execution_mechanism = "dedicated_process"
+
+    runnables = [
+        busy_wait_pool,
+        busy_wait_dedicated,
+    ]
+
+    parallel_execution = ParallelExecution(runnables)
+    reduce = Reduce([], lambda acc, x: acc + [x], full_event=True)
+
+    source = SyncEmitSource()
+    source.to(parallel_execution).to(reduce)
+
+    start = time.monotonic()
+    controller = source.run()
+    controller.emit(0)
+    controller.terminate()
+    termination_result = controller.await_termination()
+    end = time.monotonic()
+
+    assert end - start < 3
+    result = termination_result[0].body
+    total_metadata = termination_result[0]._metadata
+
+    assert result == {
+        "busy1": 1,
+        "busy2": 1,
+    }
+    assert all(
+        list(("when" in metadata and "microsec" in metadata) for metadata in total_metadata.values())
+    ), "Expected _metadata to include 'when' and 'microsec' fields "
