@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import asyncio
+import contextlib
 from typing import Optional
 
 import asyncpg
@@ -29,35 +30,26 @@ class TimescaleDBTarget(_Batching, _Writer):
 
     :param dsn: PostgreSQL/TimescaleDB connection string in the format:
         postgresql://user:password@host:port/database or postgres://user:password@host:port/database
-    :type dsn: str
     :param time_col: Name of the time column that will be used as the primary time dimension for the hypertable.
         This column must contain timestamp data and will be used for time-based partitioning.
-    :type time_col: str
     :param columns: list of column names to be written to the hypertable. Will be extracted from events when an event
         is a dictionary. Use = notation for renaming fields (e.g. write_this=event_field). Use $ notation to refer to
         metadata ($key, event_time=$time). The time column should not be included in this list as it's specified
         separately via time_col parameter.
-    :type columns: list[str]
     :param time_format: If time_col contains string timestamps, this parameter specifies the format for parsing.
         If not provided, timestamps will be parsed according to ISO-8601 format. Common formats include:
         "%Y-%m-%d %H:%M:%S", "%d/%m/%y %H:%M:%S UTC%z", etc.
-    :type time_format: Optional[str]
     :param table: Name of the TimescaleDB hypertable where events will be written. The table must exist and be
         configured as a hypertable before writing data. If not specified, the table name should be provided through
         other means (e.g., via batching configuration).
-    :type table: Optional[str]
     :param max_connections: Maximum number of connections in the asyncpg connection pool. Higher values allow for
         better concurrency but consume more database resources. Defaults to 10.
-    :type max_connections: int
     :param min_connections: Minimum number of connections in the asyncpg connection pool. Defaults to 10.
-    :type min_connections: int
     :param max_events: Maximum number of events to write in a single batch. If None (default), all events will be
         written on flow termination, or after flush_after_seconds (if flush_after_seconds is set). Larger batches
         improve write performance but increase memory usage.
-    :type max_events: int
     :param flush_after_seconds: Maximum number of seconds to hold events before they are written. If None (default),
         events will be written on flow termination, or after max_events are accumulated (if max_events is set).
-    :type flush_after_seconds: int
 
     Example:
         >>> # Basic usage with millisecond precision timestamps
@@ -81,7 +73,7 @@ class TimescaleDBTarget(_Batching, _Writer):
 
     Note:
         - The target table must be created as a TimescaleDB hypertable before use
-        - The time column must be of TIMESTAMPTZ type for proper time-series functionality
+        - The time column should be a timestamp type, preferably TIMESTAMPTZ for timezone awareness
         - Events are written using PostgreSQL's COPY protocol for optimal performance
         - Connection pooling is handled automatically with proper cleanup on termination
     """
@@ -93,8 +85,8 @@ class TimescaleDBTarget(_Batching, _Writer):
         columns: list[str],
         time_format: Optional[str] = None,
         table: Optional[str] = None,
-        max_connections: int = 10,
-        min_connections: int = 10,
+        max_connections: int = 1,
+        min_connections: int = 1,
         **kwargs,
     ) -> None:
 
@@ -130,31 +122,23 @@ class TimescaleDBTarget(_Batching, _Writer):
         self._max_connections = max_connections
         self._min_connections = min_connections
         self._pool = None  # Connection pool will be created lazily during first use
+        self._column_names = self._get_column_names()
 
     def _test_connection_sync(self) -> None:
         """Test database connection synchronously during initialization.
 
-        This method validates that the TimescaleDB instance is accessible and properly configured
-        before any events are processed. It performs the following checks:
-        1. Basic connectivity to PostgreSQL/TimescaleDB
-        2. Table existence validation (if table name is provided)
-        3. TimescaleDB extension availability (optional check)
-
-        Raises:
-            ConnectionError: If connection fails, table doesn't exist, or other database issues occur
+        Only tests connection if not in an async context.
         """
+        with contextlib.suppress(RuntimeError):
+            # Check if we're in an async context
+            asyncio.get_running_loop()
+            # If we get here, we're in an async context - skip sync testing
+            return
         try:
-            # Get or create event loop for sync context
-            try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                # No event loop exists, create one
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-
-            # Test connection synchronously
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
             loop.run_until_complete(self._test_connection_async())
-
+            loop.close()
         except Exception as e:
             raise ConnectionError(f"Failed to connect to TimescaleDB: {e}") from e
 
@@ -270,24 +254,22 @@ class TimescaleDBTarget(_Batching, _Writer):
 
         # Convert dictionaries to tuples for copy_records_to_table
         # PostgreSQL's COPY protocol requires data in tuple format with consistent column ordering
-        column_names = self._get_column_names()
 
         records = []
         for item in batch:
-            if isinstance(item, dict):
-                # Convert dict to tuple in correct column order
-                # This ensures time column is first, followed by data columns
-                record = tuple(item.get(col) for col in column_names)
-                records.append(record)
-            else:
-                # Handle pre-processed tuple/list data
-                records.append(item)
+            if not isinstance(item, dict):
+                # Only dictionaries are supported as input
+                raise TypeError(f"TimescaleDBTarget only supports dictionary data, got {type(item)}")
 
+            # Convert dict to tuple in correct column order
+            # This ensures time column is first, followed by data columns
+            record = tuple(item.get(col) for col in self._column_names)
+            records.append(record)
         # Write data using connection pool
         async with self._pool.acquire() as conn:
             # Use PostgreSQL's COPY protocol for optimal performance
             # This is significantly faster than individual INSERT statements
-            await conn.copy_records_to_table(self._table, records=records, columns=column_names)
+            await conn.copy_records_to_table(self._table, records=records, columns=self._column_names)
 
     async def _terminate(self):
         """Terminate and cleanup resources.

@@ -2,41 +2,41 @@ import contextlib
 import os
 from collections.abc import Iterator
 from datetime import datetime, timezone
-from typing import Optional
+from typing import NamedTuple, Optional
+from urllib.parse import urlparse
 
 import pytest
 
-from storey import SyncEmitSource, build_flow
+from storey import AsyncEmitSource, SyncEmitSource, build_flow
 
 # Skip entire module if DSN not provided
 dsn = os.getenv("TIMESCALEDB_DSN")
 if not dsn:
     pytest.skip("Missing TimescaleDB DSN", allow_module_level=True)
 
+
 # Import dependencies only if we're not skipping
 import psycopg2  # noqa: E402
+import psycopg2.extensions  # noqa: E402
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT  # noqa: E402
 
 from storey.timescaledb_target import TimescaleDBTarget  # noqa: E402
 
-TimescaleDBData = tuple[psycopg2.extensions.connection, str, str, str, str, str, str, Optional[str], str, list]
 
-# Data type mapping from your requirements to PostgreSQL types
-DATATYPE_MAPPING = {
-    "BINARY": "BYTEA",
-    "BOOL": "BOOLEAN",
-    "DOUBLE": "DOUBLE PRECISION",
-    "FLOAT": "REAL",
-    "INT": "INTEGER",
-    "TIMESTAMP": "TIMESTAMPTZ",
-    "NCHAR": "CHAR",
-    "VARCHAR": "VARCHAR",
-}
+class TimescaleDBData(NamedTuple):
+    connection: psycopg2.extensions.connection
+    host: str
+    port: str
+    database: str
+    user: str
+    password: str
+    table_name: str
+    dsn_url: Optional[str]
+    timestamp_precision: str
+    columns_config: list
 
 
 def _parse_dsn_for_connection_params(dsn_url: str) -> dict:
-    """Parse DSN URL to extract connection parameters"""
-    from urllib.parse import urlparse
 
     parsed = urlparse(dsn_url)
     return {
@@ -84,10 +84,10 @@ def _generate_test_data(precision: str, row_count: int = 5):
 # Remove the basic fixture since we're consolidating
 
 
-@pytest.fixture(params=[("milliseconds", 100), ("microseconds", 100)])
+@pytest.fixture(params=[("milliseconds"), ("microseconds")])
 def timescaledb(request: "pytest.FixtureRequest") -> Iterator[TimescaleDBData]:
     """Fixture for extended type testing"""
-    timestamp_precision, varchar_size = request.param
+    timestamp_precision = request.param
     test_type = "extended"
     table_name = f"test_table_{test_type}_{timestamp_precision}"
 
@@ -115,16 +115,16 @@ def timescaledb(request: "pytest.FixtureRequest") -> Iterator[TimescaleDBData]:
         f"""
         CREATE TABLE {table_name} (
             time TIMESTAMPTZ NOT NULL,
-            binary_col {DATATYPE_MAPPING["BINARY"]},
-            bool_col {DATATYPE_MAPPING["BOOL"]},
-            double_col {DATATYPE_MAPPING["DOUBLE"]},
-            float_col {DATATYPE_MAPPING["FLOAT"]},
-            int_col {DATATYPE_MAPPING["INT"]},
-            timestamp_col {DATATYPE_MAPPING["TIMESTAMP"]},
-            nchar_col {DATATYPE_MAPPING["NCHAR"]}(10),
-            varchar_col {DATATYPE_MAPPING["VARCHAR"]}({varchar_size})
+            binary_col BYTEA,
+            bool_col BOOLEAN,
+            double_col DOUBLE PRECISION,
+            float_col REAL,
+            int_col INTEGER,
+            timestamp_col TIMESTAMPTZ,
+            nchar_col CHAR(10),
+            varchar_col VARCHAR(100)
         );
-    """
+        """
     )
 
     test_cursor.execute(f"SELECT create_hypertable('{table_name}', 'time');")
@@ -265,3 +265,46 @@ def test_timescaledb_all_types_and_precision(timescaledb):
         assert result[0] >= 10000000  # At least 10 seconds worth of microseconds
 
     cursor.close()
+
+
+@pytest.mark.asyncio
+async def test_timescaledb_async_emit(timescaledb):
+    """Test async emission to TimescaleDB"""
+    (connection, host, port, db_name, user, password, table_name, dsn_url, timestamp_precision, columns_config) = (
+        timescaledb
+    )
+
+    time_format = "%d/%m/%y %H:%M:%S UTC%z"
+    if timestamp_precision in ["milliseconds", "microseconds"]:
+        time_format = "%d/%m/%y %H:%M:%S.%f UTC%z"
+
+    controller = build_flow(
+        [
+            AsyncEmitSource(),
+            TimescaleDBTarget(
+                dsn=dsn_url,
+                table=table_name,
+                time_col="time",
+                columns=columns_config,
+                time_format=time_format,
+                max_events=10,
+            ),
+        ]
+    ).run()
+
+    # Test async emission
+    test_data = _generate_test_data(timestamp_precision, 2)
+
+    for data in test_data:
+        await controller.emit(data, None)
+
+    await controller.terminate()
+    await controller.await_termination()
+
+    # Verify data was inserted
+    cursor = connection.cursor()
+    cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
+    count = cursor.fetchone()[0]
+    cursor.close()
+
+    assert count == 2, "Async emission should insert 2 rows"
