@@ -1,0 +1,54 @@
+# Copyright 2020 Iguazio
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: CI Privileged
+
+on: pull_request_target
+
+jobs:
+  fail-if-unsafe:
+    runs-on: [ self-hosted, Linux ]
+    if: ${{ !contains( github.event.pull_request.labels.*.name, 'safe-to-test') }}
+    steps:
+      - name: Fail if not marked as safe to test
+        run: |
+          echo "Integration tests will not run on a PR unless it has the safe-to-test label applied"
+          exit 1
+  integration:
+    name: Integration tests
+    if: ${{ contains( github.event.pull_request.labels.*.name, 'safe-to-test') }}
+    runs-on: [ self-hosted, Linux ]
+    strategy:
+      matrix:
+        python-version: [ 3.9, 3.11 ]
+        include:
+          - python-version: 3.9
+            image: python:3.9.18
+          - python-version: 3.11
+            image: python:3.11.8
+    container:
+      image: ${{ matrix.image }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          repository: ${{ github.event.workflow_run.head_repository.full_name }}
+          ref: ${{ github.event.workflow_run.head_branch }}
+      - name: Install dependencies
+        run: make dev-env
+      - name: Run integration tests
+        env:
+          V3IO_API: ${{ secrets.V3IO_API }}
+          V3IO_ACCESS_KEY: ${{ secrets.V3IO_ACCESS_KEY }}
+          V3IO_FRAMESD: ${{ secrets.V3IO_FRAMESD }}
+        run: make integration
