@@ -43,8 +43,8 @@ class TimescaleDBTarget(_Batching, _Writer):
         configured as a hypertable before writing data. If not specified, the table name should be provided through
         other means (e.g., via batching configuration).
     :param max_connections: Maximum number of connections in the asyncpg connection pool. Higher values allow for
-        better concurrency but consume more database resources. Defaults to 10.
-    :param min_connections: Minimum number of connections in the asyncpg connection pool. Defaults to 10.
+        better concurrency but consume more database resources. Defaults to 1.
+    :param min_connections: Minimum number of connections in the asyncpg connection pool. Defaults to 1.
     :param max_events: Maximum number of events to write in a single batch. If None (default), all events will be
         written on flow termination, or after flush_after_seconds (if flush_after_seconds is set). Larger batches
         improve write performance but increase memory usage.
@@ -135,10 +135,7 @@ class TimescaleDBTarget(_Batching, _Writer):
             # If we get here, we're in an async context - skip sync testing
             return
         try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(self._test_connection_async())
-            loop.close()
+            asyncio.run(self._test_connection_async())
         except Exception as e:
             raise ConnectionError(f"Failed to connect to TimescaleDB: {e}") from e
 

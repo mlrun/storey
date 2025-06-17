@@ -292,7 +292,6 @@ async def test_timescaledb_async_emit(timescaledb):
         ]
     ).run()
 
-    # Test async emission
     test_data = _generate_test_data(timestamp_precision, 2)
 
     for data in test_data:
@@ -307,4 +306,4 @@ async def test_timescaledb_async_emit(timescaledb):
     count = cursor.fetchone()[0]
     cursor.close()
 
-    assert count == 2, "Async emission should insert 2 rows"
+    assert count == 2, "Async emission should insert exactly 2 rows"
