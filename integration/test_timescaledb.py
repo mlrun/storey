@@ -92,14 +92,13 @@ def timescaledb(request: "pytest.FixtureRequest") -> Iterator[TimescaleDBData]:
     table_name = f"test_table_{test_type}_{timestamp_precision}"
 
     # Setup database connection
-    if dsn:
-        connection_params = _parse_dsn_for_connection_params(dsn)
-        conn_host = connection_params["host"]
-        conn_port = connection_params["port"]
-        conn_database = connection_params["database"]
-        conn_user = connection_params["user"]
-        conn_password = connection_params["password"]
-        connection = psycopg2.connect(dsn)
+    connection_params = _parse_dsn_for_connection_params(dsn)
+    conn_host = connection_params["host"]
+    conn_port = connection_params["port"]
+    conn_database = connection_params["database"]
+    conn_user = connection_params["user"]
+    conn_password = connection_params["password"]
+    connection = psycopg2.connect(dsn)
 
     connection.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
     test_connection = connection

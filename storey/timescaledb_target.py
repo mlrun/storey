@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import asyncio
-import contextlib
 from typing import Optional
 
 import asyncpg
@@ -42,9 +40,6 @@ class TimescaleDBTarget(_Batching, _Writer):
     :param table: Name of the TimescaleDB hypertable where events will be written. The table must exist and be
         configured as a hypertable before writing data. If not specified, the table name should be provided through
         other means (e.g., via batching configuration).
-    :param max_connections: Maximum number of connections in the asyncpg connection pool. Higher values allow for
-        better concurrency but consume more database resources. Defaults to 1.
-    :param min_connections: Minimum number of connections in the asyncpg connection pool. Defaults to 1.
     :param max_events: Maximum number of events to write in a single batch. If None (default), all events will be
         written on flow termination, or after flush_after_seconds (if flush_after_seconds is set). Larger batches
         improve write performance but increase memory usage.
@@ -85,8 +80,6 @@ class TimescaleDBTarget(_Batching, _Writer):
         columns: list[str],
         time_format: Optional[str] = None,
         table: Optional[str] = None,
-        max_connections: int = 1,
-        min_connections: int = 1,
         **kwargs,
     ) -> None:
 
@@ -119,70 +112,20 @@ class TimescaleDBTarget(_Batching, _Writer):
 
         # Database connection configuration
         self._dsn = dsn
-        self._max_connections = max_connections
-        self._min_connections = min_connections
         self._pool = None  # Connection pool will be created lazily during first use
         self._column_names = self._get_column_names()
-
-    def _test_connection_sync(self) -> None:
-        """Test database connection synchronously during initialization.
-
-        Only tests connection if not in an async context.
-        """
-        with contextlib.suppress(RuntimeError):
-            # Check if we're in an async context
-            asyncio.get_running_loop()
-            # If we get here, we're in an async context - skip sync testing
-            return
-        try:
-            asyncio.run(self._test_connection_async())
-        except Exception as e:
-            raise ConnectionError(f"Failed to connect to TimescaleDB: {e}") from e
-
-    async def _test_connection_async(self) -> None:
-        """Async helper for connection testing.
-
-        Creates a temporary connection to validate database accessibility and configuration.
-        This connection is separate from the main connection pool and is closed immediately
-        after testing.
-        """
-        # Create a temporary connection to test
-        conn = await asyncpg.connect(dsn=self._dsn)
-
-        try:
-            # Test basic connectivity
-            await conn.execute("SELECT 1")
-
-            # Check if TimescaleDB extension is installed
-            result = await conn.fetchrow("SELECT extversion FROM pg_extension WHERE extname = 'timescaledb';")
-            if not result:
-                raise ConnectionError("TimescaleDB extension is not installed")
-
-            # Test if table exists (if specified)
-            if self._table:
-                table_exists = await conn.fetchrow(
-                    "SELECT 1 FROM information_schema.tables WHERE table_name = $1 LIMIT 1", self._table
-                )
-                if not table_exists:
-                    raise ConnectionError(f"Table '{self._table}' does not exist")
-
-        finally:
-            await conn.close()
 
     async def _create_pool_async(self) -> asyncpg.Pool:
         """Create asyncpg connection pool asynchronously.
 
-        Establishes a connection pool with the specified DSN and connection limits.
-        The pool is configured for optimal performance with TimescaleDB's time-series workloads.
+        This framework supports single connection only, so the pool is configured
+        with min_size=1 and max_size=1. No multiple connections are pooled as the
+        architecture is designed around a single database connection.
 
         Returns:
-            asyncpg.Pool: Configured connection pool ready for use
+            asyncpg.Pool: Configured connection pool with single connection
         """
-        return await asyncpg.create_pool(
-            dsn=self._dsn,
-            min_size=self._min_connections,
-            max_size=self._max_connections,
-        )
+        return await asyncpg.create_pool(dsn=self._dsn, min_size=1, max_size=1)
 
     def _init(self):
         """Initialize the target (called synchronously).
@@ -196,10 +139,6 @@ class TimescaleDBTarget(_Batching, _Writer):
         """
         _Batching._init(self)
         _Writer._init(self)
-
-        # Test database connection during initialization
-        # This ensures early failure detection if the database is unreachable
-        self._test_connection_sync()
 
     async def _async_init(self):
         """Initialize async components.
