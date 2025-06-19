@@ -115,18 +115,6 @@ class TimescaleDBTarget(_Batching, _Writer):
         self._pool = None  # Connection pool will be created lazily during first use
         self._column_names = self._get_column_names()
 
-    async def _create_pool_async(self) -> asyncpg.Pool:
-        """Create asyncpg connection pool asynchronously.
-
-        This framework supports single connection only, so the pool is configured
-        with min_size=1 and max_size=1. No multiple connections are pooled as the
-        architecture is designed around a single database connection.
-
-        Returns:
-            asyncpg.Pool: Configured connection pool with single connection
-        """
-        return await asyncpg.create_pool(dsn=self._dsn, min_size=1, max_size=1)
-
     def _init(self):
         """Initialize the target (called synchronously).
 
@@ -148,7 +136,7 @@ class TimescaleDBTarget(_Batching, _Writer):
         while ensuring the pool is available when needed for data operations.
         """
         if self._pool is None:
-            self._pool = await self._create_pool_async()
+            self._pool = await asyncpg.create_pool(dsn=self._dsn, min_size=1, max_size=1)
 
     def _event_to_batch_entry(self, event):
         """Convert an event to a batch entry format.
