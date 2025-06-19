@@ -14,8 +14,6 @@
 
 from typing import Optional
 
-import asyncpg
-
 from storey.targets import _Batching, _Writer
 
 
@@ -136,6 +134,8 @@ class TimescaleDBTarget(_Batching, _Writer):
         while ensuring the pool is available when needed for data operations.
         """
         if self._pool is None:
+            import asyncpg
+
             self._pool = await asyncpg.create_pool(dsn=self._dsn, min_size=1, max_size=1)
 
     def _event_to_batch_entry(self, event):
