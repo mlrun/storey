@@ -1490,10 +1490,19 @@ class ParallelExecutionMechanisms(str, enum.Enum):
             ParallelExecutionMechanisms.dedicated_process,
         ]
 
+    @staticmethod
+    def validate(execution_mechanism: str) -> None:
+        if execution_mechanism not in ParallelExecutionMechanisms.all():
+            raise ValueError(
+                "ParallelExecutionRunnable's execution_mechanism attribute must be overridden with one of: "
+                f"{ParallelExecutionMechanisms.all()}"
+            )
+
 
 class ParallelExecutionRunnable:
     """
-    Runnable to be run by a ParallelExecution step. Subclasses must assign execution_mechanism with one of:
+    Runnable to be run by a ParallelExecution step. On instantiation, the execution_mechanism constructor parameter
+        must be one of:
     * "process_pool" – To run in a separate process from a process pool. This is appropriate for CPU or GPU intensive
         tasks as they would otherwise block the main process by holding Python's Global Interpreter Lock (GIL).
     * "dedicated_process" – To run in a separate dedicated process. This is appropriate for CPU or GPU intensive tasks
@@ -1522,16 +1531,11 @@ class ParallelExecutionRunnable:
     :param name: Runnable name
     """
 
-    execution_mechanism: Optional[str] = None
-
     # ignore unused keyword arguments such as context which may be passed in by mlrun
-    def __init__(self, name: str, raise_exception: bool = True, **kwargs):
-        if self.execution_mechanism not in ParallelExecutionMechanisms.all():
-            raise ValueError(
-                "ParallelExecutionRunnable's execution_mechanism attribute must be overridden with one of: "
-                f"{ParallelExecutionMechanisms.all()}"
-            )
+    def __init__(self, name: str, execution_mechanism: str, raise_exception: bool = True, **kwargs):
+        ParallelExecutionMechanisms.validate(execution_mechanism)
         self.name = name
+        self.execution_mechanism = execution_mechanism
         self._raise_exception = raise_exception
 
     def init(self) -> None:

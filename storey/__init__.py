@@ -51,6 +51,7 @@ from .flow import Map  # noqa: F401
 from .flow import MapClass  # noqa: F401
 from .flow import MapWithState  # noqa: F401
 from .flow import ParallelExecution  # noqa: F401
+from .flow import ParallelExecutionMechanisms  # noqa: F401
 from .flow import ParallelExecutionRunnable  # noqa: F401
 from .flow import Recover  # noqa: F401
 from .flow import Reduce  # noqa: F401
