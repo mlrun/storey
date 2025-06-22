@@ -22,16 +22,37 @@ on: pull_request_target
 jobs:
   fail-if-unsafe:
     runs-on: [ self-hosted, Linux ]
-    if: ${{ !contains( github.event.pull_request.labels.*.name, 'safe-to-test') }}
     steps:
-      - name: Fail if not marked as safe to test
-        run: |
-          echo "Integration tests will not run on a PR unless it has the safe-to-test label applied"
-          exit 1
+      - name: Require collaborator or safe-to-test label
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const author = pr.user.login;
+            const labels = pr.labels.map(l => l.name);
+            const hasSafeLabel = labels.includes("safe-to-test");
+
+            let isCollaborator = false;
+            try {
+              await github.rest.repos.checkCollaborator({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                username: author
+              });
+              isCollaborator = true;
+            } catch (err) {
+              if (err.status !== 404) throw err;
+            }
+
+            if (!isCollaborator && !hasSafeLabel) {
+              core.setFailed(`Untrusted PR: ${author} is not a collaborator and PR is missing the "safe-to-test" label.`);
+            } else {
+              console.log("PR is trusted. Proceed.");
+            }
   integration:
     name: Integration tests
-    if: ${{ contains( github.event.pull_request.labels.*.name, 'safe-to-test') }}
     runs-on: [ self-hosted, Linux ]
+    needs: fail-if-unsafe
     strategy:
       matrix:
         python-version: [ 3.9, 3.11 ]
