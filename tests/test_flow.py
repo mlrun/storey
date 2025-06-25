@@ -74,7 +74,6 @@ from storey.flow import (
     ConcurrentExecution,
     Context,
     ParallelExecution,
-    ParallelExecutionMechanisms,
     ParallelExecutionRunnable,
     ReifyMetadata,
     Rename,
@@ -4784,9 +4783,6 @@ def test_filters_type():
 
 
 class RunnableBusyWait(ParallelExecutionRunnable):
-    execution_mechanism = "process_pool"
-    _result = 0
-
     def init(self):
         self._result = 1
 
@@ -4798,7 +4794,6 @@ class RunnableBusyWait(ParallelExecutionRunnable):
 
 
 class RunnableSleep(ParallelExecutionRunnable):
-    execution_mechanism = "thread_pool"
     _result = 0
 
     def init(self):
@@ -4810,7 +4805,6 @@ class RunnableSleep(ParallelExecutionRunnable):
 
 
 class RunnableAsyncSleep(ParallelExecutionRunnable):
-    execution_mechanism = "asyncio"
     _result = 0
 
     def init(self):
@@ -4822,7 +4816,6 @@ class RunnableAsyncSleep(ParallelExecutionRunnable):
 
 
 class RunnableNaiveNoOp(ParallelExecutionRunnable):
-    execution_mechanism = "naive"
     _result = 0
 
     def init(self):
@@ -4833,16 +4826,14 @@ class RunnableNaiveNoOp(ParallelExecutionRunnable):
 
 
 class RunnableWithError(ParallelExecutionRunnable):
-    execution_mechanism = "naive"
-
     def run(self, data, path):
         raise Exception("This shouldn't run!")
 
 
 def test_parallel_execution_runnable_uniqueness():
     runnables = [
-        RunnableBusyWait("x"),
-        RunnableBusyWait("x"),
+        RunnableBusyWait("x", "process_pool"),
+        RunnableBusyWait("x", "process_pool"),
     ]
     parallel_execution = ParallelExecution(runnables)
     with pytest.raises(ValueError, match="ParallelExecutionRunnable name 'x' is not unique"):
@@ -4851,8 +4842,8 @@ def test_parallel_execution_runnable_uniqueness():
 
 def test_select_runnable_uniqueness():
     runnables = [
-        RunnableNaiveNoOp("x"),
-        RunnableNaiveNoOp("y"),
+        RunnableNaiveNoOp("x", "naive"),
+        RunnableNaiveNoOp("y", "naive"),
     ]
 
     class MyParallelExecution(ParallelExecution):
@@ -4872,19 +4863,18 @@ def test_select_runnable_uniqueness():
 
 
 def test_parallel_execution():
-    busy_wait_pool = RunnableBusyWait("busy1")
-    busy_wait_dedicated = RunnableBusyWait("busy2")
-    busy_wait_dedicated.execution_mechanism = "dedicated_process"
+    busy_wait_pool = RunnableBusyWait("busy1", "process_pool")
+    busy_wait_dedicated = RunnableBusyWait("busy2", "dedicated_process")
 
     runnables = [
-        RunnableWithError("error"),
+        RunnableWithError("error", "naive"),
         busy_wait_pool,
         busy_wait_dedicated,
-        RunnableSleep("sleep1"),
-        RunnableSleep("sleep2"),
-        RunnableAsyncSleep("asleep1"),
-        RunnableAsyncSleep("asleep2"),
-        RunnableAsyncSleep("naive"),
+        RunnableSleep("sleep1", "thread_pool"),
+        RunnableSleep("sleep2", "thread_pool"),
+        RunnableAsyncSleep("asleep1", "asyncio"),
+        RunnableAsyncSleep("asleep2", "asyncio"),
+        RunnableNaiveNoOp("naive", "naive"),
     ]
 
     class MyParallelExecution(ParallelExecution):
@@ -4920,13 +4910,12 @@ def test_parallel_execution():
 def test_invalid_runnable():
     with pytest.raises(
         ValueError,
+        match="ParallelExecutionRunnable's execution_mechanism attribute must be overridden with one of:",
     ):
-        ParallelExecutionRunnable("my_runnable")
+        ParallelExecutionRunnable("my_runnable", "nonexistent execution mechanism")
 
 
 class RunnableMultiprocessingWithLargeData(ParallelExecutionRunnable):
-    execution_mechanism = "dedicated_process"
-
     def __init__(self, data_size: int, gpu_number: int, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.data = None
@@ -4948,7 +4937,9 @@ def test_parallel_execution_with_large_data():
     num_runnables = 3
 
     runnables = [
-        RunnableMultiprocessingWithLargeData(data_size, gpu_number=i, name=f"runnable_{i}")
+        RunnableMultiprocessingWithLargeData(
+            data_size, gpu_number=i, execution_mechanism="dedicated_process", name=f"runnable_{i}"
+        )
         for i in range(num_runnables)
     ]
     reduce = Reduce([], lambda acc, x: acc + [x])
@@ -4972,15 +4963,18 @@ def test_parallel_execution_with_large_data():
 
 
 class RunnableShared(ParallelExecutionRunnable):
-    execution_mechanism = ParallelExecutionMechanisms.shared_executor
+    pass
 
 
 def test_parallel_execution_with_shared():
-    busy_wait_pool = RunnableBusyWait("busy1")
-    busy_wait_dedicated = RunnableBusyWait("busy2")
-    busy_wait_dedicated.execution_mechanism = "dedicated_process"
+    busy_wait_pool = RunnableBusyWait("busy1", "process_pool")
+    busy_wait_dedicated = RunnableBusyWait("busy2", "dedicated_process")
 
-    runnables = [RunnableShared("busy2"), busy_wait_pool, RunnableShared("thread1")]
+    runnables = [
+        RunnableShared("busy2", "shared_executor"),
+        busy_wait_pool,
+        RunnableShared("thread1", "shared_executor"),
+    ]
 
     class MyParallelExecution(ParallelExecution):
         def select_runnables(self, event):
@@ -4992,7 +4986,7 @@ def test_parallel_execution_with_shared():
 
     my_executor = RunnableExecutor()
     my_executor.add_runnable(busy_wait_dedicated)
-    my_executor.add_runnable(RunnableSleep("thread1"))
+    my_executor.add_runnable(RunnableSleep("thread1", "thread_pool"))
     my_context = MyContext(executor=my_executor)
 
     parallel_execution = MyParallelExecution(runnables, context=my_context)
@@ -5018,9 +5012,8 @@ def test_parallel_execution_with_shared():
 
 
 def test_enrichment():
-    busy_wait_pool = RunnableBusyWait("busy1")
-    busy_wait_dedicated = RunnableBusyWait("busy2")
-    busy_wait_dedicated.execution_mechanism = "dedicated_process"
+    busy_wait_pool = RunnableBusyWait("busy1", "process_pool")
+    busy_wait_dedicated = RunnableBusyWait("busy2", "dedicated_process")
 
     runnables = [
         busy_wait_pool,
@@ -5063,9 +5056,8 @@ def test_enrichment():
 
 
 def test_metadata_without_enrichment():
-    busy_wait_pool = RunnableBusyWait("busy1")
-    busy_wait_dedicated = RunnableBusyWait("busy2")
-    busy_wait_dedicated.execution_mechanism = "dedicated_process"
+    busy_wait_pool = RunnableBusyWait("busy1", "process_pool")
+    busy_wait_dedicated = RunnableBusyWait("busy2", "dedicated_process")
 
     runnables = [
         busy_wait_pool,
