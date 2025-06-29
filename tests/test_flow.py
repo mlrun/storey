@@ -4832,25 +4832,28 @@ class RunnableWithError(ParallelExecutionRunnable):
 
 def test_parallel_execution_runnable_uniqueness():
     runnables = [
-        RunnableBusyWait("x", "process_pool"),
-        RunnableBusyWait("x", "process_pool"),
+        RunnableBusyWait("x"),
+        RunnableBusyWait("x"),
     ]
-    parallel_execution = ParallelExecution(runnables)
+    parallel_execution = ParallelExecution(runnables, execution_mechanism_by_runnable_name={"x": "process_pool"})
     with pytest.raises(ValueError, match="ParallelExecutionRunnable name 'x' is not unique"):
         parallel_execution._init()
 
 
 def test_select_runnable_uniqueness():
     runnables = [
-        RunnableNaiveNoOp("x", "naive"),
-        RunnableNaiveNoOp("y", "naive"),
+        RunnableNaiveNoOp("x"),
+        RunnableNaiveNoOp("y"),
     ]
 
     class MyParallelExecution(ParallelExecution):
         def select_runnables(self, event):
             return ["x", "x"]
 
-    parallel_execution = MyParallelExecution(runnables)
+    parallel_execution = MyParallelExecution(
+        runnables,
+        execution_mechanism_by_runnable_name={"x": "naive", "y": "naive"},
+    )
 
     source = SyncEmitSource()
     source.to(parallel_execution)
@@ -4863,25 +4866,37 @@ def test_select_runnable_uniqueness():
 
 
 def test_parallel_execution():
-    busy_wait_pool = RunnableBusyWait("busy1", "process_pool")
-    busy_wait_dedicated = RunnableBusyWait("busy2", "dedicated_process")
+    busy_wait_pool = RunnableBusyWait("busy1")
+    busy_wait_dedicated = RunnableBusyWait("busy2")
 
     runnables = [
-        RunnableWithError("error", "naive"),
+        RunnableWithError("error"),
         busy_wait_pool,
         busy_wait_dedicated,
-        RunnableSleep("sleep1", "thread_pool"),
-        RunnableSleep("sleep2", "thread_pool"),
-        RunnableAsyncSleep("asleep1", "asyncio"),
-        RunnableAsyncSleep("asleep2", "asyncio"),
-        RunnableNaiveNoOp("naive", "naive"),
+        RunnableSleep("sleep1"),
+        RunnableSleep("sleep2"),
+        RunnableAsyncSleep("asleep1"),
+        RunnableAsyncSleep("asleep2"),
+        RunnableNaiveNoOp("naive"),
     ]
 
     class MyParallelExecution(ParallelExecution):
         def select_runnables(self, event):
             return [runnable.name for runnable in runnables if runnable.name != "error"]
 
-    parallel_execution = MyParallelExecution(runnables)
+    parallel_execution = MyParallelExecution(
+        runnables,
+        execution_mechanism_by_runnable_name={
+            "error": "naive",
+            "busy1": "process_pool",
+            "busy2": "dedicated_process",
+            "sleep1": "thread_pool",
+            "sleep2": "thread_pool",
+            "asleep1": "asyncio",
+            "asleep2": "asyncio",
+            "naive": "naive",
+        },
+    )
     reduce = Reduce([], lambda acc, x: acc + [x])
 
     source = SyncEmitSource()
@@ -4907,12 +4922,16 @@ def test_parallel_execution():
     }
 
 
-def test_invalid_runnable():
+def test_invalid_execution_mechanism():
     with pytest.raises(
         ValueError,
-        match="ParallelExecutionRunnable's execution_mechanism attribute must be overridden with one of:",
+        match="ParallelExecutionRunnable's execution_mechanism must be one of:",
     ):
-        ParallelExecutionRunnable("my_runnable", "nonexistent execution mechanism")
+        runnables = [ParallelExecutionRunnable("my_runnable")]
+        ParallelExecution(
+            runnables,
+            execution_mechanism_by_runnable_name={"my_runnable": "nonexistent execution mechanism"},
+        )
 
 
 class RunnableMultiprocessingWithLargeData(ParallelExecutionRunnable):
@@ -4937,15 +4956,19 @@ def test_parallel_execution_with_large_data():
     num_runnables = 3
 
     runnables = [
-        RunnableMultiprocessingWithLargeData(
-            data_size, gpu_number=i, execution_mechanism="dedicated_process", name=f"runnable_{i}"
-        )
+        RunnableMultiprocessingWithLargeData(data_size, gpu_number=i, name=f"runnable_{i}")
         for i in range(num_runnables)
     ]
     reduce = Reduce([], lambda acc, x: acc + [x])
 
     source = SyncEmitSource()
-    source.to(ParallelExecution(runnables, max_processes=1)).to(reduce)
+    source.to(
+        ParallelExecution(
+            runnables,
+            execution_mechanism_by_runnable_name={runnable.name: "dedicated_process" for runnable in runnables},
+            max_processes=1,
+        )
+    ).to(reduce)
 
     controller = source.run()
 
@@ -4967,13 +4990,13 @@ class RunnableShared(ParallelExecutionRunnable):
 
 
 def test_parallel_execution_with_shared():
-    busy_wait_pool = RunnableBusyWait("busy1", "process_pool")
-    busy_wait_dedicated = RunnableBusyWait("busy2", "dedicated_process")
+    busy_wait_pool = RunnableBusyWait("busy1")
+    busy_wait_dedicated = RunnableBusyWait("busy2")
 
     runnables = [
-        RunnableShared("busy2", "shared_executor"),
+        RunnableShared("busy2"),
         busy_wait_pool,
-        RunnableShared("thread1", "shared_executor"),
+        RunnableShared("thread1"),
     ]
 
     class MyParallelExecution(ParallelExecution):
@@ -4985,11 +5008,24 @@ def test_parallel_execution_with_shared():
             self.executor = executor
 
     my_executor = RunnableExecutor()
-    my_executor.add_runnable(busy_wait_dedicated)
-    my_executor.add_runnable(RunnableSleep("thread1", "thread_pool"))
+    my_executor.add_runnable(busy_wait_dedicated, "dedicated_process")
+    my_executor.add_runnable(
+        RunnableSleep(
+            "thread1",
+        ),
+        "thread_pool",
+    )
     my_context = MyContext(executor=my_executor)
 
-    parallel_execution = MyParallelExecution(runnables, context=my_context)
+    parallel_execution = MyParallelExecution(
+        runnables,
+        execution_mechanism_by_runnable_name={
+            "busy1": "process_pool",
+            "busy2": "shared_executor",
+            "thread1": "shared_executor",
+        },
+        context=my_context,
+    )
     reduce = Reduce([], lambda acc, x: acc + [x])
 
     source = SyncEmitSource()
@@ -5012,8 +5048,8 @@ def test_parallel_execution_with_shared():
 
 
 def test_enrichment():
-    busy_wait_pool = RunnableBusyWait("busy1", "process_pool")
-    busy_wait_dedicated = RunnableBusyWait("busy2", "dedicated_process")
+    busy_wait_pool = RunnableBusyWait("busy1")
+    busy_wait_dedicated = RunnableBusyWait("busy2")
 
     runnables = [
         busy_wait_pool,
@@ -5026,7 +5062,10 @@ def test_enrichment():
             event._metadata = {"name": self.name}
             return event
 
-    parallel_execution = MyParallelExecution(runnables)
+    parallel_execution = MyParallelExecution(
+        runnables,
+        execution_mechanism_by_runnable_name={"busy1": "process_pool", "busy2": "dedicated_process"},
+    )
     reduce = Reduce([], lambda acc, x: acc + [x], full_event=True)
 
     source = SyncEmitSource()
@@ -5056,15 +5095,18 @@ def test_enrichment():
 
 
 def test_metadata_without_enrichment():
-    busy_wait_pool = RunnableBusyWait("busy1", "process_pool")
-    busy_wait_dedicated = RunnableBusyWait("busy2", "dedicated_process")
+    busy_wait_pool = RunnableBusyWait("busy1")
+    busy_wait_dedicated = RunnableBusyWait("busy2")
 
     runnables = [
         busy_wait_pool,
         busy_wait_dedicated,
     ]
 
-    parallel_execution = ParallelExecution(runnables)
+    parallel_execution = ParallelExecution(
+        runnables,
+        execution_mechanism_by_runnable_name={"busy1": "process_pool", "busy2": "dedicated_process"},
+    )
     reduce = Reduce([], lambda acc, x: acc + [x], full_event=True)
 
     source = SyncEmitSource()
