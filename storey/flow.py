@@ -1494,7 +1494,8 @@ class ParallelExecutionMechanisms(str, enum.Enum):
     def validate(execution_mechanism: str) -> None:
         if execution_mechanism not in ParallelExecutionMechanisms.all():
             raise ValueError(
-                f"ParallelExecutionRunnable's execution_mechanism must be one of: {ParallelExecutionMechanisms.all()}"
+                f"Execution mechanism '{execution_mechanism}' is invalid. It must be one of: "
+                f"{ParallelExecutionMechanisms.all()}"
             )
 
 
@@ -1502,7 +1503,7 @@ class ParallelExecutionRunnable:
     """
     Runnable to be run by a ParallelExecution step.
 
-    Subclasses must also override the run() method, or run_async() in order to support execution_mechanism="asyncio",
+    Subclasses must override the run() method, or run_async() in order to support execution_mechanism="asyncio",
     with user code that handles the event and returns a result.
 
     Subclasses may optionally override the init() method if the user's implementation of run() requires prior
@@ -1617,6 +1618,7 @@ class RunnableExecutor:
 
         :raises ValueError: If a runnable with the same name is already registered.
         """
+        ParallelExecutionMechanisms.validate(execution_mechanism)
         if runnable.name not in self._runnable_by_name:
             self._runnable_by_name[runnable.name] = runnable
             self._execution_mechanism_by_runnable_name[runnable.name] = execution_mechanism
