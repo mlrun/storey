@@ -1494,36 +1494,17 @@ class ParallelExecutionMechanisms(str, enum.Enum):
     def validate(execution_mechanism: str) -> None:
         if execution_mechanism not in ParallelExecutionMechanisms.all():
             raise ValueError(
-                "ParallelExecutionRunnable's execution_mechanism attribute must be overridden with one of: "
+                f"Execution mechanism '{execution_mechanism}' is invalid. It must be one of: "
                 f"{ParallelExecutionMechanisms.all()}"
             )
 
 
 class ParallelExecutionRunnable:
     """
-    Runnable to be run by a ParallelExecution step. On instantiation, the execution_mechanism constructor parameter
-        must be one of:
-    * "process_pool" – To run in a separate process from a process pool. This is appropriate for CPU or GPU intensive
-        tasks as they would otherwise block the main process by holding Python's Global Interpreter Lock (GIL).
-    * "dedicated_process" – To run in a separate dedicated process. This is appropriate for CPU or GPU intensive tasks
-        that also require significant Runnable-specific initialization (e.g. a large model).
-    * "thread_pool" – To run in a separate thread. This is appropriate for blocking I/O tasks, as they would otherwise
-        block the main event loop thread.
-    * "asyncio" – To run in an asyncio task. This is appropriate for I/O tasks that use asyncio, allowing the event
-        loop to continue running while waiting for a response.
-    * "shared_executor" – Reuses an external executor (typically managed by the flow or context) to execute the
-        runnable. Should be used only if you have multiply `ParallelExecution` in the same flow and especially
-        useful when:
-        - You want to share a heavy resource like a large model loaded onto a GPU.
-        - You want to centralize task scheduling or coordination for multiple lightweight tasks.
-        - You aim to minimize overhead from creating new executors or processes/threads per runnable.
-      The runnable is expected to be pre-initialized and reused across events, enabling efficient use of memory and
-      hardware accelerators.
-    * "naive" – To run in the main event loop. This is appropriate only for trivial computation and/or file I/O. It
-        means that the runnable will not actually be run in parallel to anything else.
+    Runnable to be run by a ParallelExecution step.
 
-    Subclasses must also override the run() method, or run_async() when execution_mechanism="asyncio", with user code
-    that handles the event and returns a result.
+    Subclasses must override the run() method, or run_async() in order to support execution_mechanism="asyncio",
+    with user code that handles the event and returns a result.
 
     Subclasses may optionally override the init() method if the user's implementation of run() requires prior
     initialization.
@@ -1532,10 +1513,8 @@ class ParallelExecutionRunnable:
     """
 
     # ignore unused keyword arguments such as context which may be passed in by mlrun
-    def __init__(self, name: str, execution_mechanism: str, raise_exception: bool = True, **kwargs):
-        ParallelExecutionMechanisms.validate(execution_mechanism)
+    def __init__(self, name: str, raise_exception: bool = True, **kwargs):
         self.name = name
-        self.execution_mechanism = execution_mechanism
         self._raise_exception = raise_exception
 
     def init(self) -> None:
@@ -1619,6 +1598,7 @@ class RunnableExecutor:
         pool_factor: Optional[int] = None,
     ):
         self._runnable_by_name: dict[str, ParallelExecutionRunnable] = {}
+        self._execution_mechanism_by_runnable_name: dict[str, str] = {}
         self.max_processes = max_processes or os.cpu_count() or 16
         self.max_threads = max_threads or 32
         self.pool_factor = pool_factor or 1
@@ -1629,16 +1609,19 @@ class RunnableExecutor:
         self._mp_context = None
         self._executors = {}
 
-    def add_runnable(self, runnable: ParallelExecutionRunnable) -> None:
+    def add_runnable(self, runnable: ParallelExecutionRunnable, execution_mechanism: str) -> None:
         """
         Registers a new runnable instance.
 
         :param runnable: A `ParallelExecutionRunnable` instance.
+        :param execution_mechanism: Execution mechanism (See `ParallelExecution`).
 
         :raises ValueError: If a runnable with the same name is already registered.
         """
+        ParallelExecutionMechanisms.validate(execution_mechanism)
         if runnable.name not in self._runnable_by_name:
             self._runnable_by_name[runnable.name] = runnable
+            self._execution_mechanism_by_runnable_name[runnable.name] = execution_mechanism
         else:
             raise ValueError(f"ParallelExecutionRunnable name '{runnable.name}' is not unique")
 
@@ -1659,10 +1642,12 @@ class RunnableExecutor:
         runnable.init()
         self._runnable_by_name[runnable.name] = runnable
 
-        if runnable.execution_mechanism == ParallelExecutionMechanisms.process_pool:
+        execution_mechanism = self._execution_mechanism_by_runnable_name[runnable.name]
+
+        if execution_mechanism == ParallelExecutionMechanisms.process_pool:
             self.num_processes += 1
 
-        elif runnable.execution_mechanism == ParallelExecutionMechanisms.dedicated_process:
+        elif execution_mechanism == ParallelExecutionMechanisms.dedicated_process:
             self._mp_context = self._mp_context or multiprocessing.get_context("spawn")
             self._process_executor_by_runnable_name[runnable.name] = ProcessPoolExecutor(
                 max_workers=1,
@@ -1671,11 +1656,11 @@ class RunnableExecutor:
                 initargs=(runnable,),
             )
 
-        elif runnable.execution_mechanism == ParallelExecutionMechanisms.thread_pool:
+        elif execution_mechanism == ParallelExecutionMechanisms.thread_pool:
             self.num_threads += 1
 
-        elif runnable.execution_mechanism not in ParallelExecutionMechanisms.single_thread():
-            raise ValueError(f"Unsupported execution mechanism: {runnable.execution_mechanism}")
+        elif execution_mechanism not in ParallelExecutionMechanisms.single_thread():
+            raise ValueError(f"Unsupported execution mechanism: {execution_mechanism}")
 
     def init_executors(self):
         """
@@ -1716,18 +1701,18 @@ class RunnableExecutor:
         if id(runnable) in runnables_encountered:
             raise ValueError(f"select_runnables() returned more than one outlet named '{runnable.name}'")
 
+        execution_mechanism = self._execution_mechanism_by_runnable_name[runnable.name]
+
         input = (
-            event.body
-            if runnable.execution_mechanism in ParallelExecutionMechanisms.process()
-            else copy.deepcopy(event.body)
+            event.body if execution_mechanism in ParallelExecutionMechanisms.process() else copy.deepcopy(event.body)
         )
 
-        if runnable.execution_mechanism == ParallelExecutionMechanisms.asyncio:
+        if execution_mechanism == ParallelExecutionMechanisms.asyncio:
             future = asyncio.get_running_loop().create_task(runnable._async_run(input, event.path))
-        elif runnable.execution_mechanism == ParallelExecutionMechanisms.naive:
+        elif execution_mechanism == ParallelExecutionMechanisms.naive:
             future = asyncio.get_running_loop().create_future()
             future.set_result(runnable._run(input, event.path))
-        elif runnable.execution_mechanism == ParallelExecutionMechanisms.dedicated_process:
+        elif execution_mechanism == ParallelExecutionMechanisms.dedicated_process:
             executor = self._process_executor_by_runnable_name[runnable.name]
             future = asyncio.get_running_loop().run_in_executor(
                 executor,
@@ -1736,7 +1721,7 @@ class RunnableExecutor:
                 event.path,
             )
         else:
-            executor = self._executors[runnable.execution_mechanism]
+            executor = self._executors[execution_mechanism]
             future = asyncio.get_running_loop().run_in_executor(
                 executor,
                 runnable._run,
@@ -1751,6 +1736,26 @@ class ParallelExecution(Flow):
     Runs multiple jobs in parallel for each event.
 
     :param runnables: A list of ParallelExecutionRunnable instances.
+    :param execution_mechanism_by_runnable_name: Mapping from each runnable name to the execution_mechanism that should
+        run it. Must be one of:
+    * "process_pool" – To run in a separate process from a process pool. This is appropriate for CPU or GPU intensive
+        tasks as they would otherwise block the main process by holding Python's Global Interpreter Lock (GIL).
+    * "dedicated_process" – To run in a separate dedicated process. This is appropriate for CPU or GPU intensive tasks
+        that also require significant Runnable-specific initialization (e.g. a large model).
+    * "thread_pool" – To run in a separate thread. This is appropriate for blocking I/O tasks, as they would otherwise
+        block the main event loop thread.
+    * "asyncio" – To run in an asyncio task. This is appropriate for I/O tasks that use asyncio, allowing the event
+        loop to continue running while waiting for a response.
+    * "shared_executor" – Reuses an external executor (typically managed by the flow or context) to execute the
+        runnable. Should be used only if you have multiply `ParallelExecution` in the same flow and especially
+        useful when:
+        - You want to share a heavy resource like a large model loaded onto a GPU.
+        - You want to centralize task scheduling or coordination for multiple lightweight tasks.
+        - You aim to minimize overhead from creating new executors or processes/threads per runnable.
+      The runnable is expected to be pre-initialized and reused across events, enabling efficient use of memory and
+      hardware accelerators.
+    * "naive" – To run in the main event loop. This is appropriate only for trivial computation and/or file I/O. It
+        means that the runnable will not actually be run in parallel to anything else.
     :param max_processes: Maximum number of processes to spawn, not including dedicated ones. Defaults to the number of
       available CPUs, or 16 if number of CPUs can't be determined.
     :param max_threads: Maximum number of threads to start. Defaults to 32.
@@ -1759,6 +1764,7 @@ class ParallelExecution(Flow):
     def __init__(
         self,
         runnables: list[ParallelExecutionRunnable],
+        execution_mechanism_by_runnable_name: dict[str, str],
         max_processes: Optional[int] = None,
         max_threads: Optional[int] = None,
         pool_factor: Optional[int] = None,
@@ -1769,7 +1775,13 @@ class ParallelExecution(Flow):
         if not runnables:
             raise ValueError("ParallelExecution cannot be instantiated without at least one runnable")
 
+        for runnable in runnables:
+            if not (execution_mechanism := execution_mechanism_by_runnable_name.get(runnable.name)):
+                raise ValueError(f"No execution mechanism was specified for runnable '{runnable.name}'")
+            ParallelExecutionMechanisms.validate(execution_mechanism)
+
         self.runnables = runnables
+        self.execution_mechanism_by_runnable_name = execution_mechanism_by_runnable_name
         self.max_processes = max_processes or os.cpu_count() or 16
         self.max_threads = max_threads or 32
         self.pool_factor = pool_factor or 1
@@ -1798,10 +1810,11 @@ class ParallelExecution(Flow):
             max_processes=self.max_processes, max_threads=self.max_threads, pool_factor=self.pool_factor
         )
         for runnable in self.runnables:
-            if runnable.execution_mechanism == ParallelExecutionMechanisms.shared_executor:
+            execution_mechanism = self.execution_mechanism_by_runnable_name[runnable.name]
+            if execution_mechanism == ParallelExecutionMechanisms.shared_executor:
                 self.context.executor.init_runnable(runnable=runnable.name)
             else:
-                self.runnable_executor.add_runnable(runnable=runnable)
+                self.runnable_executor.add_runnable(runnable=runnable, execution_mechanism=execution_mechanism)
                 self.runnable_executor.init_runnable(runnable=runnable)
         self.runnable_executor.init_executors()
 
@@ -1821,7 +1834,10 @@ class ParallelExecution(Flow):
                     if isinstance(runnable, ParallelExecutionRunnable)
                     else self.runnable_executor._runnable_by_name[runnable]
                 )
-                if runnable.execution_mechanism == ParallelExecutionMechanisms.shared_executor:
+                if (
+                    self.execution_mechanism_by_runnable_name[runnable.name]
+                    == ParallelExecutionMechanisms.shared_executor
+                ):
                     future = self.context.executor.run_executor(
                         runnable=runnable.name, runnables_encountered=runnables_encountered, event=event
                     )
