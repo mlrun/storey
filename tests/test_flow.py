@@ -4925,7 +4925,7 @@ def test_parallel_execution():
 def test_invalid_execution_mechanism():
     with pytest.raises(
         ValueError,
-        match="ParallelExecutionRunnable's execution_mechanism must be one of:",
+        match="Execution mechanism 'nonexistent execution mechanism' is invalid. It must be one of:",
     ):
         runnables = [ParallelExecutionRunnable("my_runnable")]
         ParallelExecution(
