@@ -1776,8 +1776,7 @@ class ParallelExecution(Flow):
             raise ValueError("ParallelExecution cannot be instantiated without at least one runnable")
 
         for runnable in runnables:
-            execution_mechanism = execution_mechanism_by_runnable_name.get(runnable.name)
-            if not execution_mechanism:
+            if not (execution_mechanism := execution_mechanism_by_runnable_name.get(runnable.name)):
                 raise ValueError(f"No execution mechanism was specified for runnable '{runnable.name}'")
             ParallelExecutionMechanisms.validate(execution_mechanism)
 
