@@ -1513,8 +1513,9 @@ class ParallelExecutionRunnable:
     """
 
     # ignore unused keyword arguments such as context which may be passed in by mlrun
-    def __init__(self, name: str, raise_exception: bool = True, **kwargs):
+    def __init__(self, name: str, raise_exception: bool = True, shared_runnable_name: Optional[str] = None, **kwargs):
         self.name = name
+        self.shared_runnable_name = shared_runnable_name
         self._raise_exception = raise_exception
 
     def init(self) -> None:
@@ -1812,7 +1813,7 @@ class ParallelExecution(Flow):
         for runnable in self.runnables:
             execution_mechanism = self.execution_mechanism_by_runnable_name[runnable.name]
             if execution_mechanism == ParallelExecutionMechanisms.shared_executor:
-                self.context.executor.init_runnable(runnable=runnable.name)
+                self.context.executor.init_runnable(runnable=runnable.shared_runnable_name)
             else:
                 self.runnable_executor.add_runnable(runnable=runnable, execution_mechanism=execution_mechanism)
                 self.runnable_executor.init_runnable(runnable=runnable)
@@ -1839,7 +1840,7 @@ class ParallelExecution(Flow):
                     == ParallelExecutionMechanisms.shared_executor
                 ):
                     future = self.context.executor.run_executor(
-                        runnable=runnable.name, runnables_encountered=runnables_encountered, event=event
+                        runnable=runnable.shared_runnable_name, runnables_encountered=runnables_encountered, event=event
                     )
                 else:
                     future = self.runnable_executor.run_executor(
