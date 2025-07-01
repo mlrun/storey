@@ -4994,9 +4994,9 @@ def test_parallel_execution_with_shared():
     busy_wait_dedicated = RunnableBusyWait("busy2")
 
     runnables = [
-        RunnableShared("busy2"),
+        RunnableShared("busy2", shared_runnable_name="busy2"),
         busy_wait_pool,
-        RunnableShared("thread1"),
+        RunnableShared("thread1", shared_runnable_name="thread1"),
     ]
 
     class MyParallelExecution(ParallelExecution):
