@@ -4994,9 +4994,10 @@ def test_parallel_execution_with_shared():
     busy_wait_dedicated = RunnableBusyWait("busy2")
 
     runnables = [
-        RunnableShared("busy2"),
+        RunnableShared("busy2", shared_runnable_name="busy2"),
+        RunnableShared("busy3", shared_runnable_name="busy2"),
         busy_wait_pool,
-        RunnableShared("thread1"),
+        RunnableShared("thread1", shared_runnable_name="thread1"),
     ]
 
     class MyParallelExecution(ParallelExecution):
@@ -5022,6 +5023,7 @@ def test_parallel_execution_with_shared():
         execution_mechanism_by_runnable_name={
             "busy1": "process_pool",
             "busy2": "shared_executor",
+            "busy3": "shared_executor",
             "thread1": "shared_executor",
         },
         context=my_context,
@@ -5038,11 +5040,12 @@ def test_parallel_execution_with_shared():
     termination_result = controller.await_termination()
     end = time.monotonic()
 
-    assert end - start < 3
+    assert end - start < 4
     termination_result = termination_result[0]
     assert termination_result == {
         "busy1": 1,
         "busy2": 1,
+        "busy3": 1,
         "thread1": 1,
     }
 

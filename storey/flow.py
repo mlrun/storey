@@ -1513,8 +1513,9 @@ class ParallelExecutionRunnable:
     """
 
     # ignore unused keyword arguments such as context which may be passed in by mlrun
-    def __init__(self, name: str, raise_exception: bool = True, **kwargs):
+    def __init__(self, name: str, raise_exception: bool = True, shared_runnable_name: Optional[str] = None, **kwargs):
         self.name = name
+        self.shared_runnable_name = shared_runnable_name
         self._raise_exception = raise_exception
 
     def init(self) -> None:
@@ -1541,7 +1542,7 @@ class ParallelExecutionRunnable:
         """
         return body
 
-    def _run(self, body: Any, path: str) -> Any:
+    def _run(self, body: Any, path: str, origin_name: Optional[str] = None) -> Any:
         timestamp = datetime.datetime.now(tz=datetime.timezone.utc)
         start = time.monotonic()
         try:
@@ -1552,9 +1553,9 @@ class ParallelExecutionRunnable:
             else:
                 body = {"error": f"{type(e)}: {e}"}
         end = time.monotonic()
-        return _ParallelExecutionRunnableResult(self.name, body, end - start, timestamp)
+        return _ParallelExecutionRunnableResult(origin_name or self.name, body, end - start, timestamp)
 
-    async def _async_run(self, body: Any, path: str) -> Any:
+    async def _async_run(self, body: Any, path: str, origin_name: Optional[str] = None) -> Any:
         timestamp = datetime.datetime.now(tz=datetime.timezone.utc)
         start = time.monotonic()
         try:
@@ -1565,7 +1566,7 @@ class ParallelExecutionRunnable:
             else:
                 body = {"error": f"{type(e)}: {e}"}
         end = time.monotonic()
-        return _ParallelExecutionRunnableResult(self.name, body, end - start, timestamp)
+        return _ParallelExecutionRunnableResult(origin_name or self.name, body, end - start, timestamp)
 
 
 _sval = None
@@ -1679,7 +1680,11 @@ class RunnableExecutor:
                 self._executors[ParallelExecutionMechanisms.thread_pool] = ThreadPoolExecutor(max_workers=num_threads)
 
     def run_executor(
-        self, runnable: Union[ParallelExecutionRunnable, str], runnables_encountered: set[int], event
+        self,
+        runnable: Union[ParallelExecutionRunnable, str],
+        runnables_encountered: set[int],
+        event,
+        origin_runnable_name: Optional[str] = None,
     ) -> asyncio.Future:
         """
         Executes the given runnable instance using the appropriate execution mechanism.
@@ -1687,6 +1692,7 @@ class RunnableExecutor:
         :param runnable: Runnable instance or name to execute.
         :param runnables_encountered: Set of `id`s for runnables already executed in this cycle to prevent duplicates.
         :param event: The event input object to pass to the runnable.
+        :param origin_runnable_name: Name of the proxy runnable that initiated this execution, if any.
 
         :return: An `asyncio.Future` representing the pending result.
         :raises ValueError: If the runnable was already executed or is not properly registered.
@@ -1708,10 +1714,12 @@ class RunnableExecutor:
         )
 
         if execution_mechanism == ParallelExecutionMechanisms.asyncio:
-            future = asyncio.get_running_loop().create_task(runnable._async_run(input, event.path))
+            future = asyncio.get_running_loop().create_task(
+                runnable._async_run(input, event.path, origin_runnable_name)
+            )
         elif execution_mechanism == ParallelExecutionMechanisms.naive:
             future = asyncio.get_running_loop().create_future()
-            future.set_result(runnable._run(input, event.path))
+            future.set_result(runnable._run(input, event.path, origin_runnable_name))
         elif execution_mechanism == ParallelExecutionMechanisms.dedicated_process:
             executor = self._process_executor_by_runnable_name[runnable.name]
             future = asyncio.get_running_loop().run_in_executor(
@@ -1719,6 +1727,7 @@ class RunnableExecutor:
                 _static_run,
                 input,
                 event.path,
+                origin_runnable_name,
             )
         else:
             executor = self._executors[execution_mechanism]
@@ -1727,6 +1736,7 @@ class RunnableExecutor:
                 runnable._run,
                 input,
                 event.path,
+                origin_runnable_name,
             )
         return future
 
@@ -1812,7 +1822,7 @@ class ParallelExecution(Flow):
         for runnable in self.runnables:
             execution_mechanism = self.execution_mechanism_by_runnable_name[runnable.name]
             if execution_mechanism == ParallelExecutionMechanisms.shared_executor:
-                self.context.executor.init_runnable(runnable=runnable.name)
+                self.context.executor.init_runnable(runnable=runnable.shared_runnable_name)
             else:
                 self.runnable_executor.add_runnable(runnable=runnable, execution_mechanism=execution_mechanism)
                 self.runnable_executor.init_runnable(runnable=runnable)
@@ -1839,7 +1849,10 @@ class ParallelExecution(Flow):
                     == ParallelExecutionMechanisms.shared_executor
                 ):
                     future = self.context.executor.run_executor(
-                        runnable=runnable.name, runnables_encountered=runnables_encountered, event=event
+                        runnable=runnable.shared_runnable_name,
+                        runnables_encountered=runnables_encountered,
+                        event=event,
+                        origin_runnable_name=runnable.name,
                     )
                 else:
                     future = self.runnable_executor.run_executor(
