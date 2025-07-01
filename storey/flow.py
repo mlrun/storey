@@ -1542,7 +1542,7 @@ class ParallelExecutionRunnable:
         """
         return body
 
-    def _run(self, body: Any, path: str, origin_name: Optional[str]) -> Any:
+    def _run(self, body: Any, path: str, origin_name: Optional[str] = None) -> Any:
         timestamp = datetime.datetime.now(tz=datetime.timezone.utc)
         start = time.monotonic()
         try:
@@ -1555,7 +1555,7 @@ class ParallelExecutionRunnable:
         end = time.monotonic()
         return _ParallelExecutionRunnableResult(origin_name or self.name, body, end - start, timestamp)
 
-    async def _async_run(self, body: Any, path: str, origin_name: Optional[str]) -> Any:
+    async def _async_run(self, body: Any, path: str, origin_name: Optional[str] = None) -> Any:
         timestamp = datetime.datetime.now(tz=datetime.timezone.utc)
         start = time.monotonic()
         try:
@@ -1692,6 +1692,7 @@ class RunnableExecutor:
         :param runnable: Runnable instance or name to execute.
         :param runnables_encountered: Set of `id`s for runnables already executed in this cycle to prevent duplicates.
         :param event: The event input object to pass to the runnable.
+        :param origin_runnable_name: Name of the proxy runnable that initiated this execution, if any.
 
         :return: An `asyncio.Future` representing the pending result.
         :raises ValueError: If the runnable was already executed or is not properly registered.
