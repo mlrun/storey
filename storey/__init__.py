@@ -53,10 +53,10 @@ from .flow import MapWithState  # noqa: F401
 from .flow import ParallelExecution  # noqa: F401
 from .flow import ParallelExecutionMechanisms  # noqa: F401
 from .flow import ParallelExecutionRunnable  # noqa: F401
-from .flow import RunnableExecutor  # noqa: F401
 from .flow import Recover  # noqa: F401
 from .flow import Reduce  # noqa: F401
 from .flow import Rename  # noqa: F401
+from .flow import RunnableExecutor  # noqa: F401
 from .flow import SendToHttp  # noqa: F401
 from .flow import build_flow  # noqa: F401
 from .sources import AsyncEmitSource  # noqa: F401
