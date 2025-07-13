@@ -4810,7 +4810,7 @@ class RunnableAsyncSleep(ParallelExecutionRunnable):
     def init(self):
         self._result = 1
 
-    async def run_async(self, data, path):
+    async def run_async(self, data, path, origin_name=None):
         await asyncio.sleep(1)
         return self._result
 
