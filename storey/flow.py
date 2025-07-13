@@ -1522,23 +1522,27 @@ class ParallelExecutionRunnable:
         """Override this method to add initialization logic."""
         pass
 
-    def run(self, body: Any, path: str) -> Any:
+    def run(self, body: Any, path: str, origin_name: Optional[str] = None) -> Any:
         """
         Override this method with the code this runnable should run. If execution_mechanism is "asyncio", override
         run_async() instead.
 
         :param body: Event body
         :param path: Event path
+        :param origin_name: Name of the runnable that initiated this run, if applicable.
+                Use especially when this runnable is shared between multiple parallel executions.
         """
         return body
 
-    async def run_async(self, body: Any, path: str) -> Any:
+    async def run_async(self, body: Any, path: str, origin_name: Optional[str] = None) -> Any:
         """
         If execution_mechanism is "asyncio", override this method with the code this runnable should run. Otherwise,
         override run() instead.
 
         :param body: Event body
         :param path: Event path
+        :param origin_name: Name of the runnable that initiated this run, if applicable.
+                Use especially when this runnable is shared between multiple parallel executions.
         """
         return body
 
@@ -1546,7 +1550,7 @@ class ParallelExecutionRunnable:
         timestamp = datetime.datetime.now(tz=datetime.timezone.utc)
         start = time.monotonic()
         try:
-            body = self.run(body, path)
+            body = self.run(body, path, origin_name)
         except Exception as e:
             if self._raise_exception:
                 raise e
@@ -1559,7 +1563,7 @@ class ParallelExecutionRunnable:
         timestamp = datetime.datetime.now(tz=datetime.timezone.utc)
         start = time.monotonic()
         try:
-            body = await self.run_async(body, path)
+            body = await self.run_async(body, path, origin_name)
         except Exception as e:
             if self._raise_exception:
                 raise e
