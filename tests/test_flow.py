@@ -4786,7 +4786,7 @@ class RunnableBusyWait(ParallelExecutionRunnable):
     def init(self):
         self._result = 1
 
-    def run(self, data, path):
+    def run(self, data, path, origin_name=None):
         start = time.monotonic()
         while time.monotonic() - start < 1:
             pass
@@ -4799,7 +4799,7 @@ class RunnableSleep(ParallelExecutionRunnable):
     def init(self):
         self._result = 1
 
-    def run(self, data, path):
+    def run(self, data, path, origin_name=None):
         time.sleep(1)
         return self._result
 
@@ -4821,12 +4821,12 @@ class RunnableNaiveNoOp(ParallelExecutionRunnable):
     def init(self):
         self._result = 1
 
-    def run(self, data, path):
+    def run(self, data, path, origin_name=None):
         return self._result
 
 
 class RunnableWithError(ParallelExecutionRunnable):
-    def run(self, data, path):
+    def run(self, data, path, origin_name=None):
         raise Exception("This shouldn't run!")
 
 
@@ -4944,7 +4944,7 @@ class RunnableMultiprocessingWithLargeData(ParallelExecutionRunnable):
     def init(self):
         self.data = list(range(self.data_size))
 
-    def run(self, data, path):
+    def run(self, data, path, origin_name=None):
         data["data_size"] = len(self.data)
         data["gpu"] = self.gpu_number
         return data
