@@ -146,9 +146,19 @@ class Committer:
         self.offsets[qualified_shard] = offset
 
 
+class BadCommitter:
+    def __init__(self):
+        self.offsets = {}
+
+    async def explicit_ack(self, qualified_offset):
+        raise RuntimeError("Something went wrong")
+
+
 class CommitterContext:
-    def __init__(self, platform):
+    def __init__(self, platform, logger=None, verbose=None):
         self.platform = platform
+        self.logger = logger
+        self.verbose = verbose
 
 
 class EventHoarder(storey.Flow):
@@ -439,6 +449,97 @@ def test_offset_not_committed_prematurely():
     assert termination_result == 450
     offsets = copy.copy(platform.offsets)
     assert offsets == {("/", i): num_records_per_shard for i in range(num_shards)}
+
+
+async def async_offset_commit_error():
+    platform = BadCommitter()
+    logger = MockLogger()
+    context = CommitterContext(platform, logger=logger)
+
+    controller = build_flow(
+        [
+            AsyncEmitSource(context=context, explicit_ack=True, max_wait_before_commit=1),
+            Map(lambda x: x + 1),
+            Filter(lambda x: x < 3),
+            FlatMap(lambda x: [x, x * 10]),
+            Reduce(0, lambda acc, x: acc + x),
+        ]
+    ).run()
+
+    num_shards = 10
+    num_records_per_shard = 10
+
+    for offset in range(1, num_records_per_shard + 1):
+        for shard in range(num_shards):
+            event = Event(shard)
+            event.shard_id = shard
+            event.offset = offset
+            await controller.emit(event)
+    del event
+
+    # Make sure that offsets are committed even before termination
+    await asyncio.sleep(2)
+    offsets = copy.copy(platform.offsets)
+
+    try:
+        assert offsets == {}
+    finally:
+        termination_result = await controller.terminate(wait=True)
+
+    assert termination_result == 330
+
+    log_level, (log_message,), _ = logger.logs[0]
+    assert log_level == "error"
+    assert "Failed to commit offsets due to error" in log_message
+    assert "RuntimeError: Something went wrong" in log_message
+
+
+# ML-10538
+def test_async_offset_commit_error():
+    asyncio.run(async_offset_commit_error())
+
+
+def test_offset_commit_error():
+    platform = BadCommitter()
+    logger = MockLogger()
+    context = CommitterContext(platform, logger=logger)
+
+    controller = build_flow(
+        [
+            SyncEmitSource(context=context, explicit_ack=True, max_wait_before_commit=1),
+            Map(lambda x: x + 1),
+            Filter(lambda x: x < 3),
+            FlatMap(lambda x: [x, x * 10]),
+            Reduce(0, lambda acc, x: acc + x),
+        ]
+    ).run()
+
+    num_shards = 10
+    num_records_per_shard = 10
+
+    for offset in range(1, num_records_per_shard + 1):
+        for shard in range(num_shards):
+            event = Event(shard)
+            event.shard_id = shard
+            event.offset = offset
+            controller.emit(event)
+    del event
+
+    # Make sure that offsets are committed even before termination
+    time.sleep(2)
+    offsets = copy.copy(platform.offsets)
+
+    try:
+        assert offsets == {}
+    finally:
+        termination_result = controller.terminate(wait=True)
+
+    assert termination_result == 330
+
+    log_level, (log_message,), _ = logger.logs[0]
+    assert log_level == "error"
+    assert "Failed to commit offsets due to error" in log_message
+    assert "RuntimeError: Something went wrong" in log_message
 
 
 def test_multiple_upstreams():

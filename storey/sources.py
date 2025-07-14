@@ -289,7 +289,9 @@ class SyncEmitSource(Flow):
                     or num_offsets_not_committed > 1
                     and time.monotonic() >= last_commit_time + self._max_time_before_commit
                 ):
-                    num_offsets_not_committed = await _commit_handled_events(self._outstanding_offsets, committer)
+                    num_offsets_not_committed = await _commit_handled_events(
+                        self._outstanding_offsets, committer, self.logger
+                    )
                     events_handled_since_commit = 0
                     last_commit_time = time.monotonic()
                 # Due to the last event not being garbage collected, we tolerate a single unhandled event
@@ -300,7 +302,9 @@ class SyncEmitSource(Flow):
                         break
                     except queue.Empty:
                         pass
-                    num_offsets_not_committed = await _commit_handled_events(self._outstanding_offsets, committer)
+                    num_offsets_not_committed = await _commit_handled_events(
+                        self._outstanding_offsets, committer, self.logger
+                    )
                     events_handled_since_commit = 0
                     last_commit_time = time.monotonic()
             if event is None:
@@ -318,7 +322,7 @@ class SyncEmitSource(Flow):
                 if event is _termination_obj:
                     # We can commit all at this point because termination of
                     # all downstream steps completed successfully.
-                    await _commit_handled_events(self._outstanding_offsets, committer, commit_all=True)
+                    await _commit_handled_events(self._outstanding_offsets, committer, self.logger, commit_all=True)
                     self._termination_future.set_result(termination_result)
             except BaseException as ex:
                 if self.logger:
@@ -510,7 +514,7 @@ class AsyncFlowController(FlowControllerBase):
         return await self._loop_task
 
 
-async def _commit_handled_events(outstanding_offsets_by_qualified_shard, committer, commit_all=False):
+async def _commit_handled_events(outstanding_offsets_by_qualified_shard, committer, logger, commit_all=False):
     num_offsets_not_handled = 0
     if not commit_all:
         gc.collect()
@@ -530,7 +534,12 @@ async def _commit_handled_events(outstanding_offsets_by_qualified_shard, committ
                 num_to_clear += 1
         if last_handled_offset is not None:
             path, shard_id = qualified_shard
-            await committer(QualifiedOffset(path, shard_id, last_handled_offset))
+            try:
+                await committer(QualifiedOffset(path, shard_id, last_handled_offset))
+            except BaseException:
+                if logger:
+                    logger.error(f"Failed to commit offsets due to error: {traceback.format_exc()}")
+                return num_offsets_not_handled + num_to_clear
             outstanding_offsets_by_qualified_shard[qualified_shard] = offsets[num_to_clear:]
     return num_offsets_not_handled
 
@@ -601,7 +610,9 @@ class AsyncEmitSource(Flow):
                     or num_offsets_not_handled > 0
                     and time.monotonic() >= last_commit_time + self._max_time_before_commit
                 ):
-                    num_offsets_not_handled = await _commit_handled_events(self._outstanding_offsets, committer)
+                    num_offsets_not_handled = await _commit_handled_events(
+                        self._outstanding_offsets, committer, self.logger
+                    )
                     events_handled_since_commit = 0
                     last_commit_time = time.monotonic()
                 # In case we can't block because there are outstanding events
@@ -611,7 +622,9 @@ class AsyncEmitSource(Flow):
                         break
                     except TimeoutError:
                         pass
-                    num_offsets_not_handled = await _commit_handled_events(self._outstanding_offsets, committer)
+                    num_offsets_not_handled = await _commit_handled_events(
+                        self._outstanding_offsets, committer, self.logger
+                    )
                     events_handled_since_commit = 0
                     last_commit_time = time.monotonic()
             if not event:
@@ -629,7 +642,7 @@ class AsyncEmitSource(Flow):
                 if event is _termination_obj:
                     # We can commit all at this point because termination of
                     # all downstream steps completed successfully.
-                    await _commit_handled_events(self._outstanding_offsets, committer, commit_all=True)
+                    await _commit_handled_events(self._outstanding_offsets, committer, self.logger, commit_all=True)
                     return termination_result
             except BaseException as ex:
                 if self.logger:
