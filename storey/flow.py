@@ -1555,7 +1555,7 @@ class ParallelExecutionRunnable:
             if self._raise_exception:
                 raise e
             else:
-                body = {"error": f"{type(e)}: {e}"}
+                body = {"error": f"{type(e).__name__}: {e}"}
         end = time.monotonic()
         return _ParallelExecutionRunnableResult(origin_name or self.name, body, end - start, timestamp)
 
@@ -1568,7 +1568,7 @@ class ParallelExecutionRunnable:
             if self._raise_exception:
                 raise e
             else:
-                body = {"error": f"{type(e)}: {e}"}
+                body = {"error": f"{type(e).__name__}: {e}"}
         end = time.monotonic()
         return _ParallelExecutionRunnableResult(origin_name or self.name, body, end - start, timestamp)
 
