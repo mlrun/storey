@@ -272,6 +272,16 @@ class SyncEmitSource(Flow):
         self._is_terminated = False
         self._outstanding_offsets = defaultdict(list)
 
+    async def _run_loop_and_log_unexpected_error(self):
+        try:
+            return await self._run_loop()
+        except BaseException:
+            if self.logger:
+                self.logger.error(
+                    f"An unexpected error caused the SyncEmitSource loop to exit: {traceback.format_exc()}"
+                )
+            raise
+
     async def _run_loop(self):
         loop = asyncio.get_running_loop()
         self._termination_future = loop.create_future()
@@ -353,7 +363,7 @@ class SyncEmitSource(Flow):
                     self.logger.error(f"Error trying to close {closeable}: {ex}")
 
     def _loop_thread_main(self):
-        asyncio.run(self._run_loop())
+        asyncio.run(self._run_loop_and_log_unexpected_error())
         self._termination_q.put(self._ex)
 
     def _raise_on_error(self, ex):
@@ -595,6 +605,16 @@ class AsyncEmitSource(Flow):
         self._outstanding_offsets = defaultdict(list)
         self._q = SimpleAsyncQueue(self._buffer_size)
 
+    async def _run_loop_and_log_unexpected_error(self):
+        try:
+            return await self._run_loop()
+        except BaseException:
+            if self.logger:
+                self.logger.error(
+                    f"An unexpected error caused the AsyncEmitSource loop to exit: {traceback.format_exc()}"
+                )
+            raise
+
     async def _run_loop(self):
         committer = None
         num_offsets_not_handled = 0
@@ -693,7 +713,7 @@ class AsyncEmitSource(Flow):
     def run(self):
         """Starts the flow"""
         self._closeables = super().run()
-        loop_task = asyncio.get_running_loop().create_task(self._run_loop())
+        loop_task = asyncio.get_running_loop().create_task(self._run_loop_and_log_unexpected_error())
         has_complete = self._check_step_in_flow(Complete)
         return AsyncFlowController(self._emit, loop_task, has_complete, self._key_field)
 
