@@ -272,6 +272,16 @@ class SyncEmitSource(Flow):
         self._is_terminated = False
         self._outstanding_offsets = defaultdict(list)
 
+    async def _run_loop_and_log_unexpected_error(self):
+        try:
+            return await self._run_loop()
+        except BaseException:
+            if self.logger:
+                self.logger.error(
+                    f"An unexpected error caused the SyncEmitSource loop to exit: {traceback.format_exc()}"
+                )
+            raise
+
     async def _run_loop(self):
         loop = asyncio.get_running_loop()
         self._termination_future = loop.create_future()
@@ -289,7 +299,9 @@ class SyncEmitSource(Flow):
                     or num_offsets_not_committed > 1
                     and time.monotonic() >= last_commit_time + self._max_time_before_commit
                 ):
-                    num_offsets_not_committed = await _commit_handled_events(self._outstanding_offsets, committer)
+                    num_offsets_not_committed = await _commit_handled_events(
+                        self._outstanding_offsets, committer, self.logger
+                    )
                     events_handled_since_commit = 0
                     last_commit_time = time.monotonic()
                 # Due to the last event not being garbage collected, we tolerate a single unhandled event
@@ -300,7 +312,9 @@ class SyncEmitSource(Flow):
                         break
                     except queue.Empty:
                         pass
-                    num_offsets_not_committed = await _commit_handled_events(self._outstanding_offsets, committer)
+                    num_offsets_not_committed = await _commit_handled_events(
+                        self._outstanding_offsets, committer, self.logger
+                    )
                     events_handled_since_commit = 0
                     last_commit_time = time.monotonic()
             if event is None:
@@ -318,7 +332,7 @@ class SyncEmitSource(Flow):
                 if event is _termination_obj:
                     # We can commit all at this point because termination of
                     # all downstream steps completed successfully.
-                    await _commit_handled_events(self._outstanding_offsets, committer, commit_all=True)
+                    await _commit_handled_events(self._outstanding_offsets, committer, self.logger, commit_all=True)
                     self._termination_future.set_result(termination_result)
             except BaseException as ex:
                 if self.logger:
@@ -349,7 +363,7 @@ class SyncEmitSource(Flow):
                     self.logger.error(f"Error trying to close {closeable}: {ex}")
 
     def _loop_thread_main(self):
-        asyncio.run(self._run_loop())
+        asyncio.run(self._run_loop_and_log_unexpected_error())
         self._termination_q.put(self._ex)
 
     def _raise_on_error(self, ex):
@@ -510,7 +524,7 @@ class AsyncFlowController(FlowControllerBase):
         return await self._loop_task
 
 
-async def _commit_handled_events(outstanding_offsets_by_qualified_shard, committer, commit_all=False):
+async def _commit_handled_events(outstanding_offsets_by_qualified_shard, committer, logger, commit_all=False):
     num_offsets_not_handled = 0
     if not commit_all:
         gc.collect()
@@ -530,7 +544,12 @@ async def _commit_handled_events(outstanding_offsets_by_qualified_shard, committ
                 num_to_clear += 1
         if last_handled_offset is not None:
             path, shard_id = qualified_shard
-            await committer(QualifiedOffset(path, shard_id, last_handled_offset))
+            try:
+                await committer(QualifiedOffset(path, shard_id, last_handled_offset))
+            except BaseException:
+                if logger:
+                    logger.error(f"Failed to commit offsets due to error: {traceback.format_exc()}")
+                return num_offsets_not_handled + num_to_clear
             outstanding_offsets_by_qualified_shard[qualified_shard] = offsets[num_to_clear:]
     return num_offsets_not_handled
 
@@ -586,6 +605,16 @@ class AsyncEmitSource(Flow):
         self._outstanding_offsets = defaultdict(list)
         self._q = SimpleAsyncQueue(self._buffer_size)
 
+    async def _run_loop_and_log_unexpected_error(self):
+        try:
+            return await self._run_loop()
+        except BaseException:
+            if self.logger:
+                self.logger.error(
+                    f"An unexpected error caused the AsyncEmitSource loop to exit: {traceback.format_exc()}"
+                )
+            raise
+
     async def _run_loop(self):
         committer = None
         num_offsets_not_handled = 0
@@ -601,7 +630,9 @@ class AsyncEmitSource(Flow):
                     or num_offsets_not_handled > 0
                     and time.monotonic() >= last_commit_time + self._max_time_before_commit
                 ):
-                    num_offsets_not_handled = await _commit_handled_events(self._outstanding_offsets, committer)
+                    num_offsets_not_handled = await _commit_handled_events(
+                        self._outstanding_offsets, committer, self.logger
+                    )
                     events_handled_since_commit = 0
                     last_commit_time = time.monotonic()
                 # In case we can't block because there are outstanding events
@@ -611,7 +642,9 @@ class AsyncEmitSource(Flow):
                         break
                     except TimeoutError:
                         pass
-                    num_offsets_not_handled = await _commit_handled_events(self._outstanding_offsets, committer)
+                    num_offsets_not_handled = await _commit_handled_events(
+                        self._outstanding_offsets, committer, self.logger
+                    )
                     events_handled_since_commit = 0
                     last_commit_time = time.monotonic()
             if not event:
@@ -629,7 +662,7 @@ class AsyncEmitSource(Flow):
                 if event is _termination_obj:
                     # We can commit all at this point because termination of
                     # all downstream steps completed successfully.
-                    await _commit_handled_events(self._outstanding_offsets, committer, commit_all=True)
+                    await _commit_handled_events(self._outstanding_offsets, committer, self.logger, commit_all=True)
                     return termination_result
             except BaseException as ex:
                 if self.logger:
@@ -680,7 +713,7 @@ class AsyncEmitSource(Flow):
     def run(self):
         """Starts the flow"""
         self._closeables = super().run()
-        loop_task = asyncio.get_running_loop().create_task(self._run_loop())
+        loop_task = asyncio.get_running_loop().create_task(self._run_loop_and_log_unexpected_error())
         has_complete = self._check_step_in_flow(Complete)
         return AsyncFlowController(self._emit, loop_task, has_complete, self._key_field)
 
