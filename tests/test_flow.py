@@ -4990,6 +4990,7 @@ def test_select_runnable_not_exist():
     with pytest.raises(ValueError, match="Runnables {'z'} are not part of the registered runnables"):
         controller.await_termination()
 
+
 def test_select_runnable_wrong_type():
     runnables = [
         RunnableNaiveNoOp("x"),

@@ -1896,12 +1896,9 @@ class ParallelExecution(Flow):
         for runnable in runnables:
             if not isinstance(runnable, (str, ParallelExecutionRunnable)):
                 raise TypeError(f"Expected a ParallelExecutionRunnable or str, but got: {type(runnable).__name__}")
-            runnables_names.add(
-                runnable.name if isinstance(runnable, ParallelExecutionRunnable) else runnable
-            )
+            runnables_names.add(runnable.name if isinstance(runnable, ParallelExecutionRunnable) else runnable)
         if not runnables_names.issubset(self.register_runnables):
             raise ValueError(
                 f"Runnables {set(runnables_names) - set(self.register_runnables)} are not part of the registered "
                 f"runnables"
             )
-
