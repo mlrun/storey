@@ -1840,6 +1840,7 @@ class ParallelExecution(Flow):
             runnables = self.select_runnables(event)
             if runnables is None:
                 runnables = self.runnables
+            self._verify_runnables(runnables)
             futures = []
             runnables_encountered = set()
             for runnable in runnables:
@@ -1887,3 +1888,15 @@ class ParallelExecution(Flow):
             else:
                 event._metadata = metadata
             return await self._do_downstream(event)
+
+    def _verify_runnables(self, runnables: List[Union[str, ParallelExecutionRunnable]]):
+        """Verifies that the provided runnables are valid and registered."""
+        runnables_names = [r.name if isinstance(r, ParallelExecutionRunnable) else r for r in runnables]
+        register_runnables = [r.name if isinstance(r, ParallelExecutionRunnable) else r for r in self.runnables]
+        if not set(runnables_names).issubset(set(register_runnables)):
+            raise ValueError(
+                f"Runnables {set(runnables_names) - set(register_runnables)} are not part of the registered runnables"
+            )
+        for runabble in runnables:
+            if not isinstance(runabble, str) and not isinstance(runabble, ParallelExecutionRunnable):
+                raise TypeError(f"Expected a ParallelExecutionRunnable or str, but got: {type(runabble).__name__}")
