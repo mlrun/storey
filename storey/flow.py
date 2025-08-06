@@ -1795,6 +1795,7 @@ class ParallelExecution(Flow):
             ParallelExecutionMechanisms.validate(execution_mechanism)
 
         self.runnables = runnables
+        self.register_runnables = set(r.name if isinstance(r, ParallelExecutionRunnable) else r for r in self.runnables)
         self.execution_mechanism_by_runnable_name = execution_mechanism_by_runnable_name
         self.max_processes = max_processes or os.cpu_count() or 16
         self.max_threads = max_threads or 32
@@ -1891,12 +1892,16 @@ class ParallelExecution(Flow):
 
     def _verify_runnables(self, runnables: List[Union[str, ParallelExecutionRunnable]]):
         """Verifies that the provided runnables are valid and registered."""
-        runnables_names = [r.name if isinstance(r, ParallelExecutionRunnable) else r for r in runnables]
-        register_runnables = [r.name if isinstance(r, ParallelExecutionRunnable) else r for r in self.runnables]
-        if not set(runnables_names).issubset(set(register_runnables)):
-            raise ValueError(
-                f"Runnables {set(runnables_names) - set(register_runnables)} are not part of the registered runnables"
+        runnables_names = set()
+        for runnable in runnables:
+            if not isinstance(runnable, (str, ParallelExecutionRunnable)):
+                raise TypeError(f"Expected a ParallelExecutionRunnable or str, but got: {type(runnable).__name__}")
+            runnables_names.add(
+                runnable.name if isinstance(runnable, ParallelExecutionRunnable) else runnable
             )
-        for runabble in runnables:
-            if not isinstance(runabble, str) and not isinstance(runabble, ParallelExecutionRunnable):
-                raise TypeError(f"Expected a ParallelExecutionRunnable or str, but got: {type(runabble).__name__}")
+        if not runnables_names.issubset(self.register_runnables):
+            raise ValueError(
+                f"Runnables {set(runnables_names) - set(self.register_runnables)} are not part of the registered "
+                f"runnables"
+            )
+

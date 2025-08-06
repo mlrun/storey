@@ -4990,6 +4990,30 @@ def test_select_runnable_not_exist():
     with pytest.raises(ValueError, match="Runnables {'z'} are not part of the registered runnables"):
         controller.await_termination()
 
+def test_select_runnable_wrong_type():
+    runnables = [
+        RunnableNaiveNoOp("x"),
+        RunnableNaiveNoOp("y"),
+    ]
+
+    class MyParallelExecution(ParallelExecution):
+        def select_runnables(self, event):
+            return ["x", 6.0]
+
+    parallel_execution = MyParallelExecution(
+        runnables,
+        execution_mechanism_by_runnable_name={"x": "naive", "y": "naive"},
+    )
+
+    source = SyncEmitSource()
+    source.to(parallel_execution)
+
+    controller = source.run()
+    controller.emit(0)
+    controller.terminate()
+    with pytest.raises(TypeError, match="Expected a ParallelExecutionRunnable or str, but got: float"):
+        controller.await_termination()
+
 
 def test_parallel_execution():
     busy_wait_pool = RunnableBusyWait("busy1")
