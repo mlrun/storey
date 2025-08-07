@@ -4987,7 +4987,7 @@ def test_select_runnable_not_exist():
     controller = source.run()
     controller.emit(0)
     controller.terminate()
-    with pytest.raises(ValueError, match="Runnables {'z'} are not part of the registered runnables"):
+    with pytest.raises(ValueError, match="The following selected Runnables are not registered: z"):
         controller.await_termination()
 
 
