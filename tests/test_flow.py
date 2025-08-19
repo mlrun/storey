@@ -5201,6 +5201,67 @@ def test_parallel_execution_with_shared():
     }
 
 
+def test_parallel_execution_with_shared_with_selector():
+    busy_wait_pool = RunnableBusyWait("busy1")
+    busy_wait_dedicated = RunnableBusyWait("busy2")
+
+    runnables = [
+        RunnableShared("busy2", shared_runnable_name="busy2"),
+        RunnableShared("busy3", shared_runnable_name="busy2"),
+        busy_wait_pool,
+        RunnableShared("thread1", shared_runnable_name="thread1"),
+    ]
+
+    class MyParallelExecution(ParallelExecution):
+        def select_runnables(self, event):
+            return ["busy1", "busy2", "busy3", "thread1"]
+
+    class MyContext:
+        def __init__(self, executor: RunnableExecutor):
+            self.executor = executor
+
+    my_executor = RunnableExecutor()
+    my_executor.add_runnable(busy_wait_dedicated, "dedicated_process")
+    my_executor.add_runnable(
+        RunnableSleep(
+            "thread1",
+        ),
+        "thread_pool",
+    )
+    my_context = MyContext(executor=my_executor)
+
+    parallel_execution = MyParallelExecution(
+        runnables,
+        execution_mechanism_by_runnable_name={
+            "busy1": "process_pool",
+            "busy2": "shared_executor",
+            "busy3": "shared_executor",
+            "thread1": "shared_executor",
+        },
+        context=my_context,
+    )
+    reduce = Reduce([], lambda acc, x: acc + [x])
+
+    source = SyncEmitSource()
+    source.to(parallel_execution).to(reduce)
+
+    start = time.monotonic()
+    controller = source.run()
+    controller.emit(0)
+    controller.terminate()
+    termination_result = controller.await_termination()
+    end = time.monotonic()
+
+    assert end - start < 4
+    termination_result = termination_result[0]
+    assert termination_result == {
+        "busy1": 1,
+        "busy2": 1,
+        "busy3": 1,
+        "thread1": 1,
+    }
+
+
 def test_enrichment():
     busy_wait_pool = RunnableBusyWait("busy1")
     busy_wait_dedicated = RunnableBusyWait("busy2")
