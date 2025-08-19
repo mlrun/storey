@@ -1828,11 +1828,12 @@ class ParallelExecution(Flow):
         )
         for runnable in self.runnables:
             execution_mechanism = self.execution_mechanism_by_runnable_name[runnable.name]
+            self.runnable_executor.add_runnable(runnable=runnable, execution_mechanism=execution_mechanism)
             if execution_mechanism == ParallelExecutionMechanisms.shared_executor:
                 self.context.executor.init_runnable(runnable=runnable.shared_runnable_name)
             else:
-                self.runnable_executor.add_runnable(runnable=runnable, execution_mechanism=execution_mechanism)
                 self.runnable_executor.init_runnable(runnable=runnable)
+
         self.runnable_executor.init_executors()
 
     async def _do(self, event):
