@@ -36,8 +36,8 @@ class TimescaleDBTarget(_Batching, _Writer):
         If not provided, timestamps will be parsed according to ISO-8601 format. Common formats include:
         "%Y-%m-%d %H:%M:%S", "%d/%m/%y %H:%M:%S UTC%z", etc.
     :param table: Name of the TimescaleDB hypertable where events will be written. The table must exist and be
-        configured as a hypertable before writing data. If not specified, the table name should be provided through
-        other means (e.g., via batching configuration).
+        configured as a hypertable before writing data. If the table name contains a '.', it will be interpreted
+        as <schema>.<table> format.
     :param max_events: Maximum number of events to write in a single batch. If None (default), all events will be
         written on flow termination, or after flush_after_seconds (if flush_after_seconds is set). Larger batches
         improve write performance but increase memory usage.
@@ -76,8 +76,8 @@ class TimescaleDBTarget(_Batching, _Writer):
         dsn: str,
         time_col: str,
         columns: list[str],
+        table: str,
         time_format: Optional[str] = None,
-        table: Optional[str] = None,
         **kwargs,
     ) -> None:
 
