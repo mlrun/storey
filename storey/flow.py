@@ -1189,8 +1189,11 @@ class _Batching(Flow):
         batch_time = self._batch_first_event_time.pop(batch_key)
         last_event_time = self._batch_last_event_time.pop(batch_key)
         del self._batch_start_time[batch_key]
-        await self._emit(batch_to_emit, batch_key, batch_time, self._batch_events[batch_key], last_event_time)
-        del self._batch_events[batch_key]
+        try:
+            await self._emit(batch_to_emit, batch_key, batch_time, self._batch_events[batch_key], last_event_time)
+        finally:
+            # whether we succeeded or failed, we are done with these events
+            del self._batch_events[batch_key]
 
     async def _emit_all(self):
         for key in list(self._batch.keys()):

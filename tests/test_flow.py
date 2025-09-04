@@ -78,6 +78,7 @@ from storey.flow import (
     ReifyMetadata,
     Rename,
     RunnableExecutor,
+    _Batching,
     _ConcurrentJobExecution,
 )
 
@@ -5345,3 +5346,52 @@ def test_metadata_without_enrichment():
     assert all(
         list(("when" in metadata and "microsec" in metadata) for metadata in total_metadata.values())
     ), "Expected _metadata to include 'when' and 'microsec' fields "
+
+
+class ErrorRaisingBatchTarget(_Batching):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._raised_error = False
+        self.sum = 0
+
+    async def _emit(self, batch, batch_key, batch_time, batch_events, last_event_time=None):
+        if not self._raised_error:
+            self._raised_error = True
+            raise RuntimeError("ErrorRaisingBatchTarget raises an error the first time it tries to emit")
+        for number in batch:
+            self.sum += number
+
+
+async def async_test_error_raising_batch_target():
+    target = ErrorRaisingBatchTarget(max_events=1000, flush_after_seconds=0)
+    controller = build_flow(
+        [
+            AsyncEmitSource(),
+            target,
+        ]
+    ).run()
+
+    await controller.emit(1)
+
+    await asyncio.sleep(0.1)
+    assert target._batch_events == {}
+    assert target.sum == 0
+    for i in range(2, 5):
+        await controller.emit(i)
+
+    await asyncio.sleep(0.1)
+
+    expected_sum = 9  # 2 + 3 + 4
+
+    assert target._batch_events == {}
+    assert target.sum == expected_sum
+
+    await controller.terminate()
+    await controller.await_termination()
+
+    assert target._batch_events == {}
+    assert target.sum == expected_sum
+
+
+def test_error_raising_batch_target():
+    asyncio.run(async_test_error_raising_batch_target())
