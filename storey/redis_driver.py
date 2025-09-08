@@ -233,11 +233,10 @@ class RedisDriver(NeedsRedisAccess, Driver):
         redis_keys_involved = []
         pending_updates = {}
         condition_expression = None
-        additional_data_lua_script = ""
 
+        additional_data_lua_script = f'local redis_hash="{self._static_data_key(redis_key_prefix)}";\n'
         # Static attributes, like "name," "age," -- everything that isn't an agg.
         if additional_data:
-            additional_data_lua_script = f'local redis_hash="{self._static_data_key(redis_key_prefix)}";\n'
             for name, value in additional_data.items():
                 expression_value = self._convert_python_obj_to_lua_value(value)
                 # NOTE: This logic assumes that static attributes we're supposed
