@@ -113,6 +113,7 @@ class TimescaleDBTarget(_Batching, _Writer):
         self._pool = None  # Connection pool will be created lazily during first use
         self._column_names = self._get_column_names()
         self._schema = None
+        self._table_schema = None  # Cached table schema information
         if "." in self._table:
             self._schema, self._table = self._table.split(".", 1)
 
@@ -140,6 +141,50 @@ class TimescaleDBTarget(_Batching, _Writer):
             import asyncpg
 
             self._pool = await asyncpg.create_pool(dsn=self._dsn, min_size=1, max_size=1)
+
+    async def _get_table_schema(self) -> dict:
+        """Retrieve table schema from PostgreSQL information_schema.
+        
+        Queries the database to get column information including data types,
+        nullability constraints, and default values. Results are cached to
+        avoid repeated database queries.
+        
+        Returns:
+            dict: Column schema information with keys as column names and values
+                 containing 'data_type', 'nullable', and 'default' information
+        
+        Raises:
+            Exception: If table doesn't exist or schema query fails
+        """
+        if self._table_schema is not None:
+            return self._table_schema
+        
+        await self._async_init()
+        
+        async with self._pool.acquire() as conn:
+            # Query column information including nullability
+            query = """
+            SELECT column_name, data_type, is_nullable, column_default
+            FROM information_schema.columns 
+            WHERE table_name = $1 
+            AND table_schema = $2
+            ORDER BY ordinal_position
+            """
+            schema_name = self._schema or 'public'
+            rows = await conn.fetch(query, self._table, schema_name)
+            
+            if not rows:
+                raise ValueError(f"Table '{schema_name}.{self._table}' not found or has no columns")
+            
+            self._table_schema = {}
+            for row in rows:
+                self._table_schema[row['column_name']] = {
+                    'data_type': row['data_type'],
+                    'nullable': row['is_nullable'] == 'YES',
+                    'default': row['column_default']
+                }
+        
+        return self._table_schema
 
     def _event_to_batch_entry(self, event):
         """Convert an event to a batch entry format.
@@ -179,8 +224,12 @@ class TimescaleDBTarget(_Batching, _Writer):
         if not batch:
             return
 
+        # Get table schema for validation on first use
+        schema = await self._get_table_schema()
+        
         # Convert dictionaries to tuples for copy_records_to_table
         # PostgreSQL's COPY protocol requires data in tuple format with consistent column ordering
+        # Validate against schema to catch missing required columns early
 
         records = []
         for item in batch:
@@ -188,10 +237,28 @@ class TimescaleDBTarget(_Batching, _Writer):
                 # Only dictionaries are supported as input
                 raise TypeError(f"TimescaleDBTarget only supports dictionary data, got {type(item)}")
 
-            # Convert dict to tuple in correct column order
-            # This ensures time column is first, followed by data columns
-            record = tuple(item.get(col) for col in self._column_names)
-            records.append(record)
+            # Validate against schema and convert to tuple in correct column order
+            record = []
+            for col in self._column_names:
+                if col in schema:
+                    col_info = schema[col]
+                    if col in item:
+                        # Column present in data
+                        record.append(item[col])
+                    elif not col_info['nullable']:
+                        # Column missing but required (not nullable)
+                        raise ValueError(
+                            f"Missing required non-nullable column '{col}' in event. "
+                            f"Available columns: {list(item.keys())}"
+                        )
+                    else:
+                        # Column missing but nullable - use None
+                        record.append(None)
+                else:
+                    # Column not in schema - fallback to original behavior for compatibility
+                    record.append(item.get(col))
+            
+            records.append(tuple(record))
         # Write data using connection pool
         async with self._pool.acquire() as conn:
             # Use PostgreSQL's COPY protocol for optimal performance
