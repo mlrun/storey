@@ -16,15 +16,14 @@ if not dsn:
 
 
 # Import dependencies only if we're not skipping
-import psycopg2  # noqa: E402
-import psycopg2.extensions  # noqa: E402
-from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT  # noqa: E402
+import psycopg  # noqa: E402
+from psycopg import Error as PsycopgError  # noqa: E402
 
 from storey.timescaledb_target import TimescaleDBTarget  # noqa: E402
 
 
 class TimescaleDBData(NamedTuple):
-    connection: psycopg2.extensions.connection
+    connection: psycopg.Connection
     host: str
     port: str
     database: str
@@ -98,9 +97,7 @@ def timescaledb(request: "pytest.FixtureRequest") -> Iterator[TimescaleDBData]:
     conn_database = connection_params["database"]
     conn_user = connection_params["user"]
     conn_password = connection_params["password"]
-    connection = psycopg2.connect(dsn)
-
-    connection.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
+    connection = psycopg.connect(dsn, autocommit=True)
     test_connection = connection
     test_cursor = test_connection.cursor()
 
@@ -108,7 +105,7 @@ def timescaledb(request: "pytest.FixtureRequest") -> Iterator[TimescaleDBData]:
     test_cursor.execute("CREATE EXTENSION IF NOT EXISTS timescaledb;")
 
     # Drop and create extended table
-    with contextlib.suppress(psycopg2.Error):
+    with contextlib.suppress(PsycopgError):
         test_cursor.execute(f"DROP TABLE IF EXISTS {table_name};")
     test_cursor.execute(
         f"""
@@ -310,52 +307,54 @@ async def test_timescaledb_async_emit(timescaledb):
 
 def test_timescaledb_schema_validation_missing_required_column(timescaledb):
     """Test that validation properly catches missing required (non-nullable) columns"""
-    (connection, _, _, _, _, _, table_name, dsn_url, _, _) = (
-        timescaledb
-    )
-    
+    (connection, _, _, _, _, _, table_name, dsn_url, _, _) = timescaledb
+
     # Create a table with a non-nullable column
     cursor = connection.cursor()
     validation_table = f"{table_name}_validation"
-    with contextlib.suppress(psycopg2.Error):
+    with contextlib.suppress(PsycopgError):
         cursor.execute(f"DROP TABLE IF EXISTS {validation_table};")
-    
-    cursor.execute(f"""
+
+    cursor.execute(
+        f"""
         CREATE TABLE {validation_table} (
             time TIMESTAMPTZ NOT NULL,
             required_col INTEGER NOT NULL,
             optional_col VARCHAR(50)
         );
-    """)
+    """
+    )
     cursor.execute(f"SELECT create_hypertable('{validation_table}', 'time');")
     cursor.close()
-    
+
     time_format = "%d/%m/%y %H:%M:%S UTC%z"
-    controller = build_flow([
-        SyncEmitSource(),
-        TimescaleDBTarget(
-            dsn=dsn_url,
-            table=validation_table,
-            time_col="time",
-            columns=["required_col", "optional_col"],
-            time_format=time_format,
-            max_events=10,
-        ),
-    ]).run()
-    
+    controller = build_flow(
+        [
+            SyncEmitSource(),
+            TimescaleDBTarget(
+                dsn=dsn_url,
+                table=validation_table,
+                time_col="time",
+                columns=["required_col", "optional_col"],
+                time_format=time_format,
+                max_events=10,
+            ),
+        ]
+    ).run()
+
     # Test data missing the required column
     invalid_data = {
         "time": "18/09/19 01:55:10 UTC+0000",
-        "optional_col": "test_value"
+        "optional_col": "test_value",
         # Missing required_col (non-nullable)
     }
-    
+
     # Should raise ValueError for missing required column
     with pytest.raises(ValueError, match=r"Missing required non-nullable column 'required_col'"):
         controller.emit(invalid_data, None)
         controller.terminate()
         controller.await_termination()
-    
+
     # Cleanup
     cursor = connection.cursor()
     cursor.execute(f"DROP TABLE IF EXISTS {validation_table} CASCADE;")
@@ -364,50 +363,52 @@ def test_timescaledb_schema_validation_missing_required_column(timescaledb):
 
 def test_timescaledb_schema_validation_missing_nullable_column(timescaledb):
     """Test that validation handles missing nullable columns correctly"""
-    (connection, _, _, _, _, _, table_name, dsn_url, _, _) = (
-        timescaledb
-    )
-    
+    (connection, _, _, _, _, _, table_name, dsn_url, _, _) = timescaledb
+
     # Create a table with nullable and non-nullable columns
     cursor = connection.cursor()
     validation_table = f"{table_name}_nullable"
-    with contextlib.suppress(psycopg2.Error):
+    with contextlib.suppress(PsycopgError):
         cursor.execute(f"DROP TABLE IF EXISTS {validation_table};")
-    
-    cursor.execute(f"""
+
+    cursor.execute(
+        f"""
         CREATE TABLE {validation_table} (
             time TIMESTAMPTZ NOT NULL,
             required_col INTEGER NOT NULL,
             nullable_col VARCHAR(50)
         );
-    """)
+    """
+    )
     cursor.execute(f"SELECT create_hypertable('{validation_table}', 'time');")
     cursor.close()
-    
+
     time_format = "%d/%m/%y %H:%M:%S UTC%z"
-    controller = build_flow([
-        SyncEmitSource(),
-        TimescaleDBTarget(
-            dsn=dsn_url,
-            table=validation_table,
-            time_col="time",
-            columns=["required_col", "nullable_col"],
-            time_format=time_format,
-            max_events=10,
-        ),
-    ]).run()
-    
+    controller = build_flow(
+        [
+            SyncEmitSource(),
+            TimescaleDBTarget(
+                dsn=dsn_url,
+                table=validation_table,
+                time_col="time",
+                columns=["required_col", "nullable_col"],
+                time_format=time_format,
+                max_events=10,
+            ),
+        ]
+    ).run()
+
     # Test data with missing nullable column - should work fine
     valid_data = {
         "time": "18/09/19 01:55:10 UTC+0000",
-        "required_col": 42
+        "required_col": 42,
         # Missing nullable_col - should be set to None
     }
-    
+
     controller.emit(valid_data, None)
     controller.terminate()
     controller.await_termination()
-    
+
     # Verify data was inserted with NULL for missing nullable column
     cursor = connection.cursor()
     cursor.execute(f"SELECT required_col, nullable_col FROM {validation_table}")
@@ -415,7 +416,7 @@ def test_timescaledb_schema_validation_missing_nullable_column(timescaledb):
     assert result[0] == 42
     assert result[1] is None  # nullable_col should be None
     cursor.close()
-    
+
     # Cleanup
     cursor = connection.cursor()
     cursor.execute(f"DROP TABLE IF EXISTS {validation_table} CASCADE;")
@@ -424,28 +425,25 @@ def test_timescaledb_schema_validation_missing_nullable_column(timescaledb):
 
 def test_timescaledb_schema_validation_table_not_found(timescaledb):
     """Test that schema validation raises appropriate error for non-existent table"""
-    (_, _, _, _, _, _, _, dsn_url, _, _) = (
-        timescaledb
-    )
-    
+    (_, _, _, _, _, _, _, dsn_url, _, _) = timescaledb
+
     non_existent_table = "non_existent_table_12345"
-    
-    controller = build_flow([
-        SyncEmitSource(),
-        TimescaleDBTarget(
-            dsn=dsn_url,
-            table=non_existent_table,
-            time_col="time",
-            columns=["col1"],
-            max_events=10,
-        ),
-    ]).run()
-    
-    test_data = {
-        "time": "2019-09-18 01:55:10+00:00",
-        "col1": "test_value"
-    }
-    
+
+    controller = build_flow(
+        [
+            SyncEmitSource(),
+            TimescaleDBTarget(
+                dsn=dsn_url,
+                table=non_existent_table,
+                time_col="time",
+                columns=["col1"],
+                max_events=10,
+            ),
+        ]
+    ).run()
+
+    test_data = {"time": "2019-09-18 01:55:10+00:00", "col1": "test_value"}
+
     # Should raise ValueError for table not found
     with pytest.raises(ValueError, match=r"Table 'public\.non_existent_table_12345' not found or has no columns"):
         controller.emit(test_data, None)
@@ -455,56 +453,58 @@ def test_timescaledb_schema_validation_table_not_found(timescaledb):
 
 def test_timescaledb_schema_validation_with_schema_prefix(timescaledb):
     """Test schema validation works correctly with schema.table format"""
-    (connection, _, _, _, _, _, table_name, dsn_url, _, _) = (
-        timescaledb
-    )
-    
+    (connection, _, _, _, _, _, table_name, dsn_url, _, _) = timescaledb
+
     # Create a schema and table
     cursor = connection.cursor()
     schema_name = "test_schema"
-    with contextlib.suppress(psycopg2.Error):
+    with contextlib.suppress(PsycopgError):
         cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_name};")
-    
+
     schema_table = f"{schema_name}.{table_name}_schema"
-    with contextlib.suppress(psycopg2.Error):
+    with contextlib.suppress(PsycopgError):
         cursor.execute(f"DROP TABLE IF EXISTS {schema_table};")
-    
-    cursor.execute(f"""
+
+    cursor.execute(
+        f"""
         CREATE TABLE {schema_table} (
             time TIMESTAMPTZ NOT NULL,
             required_col INTEGER NOT NULL,
             optional_col VARCHAR(50)
         );
-    """)
+    """
+    )
     cursor.execute(f"SELECT create_hypertable('{schema_table}', 'time');")
     cursor.close()
-    
+
     time_format = "%d/%m/%y %H:%M:%S UTC%z"
-    controller = build_flow([
-        SyncEmitSource(),
-        TimescaleDBTarget(
-            dsn=dsn_url,
-            table=schema_table,  # Using schema.table format
-            time_col="time",
-            columns=["required_col", "optional_col"],
-            time_format=time_format,
-            max_events=10,
-        ),
-    ]).run()
-    
+    controller = build_flow(
+        [
+            SyncEmitSource(),
+            TimescaleDBTarget(
+                dsn=dsn_url,
+                table=schema_table,  # Using schema.table format
+                time_col="time",
+                columns=["required_col", "optional_col"],
+                time_format=time_format,
+                max_events=10,
+            ),
+        ]
+    ).run()
+
     # Test with missing required column
     invalid_data = {
         "time": "18/09/19 01:55:10 UTC+0000",
-        "optional_col": "test_value"
+        "optional_col": "test_value",
         # Missing required_col
     }
-    
+
     # Should raise ValueError for missing required column, showing correct schema.table format
     with pytest.raises(ValueError, match=r"Missing required non-nullable column 'required_col'"):
         controller.emit(invalid_data, None)
         controller.terminate()
         controller.await_termination()
-    
+
     # Cleanup
     cursor = connection.cursor()
     cursor.execute(f"DROP TABLE IF EXISTS {schema_table} CASCADE;")
@@ -515,16 +515,11 @@ def test_timescaledb_schema_validation_with_schema_prefix(timescaledb):
 @pytest.mark.asyncio
 async def test_timescaledb_schema_caching(timescaledb):
     """Test that schema information is properly cached to avoid repeated queries"""
-    (_, _, _, _, _, _, table_name, dsn_url, timestamp_precision, columns_config) = (
-        timescaledb
-    )
-    
-    time_formats = {
-        "milliseconds": "%d/%m/%y %H:%M:%S.%f UTC%z",
-        "microseconds": "%d/%m/%y %H:%M:%S.%f UTC%z"
-    }
+    (_, _, _, _, _, _, table_name, dsn_url, timestamp_precision, columns_config) = timescaledb
+
+    time_formats = {"milliseconds": "%d/%m/%y %H:%M:%S.%f UTC%z", "microseconds": "%d/%m/%y %H:%M:%S.%f UTC%z"}
     time_format = time_formats.get(timestamp_precision, "%d/%m/%y %H:%M:%S UTC%z")
-    
+
     target = TimescaleDBTarget(
         dsn=dsn_url,
         table=table_name,
@@ -533,65 +528,65 @@ async def test_timescaledb_schema_caching(timescaledb):
         time_format=time_format,
         max_events=10,
     )
-    
+
     # Initialize the target
     await target._async_init()
-    
+
     # First call to get schema should query the database
     schema1 = await target._get_table_schema()
     assert isinstance(schema1, dict)
     assert len(schema1) > 0
-    
+
     # Second call should return cached result (same object)
     schema2 = await target._get_table_schema()
     assert schema1 is schema2  # Should be the same object (cached)
-    
+
     # Verify schema contains expected information
     assert "time" in schema1
     assert "binary_col" in schema1
     assert schema1["time"]["nullable"] is False  # time column is NOT NULL
     assert schema1["binary_col"]["nullable"] is True  # binary_col allows NULL
-    
+
     # Cleanup
     await target._terminate()
 
 
 def test_timescaledb_validation_with_extra_columns(timescaledb):
     """Test that validation works when event has columns not in schema"""
-    (connection, _, _, _, _, _, table_name, dsn_url, _, _) = (
-        timescaledb
-    )
-    
+    (connection, _, _, _, _, _, table_name, dsn_url, _, _) = timescaledb
+
     time_format = "%d/%m/%y %H:%M:%S UTC%z"
-    
+
     # Test with extra columns that aren't in the target column configuration
     # This tests the fallback behavior for columns not in schema
-    controller = build_flow([
-        SyncEmitSource(),
-        TimescaleDBTarget(
-            dsn=dsn_url,
-            table=table_name,
-            time_col="time",
-            columns=["binary_col", "int_col"],  # Only specify columns that exist
-            time_format=time_format,
-            max_events=10,
-        ),
-    ]).run()
-    
+    controller = build_flow(
+        [
+            SyncEmitSource(),
+            TimescaleDBTarget(
+                dsn=dsn_url,
+                table=table_name,
+                time_col="time",
+                columns=["binary_col", "int_col"],  # Only specify columns that exist
+                time_format=time_format,
+                max_events=10,
+            ),
+        ]
+    ).run()
+
     # Test data with extra columns in the event data (should be ignored)
     test_data = {
         "time": "18/09/19 01:55:10 UTC+0000",
         "binary_col": b"test_binary",
         "int_col": 42,
         "extra_column_not_in_config": "this_column_is_extra",
-        "another_extra_column": "also_extra"
+        "another_extra_column": "also_extra",
     }
-    
+
     # Should work fine - extra columns in event data are ignored
     controller.emit(test_data, None)
     controller.terminate()
     controller.await_termination()
-    
+
     # Verify data was inserted correctly for configured columns
     cursor = connection.cursor()
     cursor.execute(f"SELECT binary_col, int_col FROM {table_name} ORDER BY int_col DESC LIMIT 1")
@@ -605,26 +600,26 @@ def test_timescaledb_validation_with_extra_columns(timescaledb):
 
 def test_timescaledb_validation_non_dict_data_type_error(timescaledb):
     """Test that validation properly rejects non-dictionary data types"""
-    (_, _, _, _, _, _, table_name, dsn_url, _, columns_config) = (
-        timescaledb
-    )
-    
+    (_, _, _, _, _, _, table_name, dsn_url, _, columns_config) = timescaledb
+
     time_format = "%d/%m/%y %H:%M:%S UTC%z"
-    controller = build_flow([
-        SyncEmitSource(),
-        TimescaleDBTarget(
-            dsn=dsn_url,
-            table=table_name,
-            time_col="time",
-            columns=columns_config,
-            time_format=time_format,
-            max_events=10,
-        ),
-    ]).run()
-    
+    controller = build_flow(
+        [
+            SyncEmitSource(),
+            TimescaleDBTarget(
+                dsn=dsn_url,
+                table=table_name,
+                time_col="time",
+                columns=columns_config,
+                time_format=time_format,
+                max_events=10,
+            ),
+        ]
+    ).run()
+
     # Test with non-dictionary data
     invalid_data = "this_is_not_a_dictionary"
-    
+
     # Should raise TypeError for non-dictionary data (the error occurs in the parent Writer class)
     with pytest.raises(TypeError, match=r"string indices must be integers"):
         controller.emit(invalid_data, None)
@@ -635,16 +630,11 @@ def test_timescaledb_validation_non_dict_data_type_error(timescaledb):
 @pytest.mark.asyncio
 async def test_timescaledb_validation_direct_emit_non_dict_error(timescaledb):
     """Test that TimescaleDBTarget._emit properly validates dictionary data types"""
-    (_, _, _, _, _, _, table_name, dsn_url, timestamp_precision, columns_config) = (
-        timescaledb
-    )
-    
-    time_formats = {
-        "milliseconds": "%d/%m/%y %H:%M:%S.%f UTC%z",
-        "microseconds": "%d/%m/%y %H:%M:%S.%f UTC%z"
-    }
+    (_, _, _, _, _, _, table_name, dsn_url, timestamp_precision, columns_config) = timescaledb
+
+    time_formats = {"milliseconds": "%d/%m/%y %H:%M:%S.%f UTC%z", "microseconds": "%d/%m/%y %H:%M:%S.%f UTC%z"}
     time_format = time_formats.get(timestamp_precision, "%d/%m/%y %H:%M:%S UTC%z")
-    
+
     target = TimescaleDBTarget(
         dsn=dsn_url,
         table=table_name,
@@ -653,16 +643,16 @@ async def test_timescaledb_validation_direct_emit_non_dict_error(timescaledb):
         time_format=time_format,
         max_events=10,
     )
-    
+
     # Initialize the target
     await target._async_init()
-    
+
     # Test with non-dictionary data directly in _emit
     non_dict_batch = ["this_is_not_a_dictionary", 123, None]
-    
+
     # Should raise TypeError for non-dictionary data in our validation code
     with pytest.raises(TypeError, match=r"TimescaleDBTarget only supports dictionary data, got <class 'str'>"):
         await target._emit(non_dict_batch, None, None, None)
-    
+
     # Cleanup
     await target._terminate()

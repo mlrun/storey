@@ -18,4 +18,4 @@ adlfs~=2023.9.0
 taos-ws-py~=0.3.2
 asyncpg>=0.30.0
 # If installing on MAC, you need to install PostgreSQL first using 'brew install postgresql'
-psycopg2-binary~=2.9
+psycopg[binary,pool]~=3.2

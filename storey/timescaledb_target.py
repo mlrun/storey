@@ -14,6 +14,8 @@
 
 from typing import Optional
 
+from psycopg_pool import AsyncConnectionPool
+
 from storey.targets import _Batching, _Writer
 
 
@@ -110,7 +112,7 @@ class TimescaleDBTarget(_Batching, _Writer):
 
         # Database connection configuration
         self._dsn = dsn
-        self._pool = None  # Connection pool will be created lazily during first use
+        self._pool: Optional[AsyncConnectionPool] = None  # Connection pool will be created lazily during first use
         self._column_names = self._get_column_names()
         self._schema = None
         self._table_schema = None  # Cached table schema information
@@ -138,52 +140,54 @@ class TimescaleDBTarget(_Batching, _Writer):
         while ensuring the pool is available when needed for data operations.
         """
         if self._pool is None:
-            import asyncpg
-
-            self._pool = await asyncpg.create_pool(dsn=self._dsn, min_size=1, max_size=1)
+            self._pool = AsyncConnectionPool(self._dsn, min_size=1, max_size=1, open=False)
+            await self._pool.open()
 
     async def _get_table_schema(self) -> dict:
         """Retrieve table schema from PostgreSQL information_schema.
-        
+
         Queries the database to get column information including data types,
         nullability constraints, and default values. Results are cached to
         avoid repeated database queries.
-        
+
         Returns:
             dict: Column schema information with keys as column names and values
                  containing 'data_type', 'nullable', and 'default' information
-        
+
         Raises:
             Exception: If table doesn't exist or schema query fails
         """
         if self._table_schema is not None:
             return self._table_schema
-        
+
         await self._async_init()
-        
-        async with self._pool.acquire() as conn:
-            # Query column information including nullability
-            query = """
-            SELECT column_name, data_type, is_nullable, column_default
-            FROM information_schema.columns 
-            WHERE table_name = $1 
-            AND table_schema = $2
-            ORDER BY ordinal_position
-            """
-            schema_name = self._schema or 'public'
-            rows = await conn.fetch(query, self._table, schema_name)
-            
+
+        async with self._pool.connection() as conn:
+            async with conn.cursor() as cur:
+                # Query column information including nullability
+                query = """
+                SELECT column_name, data_type, is_nullable, column_default
+                FROM information_schema.columns
+                WHERE table_name = %s
+                AND table_schema = %s
+                ORDER BY ordinal_position
+                """
+                schema_name = self._schema or "public"
+                await cur.execute(query, (self._table, schema_name))
+                rows = await cur.fetchall()
+
             if not rows:
                 raise ValueError(f"Table '{schema_name}.{self._table}' not found or has no columns")
-            
+
             self._table_schema = {}
             for row in rows:
-                self._table_schema[row['column_name']] = {
-                    'data_type': row['data_type'],
-                    'nullable': row['is_nullable'] == 'YES',
-                    'default': row['column_default']
+                column_name, data_type, is_nullable, column_default = row
+                self._table_schema[column_name] = {
+                    "data_type": data_type,
+                    "nullable": is_nullable == "YES",
+                    "default": column_default,
                 }
-        
+
         return self._table_schema
 
     def _event_to_batch_entry(self, event):
@@ -201,7 +205,7 @@ class TimescaleDBTarget(_Batching, _Writer):
         """
         return self._event_to_writer_entry(event)
 
-    async def _emit(self, batch, batch_key, batch_time, batch_events, last_event_time=None):
+    async def _emit(self, batch, _batch_key, _batch_time, _batch_events, _last_event_time=None):
         """Write a batch of events to TimescaleDB.
 
         This method performs the core data writing functionality:
@@ -226,7 +230,7 @@ class TimescaleDBTarget(_Batching, _Writer):
 
         # Get table schema for validation on first use
         schema = await self._get_table_schema()
-        
+
         # Convert dictionaries to tuples for copy_records_to_table
         # PostgreSQL's COPY protocol requires data in tuple format with consistent column ordering
         # Validate against schema to catch missing required columns early
@@ -245,7 +249,7 @@ class TimescaleDBTarget(_Batching, _Writer):
                     if col in item:
                         # Column present in data
                         record.append(item[col])
-                    elif not col_info['nullable']:
+                    elif not col_info["nullable"]:
                         # Column missing but required (not nullable)
                         raise ValueError(
                             f"Missing required non-nullable column '{col}' in event. "
@@ -257,15 +261,27 @@ class TimescaleDBTarget(_Batching, _Writer):
                 else:
                     # Column not in schema - fallback to original behavior for compatibility
                     record.append(item.get(col))
-            
+
             records.append(tuple(record))
         # Write data using connection pool
-        async with self._pool.acquire() as conn:
-            # Use PostgreSQL's COPY protocol for optimal performance
-            # This is significantly faster than individual INSERT statements
-            await conn.copy_records_to_table(
-                self._table, schema_name=self._schema, records=records, columns=self._column_names
-            )
+        async with self._pool.connection() as conn:
+            async with conn.cursor() as cur:
+                # Use PostgreSQL's COPY protocol for optimal performance
+                # This is significantly faster than individual INSERT statements
+                import psycopg.sql as sql
+
+                table_identifier = sql.Identifier(self._table)
+                if self._schema:
+                    table_identifier = sql.Identifier(self._schema, self._table)
+
+                column_identifiers = [sql.Identifier(col) for col in self._column_names]
+                copy_query = sql.SQL("COPY {} ({}) FROM STDIN").format(
+                    table_identifier, sql.SQL(", ").join(column_identifiers)
+                )
+
+                async with cur.copy(copy_query) as copy:
+                    for record in records:
+                        await copy.write_row(record)
 
     async def _terminate(self):
         """Terminate and cleanup resources.
