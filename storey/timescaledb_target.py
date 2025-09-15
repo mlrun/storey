@@ -14,6 +14,7 @@
 
 from typing import Optional
 
+import psycopg.sql as sql
 from psycopg_pool import AsyncConnectionPool
 
 from storey.targets import _Batching, _Writer
@@ -112,6 +113,11 @@ class TimescaleDBTarget(_Batching, _Writer):
 
         # Database connection configuration
         self._dsn = dsn
+        # Connection pool: Single connection is sufficient for most use cases since:
+        # 1. COPY operations are already bulk-optimized and very fast
+        # 2. Multiple concurrent COPY operations may cause lock contention
+        # 3. Most data flows process batches sequentially, not concurrently
+        # For high-throughput scenarios with concurrent batches, consider increasing pool size
         self._pool: Optional[AsyncConnectionPool] = None  # Connection pool will be created lazily during first use
         self._column_names = self._get_column_names()
         self._schema = None
@@ -155,7 +161,7 @@ class TimescaleDBTarget(_Batching, _Writer):
                  containing 'data_type', 'nullable', and 'default' information
 
         Raises:
-            Exception: If table doesn't exist or schema query fails
+            ValueError: If table doesn't exist or schema query fails
         """
         if self._table_schema is not None:
             return self._table_schema
@@ -177,7 +183,10 @@ class TimescaleDBTarget(_Batching, _Writer):
                 rows = await cur.fetchall()
 
             if not rows:
-                raise ValueError(f"Table '{schema_name}.{self._table}' not found or has no columns")
+                raise ValueError(
+                    f"Table '{schema_name}.{self._table}' not found or has no columns. "
+                    f"Please verify the table exists and is accessible."
+                )
 
             self._table_schema = {}
             for row in rows:
@@ -205,7 +214,7 @@ class TimescaleDBTarget(_Batching, _Writer):
         """
         return self._event_to_writer_entry(event)
 
-    async def _emit(self, batch, _batch_key, _batch_time, _batch_events, _last_event_time=None):
+    async def _emit(self, batch, batch_key, batch_time, batch_events, last_event_time=None):
         """Write a batch of events to TimescaleDB.
 
         This method performs the core data writing functionality:
@@ -239,7 +248,7 @@ class TimescaleDBTarget(_Batching, _Writer):
         for item in batch:
             if not isinstance(item, dict):
                 # Only dictionaries are supported as input
-                raise TypeError(f"TimescaleDBTarget only supports dictionary data, got {type(item)}")
+                raise TypeError(f"TimescaleDBTarget only supports dictionary data, got {type(item).__name__}")
 
             # Validate against schema and convert to tuple in correct column order
             record = []
@@ -253,7 +262,7 @@ class TimescaleDBTarget(_Batching, _Writer):
                         # Column missing but required (not nullable)
                         raise ValueError(
                             f"Missing required non-nullable column '{col}' in event. "
-                            f"Available columns: {list(item.keys())}"
+                            f"Available columns: {', '.join(item.keys())}"
                         )
                     else:
                         # Column missing but nullable - use None
@@ -268,8 +277,6 @@ class TimescaleDBTarget(_Batching, _Writer):
             async with conn.cursor() as cur:
                 # Use PostgreSQL's COPY protocol for optimal performance
                 # This is significantly faster than individual INSERT statements
-                import psycopg.sql as sql
-
                 table_identifier = sql.Identifier(self._table)
                 if self._schema:
                     table_identifier = sql.Identifier(self._schema, self._table)
@@ -279,9 +286,9 @@ class TimescaleDBTarget(_Batching, _Writer):
                     table_identifier, sql.SQL(", ").join(column_identifiers)
                 )
 
-                async with cur.copy(copy_query) as copy:
+                async with cur.copy(copy_query) as copy_context:
                     for record in records:
-                        await copy.write_row(record)
+                        await copy_context.write_row(record)
 
     async def _terminate(self):
         """Terminate and cleanup resources.
