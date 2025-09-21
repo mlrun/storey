@@ -533,6 +533,8 @@ class ParquetTarget(_Batching, _Writer):
     :param storage_options: Extra options that make sense for a particular storage connection, e.g. host, port,
         username, password, etc., if using a URL that will be parsed by fsspec, e.g., starting
         "s3://”, "gcs://”. Optional.
+    :param single_file: If True, all the partitioned data will be written to a single file named target.parquet in
+        the specified path. If False (the default), each batch will be written to a separate file with a random uuid.
     :type storage_options: dict
     """
 
@@ -547,6 +549,7 @@ class ParquetTarget(_Batching, _Writer):
         infer_columns_from_data: Optional[bool] = None,
         max_events: Optional[int] = None,
         flush_after_seconds: Union[int, float, None] = None,
+        single_file: Optional[bool] = None,
         **kwargs,
     ):
         self._single_file_mode = False
@@ -558,9 +561,10 @@ class ParquetTarget(_Batching, _Writer):
             else:
                 partition_cols = [("$key", 256), "$year", "$month", "$day", "$hour"]
         else:
+            self._single_file_mode = single_file or False
             kwargs["partition_cols"] = partition_cols
 
-        if self._single_file_mode:
+        if self._single_file_mode and not partition_cols:
             max_events = None
             flush_after_seconds = None
 
@@ -629,7 +633,10 @@ class ParquetTarget(_Batching, _Writer):
             dir_path += "/"
         if dir_path and not self._file_system.exists(dir_path):
             self._file_system.makedirs(dir_path, exist_ok=True)
-        file_path = self._path if self._single_file_mode else f"{dir_path}{uuid.uuid4()}.parquet"
+        if self._single_file_mode:
+            file_path = f"{dir_path}target.parquet" if self._partition_cols else self._path
+        else:
+            file_path = f"{dir_path}{uuid.uuid4()}.parquet"
         # Remove nanosecs from timestamp columns & index
         for name, _ in df.items():
             if str(df[name].dtype) == "datetime64[ns]":
