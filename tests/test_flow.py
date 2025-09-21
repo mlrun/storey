@@ -2832,12 +2832,13 @@ def test_write_to_parquet_partition_by_datetime(tmpdir):
 
 @pytest.mark.parametrize("max_events", [1, 5])
 def test_write_to_single_partition_parquet(tmpdir, max_events):
-    def check_target_parquets(dir, ids=(0, 1, 2)):
-        expected_files = [os.path.join(dir, f"id={i}", "target.parquet") for i in ids]
+    out_dir = f"{tmpdir}/test_write_to_parquet_partition_by_datetime/"
+
+    def check_target_parquets(ids):
+        expected_files = [os.path.join(out_dir, f"id={i}", "target.parquet") for i in ids]
         missing = [f for f in expected_files if not os.path.exists(f)]
         assert not missing, f"Missing expected parquet files: {missing}"
 
-    out_dir = f"{tmpdir}/test_write_to_parquet_partition_by_datetime/"
     columns = ["my_int", "my_string", "id"]
     flow = build_flow(
         [
@@ -2862,9 +2863,8 @@ def test_write_to_single_partition_parquet(tmpdir, max_events):
     read_back_df = pd.read_parquet(out_dir, columns=columns)
     read_back_df.sort_values("my_int", inplace=True)
     read_back_df.reset_index(drop=True, inplace=True)
-    assert read_back_df.equals(expected_df)
-
-    check_target_parquets(out_dir, ids=(0, 1, 2))
+    pd.testing.assert_frame_equal(read_back_df, expected_df)
+    check_target_parquets(ids=(0, 1, 2))
 
     controller = flow.run()
     expected = []
@@ -2882,8 +2882,8 @@ def test_write_to_single_partition_parquet(tmpdir, max_events):
     read_back_df = pd.read_parquet(out_dir, columns=columns)
     read_back_df.sort_values("my_int", inplace=True)
     read_back_df.reset_index(drop=True, inplace=True)
-    assert read_back_df.equals(expected_df)
-    check_target_parquets(out_dir, ids=(0, 1, 2))
+    pd.testing.assert_frame_equal(read_back_df, expected_df)
+    check_target_parquets(ids=(0, 1, 2))
 
 
 def test_write_to_parquet_string_as_datetime(tmpdir):

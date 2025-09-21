@@ -561,7 +561,7 @@ class ParquetTarget(_Batching, _Writer):
             else:
                 partition_cols = [("$key", 256), "$year", "$month", "$day", "$hour"]
         else:
-            self._single_file_mode = single_file
+            self._single_file_mode = single_file or False
             kwargs["partition_cols"] = partition_cols
 
         if self._single_file_mode and not partition_cols:
