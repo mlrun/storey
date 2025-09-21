@@ -2830,6 +2830,35 @@ def test_write_to_parquet_partition_by_datetime(tmpdir):
     assert read_back_df.equals(expected_df)
 
 
+@pytest.mark.parametrize("max_events", [1, 5])
+def test_write_to_single_partition_parquet(tmpdir, max_events):
+    out_dir = f"{tmpdir}/test_write_to_parquet_partition_by_datetime/{uuid.uuid4().hex}/"
+    columns = ["my_int", "my_string", "id"]
+    controller = build_flow(
+        [
+            SyncEmitSource(),
+            ParquetTarget(out_dir, partition_cols="id", columns=columns, max_events=max_events, single_file=True),
+        ]
+    ).run()
+
+    expected = []
+    for i in range(10):
+        controller.emit([i, f"this is {i}", i % 3])
+        if max_events == 5:
+            expected.append([i, f"this is {i}", i % 3])
+        elif max_events == 1 and i >= 7:
+            expected.append([i, f"this is {i}", i % 3])
+    expected_df = pd.DataFrame(expected, columns=columns)
+    expected_df["id"] = expected_df["id"].astype("int32").astype("category")
+    controller.terminate()
+    controller.await_termination()
+
+    read_back_df = pd.read_parquet(out_dir, columns=columns)
+    read_back_df.sort_values("my_int", inplace=True)
+    read_back_df.reset_index(drop=True, inplace=True)
+    assert read_back_df.equals(expected_df)
+
+
 def test_write_to_parquet_string_as_datetime(tmpdir):
     out_dir = f"{tmpdir}/test_write_to_parquet_string_to_datetime/{uuid.uuid4().hex}/"
     columns = ["my_int", "my_string", "my_datetime"]

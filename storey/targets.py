@@ -547,6 +547,7 @@ class ParquetTarget(_Batching, _Writer):
         infer_columns_from_data: Optional[bool] = None,
         max_events: Optional[int] = None,
         flush_after_seconds: Union[int, float, None] = None,
+        single_file: bool = False,
         **kwargs,
     ):
         self._single_file_mode = False
@@ -558,9 +559,10 @@ class ParquetTarget(_Batching, _Writer):
             else:
                 partition_cols = [("$key", 256), "$year", "$month", "$day", "$hour"]
         else:
+            self._single_file_mode = single_file
             kwargs["partition_cols"] = partition_cols
 
-        if self._single_file_mode:
+        if self._single_file_mode and not partition_cols:
             max_events = None
             flush_after_seconds = None
 
@@ -629,7 +631,12 @@ class ParquetTarget(_Batching, _Writer):
             dir_path += "/"
         if dir_path and not self._file_system.exists(dir_path):
             self._file_system.makedirs(dir_path, exist_ok=True)
-        file_path = self._path if self._single_file_mode else f"{dir_path}{uuid.uuid4()}.parquet"
+        if not self._single_file_mode:
+            file_path = f"{dir_path}{uuid.uuid4()}.parquet"
+        elif self._single_file_mode and not self._partition_cols:
+            file_path = self._path
+        else:
+            file_path = f"{dir_path}{self.name}.parquet"
         # Remove nanosecs from timestamp columns & index
         for name, _ in df.items():
             if str(df[name].dtype) == "datetime64[ns]":
