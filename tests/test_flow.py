@@ -2832,15 +2832,21 @@ def test_write_to_parquet_partition_by_datetime(tmpdir):
 
 @pytest.mark.parametrize("max_events", [1, 5])
 def test_write_to_single_partition_parquet(tmpdir, max_events):
-    out_dir = f"{tmpdir}/test_write_to_parquet_partition_by_datetime/{uuid.uuid4().hex}/"
+    def check_target_parquets(dir, ids=(0, 1, 2)):
+        expected_files = [os.path.join(dir, f"id={i}", "target.parquet") for i in ids]
+        missing = [f for f in expected_files if not os.path.exists(f)]
+        assert not missing, f"Missing expected parquet files: {missing}"
+
+    out_dir = f"{tmpdir}/test_write_to_parquet_partition_by_datetime/"
     columns = ["my_int", "my_string", "id"]
-    controller = build_flow(
+    flow = build_flow(
         [
             SyncEmitSource(),
             ParquetTarget(out_dir, partition_cols="id", columns=columns, max_events=max_events, single_file=True),
         ]
-    ).run()
+    )
 
+    controller = flow.run()
     expected = []
     for i in range(10):
         controller.emit([i, f"this is {i}", i % 3])
@@ -2857,6 +2863,27 @@ def test_write_to_single_partition_parquet(tmpdir, max_events):
     read_back_df.sort_values("my_int", inplace=True)
     read_back_df.reset_index(drop=True, inplace=True)
     assert read_back_df.equals(expected_df)
+
+    check_target_parquets(out_dir, ids=(0, 1, 2))
+
+    controller = flow.run()
+    expected = []
+    for i in range(10, 20):
+        controller.emit([i, f"this is {i}", i % 3])
+        if max_events == 5:
+            expected.append([i, f"this is {i}", i % 3])
+        elif max_events == 1 and i >= 17:
+            expected.append([i, f"this is {i}", i % 3])
+    expected_df = pd.DataFrame(expected, columns=columns)
+    expected_df["id"] = expected_df["id"].astype("int32").astype("category")
+    controller.terminate()
+    controller.await_termination()
+
+    read_back_df = pd.read_parquet(out_dir, columns=columns)
+    read_back_df.sort_values("my_int", inplace=True)
+    read_back_df.reset_index(drop=True, inplace=True)
+    assert read_back_df.equals(expected_df)
+    check_target_parquets(out_dir, ids=(0, 1, 2))
 
 
 def test_write_to_parquet_string_as_datetime(tmpdir):
