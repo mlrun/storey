@@ -533,6 +533,8 @@ class ParquetTarget(_Batching, _Writer):
     :param storage_options: Extra options that make sense for a particular storage connection, e.g. host, port,
         username, password, etc., if using a URL that will be parsed by fsspec, e.g., starting
         "s3://”, "gcs://”. Optional.
+    :param single_file: If True, all the partitioned data will be written to a single file named {name}.parquet in
+        the specified path. If False (the default), each batch will be written to a separate file with a random uuid.
     :type storage_options: dict
     """
 
