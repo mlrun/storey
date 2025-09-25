@@ -182,20 +182,28 @@ class TimescaleDBTarget(_Batching, _Writer):
                 await cur.execute(query, (self._table, schema_name))
                 rows = await cur.fetchall()
 
-            if not rows:
-                raise ValueError(
-                    f"Table '{schema_name}.{self._table}' not found or has no columns. "
-                    f"Please verify the table exists and is accessible."
-                )
+                if not rows:
+                    # Check if table exists to provide a more specific error message
+                    table_exists_query = """
+                    SELECT 1 FROM information_schema.tables
+                    WHERE table_name = %s AND table_schema = %s
+                    """
+                    await cur.execute(table_exists_query, (self._table, schema_name))
+                    table_exists = await cur.fetchone()
 
-            self._table_schema = {}
-            for row in rows:
-                column_name, data_type, is_nullable, column_default = row
-                self._table_schema[column_name] = {
-                    "data_type": data_type,
-                    "nullable": is_nullable == "YES",
-                    "default": column_default,
-                }
+                    if not table_exists:
+                        raise ValueError(f"Table '{schema_name}.{self._table}' does not exist")
+                    else:
+                        raise ValueError(f"Table '{schema_name}.{self._table}' exists but has no columns")
+
+                self._table_schema = {}
+                for row in rows:
+                    column_name, data_type, is_nullable, column_default = row
+                    self._table_schema[column_name] = {
+                        "data_type": data_type,
+                        "nullable": is_nullable == "YES",
+                        "default": column_default,
+                    }
 
         return self._table_schema
 
