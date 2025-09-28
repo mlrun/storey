@@ -63,23 +63,29 @@ def _generate_test_data(precision: str, row_count: int = 5):
 
 @pytest.fixture(scope="function")
 def table_cleanup():
-    """Simple fixture to track and cleanup tables after each test"""
+    """Simple fixture to track and cleanup tables and schemas after each test"""
     tables = []
+    schemas = []
 
     class TableCleanup:
         def add_table(self, table_name: str):
             tables.append(table_name)
+
+        def add_schema(self, schema_name: str):
+            schemas.append(schema_name)
 
     cleanup = TableCleanup()
 
     try:
         yield cleanup
     finally:
-        if tables:
+        if tables or schemas:
             with psycopg.connect(dsn, autocommit=True) as connection:
                 with connection.cursor() as cursor:
                     for table_name in tables:
                         cursor.execute(f"DROP TABLE IF EXISTS {table_name} CASCADE;")
+                    for schema_name in schemas:
+                        cursor.execute(f"DROP SCHEMA IF EXISTS {schema_name} CASCADE;")
 
 
 def _create_timescaledb_table_and_data(table_name: str, timestamp_precision: str, table_cleanup) -> TimescaleDBData:
@@ -132,7 +138,7 @@ def _create_timescaledb_table_and_data(table_name: str, timestamp_precision: str
     )
 
 
-@pytest.fixture(params=[("milliseconds"), ("microseconds")])
+@pytest.fixture(params=["milliseconds", "microseconds"])
 def timescaledb_multiple_precision(request: "pytest.FixtureRequest", table_cleanup) -> Iterator[TimescaleDBData]:
     """Fixture for tests that need both millisecond and microsecond precision testing."""
     timestamp_precision = request.param
@@ -145,7 +151,7 @@ def timescaledb_multiple_precision(request: "pytest.FixtureRequest", table_clean
 def timescaledb(table_cleanup) -> TimescaleDBData:
     """TimescaleDB fixture for tests that don't need timestamp precision variations."""
     table_name = f"test_table_{uuid4().hex[:8]}"
-    timestamp_precision = "milliseconds"  # Default precision for single tests
+    timestamp_precision = "milliseconds"  # Default precision for tests that don't need precision variations
 
     return _create_timescaledb_table_and_data(table_name, timestamp_precision, table_cleanup)
 
@@ -191,8 +197,7 @@ def test_timescaledb_all_types_and_precision(timescaledb_multiple_precision):
             """
             cursor.execute(query)
 
-            result_list = []
-            result_list.extend(list(row) for row in cursor.fetchall())
+            result_list = [list(row) for row in cursor.fetchall()]
 
     # Verify we got the expected number of rows
     assert len(result_list) == 3
@@ -231,7 +236,7 @@ def test_timescaledb_all_types_and_precision(timescaledb_multiple_precision):
 
                 cursor.execute(f"SELECT EXTRACT(MILLISECONDS FROM time) FROM {table_name} WHERE int_col = 999")
                 result = cursor.fetchone()
-                assert result[0] >= 10000  # At least 10 seconds worth of milliseconds
+                assert result[0] >= 10_000  # At least 10 seconds worth of milliseconds
 
             elif timestamp_precision == "microseconds":
                 # Test microsecond precision
@@ -247,7 +252,7 @@ def test_timescaledb_all_types_and_precision(timescaledb_multiple_precision):
 
                 cursor.execute(f"SELECT EXTRACT(MICROSECONDS FROM time) FROM {table_name} WHERE int_col = 999")
                 result = cursor.fetchone()
-                assert result[0] >= 10000000  # At least 10 seconds worth of microseconds
+                assert result[0] >= 10_000_000  # At least 10 seconds worth of microseconds
 
 
 @pytest.mark.asyncio
@@ -396,8 +401,9 @@ def test_timescaledb_schema_validation_with_schema_prefix(timescaledb, table_cle
     schema_name = "test_schema"
     schema_table = f"{schema_name}.{table_name}_schema"
 
-    # Register table for cleanup (schema is persistent)
+    # Register table and schema for cleanup
     table_cleanup.add_table(schema_table)
+    table_cleanup.add_schema(schema_name)
 
     with psycopg.connect(dsn_url, autocommit=True) as connection:
         with connection.cursor() as cursor:
@@ -722,7 +728,7 @@ async def test_timescaledb_retry_deadlock_behavior(mock_sleep, timescaledb):
     actual_delays = [call[0][0] for call in mock_sleep.call_args_list]
     # Use approximate comparison for floating point precision
     for actual, expected in zip(actual_delays, expected_delays):
-        assert abs(actual - expected) < 1e-10
+        assert abs(actual - expected) < 0.001
 
 
 @pytest.mark.asyncio

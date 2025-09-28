@@ -193,7 +193,7 @@ class TimescaleDBTarget(_Batching, _Writer):
         deadlock_attempts = 0
         connection_attempts = 0
 
-        for _ in range(self.MAX_DEADLOCK_RETRIES + self._max_retries + 1):
+        while True:
             try:
                 return await operation_callable()
             except (psycopg.OperationalError, psycopg.InterfaceError) as e:
@@ -207,7 +207,7 @@ class TimescaleDBTarget(_Batching, _Writer):
                 else:
                     if connection_attempts >= self._max_retries:
                         raise ValueError(f"Connection failed after {self._max_retries} retries: {e}") from e
-                    # Slower retry for connection issues: 1s, 2s, 4s
+                    # Slower retry for connection issues with exponential backoff
                     delay = self._retry_delay * (2**connection_attempts)
                     connection_attempts += 1
 
@@ -343,7 +343,7 @@ class TimescaleDBTarget(_Batching, _Writer):
                         # Column missing but nullable - use None
                         record.append(None)
                 else:
-                    # Column not in schema - fallback to original behavior for compatibility
+                    # Column not in schema - use item.get()
                     record.append(item.get(col))
 
             records.append(tuple(record))
