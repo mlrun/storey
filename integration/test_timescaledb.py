@@ -2,6 +2,8 @@ import os
 from collections.abc import Iterator
 from datetime import datetime, timezone
 from typing import NamedTuple
+from unittest.mock import AsyncMock, patch
+from uuid import uuid4
 
 import pytest
 
@@ -24,8 +26,6 @@ class TimescaleDBData(NamedTuple):
     dsn_url: str
     timestamp_precision: str
     columns_config: list
-
-
 
 
 def _generate_test_data(precision: str, row_count: int = 5):
@@ -82,22 +82,16 @@ def table_cleanup():
                         cursor.execute(f"DROP TABLE IF EXISTS {table_name} CASCADE;")
 
 
-@pytest.fixture(params=[("milliseconds"), ("microseconds")])
-def timescaledb(request: "pytest.FixtureRequest", table_cleanup) -> Iterator[TimescaleDBData]:
-    """Fixture for extended type testing with guaranteed cleanup"""
-    timestamp_precision = request.param
-    test_type = "extended"
-    table_name = f"test_table_{test_type}_{timestamp_precision}"
-
-    # Register main table for automatic cleanup
+def _create_timescaledb_table_and_data(table_name: str, timestamp_precision: str, table_cleanup) -> TimescaleDBData:
+    """Helper function to create TimescaleDB table and return fixture data."""
     table_cleanup.add_table(table_name)
 
-    with psycopg.connect(dsn, autocommit=True) as setup_connection:
-        with setup_connection.cursor() as cursor:
-            # Create TimescaleDB extension
+    with psycopg.connect(dsn, autocommit=True) as conn:
+        with conn.cursor() as cursor:
+            # Create TimescaleDB extension if needed
             cursor.execute("CREATE EXTENSION IF NOT EXISTS timescaledb;")
 
-            # Drop and create extended table
+            # Drop and create table
             cursor.execute(f"DROP TABLE IF EXISTS {table_name};")
             cursor.execute(
                 f"""
@@ -110,7 +104,8 @@ def timescaledb(request: "pytest.FixtureRequest", table_cleanup) -> Iterator[Tim
                     int_col INTEGER,
                     timestamp_col TIMESTAMPTZ,
                     nchar_col CHAR(10),
-                    varchar_col VARCHAR(100)
+                    varchar_col VARCHAR(255),
+                    text_col TEXT
                 );
                 """
             )
@@ -126,10 +121,10 @@ def timescaledb(request: "pytest.FixtureRequest", table_cleanup) -> Iterator[Tim
         "timestamp_col",
         "nchar_col",
         "varchar_col",
+        "text_col",
     ]
 
-    # Tests create their own connections as needed
-    yield TimescaleDBData(
+    return TimescaleDBData(
         table_name,
         dsn,
         timestamp_precision,
@@ -137,9 +132,27 @@ def timescaledb(request: "pytest.FixtureRequest", table_cleanup) -> Iterator[Tim
     )
 
 
-def test_timescaledb_all_types_and_precision(timescaledb):
+@pytest.fixture(params=[("milliseconds"), ("microseconds")])
+def timescaledb_multiple_precision(request: "pytest.FixtureRequest", table_cleanup) -> Iterator[TimescaleDBData]:
+    """Fixture for tests that need both millisecond and microsecond precision testing."""
+    timestamp_precision = request.param
+    table_name = f"test_table_extended_{timestamp_precision}"
+
+    yield _create_timescaledb_table_and_data(table_name, timestamp_precision, table_cleanup)
+
+
+@pytest.fixture(scope="function")
+def timescaledb(table_cleanup) -> TimescaleDBData:
+    """TimescaleDB fixture for tests that don't need timestamp precision variations."""
+    table_name = f"test_table_{uuid4().hex[:8]}"
+    timestamp_precision = "milliseconds"  # Default precision for single tests
+
+    return _create_timescaledb_table_and_data(table_name, timestamp_precision, table_cleanup)
+
+
+def test_timescaledb_all_types_and_precision(timescaledb_multiple_precision):
     """Comprehensive test for all data types with millisecond and microsecond precision"""
-    (table_name, dsn_url, timestamp_precision, columns_config) = timescaledb
+    (table_name, dsn_url, timestamp_precision, columns_config) = timescaledb_multiple_precision
 
     time_format = "%d/%m/%y %H:%M:%S UTC%z"
     if timestamp_precision in ["milliseconds", "microseconds"]:
@@ -238,9 +251,9 @@ def test_timescaledb_all_types_and_precision(timescaledb):
 
 
 @pytest.mark.asyncio
-async def test_timescaledb_async_emit(timescaledb):
+async def test_timescaledb_async_emit(timescaledb_multiple_precision):
     """Test async emission to TimescaleDB"""
-    (table_name, dsn_url, timestamp_precision, columns_config) = timescaledb
+    (table_name, dsn_url, timestamp_precision, columns_config) = timescaledb_multiple_precision
 
     time_format = "%d/%m/%y %H:%M:%S UTC%z"
     if timestamp_precision in ["milliseconds", "microseconds"]:
@@ -303,7 +316,6 @@ def test_timescaledb_schema_validation_missing_column(timescaledb, nullable, tab
             """
             )
             cursor.execute(f"SELECT create_hypertable('{validation_table}', 'time');")
-
 
     time_format = "%d/%m/%y %H:%M:%S UTC%z"
     controller = build_flow(
@@ -633,6 +645,7 @@ def test_timescaledb_non_dict_emission_in_graph_context(timescaledb):
 
     # Use a proper datetime object for timestamp_col
     from datetime import datetime, timezone
+
     timestamp_obj = datetime(2019, 9, 18, 1, 55, 10, tzinfo=timezone.utc)
 
     valid_data = {
@@ -657,3 +670,169 @@ def test_timescaledb_non_dict_emission_in_graph_context(timescaledb):
         controller.emit(non_dict_data)
         controller.terminate()
         controller.await_termination()
+
+
+# Unit tests for retry mechanism - these don't depend on timestamp precision
+
+
+@pytest.mark.asyncio
+async def test_timescaledb_retry_success_first_attempt(timescaledb):
+    """Test successful operation on first attempt."""
+    (table_name, dsn_url, _, columns_config) = timescaledb
+
+    target = TimescaleDBTarget(
+        dsn=dsn_url, time_col="time", columns=columns_config, table=table_name, max_retries=3, retry_delay=1.0
+    )
+
+    mock_operation = AsyncMock(return_value="success")
+
+    result = await target._execute_with_retry(mock_operation)
+
+    assert result == "success"
+    mock_operation.assert_called_once()
+
+
+@pytest.mark.asyncio
+@patch("asyncio.sleep")
+async def test_timescaledb_retry_deadlock_behavior(mock_sleep, timescaledb):
+    """Test deadlock retry with correct timing and jitter."""
+    (table_name, dsn_url, _, columns_config) = timescaledb
+
+    target = TimescaleDBTarget(
+        dsn=dsn_url, time_col="time", columns=columns_config, table=table_name, max_retries=3, retry_delay=1.0
+    )
+
+    mock_operation = AsyncMock()
+    # First 3 calls raise deadlock, 4th succeeds
+    mock_operation.side_effect = [
+        psycopg.errors.DeadlockDetected("deadlock detected"),
+        psycopg.errors.DeadlockDetected("deadlock detected"),
+        psycopg.errors.DeadlockDetected("deadlock detected"),
+        "success",
+    ]
+
+    with patch("random.uniform", return_value=0.025):  # Fixed jitter for testing
+        result = await target._execute_with_retry(mock_operation)
+
+    assert result == "success"
+    assert mock_operation.call_count == 4
+
+    # Verify sleep calls with expected timing: 0.1 + 0.025, 0.2 + 0.025, 0.4 + 0.025
+    expected_delays = [0.125, 0.225, 0.425]
+    actual_delays = [call[0][0] for call in mock_sleep.call_args_list]
+    # Use approximate comparison for floating point precision
+    for actual, expected in zip(actual_delays, expected_delays):
+        assert abs(actual - expected) < 1e-10
+
+
+@pytest.mark.asyncio
+@patch("asyncio.sleep")
+async def test_timescaledb_retry_deadlock_exhaustion(mock_sleep, timescaledb):
+    """Test deadlock retry gives up after MAX_DEADLOCK_RETRIES."""
+    (table_name, dsn_url, _, columns_config) = timescaledb
+
+    target = TimescaleDBTarget(
+        dsn=dsn_url, time_col="time", columns=columns_config, table=table_name, max_retries=3, retry_delay=1.0
+    )
+
+    mock_operation = AsyncMock()
+    # Always raise deadlock
+    mock_operation.side_effect = psycopg.errors.DeadlockDetected("persistent deadlock")
+
+    with pytest.raises(ValueError, match="Deadlock persisted after 3 retries"):
+        await target._execute_with_retry(mock_operation)
+
+    # Should attempt 4 times (initial + 3 retries)
+    assert mock_operation.call_count == 4
+    # Should sleep 3 times (after each failed retry)
+    assert mock_sleep.call_count == 3
+
+
+@pytest.mark.asyncio
+@patch("asyncio.sleep")
+async def test_timescaledb_retry_connection_error_retry_behavior(mock_sleep, timescaledb):
+    """Test connection error retry with exponential backoff."""
+    (table_name, dsn_url, _, columns_config) = timescaledb
+
+    target = TimescaleDBTarget(
+        dsn=dsn_url, time_col="time", columns=columns_config, table=table_name, max_retries=3, retry_delay=1.0
+    )
+
+    mock_operation = AsyncMock()
+    # First 2 calls raise connection error, 3rd succeeds
+    mock_operation.side_effect = [
+        psycopg.OperationalError("connection timeout"),
+        psycopg.OperationalError("connection timeout"),
+        "success",
+    ]
+
+    result = await target._execute_with_retry(mock_operation)
+
+    assert result == "success"
+    assert mock_operation.call_count == 3
+
+    # Verify exponential backoff: 1s, 2s
+    expected_delays = [1.0, 2.0]
+    actual_delays = [call[0][0] for call in mock_sleep.call_args_list]
+    assert actual_delays == expected_delays
+
+
+@pytest.mark.asyncio
+async def test_timescaledb_retry_non_retriable_error_passthrough(timescaledb):
+    """Test that non-retriable errors pass through without retry."""
+    (table_name, dsn_url, _, columns_config) = timescaledb
+
+    target = TimescaleDBTarget(
+        dsn=dsn_url, time_col="time", columns=columns_config, table=table_name, max_retries=3, retry_delay=1.0
+    )
+
+    mock_operation = AsyncMock()
+    mock_operation.side_effect = psycopg.DataError("invalid data format")
+
+    with pytest.raises(psycopg.DataError):
+        await target._execute_with_retry(mock_operation)
+
+    # Should only attempt once
+    mock_operation.assert_called_once()
+
+
+@pytest.mark.asyncio
+@patch("asyncio.sleep")
+async def test_timescaledb_retry_custom_retry_configuration(mock_sleep, timescaledb):
+    """Test custom retry configuration parameters."""
+    (table_name, dsn_url, _, columns_config) = timescaledb
+
+    custom_target = TimescaleDBTarget(
+        dsn=dsn_url,
+        time_col="time",
+        columns=columns_config,
+        table=table_name,
+        max_retries=2,  # Custom max retries
+        retry_delay=0.5,  # Custom delay
+    )
+
+    mock_operation = AsyncMock()
+    mock_operation.side_effect = [
+        psycopg.OperationalError("connection error"),
+        psycopg.OperationalError("connection error"),
+        "success",
+    ]
+
+    result = await custom_target._execute_with_retry(mock_operation)
+
+    assert result == "success"
+    # Verify custom exponential backoff: 0.5s, 1.0s
+    expected_delays = [0.5, 1.0]
+    actual_delays = [call[0][0] for call in mock_sleep.call_args_list]
+    assert actual_delays == expected_delays
+
+
+def test_timescaledb_retry_retry_configuration_defaults(timescaledb):
+    """Test default retry configuration values."""
+    (table_name, dsn_url, _, columns_config) = timescaledb
+
+    default_target = TimescaleDBTarget(dsn=dsn_url, time_col="time", columns=columns_config, table=table_name)
+
+    assert default_target._max_retries == TimescaleDBTarget.DEFAULT_MAX_RETRIES
+    assert default_target._retry_delay == TimescaleDBTarget.DEFAULT_RETRY_DELAY
+    assert default_target.MAX_DEADLOCK_RETRIES == 3

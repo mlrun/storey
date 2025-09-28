@@ -12,8 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional
+import asyncio
+import random
+from typing import Any, Callable, Optional
 
+import psycopg
 import psycopg.sql as sql
 from psycopg_pool import AsyncConnectionPool
 
@@ -46,6 +49,10 @@ class TimescaleDBTarget(_Batching, _Writer):
         improve write performance but increase memory usage.
     :param flush_after_seconds: Maximum number of seconds to hold events before they are written. If None (default),
         events will be written on flow termination, or after max_events are accumulated (if max_events is set).
+    :param max_retries: Maximum number of retry attempts for connection-related database errors (default: 3).
+        Does not apply to deadlock errors which have their own retry limit.
+    :param retry_delay: Base delay in seconds between retry attempts for connection errors (default: 1.0).
+        Uses exponential backoff: delay * (2^attempt). Deadlock retries use faster timing.
 
     Example:
         >>> # Basic usage with millisecond precision timestamps
@@ -72,7 +79,15 @@ class TimescaleDBTarget(_Batching, _Writer):
         - The time column should be a timestamp type, preferably TIMESTAMPTZ for timezone awareness
         - Events are written using PostgreSQL's COPY protocol for optimal performance
         - Connection pooling is handled automatically with proper cleanup on termination
+        - Built-in retry logic handles deadlocks (fast retry) and connection issues (exponential backoff)
+        - Deadlock retries: 3 attempts with 0.1s, 0.2s, 0.4s delays (with jitter)
+        - Connection retries: Configurable attempts with exponential backoff (1s, 2s, 4s by default)
     """
+
+    # Retry configuration constants
+    MAX_DEADLOCK_RETRIES = 3
+    DEFAULT_MAX_RETRIES = 3
+    DEFAULT_RETRY_DELAY = 1.0
 
     def __init__(
         self,
@@ -81,6 +96,8 @@ class TimescaleDBTarget(_Batching, _Writer):
         columns: list[str],
         table: str,
         time_format: Optional[str] = None,
+        max_retries: int = DEFAULT_MAX_RETRIES,
+        retry_delay: float = DEFAULT_RETRY_DELAY,
         **kwargs,
     ) -> None:
 
@@ -110,6 +127,8 @@ class TimescaleDBTarget(_Batching, _Writer):
         # Store configuration
         self._time_col = time_col
         self._columns = columns
+        self._max_retries = max_retries
+        self._retry_delay = retry_delay
 
         # Database connection configuration
         self._dsn = dsn
@@ -149,6 +168,51 @@ class TimescaleDBTarget(_Batching, _Writer):
             self._pool = AsyncConnectionPool(self._dsn, min_size=1, max_size=1, open=False)
             await self._pool.open()
 
+    async def _execute_with_retry(self, operation_callable: Callable[[], Any]) -> Any:
+        """
+        Generic async retry wrapper for database operations.
+
+        PostgreSQL Error Handling Strategy Matrix:
+
+        | Category                    |Retry?| Timing           | Reason                           |
+        |-----------------------------|------|------------------|----------------------------------|
+        | DeadlockDetected            |  Yes | 0.1s, 0.2s, 0.4s | Auto-rollback, fast resolution  |
+        | Other OperationalError      |  Yes | 1s, 2s, 4s       | Network/server recovery time     |
+        | InterfaceError              |  Yes | 1s, 2s, 4s       | Client connection issues         |
+        | All Other psycopg.Error     |  No  | -                | Pass through without wrapping    |
+
+        Note: PostgreSQL automatically rolls back failed transactions, so explicit
+        rollback is only needed for DeadlockDetected where we retry the operation.
+
+        Note: Unhandled errors are passed through without wrapping to preserve
+        original exception types and stack traces for proper debugging.
+
+        :param operation_callable: Async function that executes the database operation
+        :return: Result of operation_callable()
+        """
+        deadlock_attempts = 0
+        connection_attempts = 0
+
+        for _ in range(self.MAX_DEADLOCK_RETRIES + self._max_retries + 1):
+            try:
+                return await operation_callable()
+            except (psycopg.OperationalError, psycopg.InterfaceError) as e:
+                # Different retry limits and timing based on error type
+                if isinstance(e, psycopg.errors.DeadlockDetected):
+                    if deadlock_attempts >= self.MAX_DEADLOCK_RETRIES:
+                        raise ValueError(f"Deadlock persisted after {self.MAX_DEADLOCK_RETRIES} retries: {e}") from e
+                    # Fast retry for deadlocks: ~0.1s, ~0.2s, ~0.4s with jitter
+                    delay = (2**deadlock_attempts) * 0.1 + random.uniform(0, 0.05)
+                    deadlock_attempts += 1
+                else:
+                    if connection_attempts >= self._max_retries:
+                        raise ValueError(f"Connection failed after {self._max_retries} retries: {e}") from e
+                    # Slower retry for connection issues: 1s, 2s, 4s
+                    delay = self._retry_delay * (2**connection_attempts)
+                    connection_attempts += 1
+
+                await asyncio.sleep(delay)
+
     async def _get_table_schema(self) -> dict:
         """Retrieve table schema from PostgreSQL information_schema.
 
@@ -168,43 +232,46 @@ class TimescaleDBTarget(_Batching, _Writer):
 
         await self._async_init()
 
-        async with self._pool.connection() as conn:
-            async with conn.cursor() as cur:
-                # Query column information including nullability
-                query = """
-                SELECT column_name, data_type, is_nullable, column_default
-                FROM information_schema.columns
-                WHERE table_name = %s
-                AND table_schema = %s
-                ORDER BY ordinal_position
-                """
-                schema_name = self._schema or "public"
-                await cur.execute(query, (self._table, schema_name))
-                rows = await cur.fetchall()
-
-                if not rows:
-                    # Check if table exists to provide a more specific error message
-                    table_exists_query = """
-                    SELECT 1 FROM information_schema.tables
-                    WHERE table_name = %s AND table_schema = %s
+        async def schema_operation():
+            async with self._pool.connection() as conn:
+                async with conn.cursor() as cur:
+                    # Query column information including nullability
+                    query = """
+                    SELECT column_name, data_type, is_nullable, column_default
+                    FROM information_schema.columns
+                    WHERE table_name = %s
+                    AND table_schema = %s
+                    ORDER BY ordinal_position
                     """
-                    await cur.execute(table_exists_query, (self._table, schema_name))
-                    table_exists = await cur.fetchone()
+                    schema_name = self._schema or "public"
+                    await cur.execute(query, (self._table, schema_name))
+                    rows = await cur.fetchall()
 
-                    if not table_exists:
-                        raise ValueError(f"Table '{schema_name}.{self._table}' does not exist")
-                    else:
-                        raise ValueError(f"Table '{schema_name}.{self._table}' exists but has no columns")
+                    if not rows:
+                        # Check if table exists to provide a more specific error message
+                        table_exists_query = """
+                        SELECT 1 FROM information_schema.tables
+                        WHERE table_name = %s AND table_schema = %s
+                        """
+                        await cur.execute(table_exists_query, (self._table, schema_name))
+                        table_exists = await cur.fetchone()
 
-                self._table_schema = {}
-                for row in rows:
-                    column_name, data_type, is_nullable, column_default = row
-                    self._table_schema[column_name] = {
-                        "data_type": data_type,
-                        "nullable": is_nullable == "YES",
-                        "default": column_default,
-                    }
+                        if not table_exists:
+                            raise ValueError(f"Table '{schema_name}.{self._table}' does not exist")
+                        else:
+                            raise ValueError(f"Table '{schema_name}.{self._table}' exists but has no columns")
 
+                    schema_result = {}
+                    for row in rows:
+                        column_name, data_type, is_nullable, column_default = row
+                        schema_result[column_name] = {
+                            "data_type": data_type,
+                            "nullable": is_nullable == "YES",
+                            "default": column_default,
+                        }
+                    return schema_result
+
+        self._table_schema = await self._execute_with_retry(schema_operation)
         return self._table_schema
 
     def _event_to_batch_entry(self, event):
@@ -280,23 +347,27 @@ class TimescaleDBTarget(_Batching, _Writer):
                     record.append(item.get(col))
 
             records.append(tuple(record))
-        # Write data using connection pool
-        async with self._pool.connection() as conn:
-            async with conn.cursor() as cur:
-                # Use PostgreSQL's COPY protocol for optimal performance
-                # This is significantly faster than individual INSERT statements
-                table_identifier = sql.Identifier(self._table)
-                if self._schema:
-                    table_identifier = sql.Identifier(self._schema, self._table)
 
-                column_identifiers = [sql.Identifier(col) for col in self._column_names]
-                copy_query = sql.SQL("COPY {} ({}) FROM STDIN").format(
-                    table_identifier, sql.SQL(", ").join(column_identifiers)
-                )
+        # Write data using connection pool with retry logic
+        async def batch_write_operation():
+            async with self._pool.connection() as conn:
+                async with conn.cursor() as cur:
+                    # Use PostgreSQL's COPY protocol for optimal performance
+                    # This is significantly faster than individual INSERT statements
+                    table_identifier = sql.Identifier(self._table)
+                    if self._schema:
+                        table_identifier = sql.Identifier(self._schema, self._table)
 
-                async with cur.copy(copy_query) as copy_context:
-                    for record in records:
-                        await copy_context.write_row(record)
+                    column_identifiers = [sql.Identifier(col) for col in self._column_names]
+                    copy_query = sql.SQL("COPY {} ({}) FROM STDIN").format(
+                        table_identifier, sql.SQL(", ").join(column_identifiers)
+                    )
+
+                    async with cur.copy(copy_query) as copy_context:
+                        for record in records:
+                            await copy_context.write_row(record)
+
+        await self._execute_with_retry(batch_write_operation)
 
     async def _terminate(self):
         """Terminate and cleanup resources.
