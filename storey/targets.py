@@ -198,6 +198,8 @@ class _Writer:
         event_time = event.processing_time
         time_field = self._time_field
         if time_field is not None and time_field != "":
+            if not isinstance(event.body, (dict, list)):
+                raise TypeError(f"Writer supports only events of type dict or list, got {type(event.body).__name__}")
             if isinstance(event.body, list) and isinstance(time_field, str):
                 time_field = self._col_to_index[time_field]
             event_time = event.body[time_field]
