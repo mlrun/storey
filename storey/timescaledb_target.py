@@ -328,23 +328,20 @@ class TimescaleDBTarget(_Batching, _Writer):
             # Validate against schema and convert to tuple in correct column order
             record = []
             for col in self._column_names:
-                if col in schema:
-                    col_info = schema[col]
-                    if col in item:
-                        # Column present in data
-                        record.append(item[col])
-                    elif not col_info["nullable"]:
-                        # Column missing but required (not nullable)
-                        raise ValueError(
-                            f"Missing required non-nullable column '{col}' in event. "
-                            f"Available columns: {', '.join(item.keys())}"
-                        )
-                    else:
-                        # Column missing but nullable - use None
-                        record.append(None)
-                else:
-                    # Column not in schema - use item.get()
-                    record.append(item.get(col))
+                if col not in schema:
+                    raise ValueError(f"Column '{col}' is configured but not found in table '{self._table}' schema")
+
+                col_info = schema[col]
+                value = item.get(col)  # Get value or None if missing
+
+                if value is None and not col_info["nullable"]:
+                    # Column missing but required (not nullable)
+                    raise ValueError(
+                        f"Missing required non-nullable column '{col}' in event. "
+                        f"Available columns: {', '.join(item.keys())} in table '{self._table}'"
+                    )
+
+                record.append(value)
 
             records.append(tuple(record))
 

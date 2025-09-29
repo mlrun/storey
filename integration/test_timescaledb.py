@@ -555,10 +555,10 @@ def test_timescaledb_validation_with_extra_columns(timescaledb):
 @pytest.mark.parametrize(
     "invalid_data,expected_error",
     [
-        ("string_data", "string indices must be integers"),
-        (123, "'int' object is not subscriptable"),
+        ("string_data", "Writer supports only events of type dict or list"),
+        (123, "Writer supports only events of type dict or list"),
         (["list_data"], "time data 'list_data' does not match format"),
-        (None, "'NoneType' object is not subscriptable"),
+        (None, "Writer supports only events of type dict or list"),
     ],
 )
 def test_timescaledb_validation_non_dict_data_type_error(timescaledb, invalid_data, expected_error):
@@ -611,7 +611,7 @@ def test_timescaledb_validation_non_dict_in_graph(timescaledb):
 
     # Test with non-dictionary data - should raise TypeError during graph processing
     # The error occurs in the parent Writer class when it tries to process non-dict data
-    with pytest.raises(TypeError, match=r"string indices must be integers"):
+    with pytest.raises(TypeError, match=r"Writer supports only events of type dict or list"):
         controller.emit("this_is_not_a_dictionary")
         controller.terminate()
         controller.await_termination()
@@ -672,7 +672,7 @@ def test_timescaledb_non_dict_emission_in_graph_context(timescaledb):
     non_dict_data = "non_dictionary_string"
 
     # This should raise an error during processing within the graph context
-    with pytest.raises(TypeError, match=r"string indices must be integers"):
+    with pytest.raises(TypeError, match=r"Writer supports only events of type dict or list"):
         controller.emit(non_dict_data)
         controller.terminate()
         controller.await_termination()
@@ -724,11 +724,10 @@ async def test_timescaledb_retry_deadlock_behavior(mock_sleep, timescaledb):
     assert mock_operation.call_count == 4
 
     # Verify sleep calls with expected timing: 0.1 + 0.025, 0.2 + 0.025, 0.4 + 0.025
-    expected_delays = [0.125, 0.225, 0.425]
-    actual_delays = [call[0][0] for call in mock_sleep.call_args_list]
-    # Use approximate comparison for floating point precision
-    for actual, expected in zip(actual_delays, expected_delays):
-        assert abs(actual - expected) < 0.001
+    # Convert to milliseconds to avoid floating point precision issues
+    expected_delays_ms = [125, 225, 425]  # milliseconds
+    actual_delays_ms = [int(call[0][0] * 1000) for call in mock_sleep.call_args_list]
+    assert actual_delays_ms == expected_delays_ms
 
 
 @pytest.mark.asyncio
