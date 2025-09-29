@@ -14,13 +14,12 @@
 
 import asyncio
 import random
-from typing import Any, Callable, Optional
-
-import psycopg
-import psycopg.sql as sql
-from psycopg_pool import AsyncConnectionPool
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from storey.targets import _Batching, _Writer
+
+if TYPE_CHECKING:
+    from psycopg_pool import AsyncConnectionPool
 
 
 class TimescaleDBTarget(_Batching, _Writer):
@@ -164,6 +163,8 @@ class TimescaleDBTarget(_Batching, _Writer):
         This approach avoids creating database connections during synchronous initialization
         while ensuring the pool is available when needed for data operations.
         """
+        from psycopg_pool import AsyncConnectionPool
+
         if self._pool is None:
             self._pool = AsyncConnectionPool(self._dsn, min_size=1, max_size=1, open=False)
             await self._pool.open()
@@ -190,6 +191,8 @@ class TimescaleDBTarget(_Batching, _Writer):
         :param operation_callable: Async function that executes the database operation
         :return: Result of operation_callable()
         """
+        import psycopg
+
         deadlock_attempts = 0
         connection_attempts = 0
 
@@ -347,6 +350,8 @@ class TimescaleDBTarget(_Batching, _Writer):
 
         # Write data using connection pool with retry logic
         async def batch_write_operation():
+            import psycopg.sql as sql
+
             async with self._pool.connection() as conn:
                 async with conn.cursor() as cur:
                     # Use PostgreSQL's COPY protocol for optimal performance

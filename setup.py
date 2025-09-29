@@ -43,7 +43,7 @@ extras_require = {
     "redis": ["redis~=4.3"],
     "sqlalchemy": ["sqlalchemy~=1.3"],
     "tdengine": ["taospy[ws]>=2,<3"],
-    "asyncpg": "asyncpg>=0.30.0",
+    "psycopg": "psycopg[binary,pool]~=3.2",
 }
 
 
