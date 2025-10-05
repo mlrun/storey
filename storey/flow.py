@@ -1614,7 +1614,7 @@ class RunnableExecutor:
         self.num_threads = 0
 
         self._process_executor_by_runnable_name = {}
-        self._mp_context = None
+        self._mp_context = multiprocessing.get_context("spawn")
         self._executors = {}
 
     def add_runnable(self, runnable: ParallelExecutionRunnable, execution_mechanism: str) -> None:
@@ -1656,7 +1656,6 @@ class RunnableExecutor:
             self.num_processes += 1
 
         elif execution_mechanism == ParallelExecutionMechanisms.dedicated_process:
-            self._mp_context = self._mp_context or multiprocessing.get_context("spawn")
             self._process_executor_by_runnable_name[runnable.name] = ProcessPoolExecutor(
                 max_workers=1,
                 mp_context=self._mp_context,

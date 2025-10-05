@@ -15,6 +15,7 @@
 import asyncio
 import copy
 import math
+import multiprocessing.context
 import os
 import queue
 import tempfile
@@ -4996,6 +4997,18 @@ def test_parallel_execution_runnable_uniqueness():
     parallel_execution = ParallelExecution(runnables, execution_mechanism_by_runnable_name={"x": "process_pool"})
     with pytest.raises(ValueError, match="ParallelExecutionRunnable name 'x' is not unique"):
         parallel_execution._init()
+
+
+# ML-11128
+@pytest.mark.parametrize("execution_mechanism", ["process_pool", "dedicated_process"])
+def test_parallel_execution_spawn(execution_mechanism):
+    runnables = [
+        RunnableBusyWait("x"),
+    ]
+    parallel_execution = ParallelExecution(runnables, execution_mechanism_by_runnable_name={"x": execution_mechanism})
+    parallel_execution._init()
+    mp_context = parallel_execution.runnable_executor._mp_context
+    assert isinstance(mp_context, multiprocessing.context.SpawnContext)
 
 
 def test_select_runnable_uniqueness():
