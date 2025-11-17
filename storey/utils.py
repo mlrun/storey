@@ -263,6 +263,7 @@ def find_partitions(url, fs):
     # inner month partitions).
 
     partitions = []
+    partitions_time_attributes = []
 
     def _is_private(path):
         _, tail = os.path.split(path)
@@ -284,15 +285,14 @@ def find_partitions(url, fs):
         partitions.append(part[0])
         find_partition_helper(inner_dir, fs, partitions)
 
-    if fs.isfile(url):
-        return partitions
-    find_partition_helper(url, fs, partitions)
+    if not fs.isfile(url):
+        find_partition_helper(url, fs, partitions)
 
-    legal_time_units = ["year", "month", "day", "hour", "minute", "second"]
+        legal_time_units = ["year", "month", "day", "hour", "minute", "second"]
 
-    partitions_time_attributes = [j for j in legal_time_units if j in partitions]
+        partitions_time_attributes = [j for j in legal_time_units if j in partitions]
 
-    return partitions_time_attributes
+    return partitions_time_attributes, partitions
 
 
 def find_filters(partitions_time_attributes, start, end, filters, filter_column):

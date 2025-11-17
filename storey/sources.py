@@ -1055,7 +1055,7 @@ class ParquetSource(DataframeSource):
     def _read_filtered_parquet(self, path):
         fs, file_path = url_to_file_system(path, self._storage_options)
 
-        partitions_time_attributes = find_partitions(path, fs)
+        partitions_time_attributes, _ = find_partitions(path, fs)
         filters = []
         find_filters(
             partitions_time_attributes,
