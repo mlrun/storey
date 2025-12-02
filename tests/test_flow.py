@@ -5486,19 +5486,19 @@ def test_cyclic_graphs(iterations, with_break_step):
     my_choice = MyChoice(iterations=iterations, name="my_choice", end="end", counter="counter")
     start = Map(lambda x: x, name="start")
     counter = Map(lambda x: x+1, name="counter")
-    end = Complete(name="end")
+    end = Map(lambda x: x, name="end")
 
     source.to(start)
     start.to(counter)
     counter.to(my_choice)
     my_choice.to(end)
-    end.to(Reduce(0, lambda acc, x: acc + x, name="end-1"))
+    end.to(Complete(name="a"))
     my_choice._outlets.append(counter)
     if with_break_step:
         break_step = Map(lambda x: -1, name="end-2")
         counter.set_break_step(break_step)
         my_choice.set_break_step(break_step)
-        break_step.to(Complete(name="end-2-complete"))
+        break_step.to(Complete(name="a"))
 
     controller = source.run()
 
@@ -5523,8 +5523,8 @@ def test_two_cyclic_graphs():
     start = Map(lambda x: x, name="start")
     counter = Map(lambda x: x + 1, name="counter_1")
     counter_2 = Map(lambda x: x + 1, name="counter_2")
-    end_2 = Reduce(0, lambda acc, x: acc + x, name="end_2")
-    my_choice_2 = MyChoice(iterations=10, end="end_2", counter="counter_2", name="my_choice_2")
+    end = Map(lambda x: x, name="end")
+    my_choice_2 = MyChoice(iterations=10, end="end", counter="counter_2", name="my_choice_2")
 
     source.to(start)
     start.to(counter)
@@ -5532,12 +5532,11 @@ def test_two_cyclic_graphs():
     my_choice.to(counter_2)
     my_choice._outlets.append(counter)
     counter_2.to(my_choice_2)
-    my_choice_2.to(end_2)
+    my_choice_2.to(end)
     my_choice_2._outlets.append(counter_2)
+    end.to(Complete())
     controller = source.run()
 
-    controller.emit(1)
+    awaitable_result = controller.emit(1)
+    assert awaitable_result.await_result() == 11
     controller.terminate()
-    termination_result = controller.await_termination()
-    assert termination_result == 11
-
