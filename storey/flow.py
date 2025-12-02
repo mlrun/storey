@@ -44,6 +44,7 @@ class Flow:
         recovery_step=None,
         termination_result_fn=lambda x, y: x if x is not None else y,
         context=None,
+        break_step=None,
         **kwargs,
     ):
         self._outlets = []
@@ -57,6 +58,14 @@ class Flow:
             else:
                 recovery_step._inlets.append(self)
 
+        self._break_step = break_step
+        if break_step:
+            if isinstance(break_step, dict):
+                for step in break_step.values():
+                    step._inlets.append(self)
+            else:
+                break_step._inlets.append(self)
+
         self._termination_result_fn = termination_result_fn
         self.context = context
         self.verbose = context and getattr(context, "verbose", False)
@@ -66,7 +75,9 @@ class Flow:
         self._full_event = kwargs.get("full_event")
         self._input_path = kwargs.get("input_path")
         self._result_path = kwargs.get("result_path")
+        self._max_iteration = kwargs.get("max_iteration", 5)
         self._runnable = False
+        self._initialized = False
         name = kwargs.get("name", None)
         if name:
             self.name = name
@@ -181,22 +192,39 @@ class Flow:
         self._recovery_step = outlet
         return self
 
+    def set_break_step(self, outlet):
+        self._break_step = outlet
+        return self
+
     def _get_recovery_step(self, exception):
         if isinstance(self._recovery_step, dict):
             return self._recovery_step.get(type(exception), None)
         else:
             return self._recovery_step
 
+    def _get_break_step(self, iteration_number):
+        if isinstance(self._break_step, dict):
+            return self._recovery_step.get(type(iteration_number), None)
+        else:
+            return self._break_step
+
     def run(self):
         if not self._legal_first_step and not self._runnable:
             raise ValueError("Flow must start with a source")
+        if self._initialized:
+            return None
         self._init()
+        self._initialized = True
         outlets = []
         outlets.extend(self._outlets)
         outlets.extend(self._get_recovery_steps())
+        if self._get_break_steps():
+            outlets.extend(self._get_break_steps())
         for outlet in outlets:
             outlet._runnable = True
-            self._closeables.extend(outlet.run())
+            outlet_closeables = outlet.run()
+            if outlet_closeables:
+                self._closeables.extend(outlet_closeables)
         return self._closeables
 
     def _get_recovery_steps(self):
@@ -207,6 +235,14 @@ class Flow:
                 return [self._recovery_step]
         return []
 
+    def _get_break_steps(self):
+        if self._break_step:
+            if isinstance(self._break_step, dict):
+                return list(self._break_step.values())
+            else:
+                return [self._break_step]
+        return []
+
     async def run_async(self):
         raise NotImplementedError
 
@@ -215,7 +251,11 @@ class Flow:
 
     async def _do_and_recover(self, event):
         try:
-            return await self._do(event)
+            break_step = await self.check_and_update_iteration_number(event)
+            if break_step:
+                return await break_step._do(event)
+            else:
+                return await self._do(event)
         except BaseException as ex:
             if getattr(ex, "_raised_by_storey_step", None) is not None:
                 raise ex
@@ -264,7 +304,7 @@ class Flow:
             outlets[0]._termination_received += 1
             if outlets[0]._should_terminate():
                 self._termination_result = await outlets[0]._do(_termination_obj)
-            for outlet in outlets[1:] + self._get_recovery_steps():
+            for outlet in outlets[1:] + self._get_recovery_steps() + self._get_break_steps():
                 outlet._termination_received += 1
                 if outlet._should_terminate():
                     self._termination_result = self._termination_result_fn(
@@ -320,20 +360,60 @@ class Flow:
                 mapped_event.body = fn_result
             return mapped_event
 
-    def _check_step_in_flow(self, type_to_check):
+    def _check_step_in_flow(self, type_to_check, visited=None):
+        # initialize the visited set once at the top
+        if visited is None:
+            visited = set()
+
+        # detect cycles
+        if self in visited:
+            return False
+        visited.add(self)
+
+        # check this node
         if isinstance(self, type_to_check):
             return True
+
+        # check outlets
         for outlet in self._outlets:
-            if outlet._check_step_in_flow(type_to_check):
+            if outlet._check_step_in_flow(type_to_check, visited):
                 return True
+
+        # check recovery step
         if isinstance(self._recovery_step, Flow):
-            if self._recovery_step._check_step_in_flow(type_to_check):
+            if self._recovery_step._check_step_in_flow(type_to_check, visited):
                 return True
+
         elif isinstance(self._recovery_step, dict):
             for step in self._recovery_step.values():
-                if step._check_step_in_flow(type_to_check):
+                if step._check_step_in_flow(type_to_check, visited):
                     return True
         return False
+
+    async def check_and_update_iteration_number(self, event) -> Optional[Callable]:
+        if hasattr(event, "_cyclic_counter") and isinstance(event._cyclic_counter, dict):
+            counter = event._cyclic_counter.get(self.name, 0)
+            if counter >= self._max_iteration:
+                break_step = self._get_break_step(counter)
+                if break_step is not None:
+                    return break_step
+                raise RuntimeError(
+                    f"Event {event.id} exceeded the maximum iteration count of {self._max_iteration} in step "
+                    f"'{self.name}'."
+                )
+            event._cyclic_counter[self.name] = counter + 1
+        else:
+            event._cyclic_counter = {self.name: 1}
+
+
+    def _get_iteration_counter(self, event):
+        if not hasattr(event, "_cyclic_counter"):
+            return 0
+        else:
+            return event._cyclic_counter.get(self.name, 0)
+
+
+
 
 
 class WithUUID:
@@ -488,6 +568,7 @@ class Map(_UnaryFunctionFlow):
     """
 
     async def _do_internal(self, event, fn_result):
+        print(f"Map fn_result: {fn_result} name - {self.name}")
         mapped_event = self._user_fn_output_to_event(event, fn_result)
         await self._do_downstream(mapped_event)
 

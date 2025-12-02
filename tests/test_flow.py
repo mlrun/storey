@@ -33,6 +33,7 @@ import pytest
 from aiohttp import ClientConnectorError, InvalidURL
 from packaging import version
 from pandas.testing import assert_frame_equal
+from sqlalchemy.sql import True_
 
 import integration.conftest
 import storey
@@ -5464,3 +5465,78 @@ async def async_test_error_raising_batch_target():
 
 def test_error_raising_batch_target():
     asyncio.run(async_test_error_raising_batch_target())
+
+class MyChoice(Choice):
+    def __init__(self, iterations: int, end, counter, **kwargs):
+        super().__init__(**kwargs)
+        self.iterations = iterations
+        self.end = end
+        self.counter = counter
+
+    def select_outlets(self, event):
+        outlets = [self.counter]
+        if event > self.iterations:
+            outlets = [self.end]
+        return outlets
+
+@pytest.mark.parametrize("iterations", [5])
+@pytest.mark.parametrize("with_break_step", [True])
+def test_cyclic_graphs(iterations, with_break_step):
+    source = SyncEmitSource()
+    my_choice = MyChoice(iterations=iterations, name="my_choice", end="end-2", counter="counter")
+    start = Map(lambda x: x, name="start")
+    counter = Map(lambda x: x+1, name="counter")
+    end = Reduce(0, lambda acc, x: acc + x, name="end")
+
+    source.to(start)
+    start.to(counter)
+    counter.to(my_choice)
+    my_choice.to(end)
+    my_choice._outlets.append(counter)
+    if with_break_step:
+        break_step = Reduce(-1, lambda acc, x: -1, name="end-2")
+        counter.set_break_step(break_step)
+        my_choice.set_break_step(break_step)
+
+    controller = source.run()
+
+
+    if iterations == 5:
+        awaitable_result = controller.emit(1)
+        assert awaitable_result.await_result() == iterations + 1
+    else:
+        if with_break_step:
+            awaitable_result = controller.emit(1)
+            assert awaitable_result.await_result() == -1
+        else:
+            with pytest.raises(RuntimeError):
+                awaitable_result = controller.emit(1)
+                awaitable_result.await_result()
+
+        controller.terminate()
+        controller.await_termination()
+
+def test_two_cyclic_graphs():
+    source = SyncEmitSource()
+    my_choice = MyChoice(iterations=5, end="counter_2", counter="counter_1", name="my_choice")
+    start = Map(lambda x: x, name="start")
+    counter = Map(lambda x: x + 1, name="counter_1")
+    counter_2 = Map(lambda x: x + 1, name="counter_2")
+    end_2 = Reduce(0, lambda acc, x: acc + x, name="end_2")
+    my_choice_2 = MyChoice(iterations=10, end="end_2", counter="counter_2", name="my_choice_2")
+
+    source.to(start)
+    start.to(counter)
+    counter.to(my_choice)
+    my_choice.to(counter_2)
+    my_choice._outlets.append(counter)
+    counter_2.to(my_choice_2)
+    my_choice_2.to(end_2)
+    my_choice_2._outlets.append(counter_2)
+    controller = source.run()
+
+    controller.emit(1)
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert termination_result == 11
+
