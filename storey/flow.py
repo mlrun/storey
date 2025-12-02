@@ -568,7 +568,6 @@ class Map(_UnaryFunctionFlow):
     """
 
     async def _do_internal(self, event, fn_result):
-        print(f"Map fn_result: {fn_result} name - {self.name}")
         mapped_event = self._user_fn_output_to_event(event, fn_result)
         await self._do_downstream(mapped_event)
 

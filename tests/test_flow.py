@@ -5479,24 +5479,26 @@ class MyChoice(Choice):
             outlets = [self.end]
         return outlets
 
-@pytest.mark.parametrize("iterations", [5])
-@pytest.mark.parametrize("with_break_step", [True])
+@pytest.mark.parametrize("iterations", [5, 10])
+@pytest.mark.parametrize("with_break_step", [True, False])
 def test_cyclic_graphs(iterations, with_break_step):
     source = SyncEmitSource()
-    my_choice = MyChoice(iterations=iterations, name="my_choice", end="end-2", counter="counter")
+    my_choice = MyChoice(iterations=iterations, name="my_choice", end="end", counter="counter")
     start = Map(lambda x: x, name="start")
     counter = Map(lambda x: x+1, name="counter")
-    end = Reduce(0, lambda acc, x: acc + x, name="end")
+    end = Complete(name="end")
 
     source.to(start)
     start.to(counter)
     counter.to(my_choice)
     my_choice.to(end)
+    end.to(Reduce(0, lambda acc, x: acc + x, name="end-1"))
     my_choice._outlets.append(counter)
     if with_break_step:
-        break_step = Reduce(-1, lambda acc, x: -1, name="end-2")
+        break_step = Map(lambda x: -1, name="end-2")
         counter.set_break_step(break_step)
         my_choice.set_break_step(break_step)
+        break_step.to(Complete(name="end-2-complete"))
 
     controller = source.run()
 
@@ -5513,8 +5515,7 @@ def test_cyclic_graphs(iterations, with_break_step):
                 awaitable_result = controller.emit(1)
                 awaitable_result.await_result()
 
-        controller.terminate()
-        controller.await_termination()
+    controller.terminate()
 
 def test_two_cyclic_graphs():
     source = SyncEmitSource()
