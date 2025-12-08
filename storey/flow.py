@@ -22,6 +22,7 @@ import os
 import pickle
 import time
 import traceback
+import typing
 import uuid
 from asyncio import Task
 from collections import defaultdict
@@ -44,7 +45,6 @@ class Flow:
         recovery_step=None,
         termination_result_fn=lambda x, y: x if x is not None else y,
         context=None,
-        break_step=None,
         **kwargs,
     ):
         self._outlets = []
@@ -57,14 +57,6 @@ class Flow:
                     step._inlets.append(self)
             else:
                 recovery_step._inlets.append(self)
-
-        self._break_step = break_step
-        if break_step:
-            if isinstance(break_step, dict):
-                for step in break_step.values():
-                    step._inlets.append(self)
-            else:
-                break_step._inlets.append(self)
 
         self._termination_result_fn = termination_result_fn
         self.context = context
@@ -85,10 +77,21 @@ class Flow:
             self.name = type(self).__name__
 
         self._closeables = []
+        self._selected_outlet: Optional[list[str]] = None
 
     def _init(self):
         self._termination_received = 0
         self._termination_result = None
+        self._name_to_outlet = {}
+        if self._method_is_overridden("select_outlets", Flow):
+            for outlet in self._outlets:
+                if outlet.name in self._name_to_outlet:
+                    raise ValueError(f"Ambiguous outlet name '{outlet.name}' in Choice step")
+                self._name_to_outlet[outlet.name] = outlet
+
+    def _method_is_overridden(self, method_name: str, parent_cls):
+        """Return True if the subclass overrides the given method."""
+        return getattr(self.__class__, method_name) is not getattr(parent_cls, method_name)
 
     def to_dict(self, fields=None, exclude=None):
         """convert the step object to a python dictionary"""
@@ -192,21 +195,11 @@ class Flow:
         self._recovery_step = outlet
         return self
 
-    def set_break_step(self, outlet):
-        self._break_step = outlet
-        return self
-
     def _get_recovery_step(self, exception):
         if isinstance(self._recovery_step, dict):
             return self._recovery_step.get(type(exception), None)
         else:
             return self._recovery_step
-
-    def _get_break_step(self, iteration_number):
-        if isinstance(self._break_step, dict):
-            return self._recovery_step.get(type(iteration_number), None)
-        else:
-            return self._break_step
 
     def run(self):
         if not self._legal_first_step and not self._runnable:
@@ -218,8 +211,6 @@ class Flow:
         outlets = []
         outlets.extend(self._outlets)
         outlets.extend(self._get_recovery_steps())
-        if self._get_break_steps():
-            outlets.extend(self._get_break_steps())
         for outlet in outlets:
             outlet._runnable = True
             outlet_closeables = outlet.run()
@@ -235,14 +226,6 @@ class Flow:
                 return [self._recovery_step]
         return []
 
-    def _get_break_steps(self):
-        if self._break_step:
-            if isinstance(self._break_step, dict):
-                return list(self._break_step.values())
-            else:
-                return [self._break_step]
-        return []
-
     async def run_async(self):
         raise NotImplementedError
 
@@ -251,11 +234,8 @@ class Flow:
 
     async def _do_and_recover(self, event):
         try:
-            break_step = await self.check_and_update_iteration_number(event)
-            if break_step:
-                return await break_step._do(event)
-            else:
-                return await self._do(event)
+            self.check_and_update_iteration_number(event)
+            return await self._do(event)
         except BaseException as ex:
             if getattr(ex, "_raised_by_storey_step", None) is not None:
                 raise ex
@@ -296,7 +276,21 @@ class Flow:
         return self._termination_received == len(self._inlets)
 
     async def _do_downstream(self, event, outlets=None):
-        outlets = self._outlets if outlets is None else outlets
+        if outlets:
+            outlets = outlets
+        elif event is not _termination_obj:
+            if self._selected_outlet:
+                outlet_names = self._selected_outlet
+            else:
+                if asyncio.iscoroutinefunction(self.select_outlets):
+                    outlet_names = await self.select_outlets(event.body)
+                else:
+                    outlet_names = self.select_outlets(event.body)
+            outlets = self._check_outlets_by_names(outlet_names) if outlet_names else self._outlets
+        else:
+            outlets = self._outlets
+
+        self._selected_outlet = None
         if not outlets:
             return
         if event is _termination_obj:
@@ -304,7 +298,7 @@ class Flow:
             outlets[0]._termination_received += 1
             if outlets[0]._should_terminate():
                 self._termination_result = await outlets[0]._do(_termination_obj)
-            for outlet in outlets[1:] + self._get_recovery_steps() + self._get_break_steps():
+            for outlet in outlets[1:] + self._get_recovery_steps():
                 outlet._termination_received += 1
                 if outlet._should_terminate():
                     self._termination_result = self._termination_result_fn(
@@ -390,13 +384,10 @@ class Flow:
                     return True
         return False
 
-    async def check_and_update_iteration_number(self, event) -> Optional[Callable]:
+    def check_and_update_iteration_number(self, event) -> Optional[Callable]:
         if hasattr(event, "_cyclic_counter") and isinstance(event._cyclic_counter, dict):
             counter = event._cyclic_counter.get(self.name, 0)
             if counter >= self._max_iteration:
-                break_step = self._get_break_step(counter)
-                if break_step is not None:
-                    return break_step
                 raise RuntimeError(
                     f"Event {event.id} exceeded the maximum iteration count of {self._max_iteration} in step "
                     f"'{self.name}'."
@@ -405,15 +396,35 @@ class Flow:
         else:
             event._cyclic_counter = {self.name: 1}
 
-
     def _get_iteration_counter(self, event):
         if not hasattr(event, "_cyclic_counter"):
             return 0
         else:
             return event._cyclic_counter.get(self.name, 0)
 
+    def select_outlets(self, event: dict) -> typing.Optional[Collection[str]]:
+        """
+        Override this method to route events based on a customer logic. The default implementation will route all
+        events to all outlets.
+        """
+        return None
 
-
+    def _check_outlets_by_names(self, outlet_names: Collection[str]) -> list["Flow"]:
+        outlets = []
+        if len(set(outlet_names)) != len(outlet_names):
+            raise ValueError(
+                f"select_outlets() of {self.name} returned duplicate outlets among the defined outlets: "
+                + ", ".join(outlet_names)
+            )
+        for outlet_name in outlet_names:
+            if outlet_name not in self._name_to_outlet:
+                raise ValueError(
+                    f"select_outlets() of {self.name} returned outlet name '{outlet_name}', which is not one of the "
+                    f"defined outlets: " + ", ".join(self._name_to_outlet)
+                )
+            outlet = self._name_to_outlet[outlet_name]
+            outlets.append(outlet)
+        return outlets
 
 
 class WithUUID:
@@ -438,20 +449,8 @@ class Choice(Flow):
 
     def _init(self):
         super()._init()
-        self._name_to_outlet = {}
-        for outlet in self._outlets:
-            if outlet.name in self._name_to_outlet:
-                raise ValueError(f"Ambiguous outlet name '{outlet.name}' in Choice step")
-            self._name_to_outlet[outlet.name] = outlet
         # TODO: hacky way of supporting mlrun preview, which replaces targets with a DFTarget
-        self._passthrough_for_preview = list(self._name_to_outlet) == ["dataframe"]
-
-    def select_outlets(self, event) -> Collection[str]:
-        """
-        Override this method to route events based on a customer logic. The default implementation will route all
-        events to all outlets.
-        """
-        return self._name_to_outlet.keys()
+        self._passthrough_for_preview = list(self._name_to_outlet) == ["dataframe"] if self._name_to_outlet else False
 
     async def _do(self, event):
         if event is _termination_obj:
@@ -464,19 +463,7 @@ class Choice(Flow):
                 outlet = self._name_to_outlet["dataframe"]
                 outlets.append(outlet)
             else:
-                if len(set(outlet_names)) != len(outlet_names):
-                    raise ValueError(
-                        "select_outlets() returned duplicate outlets among the defined outlets: "
-                        + ", ".join(outlet_names)
-                    )
-                for outlet_name in outlet_names:
-                    if outlet_name not in self._name_to_outlet:
-                        raise ValueError(
-                            f"select_outlets() returned outlet name '{outlet_name}', which is not one of the "
-                            f"defined outlets: " + ", ".join(self._name_to_outlet)
-                        )
-                    outlet = self._name_to_outlet[outlet_name]
-                    outlets.append(outlet)
+                outlets = self._check_outlets_by_names(outlet_names) if outlet_names else self._outlets
             return await self._do_downstream(event, outlets=outlets)
 
 
@@ -501,26 +488,31 @@ class Recover(Flow):
 
 
 class _UnaryFunctionFlow(Flow):
-    def __init__(self, fn, long_running=None, pass_context=None, **kwargs):
+    def __init__(self, fn, long_running=None, pass_context=None, fn_select_outlets=None, **kwargs):
         super().__init__(**kwargs)
         if not callable(fn):
             raise TypeError(f"Expected a callable, got {type(fn)}")
-        self._is_async = asyncio.iscoroutinefunction(fn)
-        if self._is_async and long_running:
+        if asyncio.iscoroutinefunction(fn) and long_running:
             raise ValueError("long_running=True cannot be used in conjunction with a coroutine")
         self._long_running = long_running
         self._fn = fn
         self._pass_context = pass_context
+        if fn_select_outlets and not callable(fn_select_outlets):
+            raise TypeError(f"Expected fn_select_outlets to be callable, got {type(fn)}")
+        self._outlets_selector = fn_select_outlets
 
-    async def _call(self, element):
+    async def _call(self, element, fn, pass_kwargs=True):
         if self._long_running:
-            res = await asyncio.get_running_loop().run_in_executor(None, self._fn, element)
+            res = await asyncio.get_running_loop().run_in_executor(None, fn, element)
         else:
             kwargs = {}
             if self._pass_context:
                 kwargs = {"context": self.context}
-            res = self._fn(element, **kwargs)
-        if self._is_async:
+            if pass_kwargs:
+                res = fn(element, **kwargs)
+            else:
+                res = fn(element)
+        if asyncio.iscoroutinefunction(fn):
             res = await res
         return res
 
@@ -532,8 +524,14 @@ class _UnaryFunctionFlow(Flow):
             return await self._do_downstream(_termination_obj)
         else:
             element = self._get_event_or_body(event)
-            fn_result = await self._call(element)
+            fn_result = await self._call(element, self._fn)
             await self._do_internal(event, fn_result)
+
+    async def select_outlets(self, event_body):
+        if self._outlets_selector:
+            return await self._call(event_body, self._outlets_selector, pass_kwargs=False)
+        else:
+            return super().select_outlets(event_body)
 
 
 class DropColumns(Flow):
@@ -1307,6 +1305,9 @@ class Batch(_Batching, WithUUID):
             # Preserve reference to the original events to avoid early commit of offsets
             event._original_events = batch_events
         return await self._do_downstream(event)
+
+    # async def _do_downstream(self, event):
+    #     raise RuntimeError("Batch step must be extended to implement _emit()")
 
 
 class JoinWithV3IOTable(_ConcurrentJobExecution):

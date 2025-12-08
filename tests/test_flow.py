@@ -5466,7 +5466,8 @@ async def async_test_error_raising_batch_target():
 def test_error_raising_batch_target():
     asyncio.run(async_test_error_raising_batch_target())
 
-class MyChoice(Choice):
+
+class MyLoop(Map):
     def __init__(self, iterations: int, end, counter, **kwargs):
         super().__init__(**kwargs)
         self.iterations = iterations
@@ -5479,35 +5480,74 @@ class MyChoice(Choice):
             outlets = [self.end]
         return outlets
 
-@pytest.mark.parametrize("iterations", [5, 10])
-@pytest.mark.parametrize("with_break_step", [True, False])
-def test_cyclic_graphs(iterations, with_break_step):
+
+def test_regular_step_with_choice():
+    class MyStep(Map):
+        def select_outlets(self, event):
+            outlets = ["all_events"]
+            if event > 5:
+                outlets.append("more_than_five")
+            else:
+                outlets.append("up_to_five")
+            return outlets
+
     source = SyncEmitSource()
-    my_choice = MyChoice(iterations=iterations, name="my_choice", end="end", counter="counter")
+    my_step = MyStep(fn=lambda x: x, termination_result_fn=lambda x, y: x + y)
+    all_events = Map(lambda x: x, name="all_events")
+    more_than_five = Map(lambda x: x * 10, name="more_than_five")
+    up_to_five = Map(lambda x: x * 100, name="up_to_five")
+    sum_up_all_events = Reduce(0, lambda acc, x: acc + x)
+    sum_up_more_than_five = Reduce(0, lambda acc, x: acc + x)
+    sum_up_up_to_five = Reduce(0, lambda acc, x: acc + x)
+
+    source.to(my_step)
+    my_step.to(all_events)
+    my_step.to(more_than_five)
+    my_step.to(up_to_five)
+    all_events.to(sum_up_all_events)
+    more_than_five.to(sum_up_more_than_five)
+    up_to_five.to(sum_up_up_to_five)
+
+    controller = source.run()
+
+    for i in range(4, 8):
+        controller.emit(i)
+
+    controller.terminate()
+    termination_result = controller.await_termination()
+
+    expected = sum(range(4, 8)) + sum(range(6, 8)) * 10 + sum(range(4, 6)) * 100
+    assert termination_result == expected
+
+
+@pytest.mark.parametrize("iterations", [5, 10])
+@pytest.mark.parametrize("with_recovery", [True, False])
+def test_cyclic_graphs(iterations, with_recovery):
+    source = SyncEmitSource()
+    my_loop = MyLoop(fn=lambda x: x, iterations=iterations, name="my_loop", end="end", counter="counter")
     start = Map(lambda x: x, name="start")
-    counter = Map(lambda x: x+1, name="counter")
+    counter = Map(lambda x: x + 1, name="counter")
     end = Map(lambda x: x, name="end")
 
     source.to(start)
     start.to(counter)
-    counter.to(my_choice)
-    my_choice.to(end)
-    end.to(Complete(name="a"))
-    my_choice._outlets.append(counter)
-    if with_break_step:
-        break_step = Map(lambda x: -1, name="end-2")
-        counter.set_break_step(break_step)
-        my_choice.set_break_step(break_step)
-        break_step.to(Complete(name="a"))
+    counter.to(my_loop)
+    my_loop.to(end)
+    end.to(Complete())
+    my_loop._outlets.append(counter)
+    if with_recovery:
+        recovery_step = Map(lambda x: -1, name="end-2")
+        counter.set_recovery_step(recovery_step)
+        my_loop.set_recovery_step(recovery_step)
+        recovery_step.to(Complete())
 
     controller = source.run()
-
 
     if iterations == 5:
         awaitable_result = controller.emit(1)
         assert awaitable_result.await_result() == iterations + 1
     else:
-        if with_break_step:
+        if with_recovery:
             awaitable_result = controller.emit(1)
             assert awaitable_result.await_result() == -1
         else:
@@ -5517,23 +5557,24 @@ def test_cyclic_graphs(iterations, with_break_step):
 
     controller.terminate()
 
+
 def test_two_cyclic_graphs():
     source = SyncEmitSource()
-    my_choice = MyChoice(iterations=5, end="counter_2", counter="counter_1", name="my_choice")
+    my_loop = MyLoop(fn=lambda x: x, iterations=5, end="counter_2", counter="counter_1", name="my_loop")
     start = Map(lambda x: x, name="start")
     counter = Map(lambda x: x + 1, name="counter_1")
     counter_2 = Map(lambda x: x + 1, name="counter_2")
     end = Map(lambda x: x, name="end")
-    my_choice_2 = MyChoice(iterations=10, end="end", counter="counter_2", name="my_choice_2")
+    my_loop_2 = MyLoop(fn=lambda x: x, iterations=10, end="end", counter="counter_2", name="my_loop_2")
 
     source.to(start)
     start.to(counter)
-    counter.to(my_choice)
-    my_choice.to(counter_2)
-    my_choice._outlets.append(counter)
-    counter_2.to(my_choice_2)
-    my_choice_2.to(end)
-    my_choice_2._outlets.append(counter_2)
+    counter.to(my_loop)
+    my_loop.to(counter_2)
+    my_loop._outlets.append(counter)
+    counter_2.to(my_loop_2)
+    my_loop_2.to(end)
+    my_loop_2._outlets.append(counter_2)
     end.to(Complete())
     controller = source.run()
 
