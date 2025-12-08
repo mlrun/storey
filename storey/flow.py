@@ -77,17 +77,16 @@ class Flow:
             self.name = type(self).__name__
 
         self._closeables = []
-        self._selected_outlet: Optional[list[str]] = None
 
     def _init(self):
         self._termination_received = 0
         self._termination_result = None
         self._name_to_outlet = {}
-        if self._method_is_overridden("select_outlets", Flow):
-            for outlet in self._outlets:
-                if outlet.name in self._name_to_outlet:
-                    raise ValueError(f"Ambiguous outlet name '{outlet.name}' in Choice step")
-                self._name_to_outlet[outlet.name] = outlet
+        for outlet in self._outlets:
+            if outlet.name in self._name_to_outlet:
+                raise ValueError(f"Ambiguous outlet name '{outlet.name}' in Choice step")
+            self._name_to_outlet[outlet.name] = outlet
+        self._initialized = True
 
     def _method_is_overridden(self, method_name: str, parent_cls):
         """Return True if the subclass overrides the given method."""
@@ -207,7 +206,6 @@ class Flow:
         if self._initialized:
             return None
         self._init()
-        self._initialized = True
         outlets = []
         outlets.extend(self._outlets)
         outlets.extend(self._get_recovery_steps())
@@ -279,18 +277,14 @@ class Flow:
         if outlets:
             outlets = outlets
         elif event is not _termination_obj:
-            if self._selected_outlet:
-                outlet_names = self._selected_outlet
+            if asyncio.iscoroutinefunction(self.select_outlets):
+                outlet_names = await self.select_outlets(event.body)
             else:
-                if asyncio.iscoroutinefunction(self.select_outlets):
-                    outlet_names = await self.select_outlets(event.body)
-                else:
-                    outlet_names = self.select_outlets(event.body)
+                outlet_names = self.select_outlets(event.body)
             outlets = self._check_outlets_by_names(outlet_names) if outlet_names else self._outlets
         else:
             outlets = self._outlets
 
-        self._selected_outlet = None
         if not outlets:
             return
         if event is _termination_obj:
@@ -402,7 +396,7 @@ class Flow:
         else:
             return event._cyclic_counter.get(self.name, 0)
 
-    def select_outlets(self, event: dict) -> typing.Optional[Collection[str]]:
+    def select_outlets(self, event) -> typing.Optional[Collection[str]]:
         """
         Override this method to route events based on a customer logic. The default implementation will route all
         events to all outlets.
@@ -411,19 +405,23 @@ class Flow:
 
     def _check_outlets_by_names(self, outlet_names: Collection[str]) -> list["Flow"]:
         outlets = []
+
+        # Check for duplicates
         if len(set(outlet_names)) != len(outlet_names):
             raise ValueError(
-                f"select_outlets() of {self.name} returned duplicate outlets among the defined outlets: "
-                + ", ".join(outlet_names)
+                f"Invalid outlet selection for '{self.name}': duplicate outlet names were provided "
+                f"({', '.join(outlet_names)})."
             )
+
+        # Validate each outlet name
         for outlet_name in outlet_names:
             if outlet_name not in self._name_to_outlet:
                 raise ValueError(
-                    f"select_outlets() of {self.name} returned outlet name '{outlet_name}', which is not one of the "
-                    f"defined outlets: " + ", ".join(self._name_to_outlet)
+                    f"Invalid outlet '{outlet_name}' for '{self.name}'. "
+                    f"Allowed outlets are: {', '.join(self._name_to_outlet)}."
                 )
-            outlet = self._name_to_outlet[outlet_name]
-            outlets.append(outlet)
+            outlets.append(self._name_to_outlet[outlet_name])
+
         return outlets
 
 
@@ -1305,9 +1303,6 @@ class Batch(_Batching, WithUUID):
             # Preserve reference to the original events to avoid early commit of offsets
             event._original_events = batch_events
         return await self._do_downstream(event)
-
-    # async def _do_downstream(self, event):
-    #     raise RuntimeError("Batch step must be extended to implement _emit()")
 
 
 class JoinWithV3IOTable(_ConcurrentJobExecution):
