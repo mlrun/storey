@@ -77,6 +77,7 @@ class Flow:
             self.name = type(self).__name__
 
         self._closeables = []
+        self._selected_outlet: Optional[list[str]] = None
 
     def _init(self):
         self._termination_received = 0
@@ -277,10 +278,14 @@ class Flow:
         if outlets:
             outlets = outlets
         elif event is not _termination_obj:
-            if asyncio.iscoroutinefunction(self.select_outlets):
-                outlet_names = await self.select_outlets(event.body)
+            if self._selected_outlet:
+                outlet_names = self._selected_outlet
+                self._selected_outlet = None
             else:
-                outlet_names = self.select_outlets(event.body)
+                if asyncio.iscoroutinefunction(self.select_outlets):
+                    outlet_names = await self.select_outlets(event.body)
+                else:
+                    outlet_names = self.select_outlets(event.body)
             outlets = self._check_outlets_by_names(outlet_names) if outlet_names else self._outlets
         else:
             outlets = self._outlets
@@ -403,6 +408,15 @@ class Flow:
         """
         return None
 
+    def set_next_outlets(self, outlet_names: Union[str, list[str]]):
+        """
+        Set the next outlets to which the event will be sent. This method can be used in conjunction with
+        select_outlets() to dynamically determine the outlets for the next event.
+
+        :param outlet_names: A collection of outlet names to which the next event should be sent.
+        """
+        self._selected_outlet = outlet_names if isinstance(outlet_names, list) else [outlet_names]
+
     def _check_outlets_by_names(self, outlet_names: Collection[str]) -> list["Flow"]:
         outlets = []
 
@@ -448,7 +462,7 @@ class Choice(Flow):
     def _init(self):
         super()._init()
         # TODO: hacky way of supporting mlrun preview, which replaces targets with a DFTarget
-        self._passthrough_for_preview = list(self._name_to_outlet) == ["dataframe"] if self._name_to_outlet else False
+        self._passthrough_for_preview = list(self._name_to_outlet) == ["dataframe"]
 
     async def _do(self, event):
         if event is _termination_obj:
