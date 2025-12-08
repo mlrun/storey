@@ -22,7 +22,6 @@ import os
 import pickle
 import time
 import traceback
-import typing
 import uuid
 from asyncio import Task
 from collections import defaultdict
@@ -401,7 +400,7 @@ class Flow:
         else:
             return event._cyclic_counter.get(self.name, 0)
 
-    def select_outlets(self, event) -> typing.Optional[Collection[str]]:
+    def select_outlets(self, event) -> Optional[Collection[str]]:
         """
         Override this method to route events based on a customer logic. The default implementation will route all
         events to all outlets.
