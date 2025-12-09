@@ -21,7 +21,7 @@ on: pull_request_target
 
 jobs:
   is-safe-to-test:
-    runs-on: [ self-hosted, Linux ]
+    runs-on: ubuntu-latest
     outputs:
       is_safe: ${{ steps.check.outputs.result }}
     steps:
@@ -52,7 +52,7 @@ jobs:
             
             return isCollaborator;
   fail-if-unsafe:
-    runs-on: [ self-hosted, Linux ]
+    runs-on: ubuntu-latest
     needs: is-safe-to-test
     if: ${{ needs.is-safe-to-test.outputs.is_safe == 'false' }}
     steps:
