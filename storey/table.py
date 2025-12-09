@@ -68,6 +68,7 @@ class Table:
         self._aggregations_read_only = False
         self._use_windows_from_schema = False
         self._q = None
+        self._worker_awaitable = None
         self._max_updates_in_flight = max_updates_in_flight
         self._pending_by_key = {}
         self._flush_interval_secs = flush_interval_secs
@@ -179,6 +180,7 @@ class Table:
             self._flush_task = asyncio.get_running_loop().create_task(self._flush_worker())
 
     async def close(self):
+        await self._terminate()
         await self._storage.close()
 
     async def _aggregate(self, key, event, data, timestamp):
@@ -477,7 +479,15 @@ class Table:
                 await self._worker_awaitable
             for value in self._attrs_cache.values():
                 value.lock = None
+            # Clear caches to prevent memory leak (ML-11518)
+            self._attrs_cache.clear()
+            self._changed_keys.clear()
+            self._pending_by_key.clear()
+            self._pending_events.clear()
+            self._aggregates = None
+            self._schema = None
             self._q = None
+            self._worker_awaitable = None
             self._flush_task = None
             self._flush_exception = None
 

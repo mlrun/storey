@@ -1134,6 +1134,14 @@ class _Batching(Flow):
 
     async def _do(self, event):
         if event is _termination_obj:
+            # Cancel _timeout_task to prevent memory leak (ML-11518)
+            if self._timeout_task is not None:
+                self._timeout_task.cancel()
+                try:
+                    await self._timeout_task
+                except asyncio.CancelledError:
+                    pass
+                self._timeout_task = None
             await self._emit_all()
             await self._terminate()
             return await self._do_downstream(_termination_obj)
