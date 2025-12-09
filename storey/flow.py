@@ -44,6 +44,7 @@ class Flow:
         recovery_step=None,
         termination_result_fn=lambda x, y: x if x is not None else y,
         context=None,
+        max_iteration: Optional[int] = None,
         **kwargs,
     ):
         self._outlets = []
@@ -66,9 +67,8 @@ class Flow:
         self._full_event = kwargs.get("full_event")
         self._input_path = kwargs.get("input_path")
         self._result_path = kwargs.get("result_path")
-        self._max_iteration = kwargs.get("max_iteration", 5)
+        self._max_iteration = max_iteration
         self._runnable = False
-        self._initialized = False
         name = kwargs.get("name", None)
         if name:
             self.name = name
@@ -77,16 +77,20 @@ class Flow:
 
         self._closeables = []
         self._selected_outlet: Optional[list[str]] = None
+        self._create_name_to_outlet = True
 
     def _init(self):
         self._termination_received = 0
         self._termination_result = None
         self._name_to_outlet = {}
+        if self._method_is_overridden("select_outlets", Flow) and self._create_name_to_outlet:
+            self._init_name_to_outlet()
+
+    def _init_name_to_outlet(self):
         for outlet in self._outlets:
             if outlet.name in self._name_to_outlet:
                 raise ValueError(f"Ambiguous outlet name '{outlet.name}' in Choice step")
             self._name_to_outlet[outlet.name] = outlet
-        self._initialized = True
 
     def _method_is_overridden(self, method_name: str, parent_cls):
         """Return True if the subclass overrides the given method."""
@@ -200,18 +204,26 @@ class Flow:
         else:
             return self._recovery_step
 
-    def run(self):
+    def run(self, visited=None):
         if not self._legal_first_step and not self._runnable:
             raise ValueError("Flow must start with a source")
-        if self._initialized:
+
+        # Initialize visited set once at the top (only for the root call)
+        if visited is None:
+            visited = set()
+
+        # Detect cycles: if we've already visited this step, don't run it again
+        if self in visited:
             return None
         self._init()
+        visited.add(self)
+
         outlets = []
         outlets.extend(self._outlets)
         outlets.extend(self._get_recovery_steps())
         for outlet in outlets:
             outlet._runnable = True
-            outlet_closeables = outlet.run()
+            outlet_closeables = outlet.run(visited)
             if outlet_closeables:
                 self._closeables.extend(outlet_closeables)
         return self._closeables
@@ -383,7 +395,11 @@ class Flow:
         return False
 
     def check_and_update_iteration_number(self, event) -> Optional[Callable]:
-        if hasattr(event, "_cyclic_counter") and isinstance(event._cyclic_counter, dict):
+        if (
+            hasattr(event, "_cyclic_counter")
+            and isinstance(event._cyclic_counter, dict)
+            and self._max_iteration is not None
+        ):
             counter = event._cyclic_counter.get(self.name, 0)
             if counter >= self._max_iteration:
                 raise RuntimeError(
@@ -414,6 +430,8 @@ class Flow:
 
         :param outlet_names: A collection of outlet names to which the next event should be sent.
         """
+        if not self._name_to_outlet:
+            self._init_name_to_outlet()
         self._selected_outlet = outlet_names if isinstance(outlet_names, list) else [outlet_names]
 
     def _check_outlets_by_names(self, outlet_names: Collection[str]) -> list["Flow"]:
@@ -461,7 +479,7 @@ class Choice(Flow):
     def _init(self):
         super()._init()
         # TODO: hacky way of supporting mlrun preview, which replaces targets with a DFTarget
-        self._passthrough_for_preview = list(self._name_to_outlet) == ["dataframe"]
+        self._passthrough_for_preview = list(self._name_to_outlet) == ["dataframe"] if self._name_to_outlet else False
 
     async def _do(self, event):
         if event is _termination_obj:
@@ -543,6 +561,12 @@ class _UnaryFunctionFlow(Flow):
             return await self._call(event_body, self._outlets_selector, pass_kwargs=False)
         else:
             return super().select_outlets(event_body)
+
+    def _init(self):
+        self._create_name_to_outlet = self._outlets_selector is not None or self._method_is_overridden(
+            "select_outlets", _UnaryFunctionFlow
+        )
+        super()._init()
 
 
 class DropColumns(Flow):
@@ -728,6 +752,11 @@ class MapClass(Flow):
             raise ValueError("long_running=True cannot be used in conjunction with a coroutine do()")
         self._long_running = long_running
         self._filter = False
+
+    def _init(self):
+        # Ensure _name_to_outlet is built to support set_next_outlets()
+        self._create_name_to_outlet = True
+        super()._init()
 
     def filter(self):
         # used in the .do() code to signal filtering

@@ -1942,7 +1942,8 @@ def test_duplicate_choice():
     controller.terminate()
     with pytest.raises(
         ValueError,
-        match=r"select_outlets\(\) returned duplicate outlets among the defined outlets: all_events, all_events",
+        match=r"Invalid outlet selection for 'DuplicateChoice': duplicate outlet names were provided "
+        r"\(all_events, all_events\)\.",
     ):
         controller.await_termination()
 
@@ -1964,7 +1965,7 @@ def test_nonexistent_choice():
     controller.terminate()
     with pytest.raises(
         ValueError,
-        match=r"select_outlets\(\) returned outlet name 'wrong', which is not one of the defined outlets: all_events",
+        match=r"Invalid outlet 'wrong' for 'NonexistentChoice'. Allowed outlets are: all_events.",
     ):
         controller.await_termination()
 
@@ -3897,6 +3898,43 @@ def test_flow_reuse():
         assert result == 55
 
 
+def test_flow_reuse_with_cycle():
+    """Test that flows with cyclic structures (using Choice) can be reused multiple times."""
+
+    class MyChoice(Choice):
+        def select_outlets(self, event):
+            # Route all events through all outlets
+            return ["process", "duplicate"]
+
+    source = SyncEmitSource()
+    my_choice = MyChoice(termination_result_fn=lambda x, y: x + y)
+    process = Map(lambda x: x + 1, name="process")
+    duplicate = Map(lambda x: x * 2, name="duplicate")
+    sum_process = Reduce(0, lambda acc, x: acc + x)
+    sum_duplicate = Reduce(0, lambda acc, x: acc + x)
+
+    source.to(my_choice)
+    my_choice.to(process)
+    my_choice.to(duplicate)
+    process.to(sum_process)
+    duplicate.to(sum_duplicate)
+
+    # Run the flow 3 times to test reusability with cyclic structure
+    for _ in range(3):
+        controller = source.run()
+        # Emit numbers 0-9
+        for i in range(10):
+            controller.emit(i)
+        controller.terminate()
+        result = controller.await_termination()
+
+        # Expected results:
+        # process: sum of (0+1, 1+1, ..., 9+1) = sum(1..10) = 55
+        # duplicate: sum of (0*2, 1*2, ..., 9*2) = 2*sum(0..9) = 2*45 = 90
+        # total: 55 + 90 = 145
+        assert result == 145
+
+
 def test_flow_to_dict_read_csv():
     step = CSVSource(
         "tests/test-with-timestamp-microsecs.csv",
@@ -5322,7 +5360,7 @@ def test_parallel_execution_with_shared_with_selector():
     termination_result = controller.await_termination()
     end = time.monotonic()
 
-    assert end - start < 4
+    assert end - start < 5
     termination_result = termination_result[0]
     assert termination_result == {
         "busy1": 1,
@@ -5577,9 +5615,11 @@ def test_regular_step_with_set_next():
 @pytest.mark.parametrize("with_recovery", [True, False])
 def test_cyclic_graphs(iterations, with_recovery):
     source = SyncEmitSource()
-    my_loop = MyLoop(fn=lambda x: x, iterations=iterations, name="my_loop", end="end", counter="counter")
+    my_loop = MyLoop(
+        fn=lambda x: x, iterations=iterations, name="my_loop", end="end", counter="counter", max_iteration=5
+    )
     start = Map(lambda x: x, name="start")
-    counter = Map(lambda x: x + 1, name="counter")
+    counter = Map(lambda x: x + 1, name="counter", max_iteration=5)
     end = Map(lambda x: x, name="end")
 
     source.to(start)

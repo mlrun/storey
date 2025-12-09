@@ -388,7 +388,7 @@ class SyncEmitSource(Flow):
 
     def run(self):
         """Starts the flow"""
-        self._closeables = super().run()
+        self._closeables = super().run(visited=set())
 
         thread = threading.Thread(target=self._loop_thread_main)
         thread.start()
@@ -712,7 +712,7 @@ class AsyncEmitSource(Flow):
 
     def run(self):
         """Starts the flow"""
-        self._closeables = super().run()
+        self._closeables = super().run(visited=set())
         loop_task = asyncio.get_running_loop().create_task(self._run_loop_and_log_unexpected_error())
         has_complete = self._check_step_in_flow(Complete)
         return AsyncFlowController(self._emit, loop_task, has_complete, self._key_field)
