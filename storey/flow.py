@@ -89,7 +89,7 @@ class Flow:
     def _init_name_to_outlet(self):
         for outlet in self._outlets:
             if outlet.name in self._name_to_outlet:
-                raise ValueError(f"Ambiguous outlet name '{outlet.name}' in Choice step")
+                raise ValueError(f"Ambiguous outlet name '{outlet.name}' in step '{self.name}'")
             self._name_to_outlet[outlet.name] = outlet
 
     def _method_is_overridden(self, method_name: str, parent_cls):
@@ -395,22 +395,15 @@ class Flow:
         return False
 
     def check_and_update_iteration_number(self, event) -> Optional[Callable]:
-        if (
-            hasattr(event, "_cyclic_counter")
-            and isinstance(event._cyclic_counter, dict)
-            and self._max_iteration is not None
-        ):
-            counter = event._cyclic_counter.get(self.name, 0)
+        if hasattr(event, "_cyclic_counter") and self._max_iteration is not None:
+            counter = self.get_iteration_counter(event)
             if counter >= self._max_iteration:
-                raise RuntimeError(
-                    f"Event {event.id} exceeded the maximum iteration count of {self._max_iteration} in step "
-                    f"'{self.name}'."
-                )
+                raise RuntimeError(f"Max iterations exceeded in step '{self.name}' for event {event.id}")
             event._cyclic_counter[self.name] = counter + 1
         else:
             event._cyclic_counter = {self.name: 1}
 
-    def _get_iteration_counter(self, event):
+    def get_iteration_counter(self, event):
         if not hasattr(event, "_cyclic_counter"):
             return 0
         else:
@@ -418,7 +411,7 @@ class Flow:
 
     def select_outlets(self, event) -> Optional[Collection[str]]:
         """
-        Override this method to route events based on a customer logic. The default implementation will route all
+        Override this method to route events based on a custom logic. The default implementation will route all
         events to all outlets.
         """
         return None
@@ -556,9 +549,9 @@ class _UnaryFunctionFlow(Flow):
             fn_result = await self._call(element, self._fn)
             await self._do_internal(event, fn_result)
 
-    async def select_outlets(self, event_body):
+    async def select_outlets(self, event_body) -> Optional[Collection[str]]:
         if self._outlets_selector:
-            return await self._call(event_body, self._outlets_selector, pass_kwargs=False)
+            return self._outlets_selector(event_body)
         else:
             return super().select_outlets(event_body)
 

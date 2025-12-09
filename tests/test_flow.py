@@ -3898,43 +3898,6 @@ def test_flow_reuse():
         assert result == 55
 
 
-def test_flow_reuse_with_cycle():
-    """Test that flows with cyclic structures (using Choice) can be reused multiple times."""
-
-    class MyChoice(Choice):
-        def select_outlets(self, event):
-            # Route all events through all outlets
-            return ["process", "duplicate"]
-
-    source = SyncEmitSource()
-    my_choice = MyChoice(termination_result_fn=lambda x, y: x + y)
-    process = Map(lambda x: x + 1, name="process")
-    duplicate = Map(lambda x: x * 2, name="duplicate")
-    sum_process = Reduce(0, lambda acc, x: acc + x)
-    sum_duplicate = Reduce(0, lambda acc, x: acc + x)
-
-    source.to(my_choice)
-    my_choice.to(process)
-    my_choice.to(duplicate)
-    process.to(sum_process)
-    duplicate.to(sum_duplicate)
-
-    # Run the flow 3 times to test reusability with cyclic structure
-    for _ in range(3):
-        controller = source.run()
-        # Emit numbers 0-9
-        for i in range(10):
-            controller.emit(i)
-        controller.terminate()
-        result = controller.await_termination()
-
-        # Expected results:
-        # process: sum of (0+1, 1+1, ..., 9+1) = sum(1..10) = 55
-        # duplicate: sum of (0*2, 1*2, ..., 9*2) = 2*sum(0..9) = 2*45 = 90
-        # total: 55 + 90 = 145
-        assert result == 145
-
-
 def test_flow_to_dict_read_csv():
     step = CSVSource(
         "tests/test-with-timestamp-microsecs.csv",
@@ -5360,7 +5323,7 @@ def test_parallel_execution_with_shared_with_selector():
     termination_result = controller.await_termination()
     end = time.monotonic()
 
-    assert end - start < 5
+    assert end - start < 4
     termination_result = termination_result[0]
     assert termination_result == {
         "busy1": 1,
@@ -5644,11 +5607,18 @@ def test_cyclic_graphs(iterations, with_recovery):
             awaitable_result = controller.emit(1)
             assert awaitable_result.await_result() == -1
         else:
-            with pytest.raises(RuntimeError):
+            with pytest.raises(RuntimeError, match=r"Max iterations exceeded"):
                 awaitable_result = controller.emit(1)
                 awaitable_result.await_result()
 
     controller.terminate()
+    try:
+        controller.await_termination()
+    except RuntimeError:
+        if iterations == 10 and not with_recovery:
+            pass
+        else:
+            raise
 
 
 def test_two_cyclic_graphs():
@@ -5674,3 +5644,36 @@ def test_two_cyclic_graphs():
     awaitable_result = controller.emit(1)
     assert awaitable_result.await_result() == 11
     controller.terminate()
+    controller.await_termination()
+
+
+def test_flow_reuse_with_cycle():
+    """Test that flows with cyclic structures can be reused multiple times.
+
+    A cyclic structure is created where MyLoop routes events back to counter
+    step when event <= iterations, creating a loop.
+    """
+    # Build the flow ONCE with a cyclic structure
+    source = SyncEmitSource()
+    my_loop = MyLoop(fn=lambda x: x, iterations=5, name="my_loop", end="end", counter="counter")
+    counter = Map(lambda x: x + 1, name="counter")
+    end = Map(lambda x: x, name="end")
+
+    source.to(counter)
+    counter.to(my_loop)
+    my_loop.to(end)
+    end.to(Complete())
+    # Create the cycle by appending counter as an outlet of my_loop
+    my_loop._outlets.append(counter)
+
+    # Run the SAME flow 3 times to test reusability with cyclic structure
+    for run_num in range(3):
+        controller = source.run()
+        awaitable_result = controller.emit(1)
+        result = awaitable_result.await_result()
+        # Event 1 -> counter: 1+1=2 -> my_loop: 2 <= 5 -> counter: 2+1=3 -> my_loop: 3 <= 5 -> counter: 3+1=4 -> ...
+        # -> counter: 5+1=6 -> my_loop: 6 > 5 -> end: 6
+        assert result == 6, f"Run {run_num}: Expected 6 but got {result}"
+
+        controller.terminate()
+        controller.await_termination()
