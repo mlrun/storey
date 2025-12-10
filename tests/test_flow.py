@@ -1684,6 +1684,7 @@ def test_awaitable_result():
 
 
 def test_double_completion():
+
     controller = build_flow([SyncEmitSource(), Complete(), Complete(), Reduce(0, lambda acc, x: acc + x)]).run()
 
     for i in range(10):
