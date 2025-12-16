@@ -335,6 +335,46 @@ class Flow:
                     return True
         return False
 
+    def _clear_resources(self, visited=None):
+        """
+        Clear circular references and internal state to enable garbage collection.
+
+        This method should be called when a flow is cancelled or terminated abnormally
+        (e.g., overlapping drain during Kafka rebalancing). Storey flows create circular
+        references via _outlets/_inlets that prevent garbage collection if not cleared.
+
+        Subclasses should override this method to clear their specific state, calling
+        super()._clear_resources(visited) first.
+        """
+        if visited is None:
+            visited = set()
+
+        step_id = id(self)
+        if step_id in visited:
+            return
+        visited.add(step_id)
+
+        # Save outlets before clearing for recursion
+        outlets = list(self._outlets)
+        recovery_steps = self._get_recovery_steps()
+
+        # Clear circular references
+        self._outlets = []
+        self._inlets = []
+
+        # Clear context reference
+        self.context = None
+        self.logger = None
+
+        # Clear recovery step references
+        self._recovery_step = None
+
+        # Recurse to outlets and recovery steps
+        for outlet in outlets:
+            outlet._clear_resources(visited)
+        for step in recovery_steps:
+            step._clear_resources(visited)
+
 
 class WithUUID:
     def __init__(self):
@@ -1198,6 +1238,25 @@ class _Batching(Flow):
     async def _emit_all(self):
         for key in list(self._batch.keys()):
             await self._emit_batch(key)
+
+    def _clear_resources(self, visited=None):
+        """Clear batching-specific state in addition to base Flow cleanup."""
+        super()._clear_resources(visited)
+
+        # Clear batch data (all set in _init)
+        self._batch.clear()
+        self._batch_events.clear()
+        self._batch_first_event_time.clear()
+        self._batch_last_event_time.clear()
+        self._batch_start_time.clear()
+
+        # Cancel and clear timeout task
+        if self._timeout_task and not self._timeout_task.done():
+            self._timeout_task.cancel()
+        self._timeout_task = None
+
+        # Clear bound method reference
+        self._extract_key = None
 
 
 class Batch(_Batching, WithUUID):

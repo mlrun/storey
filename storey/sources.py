@@ -460,12 +460,14 @@ class AsyncFlowController(FlowControllerBase):
         await_result,
         key_field: Optional[str] = None,
         id_field: Optional[str] = None,
+        on_cancel: Optional[Callable[[], None]] = None,
     ):
         super().__init__(key_field, id_field)
         self._emit_fn = emit_fn
         self._loop_task = loop_task
         self._key_field = key_field
         self._await_result = await_result
+        self._on_cancel = on_cancel
 
     async def emit(
         self,
@@ -520,8 +522,19 @@ class AsyncFlowController(FlowControllerBase):
         """
         Awaits the termination of the flow. To be called after terminate. Returns the termination result of the
         flow (if any).
+
+        If the flow was externally cancelled (e.g., due to overlapping drain signals),
+        CancelledError is caught and None is returned instead of propagating the error.
+        This prevents crashes when the Go runtime times out and sends a new drain signal
+        while an existing drain is still in progress (ML-11518).
         """
-        return await self._loop_task
+        try:
+            return await self._loop_task
+        except asyncio.CancelledError:
+            # External cancellation (e.g., overlapping drain) - clean up and return gracefully
+            if self._on_cancel:
+                self._on_cancel()
+            return None
 
 
 async def _commit_handled_events(outstanding_offsets_by_qualified_shard, committer, logger, commit_all=False):
@@ -710,12 +723,33 @@ class AsyncEmitSource(Flow):
         if event is not _termination_obj:
             self._raise_on_error()
 
+    def _clear_resources(self, visited=None):
+        """Clear AsyncEmitSource-specific state in addition to base Flow cleanup."""
+        super()._clear_resources(visited)
+
+        # Drain the queue to release references
+        if hasattr(self, "_q") and self._q:
+            while not self._q.empty():
+                try:
+                    self._q.get_nowait()
+                except Exception:
+                    break
+
+        # Clear exception reference
+        self._ex = None
+
+        # Clear outstanding offsets
+        if hasattr(self, "_outstanding_offsets"):
+            self._outstanding_offsets.clear()
+
     def run(self):
         """Starts the flow"""
         self._closeables = super().run()
         loop_task = asyncio.get_running_loop().create_task(self._run_loop_and_log_unexpected_error())
         has_complete = self._check_step_in_flow(Complete)
-        return AsyncFlowController(self._emit, loop_task, has_complete, self._key_field)
+        return AsyncFlowController(
+            self._emit, loop_task, has_complete, self._key_field, on_cancel=self._clear_resources
+        )
 
 
 class _IterableSource(Flow):

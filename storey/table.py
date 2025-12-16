@@ -342,11 +342,21 @@ class Table:
             return None
 
     def _set_aggregations_attrs(self, key, element):
+        """Set aggregation attributes for a key.
+
+        ML-11518 fix: Always call _init_flush_task() since it's idempotent.
+
+        Bug flow (before fix):
+        1. _lazy_load_key_with_aggregates() calls _get_lock(key)
+        2. _get_lock(key) creates _CacheElement({}, None) in _attrs_cache
+        3. _set_aggregations_attrs(key, element) sees key exists, skips _init_flush_task()
+        4. _flush_worker never runs
+        """
+        self._init_flush_task()
         if key in self._attrs_cache:
             self._attrs_cache[key].aggregations = element
             self._changed_keys.add(key)
         else:
-            self._init_flush_task()
             self._attrs_cache[key] = _CacheElement({}, element)
 
     def _get_static_attrs(self, key):

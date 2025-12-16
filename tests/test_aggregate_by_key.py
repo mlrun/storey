@@ -3977,3 +3977,40 @@ def test_fixed_window_aggregation_with_first_and_last_aggregates(timestamp):
     assert (
         termination_result == expected
     ), f"actual did not match expected. \n actual: {termination_result} \n expected: {expected}"
+
+
+@pytest.mark.asyncio
+async def test_ml11518_get_lock_precreates_cache_blocking_flush_task_init():
+    """
+    Root cause test for ML-11518: _get_lock() pre-creates _CacheElement before
+    _set_aggregations_attrs() is called, preventing _init_flush_task() from running.
+
+    Bug flow:
+    1. _lazy_load_key_with_aggregates() calls _get_lock(key)
+    2. _get_lock(key) creates _CacheElement({}, None) in _attrs_cache
+    3. _set_aggregations_attrs(key, element) sees key exists, skips _init_flush_task()
+    4. _flush_worker never runs, pending_aggr grows unboundedly
+    """
+    import asyncio
+
+    from storey.table import _CacheElement
+
+    table = Table("test", NoopDriver(), flush_interval_secs=1)
+
+    # Simulate _get_lock pre-creating cache element with aggregations=None
+    table._attrs_cache["test_key"] = _CacheElement({}, None)
+
+    # _set_aggregations_attrs should init flush task now that fix is in place
+    table._set_aggregations_attrs("test_key", object())
+
+    assert table._flush_task is not None, (
+        "BUG ML-11518: _flush_task not initialized when setting aggregations "
+        "for key pre-created by _get_lock() with aggregations=None"
+    )
+
+    # Cleanup: cancel the flush task
+    table._flush_task.cancel()
+    try:
+        await table._flush_task
+    except asyncio.CancelledError:
+        pass
