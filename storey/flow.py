@@ -293,10 +293,7 @@ class Flow:
                     outlet_names = self._selected_outlets
                     self._selected_outlets = None
                 else:
-                    if asyncio.iscoroutinefunction(self.select_outlets):
-                        outlet_names = await self.select_outlets(event.body)
-                    else:
-                        outlet_names = self.select_outlets(event.body)
+                    outlet_names = self.select_outlets(event.body)
                 outlets = self._check_outlets_by_names(outlet_names) if outlet_names else self._outlets
 
         if not outlets:
@@ -402,10 +399,7 @@ class Flow:
             event._cyclic_counter = {self.name: 1}
 
     def get_iteration_counter(self, event):
-        if not hasattr(event, "_cyclic_counter"):
-            return 0
-        else:
-            return event._cyclic_counter.get(self.name, 0)
+        return getattr(event, "_cyclic_counter", {}).get(self.name, 0)
 
     def select_outlets(self, event) -> Optional[Collection[str]]:
         """
@@ -511,6 +505,9 @@ class _UnaryFunctionFlow(Flow):
         if fn_select_outlets and not callable(fn_select_outlets):
             raise TypeError(f"Expected fn_select_outlets to be callable, got {type(fn)}")
         self._outlets_selector = fn_select_outlets
+        self._create_name_to_outlet = self._outlets_selector is not None or self._method_is_overridden(
+            "select_outlets", _UnaryFunctionFlow
+        )
 
     async def _call(self, element, fn, pass_kwargs=True):
         if self._long_running:
@@ -538,17 +535,11 @@ class _UnaryFunctionFlow(Flow):
             fn_result = await self._call(element, self._fn)
             await self._do_internal(event, fn_result)
 
-    async def select_outlets(self, event_body) -> Optional[Collection[str]]:
+    def select_outlets(self, event_body) -> Optional[Collection[str]]:
         if self._outlets_selector:
             return self._outlets_selector(event_body)
         else:
             return super().select_outlets(event_body)
-
-    def _init(self):
-        self._create_name_to_outlet = self._outlets_selector is not None or self._method_is_overridden(
-            "select_outlets", _UnaryFunctionFlow
-        )
-        super()._init()
 
 
 class DropColumns(Flow):
