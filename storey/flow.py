@@ -725,11 +725,7 @@ class MapClass(Flow):
             raise ValueError("long_running=True cannot be used in conjunction with a coroutine do()")
         self._long_running = long_running
         self._filter = False
-
-    def _init(self):
-        # Ensure _name_to_outlet is built to support set_next_outlets()
         self._create_name_to_outlet = True
-        super()._init()
 
     def filter(self):
         # used in the .do() code to signal filtering
