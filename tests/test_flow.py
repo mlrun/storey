@@ -1942,7 +1942,8 @@ def test_duplicate_choice():
     controller.terminate()
     with pytest.raises(
         ValueError,
-        match=r"select_outlets\(\) returned duplicate outlets among the defined outlets: all_events, all_events",
+        match=r"Invalid outlet selection for 'DuplicateChoice': duplicate outlet names were provided "
+        r"\(all_events, all_events\)\.",
     ):
         controller.await_termination()
 
@@ -1964,7 +1965,7 @@ def test_nonexistent_choice():
     controller.terminate()
     with pytest.raises(
         ValueError,
-        match=r"select_outlets\(\) returned outlet name 'wrong', which is not one of the defined outlets: all_events",
+        match=r"Invalid outlet 'wrong' for 'NonexistentChoice'. Allowed outlets are: all_events.",
     ):
         controller.await_termination()
 
@@ -5464,3 +5465,174 @@ async def async_test_error_raising_batch_target():
 
 def test_error_raising_batch_target():
     asyncio.run(async_test_error_raising_batch_target())
+
+
+class MyLoop(Map):
+    def __init__(self, iterations: int, end, counter, **kwargs):
+        super().__init__(**kwargs)
+        self.iterations = iterations
+        self.end = end
+        self.counter = counter
+
+    def select_outlets(self, event):
+        outlets = [self.counter]
+        if event > self.iterations:
+            outlets = [self.end]
+        return outlets
+
+
+@pytest.mark.parametrize("fn_select_outlets", [True, False])
+def test_regular_step_with_choice(fn_select_outlets):
+    class MyStep(Map):
+        def select_outlets(self, event):
+            outlets = ["all_events"]
+            if event > 5:
+                outlets.append("more_than_five")
+            else:
+                outlets.append("up_to_five")
+            return outlets
+
+    def select(event):
+        outlets = ["all_events"]
+        if event > 5:
+            outlets.append("more_than_five")
+        else:
+            outlets.append("up_to_five")
+        return outlets
+
+    source = SyncEmitSource()
+    if fn_select_outlets:
+        my_step = Map(fn=lambda x: x, termination_result_fn=lambda x, y: x + y, fn_select_outlets=select)
+    else:
+        my_step = MyStep(fn=lambda x: x, termination_result_fn=lambda x, y: x + y)
+
+    all_events = Map(lambda x: x, name="all_events")
+    more_than_five = Map(lambda x: x * 10, name="more_than_five")
+    up_to_five = Map(lambda x: x * 100, name="up_to_five")
+    sum_up_all_events = Reduce(0, lambda acc, x: acc + x)
+    sum_up_more_than_five = Reduce(0, lambda acc, x: acc + x)
+    sum_up_up_to_five = Reduce(0, lambda acc, x: acc + x)
+
+    source.to(my_step)
+    my_step.to(all_events)
+    my_step.to(more_than_five)
+    my_step.to(up_to_five)
+    all_events.to(sum_up_all_events)
+    more_than_five.to(sum_up_more_than_five)
+    up_to_five.to(sum_up_up_to_five)
+
+    controller = source.run()
+
+    for i in range(4, 8):
+        controller.emit(i)
+
+    controller.terminate()
+    termination_result = controller.await_termination()
+
+    expected = sum(range(4, 8)) + sum(range(6, 8)) * 10 + sum(range(4, 6)) * 100
+    assert termination_result == expected
+
+
+@pytest.mark.parametrize("iterations", [5, 10])
+@pytest.mark.parametrize("with_recovery", [True, False])
+def test_cyclic_graphs(iterations, with_recovery):
+    source = SyncEmitSource()
+    my_loop = MyLoop(
+        fn=lambda x: x, iterations=iterations, name="my_loop", end="end", counter="counter", max_iteration=5
+    )
+    start = Map(lambda x: x, name="start")
+    counter = Map(lambda x: x + 1, name="counter", max_iteration=5)
+    end = Map(lambda x: x, name="end")
+
+    source.to(start)
+    start.to(counter)
+    counter.to(my_loop)
+    my_loop.to(end)
+    end.to(Complete())
+    my_loop._outlets.append(counter)
+    if with_recovery:
+        recovery_step = Map(lambda x: -1, name="end-2")
+        counter.set_recovery_step(recovery_step)
+        my_loop.set_recovery_step(recovery_step)
+        recovery_step.to(Complete())
+
+    controller = source.run()
+
+    if iterations == 5:
+        awaitable_result = controller.emit(1)
+        assert awaitable_result.await_result() == iterations + 1
+    else:
+        if with_recovery:
+            awaitable_result = controller.emit(1)
+            assert awaitable_result.await_result() == -1
+        else:
+            with pytest.raises(RuntimeError, match=r"Max iterations exceeded"):
+                awaitable_result = controller.emit(1)
+                awaitable_result.await_result()
+
+    controller.terminate()
+    try:
+        controller.await_termination()
+    except RuntimeError:
+        if iterations == 10 and not with_recovery:
+            pass
+        else:
+            raise
+
+
+def test_two_cyclic_graphs():
+    source = SyncEmitSource()
+    my_loop = MyLoop(fn=lambda x: x, iterations=5, end="counter_2", counter="counter_1", name="my_loop")
+    start = Map(lambda x: x, name="start")
+    counter = Map(lambda x: x + 1, name="counter_1")
+    counter_2 = Map(lambda x: x + 1, name="counter_2")
+    end = Map(lambda x: x, name="end")
+    my_loop_2 = MyLoop(fn=lambda x: x, iterations=10, end="end", counter="counter_2", name="my_loop_2")
+
+    source.to(start)
+    start.to(counter)
+    counter.to(my_loop)
+    my_loop.to(counter_2)
+    my_loop._outlets.append(counter)
+    counter_2.to(my_loop_2)
+    my_loop_2.to(end)
+    my_loop_2._outlets.append(counter_2)
+    end.to(Complete())
+    controller = source.run()
+
+    awaitable_result = controller.emit(1)
+    assert awaitable_result.await_result() == 11
+    controller.terminate()
+    controller.await_termination()
+
+
+def test_flow_reuse_with_cycle():
+    """Test that flows with cyclic structures can be reused multiple times.
+
+    A cyclic structure is created where MyLoop routes events back to counter
+    step when event <= iterations, creating a loop.
+    """
+    # Build the flow ONCE with a cyclic structure
+    source = SyncEmitSource()
+    my_loop = MyLoop(fn=lambda x: x, iterations=5, name="my_loop", end="end", counter="counter")
+    counter = Map(lambda x: x + 1, name="counter")
+    end = Map(lambda x: x, name="end")
+
+    source.to(counter)
+    counter.to(my_loop)
+    my_loop.to(end)
+    end.to(Complete())
+    # Create the cycle by appending counter as an outlet of my_loop
+    my_loop._outlets.append(counter)
+
+    # Run the SAME flow 3 times to test reusability with cyclic structure
+    for run_num in range(3):
+        controller = source.run()
+        awaitable_result = controller.emit(1)
+        result = awaitable_result.await_result()
+        # Event 1 -> counter: 1+1=2 -> my_loop: 2 <= 5 -> counter: 2+1=3 -> my_loop: 3 <= 5 -> counter: 3+1=4 -> ...
+        # -> counter: 5+1=6 -> my_loop: 6 > 5 -> end: 6
+        assert result == 6, f"Run {run_num}: Expected 6 but got {result}"
+
+        controller.terminate()
+        controller.await_termination()
