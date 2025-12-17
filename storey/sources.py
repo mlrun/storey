@@ -386,9 +386,9 @@ class SyncEmitSource(Flow):
         if event is not _termination_obj:
             self._raise_on_error(self._ex)
 
-    def run(self):
+    def run(self, visited=None):
         """Starts the flow"""
-        self._closeables = super().run(visited=set())
+        self._closeables = super().run()
 
         thread = threading.Thread(target=self._loop_thread_main)
         thread.start()
@@ -710,9 +710,9 @@ class AsyncEmitSource(Flow):
         if event is not _termination_obj:
             self._raise_on_error()
 
-    def run(self):
+    def run(self, visited=None):
         """Starts the flow"""
-        self._closeables = super().run(visited=set())
+        self._closeables = super().run()
         loop_task = asyncio.get_running_loop().create_task(self._run_loop_and_log_unexpected_error())
         has_complete = self._check_step_in_flow(Complete)
         return AsyncFlowController(self._emit, loop_task, has_complete, self._key_field)
@@ -753,7 +753,7 @@ class _IterableSource(Flow):
                 raise type(self._ex)("Flow execution terminated") from self._ex
             raise self._ex
 
-    def run(self):
+    def run(self, visited=None):
         self._closeables = super().run()
 
         self._init()

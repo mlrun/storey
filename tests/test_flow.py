@@ -5533,47 +5533,6 @@ def test_regular_step_with_choice(fn_select_outlets):
     assert termination_result == expected
 
 
-def test_regular_step_with_set_next():
-    class MyStep(MapClass):
-        def do(self, event):
-            outlets = ["all_events"]
-            if event > 5:
-                outlets.append("more_than_five")
-            else:
-                outlets.append("up_to_five")
-            self.set_next_outlets(outlets)
-            return event
-
-    source = SyncEmitSource()
-
-    my_step = MyStep(fn=lambda x: x, termination_result_fn=lambda x, y: x + y)
-    all_events = Map(lambda x: x, name="all_events")
-    more_than_five = Map(lambda x: x * 10, name="more_than_five")
-    up_to_five = Map(lambda x: x * 100, name="up_to_five")
-    sum_up_all_events = Reduce(0, lambda acc, x: acc + x)
-    sum_up_more_than_five = Reduce(0, lambda acc, x: acc + x)
-    sum_up_up_to_five = Reduce(0, lambda acc, x: acc + x)
-
-    source.to(my_step)
-    my_step.to(all_events)
-    my_step.to(more_than_five)
-    my_step.to(up_to_five)
-    all_events.to(sum_up_all_events)
-    more_than_five.to(sum_up_more_than_five)
-    up_to_five.to(sum_up_up_to_five)
-
-    controller = source.run()
-
-    for i in range(4, 8):
-        controller.emit(i)
-
-    controller.terminate()
-    termination_result = controller.await_termination()
-
-    expected = sum(range(4, 8)) + sum(range(6, 8)) * 10 + sum(range(4, 6)) * 100
-    assert termination_result == expected
-
-
 @pytest.mark.parametrize("iterations", [5, 10])
 @pytest.mark.parametrize("with_recovery", [True, False])
 def test_cyclic_graphs(iterations, with_recovery):

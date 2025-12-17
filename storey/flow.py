@@ -76,7 +76,7 @@ class Flow:
             self.name = type(self).__name__
 
         self._closeables = []
-        self._selected_outlet: Optional[list[str]] = None
+        self._selected_outlets: Optional[list[str]] = None
         self._create_name_to_outlet = True
 
     def _init(self):
@@ -214,7 +214,7 @@ class Flow:
 
         # Detect cycles: if we've already visited this step, don't run it again
         if self in visited:
-            return None
+            return []
         self._init()
         visited.add(self)
 
@@ -224,8 +224,7 @@ class Flow:
         for outlet in outlets:
             outlet._runnable = True
             outlet_closeables = outlet.run(visited)
-            if outlet_closeables:
-                self._closeables.extend(outlet_closeables)
+            self._closeables.extend(outlet_closeables)
         return self._closeables
 
     def _get_recovery_steps(self):
@@ -286,20 +285,19 @@ class Flow:
         return self._termination_received == len(self._inlets)
 
     async def _do_downstream(self, event, outlets=None):
-        if outlets:
-            outlets = outlets
-        elif event is not _termination_obj:
-            if self._selected_outlet:
-                outlet_names = self._selected_outlet
-                self._selected_outlet = None
+        if not outlets:
+            if event is _termination_obj:
+                outlets = self._outlets
             else:
-                if asyncio.iscoroutinefunction(self.select_outlets):
-                    outlet_names = await self.select_outlets(event.body)
+                if self._selected_outlets:
+                    outlet_names = self._selected_outlets
+                    self._selected_outlets = None
                 else:
-                    outlet_names = self.select_outlets(event.body)
-            outlets = self._check_outlets_by_names(outlet_names) if outlet_names else self._outlets
-        else:
-            outlets = self._outlets
+                    if asyncio.iscoroutinefunction(self.select_outlets):
+                        outlet_names = await self.select_outlets(event.body)
+                    else:
+                        outlet_names = self.select_outlets(event.body)
+                outlets = self._check_outlets_by_names(outlet_names) if outlet_names else self._outlets
 
         if not outlets:
             return
@@ -416,17 +414,6 @@ class Flow:
         """
         return None
 
-    def set_next_outlets(self, outlet_names: Union[str, list[str]]):
-        """
-        Set the next outlets to which the event will be sent. This method can be used in conjunction with
-        select_outlets() to dynamically determine the outlets for the next event.
-
-        :param outlet_names: A collection of outlet names to which the next event should be sent.
-        """
-        if not self._name_to_outlet:
-            self._init_name_to_outlet()
-        self._selected_outlet = outlet_names if isinstance(outlet_names, list) else [outlet_names]
-
     def _check_outlets_by_names(self, outlet_names: Collection[str]) -> list["Flow"]:
         outlets = []
 
@@ -510,7 +497,9 @@ class Recover(Flow):
 
 
 class _UnaryFunctionFlow(Flow):
-    def __init__(self, fn, long_running=None, pass_context=None, fn_select_outlets=None, **kwargs):
+    def __init__(
+        self, fn, long_running=None, pass_context=None, fn_select_outlets: Optional[Callable] = None, **kwargs
+    ):
         super().__init__(**kwargs)
         if not callable(fn):
             raise TypeError(f"Expected a callable, got {type(fn)}")
