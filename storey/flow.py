@@ -505,7 +505,7 @@ class _UnaryFunctionFlow(Flow):
         if fn_select_outlets and not callable(fn_select_outlets):
             raise TypeError(f"Expected fn_select_outlets to be callable, got {type(fn)}")
         self._outlets_selector = fn_select_outlets
-        self._create_name_to_outlet = self._outlets_selector is not None or self._method_is_overridden(
+        self._create_name_to_outlet = self._outlets_selector or self._method_is_overridden(
             "select_outlets", _UnaryFunctionFlow
         )
 
