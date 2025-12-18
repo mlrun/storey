@@ -284,7 +284,7 @@ class Flow:
     def _should_terminate(self):
         return self._termination_received == len(self._inlets)
 
-    async def _do_downstream(self, event, outlets=None, select_outlets=True):
+    async def _do_downstream(self, event, outlets=None, select_outlets: bool = True):
         if not outlets and event is not _termination_obj and select_outlets:
             outlet_names = self.select_outlets(event.body)
             outlets = self._check_outlets_by_names(outlet_names) if outlet_names else None
