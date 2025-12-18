@@ -44,7 +44,7 @@ class Flow:
         recovery_step=None,
         termination_result_fn=lambda x, y: x if x is not None else y,
         context=None,
-        max_iteration: Optional[int] = None,
+        max_iterations: Optional[int] = None,
         **kwargs,
     ):
         self._outlets = []
@@ -67,7 +67,7 @@ class Flow:
         self._full_event = kwargs.get("full_event")
         self._input_path = kwargs.get("input_path")
         self._result_path = kwargs.get("result_path")
-        self._max_iteration = max_iteration
+        self._max_iterations = max_iterations
         self._runnable = False
         name = kwargs.get("name", None)
         if name:
@@ -390,9 +390,9 @@ class Flow:
         return False
 
     def check_and_update_iteration_number(self, event) -> Optional[Callable]:
-        if hasattr(event, "_cyclic_counter") and self._max_iteration is not None:
+        if hasattr(event, "_cyclic_counter") and self._max_iterations is not None:
             counter = self.get_iteration_counter(event)
-            if counter >= self._max_iteration:
+            if counter >= self._max_iterations:
                 raise RuntimeError(f"Max iterations exceeded in step '{self.name}' for event {event.id}")
             event._cyclic_counter[self.name] = counter + 1
         else:
