@@ -284,17 +284,11 @@ class Flow:
     def _should_terminate(self):
         return self._termination_received == len(self._inlets)
 
-    async def _do_downstream(self, event, outlets=None):
-        if not outlets:
-            if event is _termination_obj:
-                outlets = self._outlets
-            else:
-                if self._selected_outlets:
-                    outlet_names = self._selected_outlets
-                    self._selected_outlets = None
-                else:
-                    outlet_names = self.select_outlets(event.body)
-                outlets = self._check_outlets_by_names(outlet_names) if outlet_names else self._outlets
+    async def _do_downstream(self, event, outlets=None, select_outlets=True):
+        if not outlets and event is not _termination_obj and select_outlets:
+            outlet_names = self.select_outlets(event.body)
+            outlets = self._check_outlets_by_names(outlet_names) if outlet_names else None
+        outlets = self._outlets if outlets is None else outlets
 
         if not outlets:
             return
@@ -457,7 +451,7 @@ class Choice(Flow):
 
     async def _do(self, event):
         if event is _termination_obj:
-            return await self._do_downstream(_termination_obj)
+            return await self._do_downstream(_termination_obj, select_outlets=False)
         else:
             event_body = event if self._full_event else event.body
             outlet_names = self.select_outlets(event_body)
@@ -466,8 +460,8 @@ class Choice(Flow):
                 outlet = self._name_to_outlet["dataframe"]
                 outlets.append(outlet)
             else:
-                outlets = self._check_outlets_by_names(outlet_names) if outlet_names else self._outlets
-            return await self._do_downstream(event, outlets=outlets)
+                outlets = self._check_outlets_by_names(outlet_names)
+            return await self._do_downstream(event, outlets=outlets, select_outlets=False)
 
 
 class Recover(Flow):
