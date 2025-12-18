@@ -1428,7 +1428,6 @@ class NoSqlTarget(_Writer, Flow):
             if not self.context:
                 raise TypeError("Table can not be string if no context was provided to the step")
             self._table = self.context.get_table(table)
-        self._closeables = [self._table]
 
         self._field_extractor = lambda event_body, field_name: event_body.get(field_name)
         self._write_missing_fields = False
@@ -1436,6 +1435,7 @@ class NoSqlTarget(_Writer, Flow):
     def _init(self):
         Flow._init(self)
         _Writer._init(self)
+        self._closeables = [self._table]
 
     async def _handle_completed(self, event, response):
         await self._do_downstream(event)
