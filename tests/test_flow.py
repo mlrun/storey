@@ -5641,8 +5641,9 @@ def test_flow_reuse_with_cycle():
 def test_flow_reuse_resets_closeables():
     """Test that _closeables is properly reset when a flow is reused.
 
-    When a flow is run multiple times, _init() should reset _closeables to an empty
-    list to prevent accumulation of closeable resources across runs.
+    Baseline test for flow reuse without closeables. This test uses steps (Map, Reduce)
+    that don't create closeables, so it verifies the baseline behavior. Note: This test
+    does NOT detect the ML-11518 bug since there are no closeables to accumulate.
     """
     source = SyncEmitSource()
     map_step = Map(lambda x: x + 1)
@@ -5650,15 +5651,18 @@ def test_flow_reuse_resets_closeables():
 
     source.to(map_step).to(reduce_step)
 
-    # Run the flow multiple times and verify _closeables is reset each time
+    first_run_closeables_count = None
     for run_num in range(3):
-        # Before running, _closeables should be empty (from previous _init or initial state)
         controller = source.run()
 
-        # After run(), _init() has been called and _closeables should be reset
-        # The base Flow class initializes _closeables to [] in _init()
-        assert map_step._closeables == [], f"Run {run_num}: map_step._closeables should be empty"
-        assert reduce_step._closeables == [], f"Run {run_num}: reduce_step._closeables should be empty"
+        # Track closeables count - should be consistent across runs
+        if first_run_closeables_count is None:
+            first_run_closeables_count = len(source._closeables)
+        else:
+            assert len(source._closeables) == first_run_closeables_count, (
+                f"Run {run_num}: source._closeables count should be {first_run_closeables_count}, "
+                f"got {len(source._closeables)} (closeables are accumulating!)"
+            )
 
         for i in range(5):
             controller.emit(i)
@@ -5670,8 +5674,9 @@ def test_flow_reuse_resets_closeables():
 def test_aggregate_by_key_reuse_resets_closeables():
     """Test that AggregateByKey properly resets _closeables on flow reuse.
 
-    AggregateByKey sets _closeables = [self._table] in _init(), which should
-    happen fresh on each run rather than accumulating tables.
+    Regression test for ML-11518: Without resetting _closeables in _init(), closeables
+    accumulate in the source's _closeables list across runs (1→2→3 instead of 1→1→1).
+    This test DOES detect the bug by checking source._closeables remains consistent.
     """
     from storey import AggregateByKey, FieldAggregator
     from storey.dtypes import FixedWindows
@@ -5690,15 +5695,18 @@ def test_aggregate_by_key_reuse_resets_closeables():
 
     base_time = datetime(2020, 7, 21, 12, 0, 0)
 
+    first_run_closeables_count = None
     for run_num in range(3):
         controller = source.run()
 
-        # After _init(), _closeables should contain exactly one table reference
-        assert len(aggregator._closeables) == 1, (
-            f"Run {run_num}: AggregateByKey._closeables should have exactly 1 item, "
-            f"got {len(aggregator._closeables)}"
-        )
-        assert aggregator._closeables[0] is table, f"Run {run_num}: AggregateByKey._closeables[0] should be the table"
+        # Track closeables count - should be consistent across runs
+        if first_run_closeables_count is None:
+            first_run_closeables_count = len(source._closeables)
+        else:
+            assert len(source._closeables) == first_run_closeables_count, (
+                f"Run {run_num}: source._closeables count should be {first_run_closeables_count}, "
+                f"got {len(source._closeables)} (closeables are accumulating!)"
+            )
 
         # Emit some data
         for i in range(3):
@@ -5712,44 +5720,49 @@ def test_aggregate_by_key_reuse_resets_closeables():
 def test_map_with_state_reuse_resets_closeables():
     """Test that MapWithState properly resets _closeables on flow reuse.
 
-    MapWithState (via _FunctionWithStateFlow) sets _closeables = [self._state]
-    in _init() when state has a close method (like Table).
+    Regression test for ML-11518: Without resetting _closeables in _init(), closeables
+    accumulate in the source's _closeables list across runs, causing close() to be called
+    multiple times per run (1, 2, 3 times instead of 1, 1, 1 times). This test DOES detect
+    the bug by tracking close() call counts.
     """
-    table = Table("test_state", NoopDriver())
 
-    def state_fn(event, state):
-        state["count"] = state.get("count", 0) + 1
-        event["count"] = state["count"]
-        return event, state
+    class CloseCounter:
+        def __init__(self):
+            self.close_count = 0
 
+        def close(self):
+            self.close_count += 1
+
+    state = CloseCounter()
     source = SyncEmitSource()
-    map_with_state = MapWithState(table, state_fn, group_by_key=True)
+    map_with_state = MapWithState(state, lambda x, s: (x, s))
     reduce_step = Reduce([], lambda acc, x: acc + [x])
 
     source.to(map_with_state).to(reduce_step)
 
     for run_num in range(3):
+        initial_close_count = state.close_count
         controller = source.run()
 
-        # Table has a close method, so _closeables should contain exactly the table
-        assert len(map_with_state._closeables) == 1, (
-            f"Run {run_num}: MapWithState._closeables should have exactly 1 item, "
-            f"got {len(map_with_state._closeables)}"
-        )
-        assert map_with_state._closeables[0] is table, f"Run {run_num}: MapWithState._closeables[0] should be the table"
-
-        # Emit some data
-        for i in range(3):
-            controller.emit(Event(body={"value": i}, key=f"key{i}"))
-
+        controller.emit(1)
         controller.terminate()
         controller.await_termination()
+
+        # close() should be called exactly once per run
+        closes_this_run = state.close_count - initial_close_count
+        assert closes_this_run == 1, (
+            f"Run {run_num}: state.close() should be called exactly once, "
+            f"but was called {closes_this_run} times (total: {state.close_count})"
+        )
 
 
 def test_map_with_state_no_closeables_without_close_method():
     """Test that MapWithState doesn't add state to _closeables if it has no close method.
 
-    When using a plain dict as state (no close method), _closeables should remain empty.
+    Edge case test: When using a plain dict as state (no close method), _closeables
+    should remain empty. This verifies the hasattr(self._state, "close") check works
+    correctly. Note: This test does NOT detect the ML-11518 bug since there are no
+    closeables to accumulate.
     """
     initial_state = {"count": 0}
 
@@ -5781,8 +5794,9 @@ def test_map_with_state_no_closeables_without_close_method():
 def test_nosql_target_reuse_resets_closeables():
     """Test that NoSqlTarget properly resets _closeables on flow reuse.
 
-    NoSqlTarget sets _closeables = [self._table] in _init(), which should
-    happen fresh on each run.
+    Regression test for ML-11518: Without resetting _closeables in _init(), closeables
+    accumulate in the source's _closeables list across runs (1→2→3 instead of 1→1→1).
+    This test DOES detect the bug by checking source._closeables remains consistent.
     """
     table = Table("test_nosql", NoopDriver())
 
@@ -5791,15 +5805,18 @@ def test_nosql_target_reuse_resets_closeables():
 
     source.to(nosql_target)
 
+    first_run_closeables_count = None
     for run_num in range(3):
         controller = source.run()
 
-        # After _init(), _closeables should contain exactly one table reference
-        assert len(nosql_target._closeables) == 1, (
-            f"Run {run_num}: NoSqlTarget._closeables should have exactly 1 item, "
-            f"got {len(nosql_target._closeables)}"
-        )
-        assert nosql_target._closeables[0] is table, f"Run {run_num}: NoSqlTarget._closeables[0] should be the table"
+        # Track closeables count - should be consistent across runs
+        if first_run_closeables_count is None:
+            first_run_closeables_count = len(source._closeables)
+        else:
+            assert len(source._closeables) == first_run_closeables_count, (
+                f"Run {run_num}: source._closeables count should be {first_run_closeables_count}, "
+                f"got {len(source._closeables)} (closeables are accumulating!)"
+            )
 
         # Emit some data with keys
         for i in range(3):
