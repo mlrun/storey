@@ -89,7 +89,6 @@ class AggregateByKey(Flow):
                 raise TypeError("Table can not be string if no context was provided to the step")
             self._table = self.context.get_table(table)
         self._table._set_aggregation_metadata(aggregates, use_windows_from_schema=use_windows_from_schema)
-        self._closeables = [self._table]
 
         self._aggregates_metadata = aggregates
 
@@ -141,6 +140,7 @@ class AggregateByKey(Flow):
 
     def _init(self):
         super()._init()
+        self._closeables = [self._table]
         self._events_in_batch = {}
         self._emit_worker_running = False
         self._terminate_worker = False
