@@ -5538,10 +5538,10 @@ def test_regular_step_with_choice(fn_select_outlets):
 def test_cyclic_graphs(iterations, with_recovery):
     source = SyncEmitSource()
     my_loop = MyLoop(
-        fn=lambda x: x, iterations=iterations, name="my_loop", end="end", counter="counter", max_iteration=5
+        fn=lambda x: x, iterations=iterations, name="my_loop", end="end", counter="counter", max_iterations=5
     )
     start = Map(lambda x: x, name="start")
-    counter = Map(lambda x: x + 1, name="counter", max_iteration=5)
+    counter = Map(lambda x: x + 1, name="counter", max_iterations=5)
     end = Map(lambda x: x, name="end")
 
     source.to(start)
