@@ -5636,3 +5636,120 @@ def test_flow_reuse_with_cycle():
 
         controller.terminate()
         controller.await_termination()
+
+
+def test_flow_reuse_resets_closeables():
+    """Test that _closeables is properly reset when a flow is reused.
+
+    Baseline test for flow reuse without closeables. This test uses steps (Map, Reduce)
+    that don't create closeables, so it verifies the baseline behavior.
+    """
+    source = SyncEmitSource()
+    map_step = Map(lambda x: x + 1)
+    reduce_step = Reduce(0, lambda acc, x: acc + x)
+
+    source.to(map_step).to(reduce_step)
+
+    for run_num in range(3):
+        controller = source.run()
+        try:
+            assert len(source._closeables) == 0
+            for i in range(5):
+                controller.emit(i)
+        finally:
+            controller.terminate()
+        result = controller.await_termination()
+        assert result == 15, f"Run {run_num}: Expected 15 but got {result}"
+
+
+def test_map_with_state_reuse_resets_closeables():
+    """Test that MapWithState properly resets _closeables on flow reuse.
+
+    Regression test for ML-11518: Without resetting _closeables in _init(), closeables
+    accumulate across runs, causing close() to be called multiple times per run.
+    """
+
+    class CloseCounter:
+        def __init__(self):
+            self.close_count = 0
+
+        def close(self):
+            self.close_count += 1
+
+    state = CloseCounter()
+    source = SyncEmitSource()
+    map_with_state = MapWithState(state, lambda x, s: (x, s))
+    reduce_step = Reduce([], lambda acc, x: acc + [x])
+
+    source.to(map_with_state).to(reduce_step)
+
+    for run_num in range(3):
+        initial_close_count = state.close_count
+        controller = source.run()
+        try:
+            controller.emit(1)
+        finally:
+            controller.terminate()
+        controller.await_termination()
+
+        # close() should be called exactly once per run
+        closes_this_run = state.close_count - initial_close_count
+        assert closes_this_run == 1, (
+            f"Run {run_num}: state.close() should be called exactly once, "
+            f"but was called {closes_this_run} times (total: {state.close_count})"
+        )
+
+
+def test_map_with_state_no_closeables_without_close_method():
+    """Test that MapWithState doesn't add state to _closeables if it has no close method.
+
+    Edge case test: When using a plain dict as state (no close method), _closeables
+    should remain empty. This verifies the hasattr(self._state, "close") check works.
+    """
+    initial_state = {"count": 0}
+
+    def state_fn(event, state):
+        state["count"] += 1
+        return event["value"] * state["count"], state
+
+    source = SyncEmitSource()
+    map_with_state = MapWithState(initial_state, state_fn, group_by_key=False)
+    reduce_step = Reduce(0, lambda acc, x: acc + x)
+
+    source.to(map_with_state).to(reduce_step)
+
+    for _ in range(3):
+        controller = source.run()
+        try:
+            # Dict has no close method, so _closeables should be empty
+            assert map_with_state._closeables == []
+            for i in range(3):
+                controller.emit({"value": i + 1})
+        finally:
+            controller.terminate()
+        controller.await_termination()
+
+
+def test_nosql_target_reuse_resets_closeables():
+    """Test that NoSqlTarget properly resets _closeables on flow reuse.
+
+    Regression test for ML-11518: Without resetting _closeables in _init(), closeables
+    accumulate in the source's _closeables list across runs.
+    """
+    table = Table("test_nosql", NoopDriver())
+
+    source = SyncEmitSource()
+    nosql_target = NoSqlTarget(table)
+
+    source.to(nosql_target)
+
+    for _ in range(3):
+        controller = source.run()
+        try:
+            assert len(source._closeables) == 1
+            # Emit some data with keys
+            for i in range(3):
+                controller.emit(Event(body={"col": i}, key=f"key{i}"))
+        finally:
+            controller.terminate()
+        controller.await_termination()
