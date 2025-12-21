@@ -76,6 +76,7 @@ class Flow:
         self._closeables = []
 
     def _init(self):
+        self._closeables = []
         self._termination_received = 0
         self._termination_result = None
 
@@ -574,6 +575,9 @@ class _FunctionWithStateFlow(Flow):
                 self._state = self.context.get_table(self._state)
         self._fn = fn
         self._group_by_key = group_by_key
+
+    def _init(self):
+        super()._init()
         if hasattr(self._state, "close"):
             self._closeables = [self._state]
 

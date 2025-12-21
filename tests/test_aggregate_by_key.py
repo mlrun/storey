@@ -3977,3 +3977,36 @@ def test_fixed_window_aggregation_with_first_and_last_aggregates(timestamp):
     assert (
         termination_result == expected
     ), f"actual did not match expected. \n actual: {termination_result} \n expected: {expected}"
+
+
+def test_aggregate_by_key_reuse_resets_closeables():
+    """Test that AggregateByKey properly resets _closeables on flow reuse.
+
+    Regression test for ML-11518: Without resetting _closeables in _init(), closeables
+    accumulate in the source's _closeables list across runs.
+    """
+    table = Table("test", NoopDriver())
+    aggregator = AggregateByKey(
+        [FieldAggregator("sum_col1", "col1", ["sum"], FixedWindows(["1h"]))],
+        table,
+        time_field="time",
+    )
+
+    source = SyncEmitSource()
+    reduce_step = Reduce([], lambda acc, x: acc + [x])
+
+    source.to(aggregator).to(reduce_step)
+
+    base_time = datetime(2020, 7, 21, 12, 0, 0)
+
+    for _ in range(3):
+        controller = source.run()
+        try:
+            assert len(source._closeables) == 1
+            # Emit some data
+            for i in range(3):
+                data = {"col1": i, "time": base_time}
+                controller.emit(data, f"key{i}")
+        finally:
+            controller.terminate()
+        controller.await_termination()
