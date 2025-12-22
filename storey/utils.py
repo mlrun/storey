@@ -258,9 +258,10 @@ def _get_filters_for_filter_column(start, end, filter_column, side_range):
         side_range.append(upper_limit_tuple)
 
 
-def find_partitions(url, fs):
+def find_partitions(url, fs, return_full_partitioning: bool = False):
     # ML-1365. assuming the partitioning is symmetrical (for example both year=2020 and year=2021 directories will have
     # inner month partitions).
+    # Providing return_full_partitioning=True will return also the full partitioning found (not only time attributes)
 
     partitions = []
     partitions_time_attributes = []
@@ -291,8 +292,10 @@ def find_partitions(url, fs):
         legal_time_units = ["year", "month", "day", "hour", "minute", "second"]
 
         partitions_time_attributes = [j for j in legal_time_units if j in partitions]
-
-    return partitions_time_attributes, partitions
+    if return_full_partitioning:
+        return partitions_time_attributes, partitions
+    else:
+        return partitions_time_attributes
 
 
 def find_filters(partitions_time_attributes, start, end, filters, filter_column):
