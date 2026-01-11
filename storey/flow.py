@@ -294,6 +294,9 @@ class Flow:
         if not outlets:
             return
         if event is _termination_obj:
+            if self.logger:
+                outlet_names = ", ".join([outlet.name for outlet in outlets])
+                self.logger.info(f"Forwarding termination signal from step '{self.name}' to steps: {outlet_names}")
             # Only propagate the termination object once we received one per inlet
             outlets[0]._termination_received += 1
             if outlets[0]._should_terminate():
@@ -937,7 +940,15 @@ class _ConcurrentJobExecution(Flow):
                     # be 1 higher than requested. Hence, we peek.
                     job = await self._q.peek()
                     if job is _termination_obj:
+                        if self.logger:
+                            self.logger.info(
+                                f"Terminating ConcurrentJobExecution worker belonging to step '{self.name}'"
+                            )
                         await self._q.get()
+                        if self.logger:
+                            self.logger.info(
+                                f"Terminated ConcurrentJobExecution worker belonging to step '{self.name}'"
+                            )
                         break
                     event = job[0]
                     completed = await job[1]
@@ -1016,10 +1027,22 @@ class _ConcurrentJobExecution(Flow):
 
         if event is _termination_obj:
             if self._queue_size > 0:
+                if self.logger:
+                    self.logger.info(
+                        f"Sending termination signal to ConcurrentJobExecution worker belonging to step '{self.name}'"
+                    )
                 await self._q.put(_termination_obj)
+                if self.logger:
+                    self.logger.info(
+                        f"Awaiting termination of ConcurrentJobExecution worker belonging to step '{self.name}'"
+                    )
                 await self._worker_awaitable
             else:
+                if self.logger:
+                    self.logger.info(f"Terminating ConcurrentJobExecution step '{self.name}' without a worker")
                 await self._cleanup()
+                if self.logger:
+                    self.logger.info(f"Terminated ConcurrentJobExecution step '{self.name}' without a worker")
             return await self._do_downstream(_termination_obj)
         else:
             coroutine = self._process_event_with_retries(event)
@@ -1219,8 +1242,14 @@ class _Batching(Flow):
 
     async def _do(self, event):
         if event is _termination_obj:
+            if self.logger:
+                self.logger.info(f"Terminating Batching step '{self.name}': emitting all remaining batches")
             await self._emit_all()
+            if self.logger:
+                self.logger.info(f"Terminating Batching step '{self.name}': running custom termination code")
             await self._terminate()
+            if self.logger:
+                self.logger.info(f"Terminated Batching step '{self.name}'")
             return await self._do_downstream(_termination_obj)
 
         key = self._extract_key(event)

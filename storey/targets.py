@@ -1198,12 +1198,29 @@ class StreamTarget(Flow, _Writer):
                         continue
                     event = await self._q.get()
                     if event is _termination_obj:  # handle outstanding batches and in flight requests on termination
+                        if self.logger:
+                            self.logger.info(
+                                f"Terminating StreamTarget worker belonging to step '{self.name}': "
+                                f"awaiting {len(in_flight_reqs)} in-flight batches"
+                            )
                         for req in in_flight_reqs:
                             await self._handle_response(req)
+                        if self.logger:
+                            self.logger.info(
+                                f"Terminating StreamTarget worker belonging to step '{self.name}': "
+                                f"sending {self._shards} final batches"
+                            )
                         for shard_id in range(self._shards):
                             self._send_batch(buffers, in_flight_reqs, buffer_events, in_flight_events, shard_id)
+                        if self.logger:
+                            self.logger.info(
+                                f"Terminating StreamTarget worker belonging to step '{self.name}': "
+                                f"awaiting {len(in_flight_reqs)} final batches"
+                            )
                         for req in in_flight_reqs:
                             await self._handle_response(req)
+                        if self.logger:
+                            self.logger.info(f"Terminated StreamTarget worker belonging to step '{self.name}'")
                         break
                     sharding_func_result = self._sharding_func(event)
                     if isinstance(sharding_func_result, int):
@@ -1281,8 +1298,12 @@ class StreamTarget(Flow, _Writer):
             raise AssertionError("StreamTarget worker has already terminated")
 
         if event is _termination_obj:
+            if self.logger:
+                self.logger.info(f"Terminating StreamTarget step '{self.name}'")
             await self._q.put(_termination_obj)
             await self._worker_awaitable
+            if self.logger:
+                self.logger.info(f"Terminated StreamTarget step '{self.name}'")
             return await self._do_downstream(_termination_obj)
         else:
             await self._q.put(event)
@@ -1365,8 +1386,14 @@ class KafkaTarget(Flow, _Writer):
         await self._lazy_init()
 
         if event is _termination_obj:
+            if self.logger:
+                self.logger.info(f"Terminating KafkaTarget step '{self.name}': flushing producer")
             self._producer.flush()
+            if self.logger:
+                self.logger.info(f"Terminating KafkaTarget step '{self.name}': closing producer")
             self._producer.close()
+            if self.logger:
+                self.logger.info(f"Terminated KafkaTarget step '{self.name}': closing producer")
             return await self._do_downstream(_termination_obj)
         else:
             key = event.key
@@ -1442,7 +1469,11 @@ class NoSqlTarget(_Writer, Flow):
 
     async def _do(self, event):
         if event is _termination_obj:
+            if self.logger:
+                self.logger.info(f"Terminating NoSqlTarget step '{self.name}': terminating table")
             await self._table._terminate()
+            if self.logger:
+                self.logger.info(f"Terminated NoSqlTarget step '{self.name}'")
             return await self._do_downstream(_termination_obj)
 
         if event.key is None:
