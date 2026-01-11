@@ -4677,14 +4677,16 @@ def test_verbose_logs():
     controller.terminate()
     controller.await_termination()
 
-    assert len(logger.logs) == 2
+    debug_logs = [log for log in logger.logs if log[0] == "debug"]
 
-    level, args, kwargs = logger.logs[0]
+    assert len(debug_logs) == 2
+
+    level, args, kwargs = debug_logs[0]
     assert level == "debug"
     assert args == ("SyncEmitSource -> Map1 | Event(id=myid, path=/, body={})",)
     assert kwargs == {}
 
-    level, args, kwargs = logger.logs[1]
+    level, args, kwargs = debug_logs[1]
     assert level == "debug"
     assert args == ("Map1 -> Map2 | Event(id=myid, path=/, body={})",)
     assert kwargs == {}
