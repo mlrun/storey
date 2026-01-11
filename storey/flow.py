@@ -1165,7 +1165,7 @@ class _Batching(Flow):
                 self.logger.info(f"Terminating Batching step '{self.name}': emitting all remaining batches")
             await self._emit_all()
             if self.logger:
-                self.logger.info(f"Terminating Batching step '{self.name}': running customer termination code")
+                self.logger.info(f"Terminating Batching step '{self.name}': running custom termination code")
             await self._terminate()
             if self.logger:
                 self.logger.info(f"Terminated Batching step '{self.name}'")
