@@ -103,14 +103,6 @@ class FlowError(Exception):
     pass
 
 
-class TDEngineTypeError(TypeError):
-    pass
-
-
-class TDEngineValueError(ValueError):
-    pass
-
-
 class WindowBase:
     def __init__(self, window, period, window_str):
         self.window_millis = window
@@ -454,18 +446,3 @@ class FieldAggregator:
 class FixedWindowType(Enum):
     CurrentOpenWindow = 1
     LastClosedWindow = 2
-
-
-class _TDEngineField:
-    def __init__(
-        self,
-        field: str,
-        field_type: str,
-        length: int,
-        note: str,
-        *args,
-    ):
-        self.field = field
-        self.field_type = field_type
-        self.length = length
-        self.note = note
