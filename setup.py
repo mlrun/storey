@@ -42,7 +42,6 @@ extras_require = {
     "kafka": ["kafka-python~=2.0"],
     "redis": ["redis~=4.3"],
     "sqlalchemy": ["sqlalchemy~=1.3"],
-    "tdengine": ["taospy[ws]>=2,<3"],
     "psycopg": "psycopg[binary,pool]~=3.2",
 }
 
