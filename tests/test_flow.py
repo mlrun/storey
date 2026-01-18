@@ -176,6 +176,13 @@ class EventHoarder(storey.Flow):
         return await self._do_downstream(event)
 
 
+class ErrorOnTermination(storey.Flow):
+    async def _do(self, event):
+        if event is storey.dtypes._termination_obj:
+            raise ATestException("We raise this error on termination on purpose")
+        return await self._do_downstream(event)
+
+
 def test_offset_commit():
     platform = Committer()
     context = CommitterContext(platform)
@@ -542,6 +549,40 @@ def test_offset_commit_error():
     assert log_level == "error"
     assert "Failed to commit offsets due to error" in log_message
     assert "RuntimeError: Something went wrong" in log_message
+
+
+async def async_offset_commit_error_on_termination():
+    platform = Committer()
+    logger = MockLogger()
+    context = CommitterContext(platform, logger=logger)
+
+    controller = build_flow(
+        [
+            AsyncEmitSource(context=context, explicit_ack=True, max_wait_before_commit=1),
+            ErrorOnTermination(),
+        ]
+    ).run()
+
+    num_shards = 10
+    num_records_per_shard = 10
+
+    for offset in range(1, num_records_per_shard + 1):
+        for shard in range(num_shards):
+            event = Event(shard)
+            event.shard_id = shard
+            event.offset = offset
+            await controller.emit(event)
+    del event
+
+    with pytest.raises(ATestException):
+        await controller.terminate(wait=True)
+
+    assert platform.offsets == {("/", shard): 10 for shard in range(num_shards)}
+
+
+# ML-11919
+def test_async_offset_commit_error_on_termination():
+    asyncio.run(async_offset_commit_error_on_termination())
 
 
 def test_multiple_upstreams():

@@ -662,7 +662,6 @@ class AsyncEmitSource(Flow):
                 if event is _termination_obj:
                     # We can commit all at this point because termination of
                     # all downstream steps completed successfully.
-                    await _commit_handled_events(self._outstanding_offsets, committer, self.logger, commit_all=True)
                     return termination_result
             except BaseException as ex:
                 if self.logger:
@@ -680,6 +679,8 @@ class AsyncEmitSource(Flow):
                     await self._q.get()
                 self._raise_on_error()
             finally:
+                # Commit on termination regardless of errors (ML-11919)
+                await _commit_handled_events(self._outstanding_offsets, committer, self.logger, commit_all=True)
                 if event is _termination_obj or self._ex:
                     for closeable in self._closeables:
                         try:
