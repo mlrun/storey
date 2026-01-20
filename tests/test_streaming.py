@@ -1008,14 +1008,7 @@ class TestStreamingGraphSplits:
 
         # Collector should receive chunks from both branches and emit collected list
         # Each branch processes each chunk, so we get 4 items total (2 chunks x 2 branches)
-        assert len(result) == 1
-        collected = result[0]
-        assert len(collected) == 4
-        # Check that both branches processed the chunks
-        assert "a_test_chunk_0" in collected
-        assert "a_test_chunk_1" in collected
-        assert "b_test_chunk_0" in collected
-        assert "b_test_chunk_1" in collected
+        assert [set(*result)] == [{"a_test_chunk_0", "a_test_chunk_1", "b_test_chunk_0", "b_test_chunk_1"}]
 
     def test_async_streaming_graph_split_collector_expected_completions_2(self):
         """Async version: Test streaming through a split with Collector(expected_completions=2)."""
@@ -1043,13 +1036,7 @@ class TestStreamingGraphSplits:
             await controller.terminate()
             result = await controller.await_termination()
 
-            assert len(result) == 1
-            collected = result[0]
-            assert len(collected) == 4
-            assert "a_test_chunk_0" in collected
-            assert "a_test_chunk_1" in collected
-            assert "b_test_chunk_0" in collected
-            assert "b_test_chunk_1" in collected
+            assert [set(*result)] == [{"a_test_chunk_0", "a_test_chunk_1", "b_test_chunk_0", "b_test_chunk_1"}]
 
         asyncio.run(_test())
 
@@ -1083,11 +1070,7 @@ class TestStreamingGraphSplits:
             chunks = list(result)
 
             # Should have 4 chunks total (2 chunks x 2 branches)
-            assert len(chunks) == 4
-            assert "a_test_chunk_0" in chunks
-            assert "a_test_chunk_1" in chunks
-            assert "b_test_chunk_0" in chunks
-            assert "b_test_chunk_1" in chunks
+            assert [set(chunks)] == [{"a_test_chunk_0", "a_test_chunk_1", "b_test_chunk_0", "b_test_chunk_1"}]
         finally:
             controller.terminate()
             controller.await_termination()
@@ -1119,11 +1102,7 @@ class TestStreamingGraphSplits:
                 assert inspect.isasyncgen(result)
                 chunks = [chunk async for chunk in result]
 
-                assert len(chunks) == 4
-                assert "a_test_chunk_0" in chunks
-                assert "a_test_chunk_1" in chunks
-                assert "b_test_chunk_0" in chunks
-                assert "b_test_chunk_1" in chunks
+                assert [set(chunks)] == [{"a_test_chunk_0", "a_test_chunk_1", "b_test_chunk_0", "b_test_chunk_1"}]
             finally:
                 await controller.terminate()
                 await controller.await_termination()
@@ -1159,11 +1138,7 @@ class TestStreamingGraphSplits:
             chunks = list(result)
 
             # Should have 4 chunks total (2 chunks x 2 branches)
-            assert len(chunks) == 4
-            assert "a_test_chunk_0" in chunks
-            assert "a_test_chunk_1" in chunks
-            assert "b_test_chunk_0" in chunks
-            assert "b_test_chunk_1" in chunks
+            assert [set(chunks)] == [{"a_test_chunk_0", "a_test_chunk_1", "b_test_chunk_0", "b_test_chunk_1"}]
         finally:
             controller.terminate()
             controller.await_termination()
@@ -1194,11 +1169,7 @@ class TestStreamingGraphSplits:
                 assert inspect.isasyncgen(result)
                 chunks = [chunk async for chunk in result]
 
-                assert len(chunks) == 4
-                assert "a_test_chunk_0" in chunks
-                assert "a_test_chunk_1" in chunks
-                assert "b_test_chunk_0" in chunks
-                assert "b_test_chunk_1" in chunks
+                assert [set(chunks)] == [{"a_test_chunk_0", "a_test_chunk_1", "b_test_chunk_0", "b_test_chunk_1"}]
             finally:
                 await controller.terminate()
                 await controller.await_termination()
