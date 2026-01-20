@@ -85,7 +85,7 @@ class AwaitableResult:
                 self._on_error()
             raise copy.copy(first_result)
 
-        # Check if this is a streaming response
+        # If this is a stream response, return a generator
         if isinstance(first_result, (StreamChunk, StreamCompletion)):
             return self._stream_generator(first_result)
 
@@ -490,7 +490,7 @@ class AsyncAwaitableResult:
                 await self._on_error()
             raise copy.copy(first_result)
 
-        # Check if this is a streaming response
+        # If this is a stream response, return a generator
         if isinstance(first_result, (StreamChunk, StreamCompletion)):
             return self._stream_generator(first_result)
 
