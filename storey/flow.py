@@ -485,7 +485,8 @@ class Choice(Flow):
     async def _do(self, event):
         if event is _termination_obj:
             return await self._do_downstream(_termination_obj, select_outlets=False)
-        # StreamCompletion objects should be forwarded to all outlets without routing
+        # StreamCompletion should propagate to all outlets (like _termination_obj)
+        # to avoid hangs in cyclic graphs and ensure all Collectors receive completions
         if isinstance(event, StreamCompletion):
             return await self._do_downstream(event, select_outlets=False)
         else:

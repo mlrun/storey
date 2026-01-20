@@ -458,6 +458,56 @@ class TestCollector:
 
         asyncio.run(_test())
 
+    def test_collector_empty_stream(self):
+        """Test that Collector emits an empty list for a stream with zero chunks."""
+
+        def empty_stream(x):
+            return
+            yield  # Makes it a generator
+
+        controller = build_flow(
+            [
+                SyncEmitSource(),
+                Map(empty_stream),
+                Collector(),
+                Reduce([], lambda acc, x: acc + [x]),
+            ]
+        ).run()
+
+        controller.emit("test")
+        controller.terminate()
+        result = controller.await_termination()
+
+        # Empty stream should emit an empty list
+        assert len(result) == 1
+        assert result[0] == []
+
+    def test_async_collector_empty_stream(self):
+        """Async version: Test that Collector emits an empty list for a stream with zero chunks."""
+
+        async def _test():
+            def empty_stream(x):
+                return
+                yield  # Makes it a generator
+
+            controller = build_flow(
+                [
+                    AsyncEmitSource(),
+                    Map(empty_stream),
+                    Collector(),
+                    Reduce([], lambda acc, x: acc + [x]),
+                ]
+            ).run()
+
+            await controller.emit("test")
+            await controller.terminate()
+            result = await controller.await_termination()
+
+            assert len(result) == 1
+            assert result[0] == []
+
+        asyncio.run(_test())
+
 
 class TestCompleteStreaming:
     """Tests for Complete step streaming support."""
@@ -1190,13 +1240,16 @@ class TestStreamingGraphSplits:
         controller.terminate()
         result = controller.await_termination()
 
-        # Should have 2 collected results (one per emit)
-        assert len(result) == 2
-        # low_value chunks go to branch_low
-        low_result = [r for r in result if any("LOW_" in str(item) for item in r)]
-        high_result = [r for r in result if any("HIGH_" in str(item) for item in r)]
+        # 4 results: chunks go to one branch, but StreamCompletion goes to all branches
+        # (like _termination_obj) to avoid hangs in cyclic graphs.
+        # Branches that don't receive chunks emit empty lists.
+        assert len(result) == 4
+        low_result = [r for r in result if r and any("LOW_" in str(item) for item in r)]
+        high_result = [r for r in result if r and any("HIGH_" in str(item) for item in r)]
+        empty_results = [r for r in result if r == []]
         assert len(low_result) == 1
         assert len(high_result) == 1
+        assert len(empty_results) == 2
         assert "LOW_low_value_chunk_0" in low_result[0]
         assert "HIGH_high_value_chunk_0" in high_result[0]
 
@@ -1235,11 +1288,14 @@ class TestStreamingGraphSplits:
             await controller.terminate()
             result = await controller.await_termination()
 
-            assert len(result) == 2
-            low_result = [r for r in result if any("LOW_" in str(item) for item in r)]
-            high_result = [r for r in result if any("HIGH_" in str(item) for item in r)]
+            # 4 results: chunks go to one branch, but StreamCompletion goes to all branches
+            assert len(result) == 4
+            low_result = [r for r in result if r and any("LOW_" in str(item) for item in r)]
+            high_result = [r for r in result if r and any("HIGH_" in str(item) for item in r)]
+            empty_results = [r for r in result if r == []]
             assert len(low_result) == 1
             assert len(high_result) == 1
+            assert len(empty_results) == 2
             assert "LOW_low_value_chunk_0" in low_result[0]
             assert "HIGH_high_value_chunk_0" in high_result[0]
 
@@ -1401,5 +1457,88 @@ class TestStreamingErrorHandling:
                 # Error is also propagated through termination
                 with pytest.raises(RuntimeError, match="Failed on chunk 1"):
                     await controller.await_termination()
+
+        asyncio.run(_test())
+
+    def test_streaming_in_cycle_fails(self):
+        """Test that streaming step inside a cycle fails on second iteration.
+
+        When a streaming step is inside a cycle, the first iteration streams chunks.
+        When those chunks loop back to the streaming step, they already have
+        streaming_step set, so the step should fail with StreamingError.
+        """
+
+        class AlwaysLoop(Map):
+            """A Map step that always routes back to the loop target."""
+
+            def __init__(self, loop_target, **kwargs):
+                super().__init__(**kwargs)
+                self._loop_target = loop_target
+
+            def select_outlets(self, event_body):
+                # Always loop back - the streaming error should stop us
+                return [self._loop_target]
+
+        def stream_chunks(x):
+            yield f"{x}_chunk_0"
+            yield f"{x}_chunk_1"
+
+        source = SyncEmitSource()
+        # The streaming map is the entry point of the loop
+        streaming_map = Map(stream_chunks, name="streamer", max_iterations=5)
+        loop_controller = AlwaysLoop(
+            fn=lambda x: x, name="loop_ctrl", loop_target="streamer", max_iterations=5
+        )
+        end = Reduce([], lambda acc, x: acc + [x], name="end")
+
+        source.to(streaming_map)
+        streaming_map.to(loop_controller)
+        loop_controller.to(end)
+        loop_controller.to(streaming_map)  # Create cycle
+
+        controller = source.run()
+
+        controller.emit("test")
+        controller.terminate()
+
+        # Should fail because chunks looping back already have streaming_step set
+        with pytest.raises(StreamingError, match="Streaming on top of streaming is not allowed"):
+            controller.await_termination()
+
+    def test_async_streaming_in_cycle_fails(self):
+        """Async version: Test that streaming step inside a cycle fails on second iteration."""
+
+        async def _test():
+            class AlwaysLoop(Map):
+                def __init__(self, loop_target, **kwargs):
+                    super().__init__(**kwargs)
+                    self._loop_target = loop_target
+
+                def select_outlets(self, event_body):
+                    return [self._loop_target]
+
+            def stream_chunks(x):
+                yield f"{x}_chunk_0"
+                yield f"{x}_chunk_1"
+
+            source = AsyncEmitSource()
+            streaming_map = Map(stream_chunks, name="streamer", max_iterations=5)
+            loop_controller = AlwaysLoop(
+                fn=lambda x: x, name="loop_ctrl", loop_target="streamer", max_iterations=5
+            )
+            end = Reduce([], lambda acc, x: acc + [x], name="end")
+
+            source.to(streaming_map)
+            streaming_map.to(loop_controller)
+            loop_controller.to(end)
+            loop_controller.to(streaming_map)  # Create cycle
+
+            controller = source.run()
+
+            await controller.emit("test")
+            await controller.terminate()
+
+            with pytest.raises(StreamingError, match="Streaming on top of streaming is not allowed"):
+                await controller.await_termination()
 
         asyncio.run(_test())
