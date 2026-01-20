@@ -121,13 +121,11 @@ class StreamChunk:
     to detect streaming responses and return a generator.
     """
 
-    __slots__ = ("body",)
-
     def __init__(self, body):
         self.body = body
 
     def __repr__(self):
-        return f"StreamChunk({self.body!r})"
+        return f"StreamChunk({self.body})"
 
 
 class StreamCompletion:

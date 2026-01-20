@@ -19,6 +19,7 @@ import pytest
 
 from storey import (
     AsyncEmitSource,
+    Choice,
     Collector,
     Complete,
     Map,
@@ -485,7 +486,7 @@ class TestCompleteStreaming:
         try:
             results = []
             for request_idx in range(3):
-                awaitable = (controller.emit(f"test{request_idx}"))
+                awaitable = controller.emit(f"test{request_idx}")
                 result = awaitable.await_result()
                 # await_result() should return a generator for streaming
                 assert inspect.isgenerator(result)
@@ -923,5 +924,482 @@ class TestAwaitableResultStreaming:
             # Empty async generator should still work
             chunks = [chunk async for chunk in result]
             assert chunks == []
+
+        asyncio.run(_test())
+
+
+class TestStreamingGraphSplits:
+    """Tests for streaming through branching graph topologies."""
+
+    def test_streaming_graph_split_collector_expected_completions_2(self):
+        """Test streaming through a split with Collector(expected_completions=2)."""
+
+        def stream_chunks(x):
+            for i in range(2):
+                yield f"{x}_chunk_{i}"
+
+        source = SyncEmitSource()
+        streaming_map = Map(stream_chunks)
+        branch_a = Map(lambda x: f"a_{x}", name="branch_a")
+        branch_b = Map(lambda x: f"b_{x}", name="branch_b")
+        collector = Collector(expected_completions=2)
+        reducer = Reduce([], lambda acc, x: acc + [x])
+
+        source.to(streaming_map)
+        streaming_map.to(branch_a).to(collector)
+        streaming_map.to(branch_b).to(collector)
+        collector.to(reducer)
+
+        controller = source.run()
+
+        controller.emit("test")
+        controller.terminate()
+        result = controller.await_termination()
+
+        # Collector should receive chunks from both branches and emit collected list
+        # Each branch processes each chunk, so we get 4 items total (2 chunks x 2 branches)
+        assert len(result) == 1
+        collected = result[0]
+        assert len(collected) == 4
+        # Check that both branches processed the chunks
+        assert "a_test_chunk_0" in collected
+        assert "a_test_chunk_1" in collected
+        assert "b_test_chunk_0" in collected
+        assert "b_test_chunk_1" in collected
+
+    def test_async_streaming_graph_split_collector_expected_completions_2(self):
+        """Async version: Test streaming through a split with Collector(expected_completions=2)."""
+
+        async def _test():
+            def stream_chunks(x):
+                for i in range(2):
+                    yield f"{x}_chunk_{i}"
+
+            source = AsyncEmitSource()
+            streaming_map = Map(stream_chunks)
+            branch_a = Map(lambda x: f"a_{x}", name="branch_a")
+            branch_b = Map(lambda x: f"b_{x}", name="branch_b")
+            collector = Collector(expected_completions=2)
+            reducer = Reduce([], lambda acc, x: acc + [x])
+
+            source.to(streaming_map)
+            streaming_map.to(branch_a).to(collector)
+            streaming_map.to(branch_b).to(collector)
+            collector.to(reducer)
+
+            controller = source.run()
+
+            await controller.emit("test")
+            await controller.terminate()
+            result = await controller.await_termination()
+
+            assert len(result) == 1
+            collected = result[0]
+            assert len(collected) == 4
+            assert "a_test_chunk_0" in collected
+            assert "a_test_chunk_1" in collected
+            assert "b_test_chunk_0" in collected
+            assert "b_test_chunk_1" in collected
+
+        asyncio.run(_test())
+
+    def test_streaming_graph_split_complete_expected_results_2(self):
+        """Test streaming through a split with Complete and expected_number_of_results=2."""
+
+        def stream_chunks(x):
+            for i in range(2):
+                yield f"{x}_chunk_{i}"
+
+        source = SyncEmitSource()
+        streaming_map = Map(stream_chunks)
+        branch_a = Map(lambda x: f"a_{x}", name="branch_a")
+        branch_b = Map(lambda x: f"b_{x}", name="branch_b")
+        complete_a = Complete(name="complete_a")
+        complete_b = Complete(name="complete_b")
+
+        source.to(streaming_map)
+        streaming_map.to(branch_a).to(complete_a)
+        streaming_map.to(branch_b).to(complete_b)
+
+        controller = source.run()
+
+        try:
+            # Use expected_number_of_results=2 since event goes through 2 Complete steps
+            awaitable = controller.emit("test", expected_number_of_results=2)
+            result = awaitable.await_result()
+
+            # Should be a generator yielding chunks from both branches
+            assert inspect.isgenerator(result)
+            chunks = list(result)
+
+            # Should have 4 chunks total (2 chunks x 2 branches)
+            assert len(chunks) == 4
+            assert "a_test_chunk_0" in chunks
+            assert "a_test_chunk_1" in chunks
+            assert "b_test_chunk_0" in chunks
+            assert "b_test_chunk_1" in chunks
+        finally:
+            controller.terminate()
+            controller.await_termination()
+
+    def test_async_streaming_graph_split_complete_expected_results_2(self):
+        """Async version: Test streaming through a split with Complete and expected_number_of_results=2."""
+
+        async def _test():
+            def stream_chunks(x):
+                for i in range(2):
+                    yield f"{x}_chunk_{i}"
+
+            source = AsyncEmitSource()
+            streaming_map = Map(stream_chunks)
+            branch_a = Map(lambda x: f"a_{x}", name="branch_a")
+            branch_b = Map(lambda x: f"b_{x}", name="branch_b")
+            complete_a = Complete(name="complete_a")
+            complete_b = Complete(name="complete_b")
+
+            source.to(streaming_map)
+            streaming_map.to(branch_a).to(complete_a)
+            streaming_map.to(branch_b).to(complete_b)
+
+            controller = source.run()
+
+            try:
+                result = await controller.emit("test", expected_number_of_results=2)
+
+                assert inspect.isasyncgen(result)
+                chunks = [chunk async for chunk in result]
+
+                assert len(chunks) == 4
+                assert "a_test_chunk_0" in chunks
+                assert "a_test_chunk_1" in chunks
+                assert "b_test_chunk_0" in chunks
+                assert "b_test_chunk_1" in chunks
+            finally:
+                await controller.terminate()
+                await controller.await_termination()
+
+        asyncio.run(_test())
+
+    def test_streaming_diamond_graph_single_complete(self):
+        """Test diamond graph: streaming splits, branches merge into single Complete."""
+
+        def stream_chunks(x):
+            for i in range(2):
+                yield f"{x}_chunk_{i}"
+
+        source = SyncEmitSource()
+        streaming_map = Map(stream_chunks)
+        branch_a = Map(lambda x: f"a_{x}", name="branch_a")
+        branch_b = Map(lambda x: f"b_{x}", name="branch_b")
+        complete = Complete(name="complete")
+
+        # Diamond: streaming_map splits to both branches, both merge into single complete
+        source.to(streaming_map)
+        streaming_map.to(branch_a).to(complete)
+        streaming_map.to(branch_b).to(complete)
+
+        controller = source.run()
+
+        try:
+            # expected_number_of_results=2 because event passes through Complete twice (once per branch)
+            awaitable = controller.emit("test", expected_number_of_results=2)
+            result = awaitable.await_result()
+
+            assert inspect.isgenerator(result)
+            chunks = list(result)
+
+            # Should have 4 chunks total (2 chunks x 2 branches)
+            assert len(chunks) == 4
+            assert "a_test_chunk_0" in chunks
+            assert "a_test_chunk_1" in chunks
+            assert "b_test_chunk_0" in chunks
+            assert "b_test_chunk_1" in chunks
+        finally:
+            controller.terminate()
+            controller.await_termination()
+
+    def test_async_streaming_diamond_graph_single_complete(self):
+        """Async version: Test diamond graph with single Complete at merge point."""
+
+        async def _test():
+            def stream_chunks(x):
+                for i in range(2):
+                    yield f"{x}_chunk_{i}"
+
+            source = AsyncEmitSource()
+            streaming_map = Map(stream_chunks)
+            branch_a = Map(lambda x: f"a_{x}", name="branch_a")
+            branch_b = Map(lambda x: f"b_{x}", name="branch_b")
+            complete = Complete(name="complete")
+
+            source.to(streaming_map)
+            streaming_map.to(branch_a).to(complete)
+            streaming_map.to(branch_b).to(complete)
+
+            controller = source.run()
+
+            try:
+                result = await controller.emit("test", expected_number_of_results=2)
+
+                assert inspect.isasyncgen(result)
+                chunks = [chunk async for chunk in result]
+
+                assert len(chunks) == 4
+                assert "a_test_chunk_0" in chunks
+                assert "a_test_chunk_1" in chunks
+                assert "b_test_chunk_0" in chunks
+                assert "b_test_chunk_1" in chunks
+            finally:
+                await controller.terminate()
+                await controller.await_termination()
+
+        asyncio.run(_test())
+
+    def test_streaming_select_outlets_single_branch(self):
+        """Test streaming with selective routing to single branch."""
+
+        def stream_chunks(x):
+            for i in range(2):
+                yield f"{x}_chunk_{i}"
+
+        class RouteChoice(Choice):
+            def select_outlets(self, event):
+                # Route based on chunk content
+                if "high" in str(event):
+                    return ["branch_high"]
+                else:
+                    return ["branch_low"]
+
+        source = SyncEmitSource()
+        streaming_map = Map(stream_chunks)
+        route = RouteChoice()
+        branch_high = Map(lambda x: f"HIGH_{x}", name="branch_high")
+        branch_low = Map(lambda x: f"LOW_{x}", name="branch_low")
+        collector = Collector(expected_completions=1)
+        reducer = Reduce([], lambda acc, x: acc + [x])
+
+        source.to(streaming_map).to(route)
+        route.to(branch_high).to(collector)
+        route.to(branch_low).to(collector)
+        collector.to(reducer)
+
+        controller = source.run()
+
+        controller.emit("low_value")
+        controller.emit("high_value")
+        controller.terminate()
+        result = controller.await_termination()
+
+        # Should have 2 collected results (one per emit)
+        assert len(result) == 2
+        # low_value chunks go to branch_low
+        low_result = [r for r in result if any("LOW_" in str(item) for item in r)]
+        high_result = [r for r in result if any("HIGH_" in str(item) for item in r)]
+        assert len(low_result) == 1
+        assert len(high_result) == 1
+        assert "LOW_low_value_chunk_0" in low_result[0]
+        assert "HIGH_high_value_chunk_0" in high_result[0]
+
+    def test_async_streaming_select_outlets_single_branch(self):
+        """Async version: Test streaming with selective routing to single branch."""
+
+        async def _test():
+            def stream_chunks(x):
+                for i in range(2):
+                    yield f"{x}_chunk_{i}"
+
+            class RouteChoice(Choice):
+                def select_outlets(self, event):
+                    if "high" in str(event):
+                        return ["branch_high"]
+                    else:
+                        return ["branch_low"]
+
+            source = AsyncEmitSource()
+            streaming_map = Map(stream_chunks)
+            route = RouteChoice()
+            branch_high = Map(lambda x: f"HIGH_{x}", name="branch_high")
+            branch_low = Map(lambda x: f"LOW_{x}", name="branch_low")
+            collector = Collector(expected_completions=1)
+            reducer = Reduce([], lambda acc, x: acc + [x])
+
+            source.to(streaming_map).to(route)
+            route.to(branch_high).to(collector)
+            route.to(branch_low).to(collector)
+            collector.to(reducer)
+
+            controller = source.run()
+
+            await controller.emit("low_value")
+            await controller.emit("high_value")
+            await controller.terminate()
+            result = await controller.await_termination()
+
+            assert len(result) == 2
+            low_result = [r for r in result if any("LOW_" in str(item) for item in r)]
+            high_result = [r for r in result if any("HIGH_" in str(item) for item in r)]
+            assert len(low_result) == 1
+            assert len(high_result) == 1
+            assert "LOW_low_value_chunk_0" in low_result[0]
+            assert "HIGH_high_value_chunk_0" in high_result[0]
+
+        asyncio.run(_test())
+
+
+class TestStreamingErrorHandling:
+    """Tests for error handling in streaming scenarios."""
+
+    def test_streaming_generator_raises_error(self):
+        """Test that error in generator mid-stream propagates without hanging."""
+
+        def error_stream(x):
+            yield f"{x}_chunk_0"
+            raise ValueError("Generator error mid-stream")
+            yield f"{x}_chunk_1"  # noqa: unreachable
+
+        controller = build_flow(
+            [
+                SyncEmitSource(),
+                Map(error_stream),
+                Complete(),
+            ]
+        ).run()
+
+        try:
+            awaitable = controller.emit("test")
+            result = awaitable.await_result()
+
+            # Should be a generator
+            assert inspect.isgenerator(result)
+
+            # First chunk should work
+            first_chunk = next(result)
+            assert first_chunk == "test_chunk_0"
+
+            # Second iteration should raise the error
+            with pytest.raises(ValueError, match="Generator error mid-stream"):
+                next(result)
+        finally:
+            controller.terminate()
+            # Error is also propagated through termination
+            with pytest.raises(ValueError, match="Generator error mid-stream"):
+                controller.await_termination()
+
+    def test_async_streaming_generator_raises_error(self):
+        """Async version: Test that error in generator mid-stream propagates without hanging."""
+
+        async def _test():
+            def error_stream(x):
+                yield f"{x}_chunk_0"
+                raise ValueError("Generator error mid-stream")
+                yield f"{x}_chunk_1"  # noqa: unreachable
+
+            controller = build_flow(
+                [
+                    AsyncEmitSource(),
+                    Map(error_stream),
+                    Complete(),
+                ]
+            ).run()
+
+            try:
+                result = await controller.emit("test")
+
+                assert inspect.isasyncgen(result)
+
+                # First chunk should work
+                first_chunk = await result.__anext__()
+                assert first_chunk == "test_chunk_0"
+
+                # Second iteration should raise the error
+                with pytest.raises(ValueError, match="Generator error mid-stream"):
+                    await result.__anext__()
+            finally:
+                await controller.terminate()
+                # Error is also propagated through termination
+                with pytest.raises(ValueError, match="Generator error mid-stream"):
+                    await controller.await_termination()
+
+        asyncio.run(_test())
+
+    def test_streaming_error_in_intermediate_step(self):
+        """Test that error in non-streaming step processing chunks propagates correctly."""
+
+        def stream_chunks(x):
+            for i in range(3):
+                yield i
+
+        def failing_transform(x):
+            if x == 1:
+                raise RuntimeError("Failed on chunk 1")
+            return x * 10
+
+        controller = build_flow(
+            [
+                SyncEmitSource(),
+                Map(stream_chunks),
+                Map(failing_transform),
+                Complete(),
+            ]
+        ).run()
+
+        try:
+            awaitable = controller.emit("test")
+            result = awaitable.await_result()
+
+            assert inspect.isgenerator(result)
+
+            # First chunk (0) should work
+            first_chunk = next(result)
+            assert first_chunk == 0
+
+            # Second chunk (1) should raise error
+            with pytest.raises(RuntimeError, match="Failed on chunk 1"):
+                next(result)
+        finally:
+            controller.terminate()
+            # Error is also propagated through termination
+            with pytest.raises(RuntimeError, match="Failed on chunk 1"):
+                controller.await_termination()
+
+    def test_async_streaming_error_in_intermediate_step(self):
+        """Async version: Test that error in non-streaming step processing chunks propagates."""
+
+        async def _test():
+            def stream_chunks(x):
+                for i in range(3):
+                    yield i
+
+            def failing_transform(x):
+                if x == 1:
+                    raise RuntimeError("Failed on chunk 1")
+                return x * 10
+
+            controller = build_flow(
+                [
+                    AsyncEmitSource(),
+                    Map(stream_chunks),
+                    Map(failing_transform),
+                    Complete(),
+                ]
+            ).run()
+
+            try:
+                result = await controller.emit("test")
+
+                assert inspect.isasyncgen(result)
+
+                # First chunk (0) should work
+                first_chunk = await result.__anext__()
+                assert first_chunk == 0
+
+                # Second chunk (1) should raise error
+                with pytest.raises(RuntimeError, match="Failed on chunk 1"):
+                    await result.__anext__()
+            finally:
+                await controller.terminate()
+                # Error is also propagated through termination
+                with pytest.raises(RuntimeError, match="Failed on chunk 1"):
+                    await controller.await_termination()
 
         asyncio.run(_test())

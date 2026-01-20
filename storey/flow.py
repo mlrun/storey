@@ -321,19 +321,35 @@ class Flow:
         # If there is more than one outlet, allow concurrent execution.
         tasks = []
         if len(outlets) > 1:
-            awaitable_result = event._awaitable_result
-            event._awaitable_result = None
-            original_events = getattr(event, "_original_events", None)
-            # Temporarily delete self-reference to avoid deepcopy getting stuck in an infinite loop
-            event._original_events = None
-            for i in range(1, len(outlets)):
-                event_copy = copy.deepcopy(event)
-                event_copy._awaitable_result = awaitable_result
-                event_copy._original_events = original_events
-                tasks.append(asyncio.get_running_loop().create_task(outlets[i]._do_and_recover(event_copy)))
-            # Set self-reference back after deepcopy
-            event._original_events = original_events
-            event._awaitable_result = awaitable_result
+            # StreamCompletion objects have original_event that contains _awaitable_result
+            if isinstance(event, StreamCompletion):
+                orig_event = event.original_event
+                awaitable_result = orig_event._awaitable_result
+                orig_event._awaitable_result = None
+                original_events = getattr(orig_event, "_original_events", None)
+                orig_event._original_events = None
+                for i in range(1, len(outlets)):
+                    event_copy = copy.deepcopy(event)
+                    event_copy.original_event._awaitable_result = awaitable_result
+                    event_copy.original_event._original_events = original_events
+                    tasks.append(asyncio.get_running_loop().create_task(outlets[i]._do_and_recover(event_copy)))
+                # Restore after deepcopy
+                orig_event._original_events = original_events
+                orig_event._awaitable_result = awaitable_result
+            else:
+                awaitable_result = event._awaitable_result
+                event._awaitable_result = None
+                original_events = getattr(event, "_original_events", None)
+                # Temporarily delete self-reference to avoid deepcopy getting stuck in an infinite loop
+                event._original_events = None
+                for i in range(1, len(outlets)):
+                    event_copy = copy.deepcopy(event)
+                    event_copy._awaitable_result = awaitable_result
+                    event_copy._original_events = original_events
+                    tasks.append(asyncio.get_running_loop().create_task(outlets[i]._do_and_recover(event_copy)))
+                # Set self-reference back after deepcopy
+                event._original_events = original_events
+                event._awaitable_result = awaitable_result
         if self.verbose and self.logger:
             step_name = self.name
             event_string = self._event_string(event)
@@ -469,6 +485,9 @@ class Choice(Flow):
     async def _do(self, event):
         if event is _termination_obj:
             return await self._do_downstream(_termination_obj, select_outlets=False)
+        # StreamCompletion objects should be forwarded to all outlets without routing
+        if isinstance(event, StreamCompletion):
+            return await self._do_downstream(event, select_outlets=False)
         else:
             event_body = event if self._full_event else event.body
             outlet_names = self.select_outlets(event_body)
