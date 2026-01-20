@@ -53,7 +53,7 @@ class Collector(Flow):
         # Handle StreamCompletion sentinel
         if isinstance(event, StreamCompletion):
             stream_id = event.original_event.id
-            stream_data = self._collected_streams[stream_id]  # Use [] to trigger defaultdict
+            stream_data = self._collected_streams[stream_id]
 
             stream_data["completions"] += 1
 
