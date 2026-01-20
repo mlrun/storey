@@ -1284,7 +1284,6 @@ class TestStreamingErrorHandling:
         def error_stream(x):
             yield f"{x}_chunk_0"
             raise ValueError("Generator error mid-stream")
-            yield f"{x}_chunk_1"  # noqa: unreachable
 
         controller = build_flow(
             [
@@ -1321,7 +1320,6 @@ class TestStreamingErrorHandling:
             def error_stream(x):
                 yield f"{x}_chunk_0"
                 raise ValueError("Generator error mid-stream")
-                yield f"{x}_chunk_1"  # noqa: unreachable
 
             controller = build_flow(
                 [
