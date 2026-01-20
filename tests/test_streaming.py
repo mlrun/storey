@@ -1486,9 +1486,7 @@ class TestStreamingErrorHandling:
         source = SyncEmitSource()
         # The streaming map is the entry point of the loop
         streaming_map = Map(stream_chunks, name="streamer", max_iterations=5)
-        loop_controller = AlwaysLoop(
-            fn=lambda x: x, name="loop_ctrl", loop_target="streamer", max_iterations=5
-        )
+        loop_controller = AlwaysLoop(fn=lambda x: x, name="loop_ctrl", loop_target="streamer", max_iterations=5)
         end = Reduce([], lambda acc, x: acc + [x], name="end")
 
         source.to(streaming_map)
@@ -1523,9 +1521,7 @@ class TestStreamingErrorHandling:
 
             source = AsyncEmitSource()
             streaming_map = Map(stream_chunks, name="streamer", max_iterations=5)
-            loop_controller = AlwaysLoop(
-                fn=lambda x: x, name="loop_ctrl", loop_target="streamer", max_iterations=5
-            )
+            loop_controller = AlwaysLoop(fn=lambda x: x, name="loop_ctrl", loop_target="streamer", max_iterations=5)
             end = Reduce([], lambda acc, x: acc + [x], name="end")
 
             source.to(streaming_map)
