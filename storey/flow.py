@@ -524,8 +524,7 @@ class _StreamingStepMixin:
         if streaming_step:
             raise StreamingError(
                 f"Streaming on top of streaming is not allowed. "
-                f"Step '{self.name}' received a streaming event from '{streaming_step}' "
-                f"but no Collector step was found in between."
+                f"Step '{self.name}' received a streaming event from '{streaming_step}'."
             )
 
     async def _emit_streaming_chunks(self, original_event, generator):
