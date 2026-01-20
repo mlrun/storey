@@ -30,7 +30,16 @@ from typing import Any, Callable, Collection, Dict, Iterable, List, Optional, Se
 
 import aiohttp
 
-from .dtypes import Event, FlowError, V3ioError, _termination_obj, known_driver_schemes
+from .dtypes import (
+    Event,
+    FlowError,
+    StreamChunk,
+    StreamCompletion,
+    StreamingError,
+    V3ioError,
+    _termination_obj,
+    known_driver_schemes,
+)
 from .queue import AsyncQueue
 from .table import Table
 from .utils import _split_path, get_in, stringify_key, update_in
@@ -286,7 +295,8 @@ class Flow:
         return self._termination_received == len(self._inlets)
 
     async def _do_downstream(self, event, outlets=None, select_outlets: bool = True):
-        if not outlets and event is not _termination_obj and select_outlets:
+        # StreamCompletion objects don't have a body - skip outlet selection for them
+        if not outlets and event is not _termination_obj and not isinstance(event, StreamCompletion) and select_outlets:
             outlet_names = self.select_outlets(event.body)
             outlets = self._check_outlets_by_names(outlet_names) if outlet_names else None
         outlets = self._outlets if outlets is None else outlets
@@ -388,6 +398,9 @@ class Flow:
         return False
 
     def check_and_update_iteration_number(self, event) -> Optional[Callable]:
+        # Skip iteration counting for StreamCompletion objects
+        if isinstance(event, StreamCompletion):
+            return
         if hasattr(event, "_cyclic_counter") and self._max_iterations is not None:
             counter = self.get_iteration_counter(event)
             if counter >= self._max_iterations:
@@ -488,6 +501,64 @@ class Recover(Flow):
                     raise ex
 
 
+class _StreamingStepMixin:
+    """Mixin providing streaming support for steps that can emit generators.
+
+    This mixin provides utility methods for detecting generators and emitting
+    streaming chunks downstream. It should be used with Flow subclasses that
+    want to support user-provided generator functions.
+    """
+
+    @staticmethod
+    def _is_generator(obj) -> bool:
+        """Check if an object is a sync or async generator."""
+        return inspect.isgenerator(obj) or inspect.isasyncgen(obj)
+
+    def _validate_not_already_streaming(self, event):
+        """Ensure we're not streaming on top of an already streaming event.
+
+        Raises StreamingError if the event already has a streaming_step attribute,
+        indicating it came from an upstream streaming step without a Collector in between.
+        """
+        streaming_step = getattr(event, "streaming_step", None)
+        if streaming_step:
+            raise StreamingError(
+                f"Streaming on top of streaming is not allowed. "
+                f"Step '{self.name}' received a streaming event from '{streaming_step}' "
+                f"but no Collector step was found in between."
+            )
+
+    async def _emit_streaming_chunks(self, original_event, generator):
+        """Emit streaming chunks from a generator, then send StreamCompletion.
+
+        Args:
+            original_event: The original event that triggered this streaming response.
+            generator: A sync or async generator yielding chunk bodies.
+        """
+        self._validate_not_already_streaming(original_event)
+
+        chunk_id = 0
+        if inspect.isgenerator(generator):
+            # Sync generator
+            for chunk_body in generator:
+                chunk_event = self._user_fn_output_to_event(original_event, chunk_body)
+                chunk_event.streaming_step = self.name
+                chunk_event.chunk_id = chunk_id
+                await self._do_downstream(chunk_event)
+                chunk_id += 1
+        else:
+            # Async generator
+            async for chunk_body in generator:
+                chunk_event = self._user_fn_output_to_event(original_event, chunk_body)
+                chunk_event.streaming_step = self.name
+                chunk_event.chunk_id = chunk_id
+                await self._do_downstream(chunk_event)
+                chunk_id += 1
+
+        # Send completion signal
+        await self._do_downstream(StreamCompletion(self.name, original_event))
+
+
 class _UnaryFunctionFlow(Flow):
     def __init__(
         self, fn, long_running=None, pass_context=None, fn_select_outlets: Optional[Callable] = None, **kwargs
@@ -528,10 +599,12 @@ class _UnaryFunctionFlow(Flow):
     async def _do(self, event):
         if event is _termination_obj:
             return await self._do_downstream(_termination_obj)
-        else:
-            element = self._get_event_or_body(event)
-            fn_result = await self._call(element, self._fn)
-            await self._do_internal(event, fn_result)
+        # Forward StreamCompletion without processing
+        if isinstance(event, StreamCompletion):
+            return await self._do_downstream(event)
+        element = self._get_event_or_body(event)
+        fn_result = await self._call(element, self._fn)
+        await self._do_internal(event, fn_result)
 
     def select_outlets(self, event_body) -> Optional[Collection[str]]:
         if self._outlets_selector:
@@ -556,13 +629,14 @@ class DropColumns(Flow):
         return await self._do_downstream(event)
 
 
-class Map(_UnaryFunctionFlow):
+class Map(_UnaryFunctionFlow, _StreamingStepMixin):
     """Maps, or transforms, incoming events using a user-provided function.
 
-    :param fn: Function to apply to each event
-    :type fn: Function (Event=>Event)
+    :param fn: Function to apply to each event. Can also be a generator function
+        (sync or async) to stream multiple chunks.
+    :type fn: Function (Event=>Event) or generator function
     :param long_running: Whether fn is a long-running function. Long-running functions are run in an executor to
-        avoid blocking other concurrent processing. Default is False.
+        avoid blocking other concurrent processing. Default is False. Cannot be used with async or generator functions.
     :type long_running: boolean
     :param name: Name of this step, as it should appear in logs. Defaults to class name (Map).
     :type name: string
@@ -572,8 +646,12 @@ class Map(_UnaryFunctionFlow):
     """
 
     async def _do_internal(self, event, fn_result):
-        mapped_event = self._user_fn_output_to_event(event, fn_result)
-        await self._do_downstream(mapped_event)
+        # Check if the result is a generator (streaming response)
+        if self._is_generator(fn_result):
+            await self._emit_streaming_chunks(event, fn_result)
+        else:
+            mapped_event = self._user_fn_output_to_event(event, fn_result)
+            await self._do_downstream(mapped_event)
 
 
 class Filter(_UnaryFunctionFlow):
@@ -715,15 +793,20 @@ class MapWithState(_FunctionWithStateFlow):
         await self._do_downstream(mapped_event)
 
 
-class MapClass(Flow):
+class MapClass(Flow, _StreamingStepMixin):
     """Similar to Map, but instead of a function argument, this class should be extended and its do()
-    method overridden."""
+    method overridden.
+
+    The do() method can also be a generator (sync or async) to stream multiple chunks.
+    """
 
     def __init__(self, long_running=None, **kwargs):
         super().__init__(**kwargs)
         self._is_async = asyncio.iscoroutinefunction(self.do)
-        if self._is_async and long_running:
-            raise ValueError("long_running=True cannot be used in conjunction with a coroutine do()")
+        self._is_async_gen = inspect.isasyncgenfunction(self.do)
+        self._is_sync_gen = inspect.isgeneratorfunction(self.do)
+        if (self._is_async or self._is_async_gen or self._is_sync_gen) and long_running:
+            raise ValueError("long_running=True cannot be used in conjunction with a coroutine or generator do()")
         self._long_running = long_running
         self._filter = False
         self._create_name_to_outlet = True
@@ -738,23 +821,32 @@ class MapClass(Flow):
     async def _call(self, event):
         if self._long_running:
             res = await asyncio.get_running_loop().run_in_executor(None, self.do, event)
+        elif self._is_async_gen or self._is_sync_gen:
+            # Generator functions return generators directly, don't await
+            res = self.do(event)
         else:
             res = self.do(event)
-        if self._is_async:
-            res = await res
+            if self._is_async:
+                res = await res
         return res
 
     async def _do(self, event):
         if event is _termination_obj:
             return await self._do_downstream(_termination_obj)
-        else:
-            element = self._get_event_or_body(event)
-            fn_result = await self._call(element)
-            if not self._filter:
+        # Forward StreamCompletion without processing
+        if isinstance(event, StreamCompletion):
+            return await self._do_downstream(event)
+        element = self._get_event_or_body(event)
+        fn_result = await self._call(element)
+        if not self._filter:
+            # Check if the result is a generator (streaming response)
+            if self._is_generator(fn_result):
+                await self._emit_streaming_chunks(event, fn_result)
+            else:
                 mapped_event = self._user_fn_output_to_event(event, fn_result)
                 await self._do_downstream(mapped_event)
-            else:
-                self._filter = False  # clear the flag for future runs
+        else:
+            self._filter = False  # clear the flag for future runs
 
 
 class Rename(Flow):
@@ -809,6 +901,10 @@ class Complete(Flow):
     """
     Completes the AwaitableResult associated with incoming events.
 
+    For non-streaming events, pushes the result to the AwaitableResult queue.
+    For streaming events (events with a streaming_step attribute), wraps each chunk
+    in a StreamChunk before pushing. StreamCompletion sentinels are pushed directly.
+
     :param name: Name of this step, as it should appear in logs. Defaults to class name (Complete).
     :type name: string
     :param full_event: Whether to complete with an Event object (when True) or only the payload
@@ -818,12 +914,33 @@ class Complete(Flow):
 
     async def _do(self, event):
         termination_result = await self._do_downstream(event)
-        if event is not _termination_obj:
+        if event is _termination_obj:
+            return termination_result
+
+        # Handle StreamCompletion sentinel - push to queue and propagate
+        if isinstance(event, StreamCompletion):
+            if event.original_event._awaitable_result:
+                res = event.original_event._awaitable_result._set_result(event)
+                if res:  # AsyncAwaitableResult returns a coroutine
+                    await res
+            return termination_result
+
+        # Handle streaming chunk events (have streaming_step attribute)
+        streaming_step = getattr(event, "streaming_step", None)
+        if streaming_step:
             if event._awaitable_result:
                 result = self._get_event_or_body(event)
-                res = event._awaitable_result._set_result(result)
-                if res:
+                res = event._awaitable_result._set_result(StreamChunk(result))
+                if res:  # AsyncAwaitableResult returns a coroutine
                     await res
+            return termination_result
+
+        # Regular non-streaming event
+        if event._awaitable_result:
+            result = self._get_event_or_body(event)
+            res = event._awaitable_result._set_result(result)
+            if res:  # AsyncAwaitableResult returns a coroutine
+                await res
         return termination_result
 
 
@@ -862,15 +979,17 @@ class Reduce(Flow):
     async def _do(self, event):
         if event is _termination_obj:
             return self._result
+        # Skip StreamCompletion - Reduce only processes actual event bodies
+        if isinstance(event, StreamCompletion):
+            return
+        if self._full_event:
+            elem = event
         else:
-            if self._full_event:
-                elem = event
-            else:
-                elem = event.body
-            res = self._fn(self._result, elem)
-            if self._is_async:
-                res = await res
-            self._result = res
+            elem = event.body
+        res = self._fn(self._result, elem)
+        if self._is_async:
+            res = await res
+        self._result = res
 
 
 class HttpRequest:
@@ -1663,11 +1782,20 @@ class ParallelExecutionRunnable:
         """
         return body
 
+    @staticmethod
+    def _is_generator(obj) -> bool:
+        """Check if an object is a sync or async generator."""
+        return inspect.isgenerator(obj) or inspect.isasyncgen(obj)
+
     def _run(self, body: Any, path: str, origin_name: Optional[str] = None) -> Any:
         timestamp = datetime.datetime.now(tz=datetime.timezone.utc)
         start = time.monotonic()
         try:
-            body = self.run(body, path, origin_name)
+            result = self.run(body, path, origin_name)
+            # Return generator directly for streaming support
+            if self._is_generator(result):
+                return result
+            body = result
         except Exception as e:
             if self._raise_exception:
                 raise e
@@ -1680,7 +1808,14 @@ class ParallelExecutionRunnable:
         timestamp = datetime.datetime.now(tz=datetime.timezone.utc)
         start = time.monotonic()
         try:
-            body = await self.run_async(body, path, origin_name)
+            # Check if run_async is an async generator function - don't await generators
+            if inspect.isasyncgenfunction(self.run_async):
+                return self.run_async(body, path, origin_name)
+            result = await self.run_async(body, path, origin_name)
+            # Return generator directly for streaming support
+            if self._is_generator(result):
+                return result
+            body = result
         except Exception as e:
             if self._raise_exception:
                 raise e
@@ -1861,7 +1996,7 @@ class RunnableExecutor:
         return future
 
 
-class ParallelExecution(Flow):
+class ParallelExecution(Flow, _StreamingStepMixin):
     """
     Runs multiple jobs in parallel for each event.
 
@@ -1889,6 +2024,10 @@ class ParallelExecution(Flow):
     :param max_processes: Maximum number of processes to spawn, not including dedicated ones. Defaults to the number of
       available CPUs, or 16 if number of CPUs can't be determined.
     :param max_threads: Maximum number of threads to start. Defaults to 32.
+
+    Streaming support: If a single runnable is selected and returns a generator (sync or async),
+    the result will be streamed as chunks. Streaming with multiple runnables or process-based
+    execution mechanisms is not supported.
     """
 
     def __init__(
@@ -1955,59 +2094,88 @@ class ParallelExecution(Flow):
     async def _do(self, event):
         if event is _termination_obj:
             return await self._do_downstream(_termination_obj)
-        else:
-            event = self.preprocess_event(event)
-            runnables = self.select_runnables(event)
-            if runnables is None:
-                runnables = self.runnables
-            self._verify_runnables(runnables)
-            futures = []
-            runnables_encountered = set()
-            for runnable in runnables:
-                runnable: ParallelExecutionRunnable = (
-                    runnable
-                    if isinstance(runnable, ParallelExecutionRunnable)
-                    else self.runnable_executor._runnable_by_name[runnable]
-                )
-                if (
-                    self.execution_mechanism_by_runnable_name[runnable.name]
-                    == ParallelExecutionMechanisms.shared_executor
-                ):
-                    future = self.context.executor.run_executor(
-                        runnable=runnable.shared_runnable_name,
-                        runnables_encountered=runnables_encountered,
-                        event=event,
-                        origin_runnable_name=runnable.name,
-                    )
-                else:
-                    future = self.runnable_executor.run_executor(
-                        runnable=runnable, runnables_encountered=runnables_encountered, event=event
-                    )
-                runnables_encountered.add(id(runnable))
-                futures.append(future)
-            results: list[_ParallelExecutionRunnableResult] = await asyncio.gather(*futures)
-            if len(self.runnables) == 1:
-                event.body = results[0].data if results else None
-
-                metadata = {
-                    "microsec": results[0].runtime,
-                    "when": results[0].timestamp.isoformat(sep=" ", timespec="microseconds"),
-                }
-            else:
-                event.body = {result.runnable_name: result.data for result in results}
-                metadata = {
-                    result.runnable_name: {
-                        "microsec": result.runtime,
-                        "when": result.timestamp.isoformat(sep=" ", timespec="microseconds"),
-                    }
-                    for result in results
-                }
-
-            if hasattr(event, "_metadata") and isinstance(event._metadata, dict):
-                event._metadata.update(metadata)
-            else:
-                event._metadata = metadata
+        # Forward StreamCompletion without processing
+        if isinstance(event, StreamCompletion):
             return await self._do_downstream(event)
+
+        event = self.preprocess_event(event)
+        runnables = self.select_runnables(event)
+        if runnables is None:
+            runnables = self.runnables
+        self._verify_runnables(runnables)
+        futures = []
+        runnables_encountered = set()
+        for runnable in runnables:
+            runnable: ParallelExecutionRunnable = (
+                runnable
+                if isinstance(runnable, ParallelExecutionRunnable)
+                else self.runnable_executor._runnable_by_name[runnable]
+            )
+            if self.execution_mechanism_by_runnable_name[runnable.name] == ParallelExecutionMechanisms.shared_executor:
+                future = self.context.executor.run_executor(
+                    runnable=runnable.shared_runnable_name,
+                    runnables_encountered=runnables_encountered,
+                    event=event,
+                    origin_runnable_name=runnable.name,
+                )
+            else:
+                future = self.runnable_executor.run_executor(
+                    runnable=runnable, runnables_encountered=runnables_encountered, event=event
+                )
+            runnables_encountered.add(id(runnable))
+            futures.append(future)
+        results = await asyncio.gather(*futures)
+
+        # Check for streaming response (only when a single runnable is selected)
+        if len(runnables) == 1 and results:
+            result = results[0]
+            # Check if the result is a generator (streaming response)
+            if self._is_generator(result):
+                # Validate execution mechanism - streaming not supported with process-based execution
+                runnable_name = (
+                    runnables[0].name if isinstance(runnables[0], ParallelExecutionRunnable) else runnables[0]
+                )
+                execution_mechanism = self.execution_mechanism_by_runnable_name[runnable_name]
+                if execution_mechanism in ParallelExecutionMechanisms.process():
+                    raise StreamingError(
+                        f"Streaming is not supported with process-based execution mechanisms. "
+                        f"Runnable '{runnable_name}' uses '{execution_mechanism}'. "
+                        f"Use 'asyncio' or 'naive' for streaming runnables."
+                    )
+                await self._emit_streaming_chunks(event, result)
+                return
+
+        # Non-streaming path
+        if len(runnables) == 1:
+            result: _ParallelExecutionRunnableResult = results[0]
+            event.body = result.data if results else None
+
+            metadata = {
+                "microsec": result.runtime,
+                "when": result.timestamp.isoformat(sep=" ", timespec="microseconds"),
+            }
+        else:
+            # Check if any results are generators (not allowed with multiple runnables)
+            for result in results:
+                if self._is_generator(result):
+                    raise StreamingError(
+                        "Streaming is not supported when multiple runnables are selected. "
+                        "Streaming runnables must be the only runnable selected for an event."
+                    )
+            event.body = {result.runnable_name: result.data for result in results}
+            metadata = {
+                result.runnable_name: {
+                    "microsec": result.runtime,
+                    "when": result.timestamp.isoformat(sep=" ", timespec="microseconds"),
+                }
+                for result in results
+            }
+
+        if hasattr(event, "_metadata") and isinstance(event._metadata, dict):
+            event._metadata.update(metadata)
+        else:
+            event._metadata = metadata
+        return await self._do_downstream(event)
 
     def _verify_runnables(self, runnables: List[Union[str, ParallelExecutionRunnable]]):
         """Verifies that the provided runnables are valid and registered."""
