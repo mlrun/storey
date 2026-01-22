@@ -23,31 +23,6 @@ on:
       - created
 
 jobs:
-  # TODO: remove once 1.8.x is discontinued
-  release-1-8-x:
-    runs-on: ubuntu-latest
-    container:
-      image: python:3.11
-    steps:
-      - uses: actions/checkout@v3
-      - name: Install dependencies
-        run: make dev-env
-      - name: lint
-        run: make lint
-      - name: test
-        run: make test
-      - name: Set version
-        run: make set-version
-      - name: Build binary wheel and source tarball
-        run: make dist
-      - name: Install publish dependencies
-        run: python -m pip install twine~=6.1
-      - name: Push to pypi
-        run: |
-          export TWINE_USERNAME=__token__
-          export TWINE_PASSWORD=${{ secrets.PYPI_TOKEN }}
-          python -m twine upload dist/storey-*.whl
-
   release:
     runs-on: ubuntu-latest
     container:
