@@ -294,6 +294,33 @@ class Flow:
     def _should_terminate(self):
         return self._termination_received == len(self._inlets)
 
+    def _deepcopy_event_for_outlet(self, event, target_obj, is_stream_completion):
+        """Deepcopy event while handling unpicklable attributes on target_obj.
+
+        Args:
+            event: The event to deepcopy.
+            target_obj: The object containing _awaitable_result and _original_events
+                        (either the event itself or event.original_event for StreamCompletion).
+            is_stream_completion: If True, copy target is event_copy.original_event,
+                                  otherwise it's event_copy itself.
+
+        Returns:
+            The deepcopied event with unpicklable attributes restored.
+        """
+        awaitable_result = target_obj._awaitable_result
+        target_obj._awaitable_result = None
+        original_events = getattr(target_obj, "_original_events", None)
+        target_obj._original_events = None
+
+        event_copy = copy.deepcopy(event)
+        copy_target = event_copy.original_event if is_stream_completion else event_copy
+        copy_target._awaitable_result = awaitable_result
+        copy_target._original_events = original_events
+
+        target_obj._awaitable_result = awaitable_result
+        target_obj._original_events = original_events
+        return event_copy
+
     async def _do_downstream(self, event, outlets=None, select_outlets: bool = True):
         # StreamCompletion objects don't have a body - skip outlet selection for them
         if not outlets and event is not _termination_obj and not isinstance(event, StreamCompletion) and select_outlets:
@@ -321,35 +348,13 @@ class Flow:
         # If there is more than one outlet, allow concurrent execution.
         tasks = []
         if len(outlets) > 1:
-            # StreamCompletion objects have original_event that contains _awaitable_result
-            if isinstance(event, StreamCompletion):
-                orig_event = event.original_event
-                awaitable_result = orig_event._awaitable_result
-                orig_event._awaitable_result = None
-                original_events = getattr(orig_event, "_original_events", None)
-                orig_event._original_events = None
-                for i in range(1, len(outlets)):
-                    event_copy = copy.deepcopy(event)
-                    event_copy.original_event._awaitable_result = awaitable_result
-                    event_copy.original_event._original_events = original_events
-                    tasks.append(asyncio.get_running_loop().create_task(outlets[i]._do_and_recover(event_copy)))
-                # Restore after deepcopy
-                orig_event._original_events = original_events
-                orig_event._awaitable_result = awaitable_result
-            else:
-                awaitable_result = event._awaitable_result
-                event._awaitable_result = None
-                original_events = getattr(event, "_original_events", None)
-                # Temporarily delete self-reference to avoid deepcopy getting stuck in an infinite loop
-                event._original_events = None
-                for i in range(1, len(outlets)):
-                    event_copy = copy.deepcopy(event)
-                    event_copy._awaitable_result = awaitable_result
-                    event_copy._original_events = original_events
-                    tasks.append(asyncio.get_running_loop().create_task(outlets[i]._do_and_recover(event_copy)))
-                # Set self-reference back after deepcopy
-                event._original_events = original_events
-                event._awaitable_result = awaitable_result
+            # Determine target object for unpicklable attributes
+            is_stream_completion = isinstance(event, StreamCompletion)
+            target_obj = event.original_event if is_stream_completion else event
+
+            for i in range(1, len(outlets)):
+                event_copy = self._deepcopy_event_for_outlet(event, target_obj, is_stream_completion)
+                tasks.append(asyncio.get_running_loop().create_task(outlets[i]._do_and_recover(event_copy)))
         if self.verbose and self.logger:
             step_name = self.name
             event_string = self._event_string(event)
