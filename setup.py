@@ -60,7 +60,7 @@ setup(
     license="Apache",
     url="https://github.com/mlrun/storey",
     packages=find_packages(include=["storey*"]),
-    python_requires=">=3.9",
+    python_requires=">=3.11",
     install_requires=install_requires,
     extras_require=extras_require,
     classifiers=[
@@ -71,7 +71,7 @@ setup(
         "Operating System :: Microsoft :: Windows",
         "Operating System :: MacOS",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.11",
         "Programming Language :: Python",
         "Topic :: Software Development :: Libraries :: Python Modules",
         "Topic :: Software Development :: Libraries",
