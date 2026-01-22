@@ -564,7 +564,7 @@ class _StreamingStepMixin:
                 f"Step '{self.name}' received a streaming event from '{streaming_step}'."
             )
 
-    async def _emit_streaming_chunks(self, event, generator: Generator | AsyncGenerator) -> None:
+    async def _emit_streaming_chunks(self, event, generator: Union[Generator, AsyncGenerator]) -> None:
         """Emit streaming chunks from a generator, then send StreamCompletion.
 
         Args:
