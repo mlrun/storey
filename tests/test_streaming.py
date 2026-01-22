@@ -1321,16 +1321,16 @@ class TestStreamingErrorHandling:
             awaitable = controller.emit("test")
             result = awaitable.await_result()
 
-            # Should be a generator
             assert inspect.isgenerator(result)
 
-            # First chunk should work
-            first_chunk = next(result)
-            assert first_chunk == "test_chunk_0"
-
-            # Second iteration should raise the error
+            # Collect chunks until error
+            chunks = []
             with pytest.raises(ValueError, match="Generator error mid-stream"):
-                next(result)
+                for chunk in result:
+                    chunks.append(chunk)
+
+            # Verify first chunk was received before error
+            assert chunks == ["test_chunk_0"]
         finally:
             controller.terminate()
             # Error is also propagated through termination
@@ -1358,13 +1358,14 @@ class TestStreamingErrorHandling:
 
                 assert inspect.isasyncgen(result)
 
-                # First chunk should work
-                first_chunk = await result.__anext__()
-                assert first_chunk == "test_chunk_0"
-
-                # Second iteration should raise the error
+                # Collect chunks until error
+                chunks = []
                 with pytest.raises(ValueError, match="Generator error mid-stream"):
-                    await result.__anext__()
+                    async for chunk in result:
+                        chunks.append(chunk)
+
+                # Verify first chunk was received before error
+                assert chunks == ["test_chunk_0"]
             finally:
                 await controller.terminate()
                 # Error is also propagated through termination
@@ -1400,13 +1401,14 @@ class TestStreamingErrorHandling:
 
             assert inspect.isgenerator(result)
 
-            # First chunk (0) should work
-            first_chunk = next(result)
-            assert first_chunk == 0
-
-            # Second chunk (1) should raise error
+            # Collect chunks until error
+            chunks = []
             with pytest.raises(RuntimeError, match="Failed on chunk 1"):
-                next(result)
+                for chunk in result:
+                    chunks.append(chunk)
+
+            # Verify first chunk (0 * 10 = 0) was received before error
+            assert chunks == [0]
         finally:
             controller.terminate()
             # Error is also propagated through termination
@@ -1440,13 +1442,14 @@ class TestStreamingErrorHandling:
 
                 assert inspect.isasyncgen(result)
 
-                # First chunk (0) should work
-                first_chunk = await result.__anext__()
-                assert first_chunk == 0
-
-                # Second chunk (1) should raise error
+                # Collect chunks until error
+                chunks = []
                 with pytest.raises(RuntimeError, match="Failed on chunk 1"):
-                    await result.__anext__()
+                    async for chunk in result:
+                        chunks.append(chunk)
+
+                # Verify first chunk (0 * 10 = 0) was received before error
+                assert chunks == [0]
             finally:
                 await controller.terminate()
                 # Error is also propagated through termination
