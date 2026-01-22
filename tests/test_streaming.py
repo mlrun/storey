@@ -458,6 +458,30 @@ class TestCollector:
 
         asyncio.run(_test())
 
+    def test_async_collector_single_chunk_unwrap(self):
+        """Async version: Test that a single chunk is unwrapped by Collector."""
+
+        async def _test():
+            def single_chunk(x):
+                yield x * 2
+
+            controller = build_flow(
+                [
+                    AsyncEmitSource(),
+                    Map(single_chunk),
+                    Collector(),
+                    Reduce([], lambda acc, x: acc + [x]),
+                ]
+            ).run()
+
+            await controller.emit(5)
+            await controller.terminate()
+            result = await controller.await_termination()
+
+            assert result == [10]
+
+        asyncio.run(_test())
+
     def test_collector_empty_stream(self):
         """Test that Collector emits an empty list for a stream with zero chunks."""
 
