@@ -65,16 +65,8 @@ jobs:
     runs-on: [ self-hosted, Linux ]
     needs: is-safe-to-test
     if: ${{ needs.is-safe-to-test.outputs.is_safe == 'true' }}
-    strategy:
-      matrix:
-        python-version: [ 3.9, 3.11 ]
-        include:
-          - python-version: 3.9
-            image: python:3.9.18
-          - python-version: 3.11
-            image: python:3.11.8
     container:
-      image: ${{ matrix.image }}
+      image: python:3.11
     steps:
       - uses: actions/checkout@v3
         with:
