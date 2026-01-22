@@ -26,7 +26,19 @@ import uuid
 from asyncio import Task
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
-from typing import Any, Callable, Collection, Dict, Iterable, List, Optional, Set, Union
+from typing import (
+    Any,
+    AsyncGenerator,
+    Callable,
+    Collection,
+    Dict,
+    Generator,
+    Iterable,
+    List,
+    Optional,
+    Set,
+    Union,
+)
 
 import aiohttp
 
@@ -43,6 +55,11 @@ from .dtypes import (
 from .queue import AsyncQueue
 from .table import Table
 from .utils import _split_path, get_in, stringify_key, update_in
+
+
+def _is_generator(obj) -> bool:
+    """Check if an object is a sync or async generator."""
+    return inspect.isgenerator(obj) or inspect.isasyncgen(obj)
 
 
 class Flow:
@@ -534,11 +551,6 @@ class _StreamingStepMixin:
     want to support user-provided generator functions.
     """
 
-    @staticmethod
-    def _is_generator(obj) -> bool:
-        """Check if an object is a sync or async generator."""
-        return inspect.isgenerator(obj) or inspect.isasyncgen(obj)
-
     def _validate_not_already_streaming(self, event):
         """Ensure we're not streaming on top of an already streaming event.
 
@@ -552,20 +564,20 @@ class _StreamingStepMixin:
                 f"Step '{self.name}' received a streaming event from '{streaming_step}'."
             )
 
-    async def _emit_streaming_chunks(self, original_event, generator):
+    async def _emit_streaming_chunks(self, event, generator: Generator | AsyncGenerator) -> None:
         """Emit streaming chunks from a generator, then send StreamCompletion.
 
         Args:
-            original_event: The original event that triggered this streaming response.
+            event: The event that will be used to create chunk events.
             generator: A sync or async generator yielding chunk bodies.
         """
-        self._validate_not_already_streaming(original_event)
+        self._validate_not_already_streaming(event)
 
         chunk_id = 0
         if inspect.isgenerator(generator):
             # Sync generator
             for chunk_body in generator:
-                chunk_event = self._user_fn_output_to_event(original_event, chunk_body)
+                chunk_event = self._user_fn_output_to_event(event, chunk_body)
                 chunk_event.streaming_step = self.name
                 chunk_event.chunk_id = chunk_id
                 await self._do_downstream(chunk_event)
@@ -573,14 +585,14 @@ class _StreamingStepMixin:
         else:
             # Async generator
             async for chunk_body in generator:
-                chunk_event = self._user_fn_output_to_event(original_event, chunk_body)
+                chunk_event = self._user_fn_output_to_event(event, chunk_body)
                 chunk_event.streaming_step = self.name
                 chunk_event.chunk_id = chunk_id
                 await self._do_downstream(chunk_event)
                 chunk_id += 1
 
         # Send completion signal
-        await self._do_downstream(StreamCompletion(self.name, original_event))
+        await self._do_downstream(StreamCompletion(self.name, event))
 
 
 class _UnaryFunctionFlow(Flow):
@@ -671,7 +683,7 @@ class Map(_UnaryFunctionFlow, _StreamingStepMixin):
 
     async def _do_internal(self, event, fn_result):
         # Check if the result is a generator (streaming response)
-        if self._is_generator(fn_result):
+        if _is_generator(fn_result):
             await self._emit_streaming_chunks(event, fn_result)
         else:
             mapped_event = self._user_fn_output_to_event(event, fn_result)
@@ -864,7 +876,7 @@ class MapClass(Flow, _StreamingStepMixin):
         fn_result = await self._call(element)
         if not self._filter:
             # Check if the result is a generator (streaming response)
-            if self._is_generator(fn_result):
+            if _is_generator(fn_result):
                 await self._emit_streaming_chunks(event, fn_result)
             else:
                 mapped_event = self._user_fn_output_to_event(event, fn_result)
@@ -1806,18 +1818,13 @@ class ParallelExecutionRunnable:
         """
         return body
 
-    @staticmethod
-    def _is_generator(obj) -> bool:
-        """Check if an object is a sync or async generator."""
-        return inspect.isgenerator(obj) or inspect.isasyncgen(obj)
-
     def _run(self, body: Any, path: str, origin_name: Optional[str] = None) -> Any:
         timestamp = datetime.datetime.now(tz=datetime.timezone.utc)
         start = time.monotonic()
         try:
             result = self.run(body, path, origin_name)
             # Return generator directly for streaming support
-            if self._is_generator(result):
+            if _is_generator(result):
                 return result
             body = result
         except Exception as e:
@@ -1837,7 +1844,7 @@ class ParallelExecutionRunnable:
                 return self.run_async(body, path, origin_name)
             result = await self.run_async(body, path, origin_name)
             # Return generator directly for streaming support
-            if self._is_generator(result):
+            if _is_generator(result):
                 return result
             body = result
         except Exception as e:
@@ -2154,7 +2161,7 @@ class ParallelExecution(Flow, _StreamingStepMixin):
         if len(runnables) == 1 and results:
             result = results[0]
             # Check if the result is a generator (streaming response)
-            if self._is_generator(result):
+            if _is_generator(result):
                 # Validate execution mechanism - streaming not supported with process-based execution
                 runnable_name = (
                     runnables[0].name if isinstance(runnables[0], ParallelExecutionRunnable) else runnables[0]
@@ -2181,7 +2188,7 @@ class ParallelExecution(Flow, _StreamingStepMixin):
         else:
             # Check if any results are generators (not allowed with multiple runnables)
             for result in results:
-                if self._is_generator(result):
+                if _is_generator(result):
                     raise StreamingError(
                         "Streaming is not supported when multiple runnables are selected. "
                         "Streaming runnables must be the only runnable selected for an event."

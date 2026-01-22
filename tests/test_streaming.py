@@ -33,7 +33,7 @@ from storey import (
     build_flow,
 )
 from storey.dtypes import Event, StreamChunk, StreamCompletion
-from storey.flow import _StreamingStepMixin
+from storey.flow import _is_generator
 
 
 class TestStreamingPrimitives:
@@ -60,27 +60,27 @@ class TestStreamingPrimitives:
         assert "my_step" in repr(completion)
 
 
-class TestStreamingStepMixin:
-    """Tests for the _StreamingStepMixin utility methods."""
+class TestIsGenerator:
+    """Tests for the _is_generator utility function."""
 
     def test_is_generator_sync(self):
         def gen():
             yield 1
             yield 2
 
-        assert _StreamingStepMixin._is_generator(gen())
+        assert _is_generator(gen())
 
     def test_is_generator_async(self):
         async def async_gen():
             yield 1
             yield 2
 
-        assert _StreamingStepMixin._is_generator(async_gen())
+        assert _is_generator(async_gen())
 
     def test_is_generator_non_generator(self):
-        assert not _StreamingStepMixin._is_generator([1, 2, 3])
-        assert not _StreamingStepMixin._is_generator("string")
-        assert not _StreamingStepMixin._is_generator(42)
+        assert not _is_generator([1, 2, 3])
+        assert not _is_generator("string")
+        assert not _is_generator(42)
 
     def test_is_generator_coroutine(self):
         async def coro():
@@ -89,7 +89,7 @@ class TestStreamingStepMixin:
         # Coroutine is not a generator
         c = coro()
         try:
-            assert not _StreamingStepMixin._is_generator(c)
+            assert not _is_generator(c)
         finally:
             c.close()
 
