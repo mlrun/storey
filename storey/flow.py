@@ -339,7 +339,7 @@ class Flow:
         return event_copy
 
     async def _do_downstream(self, event, outlets=None, select_outlets: bool = True):
-        # StreamCompletion objects don't have a body - skip outlet selection for them
+        # Termination object and StreamCompletion should propagate to all outlets
         if not outlets and event is not _termination_obj and not isinstance(event, StreamCompletion) and select_outlets:
             outlet_names = self.select_outlets(event.body)
             outlets = self._check_outlets_by_names(outlet_names) if outlet_names else None
@@ -365,10 +365,9 @@ class Flow:
         # If there is more than one outlet, allow concurrent execution.
         tasks = []
         if len(outlets) > 1:
-            # Determine target object for unpicklable attributes
+            # Deep copy event and create a task per outlet (except the first, which is awaited directly below)
             is_stream_completion = isinstance(event, StreamCompletion)
             target_obj = event.original_event if is_stream_completion else event
-
             for i in range(1, len(outlets)):
                 event_copy = self._deepcopy_event_for_outlet(event, target_obj, is_stream_completion)
                 tasks.append(asyncio.get_running_loop().create_task(outlets[i]._do_and_recover(event_copy)))
@@ -436,7 +435,7 @@ class Flow:
         return False
 
     def check_and_update_iteration_number(self, event) -> Optional[Callable]:
-        # Skip iteration counting for StreamCompletion objects
+        # Skip iteration counting in case of StreamCompletion
         if isinstance(event, StreamCompletion):
             return
         if hasattr(event, "_cyclic_counter") and self._max_iterations is not None:
@@ -505,22 +504,18 @@ class Choice(Flow):
         self._passthrough_for_preview = list(self._name_to_outlet) == ["dataframe"] if self._name_to_outlet else False
 
     async def _do(self, event):
-        if event is _termination_obj:
-            return await self._do_downstream(_termination_obj, select_outlets=False)
-        # StreamCompletion should propagate to all outlets (like _termination_obj)
-        # to avoid hangs in cyclic graphs and ensure all Collectors receive completions
-        if isinstance(event, StreamCompletion):
+        if event is _termination_obj or isinstance(event, StreamCompletion):
             return await self._do_downstream(event, select_outlets=False)
+
+        event_body = event if self._full_event else event.body
+        outlet_names = self.select_outlets(event_body)
+        outlets = []
+        if self._passthrough_for_preview:
+            outlet = self._name_to_outlet["dataframe"]
+            outlets.append(outlet)
         else:
-            event_body = event if self._full_event else event.body
-            outlet_names = self.select_outlets(event_body)
-            outlets = []
-            if self._passthrough_for_preview:
-                outlet = self._name_to_outlet["dataframe"]
-                outlets.append(outlet)
-            else:
-                outlets = self._check_outlets_by_names(outlet_names)
-            return await self._do_downstream(event, outlets=outlets, select_outlets=False)
+            outlets = self._check_outlets_by_names(outlet_names)
+        return await self._do_downstream(event, outlets=outlets, select_outlets=False)
 
 
 class Recover(Flow):
