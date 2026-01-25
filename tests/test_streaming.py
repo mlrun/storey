@@ -805,15 +805,18 @@ class TestParallelExecutionStreaming:
                     runnables=[runnable],
                     execution_mechanism_by_runnable_name={"streamer": ParallelExecutionMechanisms.naive},
                 ),
-                Reduce([], lambda acc, x: acc + [x]),
+                Complete(),
             ]
         ).run()
 
-        controller.emit("test")
-        controller.terminate()
-        result = controller.await_termination()
-
-        assert result == ["test_chunk_0", "test_chunk_1", "test_chunk_2"]
+        try:
+            awaitable = controller.emit("test")
+            result = awaitable.await_result()
+            assert inspect.isgenerator(result)
+            assert list(result) == ["test_chunk_0", "test_chunk_1", "test_chunk_2"]
+        finally:
+            controller.terminate()
+            controller.await_termination()
 
     def test_parallel_execution_async_runnable_streaming(self):
         """Test streaming with an async runnable."""
@@ -831,15 +834,18 @@ class TestParallelExecutionStreaming:
                     runnables=[runnable],
                     execution_mechanism_by_runnable_name={"async_streamer": ParallelExecutionMechanisms.asyncio},
                 ),
-                Reduce([], lambda acc, x: acc + [x]),
+                Complete(),
             ]
         ).run()
 
-        controller.emit("test")
-        controller.terminate()
-        result = controller.await_termination()
-
-        assert result == ["test_chunk_0", "test_chunk_1", "test_chunk_2"]
+        try:
+            awaitable = controller.emit("test")
+            result = awaitable.await_result()
+            assert inspect.isgenerator(result)
+            assert list(result) == ["test_chunk_0", "test_chunk_1", "test_chunk_2"]
+        finally:
+            controller.terminate()
+            controller.await_termination()
 
     def test_async_parallel_execution_single_runnable_streaming(self):
         """Async version: Test streaming with a single runnable."""
@@ -858,15 +864,18 @@ class TestParallelExecutionStreaming:
                         runnables=[runnable],
                         execution_mechanism_by_runnable_name={"streamer": ParallelExecutionMechanisms.naive},
                     ),
-                    Reduce([], lambda acc, x: acc + [x]),
+                    Complete(),
                 ]
             ).run()
 
-            await controller.emit("test")
-            await controller.terminate()
-            result = await controller.await_termination()
-
-            assert result == ["test_chunk_0", "test_chunk_1", "test_chunk_2"]
+            try:
+                result = await controller.emit("test")
+                assert inspect.isasyncgen(result)
+                chunks = [chunk async for chunk in result]
+                assert chunks == ["test_chunk_0", "test_chunk_1", "test_chunk_2"]
+            finally:
+                await controller.terminate()
+                await controller.await_termination()
 
         asyncio.run(_test())
 
@@ -887,15 +896,18 @@ class TestParallelExecutionStreaming:
                         runnables=[runnable],
                         execution_mechanism_by_runnable_name={"async_streamer": ParallelExecutionMechanisms.asyncio},
                     ),
-                    Reduce([], lambda acc, x: acc + [x]),
+                    Complete(),
                 ]
             ).run()
 
-            await controller.emit("test")
-            await controller.terminate()
-            result = await controller.await_termination()
-
-            assert result == ["test_chunk_0", "test_chunk_1", "test_chunk_2"]
+            try:
+                result = await controller.emit("test")
+                assert inspect.isasyncgen(result)
+                chunks = [chunk async for chunk in result]
+                assert chunks == ["test_chunk_0", "test_chunk_1", "test_chunk_2"]
+            finally:
+                await controller.terminate()
+                await controller.await_termination()
 
         asyncio.run(_test())
 
@@ -915,15 +927,18 @@ class TestParallelExecutionStreaming:
                     runnables=[runnable],
                     execution_mechanism_by_runnable_name={"streamer": ParallelExecutionMechanisms.thread_pool},
                 ),
-                Reduce([], lambda acc, x: acc + [x]),
+                Complete(),
             ]
         ).run()
 
-        controller.emit("test")
-        controller.terminate()
-        result = controller.await_termination()
-
-        assert result == ["test_chunk_0", "test_chunk_1", "test_chunk_2"]
+        try:
+            awaitable = controller.emit("test")
+            result = awaitable.await_result()
+            assert inspect.isgenerator(result)
+            assert list(result) == ["test_chunk_0", "test_chunk_1", "test_chunk_2"]
+        finally:
+            controller.terminate()
+            controller.await_termination()
 
     def test_parallel_execution_streaming_with_shared_executor_thread_based(self):
         """Test streaming works with shared_executor when the shared executor uses threads."""
@@ -955,15 +970,18 @@ class TestParallelExecutionStreaming:
                     execution_mechanism_by_runnable_name={"proxy": ParallelExecutionMechanisms.shared_executor},
                     context=context,
                 ),
-                Reduce([], lambda acc, x: acc + [x]),
+                Complete(),
             ]
         ).run()
 
-        controller.emit("test")
-        controller.terminate()
-        result = controller.await_termination()
-
-        assert result == ["test_chunk_0", "test_chunk_1", "test_chunk_2"]
+        try:
+            awaitable = controller.emit("test")
+            result = awaitable.await_result()
+            assert inspect.isgenerator(result)
+            assert list(result) == ["test_chunk_0", "test_chunk_1", "test_chunk_2"]
+        finally:
+            controller.terminate()
+            controller.await_termination()
 
     def test_parallel_execution_streaming_with_process_pool_fails_at_init(self):
         """Test that StreamingError is raised at init time when streaming runnable uses process_pool."""
