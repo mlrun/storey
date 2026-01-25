@@ -847,9 +847,6 @@ class MapClass(Flow, _StreamingStepMixin):
     async def _call(self, event):
         if self._long_running:
             res = await asyncio.get_running_loop().run_in_executor(None, self.do, event)
-        elif self._is_async_gen or self._is_sync_gen:
-            # Generator functions return generators directly, don't await
-            res = self.do(event)
         else:
             res = self.do(event)
             if self._is_async:
