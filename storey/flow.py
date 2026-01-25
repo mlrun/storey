@@ -1820,13 +1820,16 @@ class ParallelExecutionRunnable:
         timestamp = datetime.datetime.now(tz=datetime.timezone.utc)
         start = time.monotonic()
         try:
-            # Check if run_async is an async generator function - don't await generators
-            if inspect.isasyncgenfunction(self.run_async):
-                return self.run_async(body, path, origin_name)
-            result = await self.run_async(body, path, origin_name)
+            result = self.run_async(body, path, origin_name)
+
             # Return generator directly for streaming support
             if _is_generator(result):
                 return result
+
+            # Await if coroutine
+            if asyncio.iscoroutine(result):
+                result = await result
+
             body = result
         except Exception as e:
             if self._raise_exception:
