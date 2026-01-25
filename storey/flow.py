@@ -2155,7 +2155,7 @@ class ParallelExecution(Flow, _StreamingStepMixin):
             # Check if the result is a generator (streaming response)
             if _is_generator(result):
                 await self._emit_streaming_chunks(event, result)
-                return
+                return None
 
         # Non-streaming path
         if len(runnables) == 1:
