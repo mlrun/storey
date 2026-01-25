@@ -613,6 +613,55 @@ class TestCompleteStreaming:
 
         asyncio.run(_test())
 
+    def test_complete_streaming_empty(self):
+        """Test streaming with zero chunks."""
+
+        def empty_stream(x):
+            return
+            yield  # Make it a generator
+
+        controller = build_flow(
+            [
+                SyncEmitSource(),
+                Map(empty_stream),
+                Complete(),
+            ]
+        ).run()
+
+        awaitable = controller.emit("test")
+        controller.terminate()
+        controller.await_termination()
+
+        # Empty generator should still work
+        result = awaitable.await_result()
+        assert list(result) == []
+
+    def test_async_complete_streaming_empty(self):
+        """Async version: Test streaming with zero chunks."""
+
+        async def _test():
+            def empty_stream(x):
+                return
+                yield  # Make it a generator
+
+            controller = build_flow(
+                [
+                    AsyncEmitSource(),
+                    Map(empty_stream),
+                    Complete(),
+                ]
+            ).run()
+
+            result = await controller.emit("test")
+            await controller.terminate()
+            await controller.await_termination()
+
+            # Empty async generator should still work
+            chunks = [chunk async for chunk in result]
+            assert chunks == []
+
+        asyncio.run(_test())
+
 
 class TestStreamingErrors:
     """Tests for streaming error conditions."""
@@ -1292,109 +1341,6 @@ class TestParallelExecutionStreaming:
         )
         with pytest.raises(StreamingError, match=expected_error_message):
             flow.run()
-
-
-class TestAwaitableResultStreaming:
-    """Tests for AwaitableResult streaming support."""
-
-    def test_awaitable_result_stream_generator(self):
-        """Test that await_result() returns a generator for streaming."""
-
-        def stream(x):
-            for i in range(3):
-                yield f"chunk_{i}"
-
-        controller = build_flow(
-            [
-                SyncEmitSource(),
-                Map(stream),
-                Complete(),
-            ]
-        ).run()
-
-        awaitable = controller.emit("test")
-        controller.terminate()
-        controller.await_termination()
-
-        result = awaitable.await_result()
-        assert inspect.isgenerator(result)
-        assert list(result) == ["chunk_0", "chunk_1", "chunk_2"]
-
-    def test_awaitable_result_stream_empty(self):
-        """Test streaming with zero chunks."""
-
-        def empty_stream(x):
-            return
-            yield  # Make it a generator
-
-        controller = build_flow(
-            [
-                SyncEmitSource(),
-                Map(empty_stream),
-                Complete(),
-            ]
-        ).run()
-
-        awaitable = controller.emit("test")
-        controller.terminate()
-        controller.await_termination()
-
-        # Empty generator should still work
-        result = awaitable.await_result()
-        assert list(result) == []
-
-    def test_async_awaitable_result_stream_generator(self):
-        """Async version: Test that await_result() returns an async generator for streaming."""
-
-        async def _test():
-            def stream(x):
-                for i in range(3):
-                    yield f"chunk_{i}"
-
-            controller = build_flow(
-                [
-                    AsyncEmitSource(),
-                    Map(stream),
-                    Complete(),
-                ]
-            ).run()
-
-            # AsyncFlowController.emit() returns result directly
-            result = await controller.emit("test")
-            await controller.terminate()
-            await controller.await_termination()
-
-            assert inspect.isasyncgen(result)
-            chunks = [chunk async for chunk in result]
-            assert chunks == ["chunk_0", "chunk_1", "chunk_2"]
-
-        asyncio.run(_test())
-
-    def test_async_awaitable_result_stream_empty(self):
-        """Async version: Test streaming with zero chunks."""
-
-        async def _test():
-            def empty_stream(x):
-                return
-                yield  # Make it a generator
-
-            controller = build_flow(
-                [
-                    AsyncEmitSource(),
-                    Map(empty_stream),
-                    Complete(),
-                ]
-            ).run()
-
-            result = await controller.emit("test")
-            await controller.terminate()
-            await controller.await_termination()
-
-            # Empty async generator should still work
-            chunks = [chunk async for chunk in result]
-            assert chunks == []
-
-        asyncio.run(_test())
 
 
 class TestStreamingGraphSplits:
