@@ -37,6 +37,22 @@ from storey.dtypes import Event, StreamChunk, StreamCompletion
 from storey.flow import _is_generator
 
 
+class StreamingRunnable(ParallelExecutionRunnable):
+    """A streaming runnable that yields 3 chunks for testing."""
+
+    def run(self, body, path, origin_name=None):
+        for i in range(3):
+            yield f"{body}_chunk_{i}"
+
+
+class AsyncStreamingRunnable(ParallelExecutionRunnable):
+    """An async streaming runnable that yields 3 chunks for testing."""
+
+    async def run_async(self, body, path, origin_name=None):
+        for i in range(3):
+            yield f"{body}_chunk_{i}"
+
+
 class TestStreamingPrimitives:
     """Tests for streaming primitive classes."""
 
@@ -1075,12 +1091,6 @@ class TestParallelExecutionStreaming:
 
     def test_parallel_execution_single_runnable_streaming(self):
         """Test streaming with a single runnable."""
-
-        class StreamingRunnable(ParallelExecutionRunnable):
-            def run(self, body, path, origin_name=None):
-                for i in range(3):
-                    yield f"{body}_chunk_{i}"
-
         runnable = StreamingRunnable(name="streamer")
         controller = build_flow(
             [
@@ -1104,12 +1114,6 @@ class TestParallelExecutionStreaming:
 
     def test_parallel_execution_async_runnable_streaming(self):
         """Test streaming with an async runnable."""
-
-        class AsyncStreamingRunnable(ParallelExecutionRunnable):
-            async def run_async(self, body, path, origin_name=None):
-                for i in range(3):
-                    yield f"{body}_chunk_{i}"
-
         runnable = AsyncStreamingRunnable(name="async_streamer")
         controller = build_flow(
             [
@@ -1135,11 +1139,6 @@ class TestParallelExecutionStreaming:
         """Async version: Test streaming with a single runnable."""
 
         async def _test():
-            class StreamingRunnable(ParallelExecutionRunnable):
-                def run(self, body, path, origin_name=None):
-                    for i in range(3):
-                        yield f"{body}_chunk_{i}"
-
             runnable = StreamingRunnable(name="streamer")
             controller = build_flow(
                 [
@@ -1167,11 +1166,6 @@ class TestParallelExecutionStreaming:
         """Async version: Test streaming with an async runnable."""
 
         async def _test():
-            class AsyncStreamingRunnable(ParallelExecutionRunnable):
-                async def run_async(self, body, path, origin_name=None):
-                    for i in range(3):
-                        yield f"{body}_chunk_{i}"
-
             runnable = AsyncStreamingRunnable(name="async_streamer")
             controller = build_flow(
                 [
@@ -1197,12 +1191,6 @@ class TestParallelExecutionStreaming:
 
     def test_parallel_execution_streaming_with_thread_pool(self):
         """Test streaming works with thread_pool execution mechanism."""
-
-        class StreamingRunnable(ParallelExecutionRunnable):
-            def run(self, body, path, origin_name=None):
-                for i in range(3):
-                    yield f"{body}_chunk_{i}"
-
         runnable = StreamingRunnable(name="streamer")
         controller = build_flow(
             [
@@ -1226,12 +1214,6 @@ class TestParallelExecutionStreaming:
 
     def test_parallel_execution_streaming_with_shared_executor_thread_based(self):
         """Test streaming works with shared_executor when the shared executor uses threads."""
-
-        class StreamingRunnable(ParallelExecutionRunnable):
-            def run(self, body, path, origin_name=None):
-                for i in range(3):
-                    yield f"{body}_chunk_{i}"
-
         # Create a shared executor with a thread-based runnable
         shared_executor = RunnableExecutor()
         shared_runnable = StreamingRunnable(name="shared_streamer")
@@ -1273,12 +1255,6 @@ class TestParallelExecutionStreaming:
     )
     def test_parallel_execution_streaming_with_process_based_fails_at_init(self, mechanism):
         """Test that StreamingError is raised at init time when streaming runnable uses process-based mechanism."""
-
-        class StreamingRunnable(ParallelExecutionRunnable):
-            def run(self, body, path, origin_name=None):
-                for i in range(3):
-                    yield f"{body}_chunk_{i}"
-
         runnable = StreamingRunnable(name="streamer")
 
         flow = build_flow(
@@ -1302,12 +1278,6 @@ class TestParallelExecutionStreaming:
 
     def test_parallel_execution_streaming_with_shared_executor_process_based_fails_at_init(self):
         """Test that StreamingError is raised at init when shared_executor uses process-based mechanism."""
-
-        class StreamingRunnable(ParallelExecutionRunnable):
-            def run(self, body, path, origin_name=None):
-                for i in range(3):
-                    yield f"{body}_chunk_{i}"
-
         # Create a shared executor with a process-based runnable
         shared_executor = RunnableExecutor()
         shared_runnable = StreamingRunnable(name="shared_streamer")
