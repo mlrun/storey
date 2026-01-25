@@ -87,6 +87,15 @@ class Flow:
         if self._method_is_overridden("select_outlets", Flow) and self._create_name_to_outlet:
             self._init_name_to_outlet()
 
+    @staticmethod
+    def _prepare_event_for_deepcopy(event):
+        # Temporarily delete self-reference to avoid deepcopy getting stuck in an infinite loop
+        awaitable_result = event._awaitable_result
+        event._awaitable_result = None
+        original_events = getattr(event, "_original_events", None)
+        event._original_events = None
+        return awaitable_result, original_events
+
     def _init_name_to_outlet(self):
         for outlet in self._outlets:
             if outlet.name in self._name_to_outlet:
@@ -311,19 +320,44 @@ class Flow:
         # If there is more than one outlet, allow concurrent execution.
         tasks = []
         if len(outlets) > 1:
-            awaitable_result = event._awaitable_result
-            event._awaitable_result = None
-            original_events = getattr(event, "_original_events", None)
-            # Temporarily delete self-reference to avoid deepcopy getting stuck in an infinite loop
-            event._original_events = None
-            for i in range(1, len(outlets)):
+            awaitable_result, original_events = self._prepare_event_for_deepcopy(event)
+
+            # Check if event body is a list of Event/MockEvent
+            is_batched = (
+                    isinstance(event.body, list) and
+                    event.body and
+                    all(sub_event.__class__.__name__ in ("MockEvent", "Event") for sub_event in event.body)
+            )
+
+            if is_batched:
+                # Prepare deepcopy info for each sub-event
+                sub_event_thread_lock_values = [
+                    self._prepare_event_for_deepcopy(sub_event) for sub_event in event.body
+                ]
+
+            # Create tasks for outlets[1:]
+            for outlet in outlets[1:]:
                 event_copy = copy.deepcopy(event)
                 event_copy._awaitable_result = awaitable_result
                 event_copy._original_events = original_events
-                tasks.append(asyncio.get_running_loop().create_task(outlets[i]._do_and_recover(event_copy)))
-            # Set self-reference back after deepcopy
-            event._original_events = original_events
+
+                if is_batched:
+                    for sub_event_copy, (sub_awaitable, sub_original) in zip(event_copy.body,
+                                                                             sub_event_thread_lock_values):
+                        sub_event_copy._awaitable_result = sub_awaitable
+                        sub_event_copy._original_events = sub_original
+
+                tasks.append(asyncio.get_running_loop().create_task(outlet._do_and_recover(event_copy)))
+
+            # Attach self references to original event
             event._awaitable_result = awaitable_result
+            event._original_events = original_events
+
+            if is_batched:
+                for sub_event, (sub_awaitable, sub_original) in zip(event.body, sub_event_thread_lock_values):
+                    sub_event._awaitable_result = sub_awaitable
+                    sub_event._original_events = sub_original
+
         if self.verbose and self.logger:
             step_name = self.name
             event_string = self._event_string(event)
@@ -1919,6 +1953,13 @@ class ParallelExecution(Flow):
         self.max_threads = max_threads or 32
         self.pool_factor = pool_factor or 1
 
+    @staticmethod
+    def set_event_metadata(event, metadata: dict):
+        if hasattr(event, "_metadata") and isinstance(event._metadata, dict):
+            event._metadata.update(metadata)
+        else:
+            event._metadata = metadata
+
     def select_runnables(self, event) -> Optional[Union[list[str], list[ParallelExecutionRunnable]]]:
         """
         Given an event, returns a list of runnables (or a list of runnable names) to execute on it. It can also return
@@ -1957,6 +1998,21 @@ class ParallelExecution(Flow):
             return await self._do_downstream(_termination_obj)
         else:
             event = self.preprocess_event(event)
+            is_full_event_batched = (
+                all(sub_event.__class__.__name__ in ("MockEvent", "Event") for sub_event in event.body))
+            if is_full_event_batched:
+                original_sub_events = []
+                event_bodies = []
+                for sub_event in event.body:
+                    awaitable_result, original_events = self._prepare_event_for_deepcopy(sub_event)
+                    sub_event_copy = copy.deepcopy(sub_event)
+                    sub_event_copy._awaitable_result = awaitable_result
+                    sub_event_copy._original_events = original_events
+                    original_sub_events.append(sub_event_copy)
+                    # for the invocation, we only want to pass the body
+                    event_bodies.append(copy.deepcopy(sub_event.body))
+            event.body = event_bodies
+
             runnables = self.select_runnables(event)
             if runnables is None:
                 runnables = self.runnables
@@ -1987,14 +2043,19 @@ class ParallelExecution(Flow):
                 futures.append(future)
             results: list[_ParallelExecutionRunnableResult] = await asyncio.gather(*futures)
             if len(self.runnables) == 1:
-                event.body = results[0].data if results else None
-
                 metadata = {
                     "microsec": results[0].runtime,
                     "when": results[0].timestamp.isoformat(sep=" ", timespec="microseconds"),
                 }
+                # TODO: batching support
+                if is_full_event_batched:
+                    # reconstruct the full event batch
+                    for i, sub_event in enumerate(original_sub_events):
+                        sub_event.body = results[0].data[i] if results else None
+                    event.body = original_sub_events
+                else:
+                    event.body = results[0].data if results else None
             else:
-                event.body = {result.runnable_name: result.data for result in results}
                 metadata = {
                     result.runnable_name: {
                         "microsec": result.runtime,
@@ -2002,11 +2063,17 @@ class ParallelExecution(Flow):
                     }
                     for result in results
                 }
-
-            if hasattr(event, "_metadata") and isinstance(event._metadata, dict):
-                event._metadata.update(metadata)
-            else:
-                event._metadata = metadata
+                if is_full_event_batched:
+                    for i, sub_event in enumerate(original_sub_events):
+                        sub_event.body = {result.runnable_name:
+                                              result.data[i] for result in results}
+                    event.body = original_sub_events
+                else:
+                    event.body = {result.runnable_name: result.data for result in results}
+            if is_full_event_batched:
+                for sub_event in event.body:
+                    self.set_event_metadata(sub_event, metadata)
+            self.set_event_metadata(event, metadata)
             return await self._do_downstream(event)
 
     def _verify_runnables(self, runnables: List[Union[str, ParallelExecutionRunnable]]):
