@@ -262,7 +262,7 @@ class _EventOffset:
         return self.event_weakref() is None
 
     def __repr__(self):
-        return f"_EventOffset({self.offset})"
+        return f"_EventOffset({self.offset!r})"
 
 
 class SyncEmitSource(Flow):

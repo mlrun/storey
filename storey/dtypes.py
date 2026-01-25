@@ -92,7 +92,7 @@ class Event:
         )  # noqa: E127
 
     def __str__(self):
-        return f"Event(id={self.id}, key={str(self.key)}, body={self.body})"
+        return f"Event(id={self.id!r}, key={str(self.key)!r}, body={self.body!r})"
 
 
 class V3ioError(Exception):
@@ -125,7 +125,7 @@ class StreamChunk:
         self.body = body
 
     def __repr__(self):
-        return f"StreamChunk({self.body})"
+        return f"StreamChunk({self.body!r})"
 
 
 class StreamCompletion:
@@ -139,9 +139,7 @@ class StreamCompletion:
     :param original_event: Reference to the original event that was streamed.
     """
 
-    __slots__ = ("streaming_step", "original_event")
-
-    def __init__(self, streaming_step: str, original_event: "Event"):
+    def __init__(self, streaming_step: str, original_event: Event):
         self.streaming_step = streaming_step
         self.original_event = original_event
 
