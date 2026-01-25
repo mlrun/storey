@@ -568,23 +568,20 @@ class _StreamingStepMixin:
         """
         self._validate_not_already_streaming(event)
 
+        async def gen_to_async_gen(sync_gen):
+            for item in sync_gen:
+                yield item
+
+        # If needed, wrap sync generator as async to unify iteration
+        async_gen = gen_to_async_gen(generator) if inspect.isgenerator(generator) else generator
+
         chunk_id = 0
-        if inspect.isgenerator(generator):
-            # Sync generator
-            for chunk_body in generator:
-                chunk_event = self._user_fn_output_to_event(event, chunk_body)
-                chunk_event.streaming_step = self.name
-                chunk_event.chunk_id = chunk_id
-                await self._do_downstream(chunk_event)
-                chunk_id += 1
-        else:
-            # Async generator
-            async for chunk_body in generator:
-                chunk_event = self._user_fn_output_to_event(event, chunk_body)
-                chunk_event.streaming_step = self.name
-                chunk_event.chunk_id = chunk_id
-                await self._do_downstream(chunk_event)
-                chunk_id += 1
+        async for chunk_body in async_gen:
+            chunk_event = self._user_fn_output_to_event(event, chunk_body)
+            chunk_event.streaming_step = self.name
+            chunk_event.chunk_id = chunk_id
+            await self._do_downstream(chunk_event)
+            chunk_id += 1
 
         # Send completion signal
         await self._do_downstream(StreamCompletion(self.name, event))
