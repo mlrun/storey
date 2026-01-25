@@ -947,18 +947,14 @@ class Complete(Flow):
             return termination_result
 
         # Handle streaming chunk events (have streaming_step attribute)
-        streaming_step = getattr(event, "streaming_step", None)
-        if streaming_step:
-            if event._awaitable_result:
-                result = self._get_event_or_body(event)
-                res = event._awaitable_result._set_result(StreamChunk(result))
-                if res:  # AsyncAwaitableResult returns a coroutine
-                    await res
-            return termination_result
-
-        # Regular non-streaming event
         if event._awaitable_result:
             result = self._get_event_or_body(event)
+
+            # wrap intermediate streaming result in StreamChunk
+            is_streaming_step = getattr(event, "streaming_step", None)
+            if is_streaming_step:
+                result = StreamChunk(result)
+
             res = event._awaitable_result._set_result(result)
             if res:  # AsyncAwaitableResult returns a coroutine
                 await res
