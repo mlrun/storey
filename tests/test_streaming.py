@@ -329,8 +329,8 @@ class TestCollector:
 
         assert result == [10, 20]
 
-    def test_collector_single_chunk_unwrap(self):
-        """Test that a single chunk is unwrapped by Collector."""
+    def test_collector_single_chunk(self):
+        """Test that Collector emits a single chunk directly, not in a list."""
 
         def single_chunk(x):
             yield x * 2
@@ -459,8 +459,8 @@ class TestCollector:
 
         asyncio.run(_test())
 
-    def test_async_collector_single_chunk_unwrap(self):
-        """Async version: Test that a single chunk is unwrapped by Collector."""
+    def test_async_collector_single_chunk(self):
+        """Async version: Test that Collector emits a single chunk directly, not in a list."""
 
         async def _test():
             def single_chunk(x):
