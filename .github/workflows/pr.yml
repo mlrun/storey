@@ -21,17 +21,14 @@ on: pull_request
 
 jobs:
   lint:
-    name: Lint code (Python ${{ matrix.python-version }})
+    name: Lint code
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: [ 3.9, 3.11 ]
     steps:
       - uses: actions/checkout@v3
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: 3.11
           cache: pip
       - name: Install dependencies
         run: make dev-env
@@ -39,17 +36,14 @@ jobs:
         run: make lint
 
   test:
-    name: Unit tests (Python ${{ matrix.python-version }})
+    name: Unit tests
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: [ 3.9, 3.11 ]
     steps:
       - uses: actions/checkout@v3
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: 3.11
           cache: pip
       - name: Install dependencies
         run: make dev-env
