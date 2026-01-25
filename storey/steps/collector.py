@@ -90,15 +90,3 @@ class Collector(Flow):
         else:
             # Non-streaming event - pass through directly
             return await self._do_downstream(event)
-
-    async def _cleanup(self):
-        # Warn about incomplete streams on cleanup
-        for stream_id, stream_data in self._collected_streams.items():
-            if stream_data["first_event"]:
-                if self.logger:
-                    self.logger.warning(
-                        f"Collector step '{self.name}' terminated with incomplete stream '{stream_id}'. "
-                        f"Expected {self._expected_completions} completions, received {stream_data['completions']}."
-                    )
-        self._collected_streams.clear()
-        await super()._cleanup()
