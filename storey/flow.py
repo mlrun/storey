@@ -1916,6 +1916,16 @@ class RunnableExecutor:
 
         execution_mechanism = self._execution_mechanism_by_runnable_name[runnable.name]
 
+        # Check for streaming + process-based execution (incompatible combination)
+        if execution_mechanism in ParallelExecutionMechanisms.process():
+            is_streaming = inspect.isgeneratorfunction(runnable.run) or inspect.isasyncgenfunction(runnable.run_async)
+            if is_streaming:
+                raise StreamingError(
+                    f"Streaming is not supported with process-based execution mechanisms. "
+                    f"Runnable '{runnable.name}' uses '{execution_mechanism}'. "
+                    f"Use 'thread_pool', 'asyncio', or 'naive' for streaming runnables."
+                )
+
         if execution_mechanism == ParallelExecutionMechanisms.process_pool:
             self.num_processes += 1
 
@@ -2144,17 +2154,6 @@ class ParallelExecution(Flow, _StreamingStepMixin):
             result = results[0]
             # Check if the result is a generator (streaming response)
             if _is_generator(result):
-                # Validate execution mechanism - streaming not supported with process-based execution
-                runnable_name = (
-                    runnables[0].name if isinstance(runnables[0], ParallelExecutionRunnable) else runnables[0]
-                )
-                execution_mechanism = self.execution_mechanism_by_runnable_name[runnable_name]
-                if execution_mechanism in ParallelExecutionMechanisms.process():
-                    raise StreamingError(
-                        f"Streaming is not supported with process-based execution mechanisms. "
-                        f"Runnable '{runnable_name}' uses '{execution_mechanism}'. "
-                        f"Use 'asyncio' or 'naive' for streaming runnables."
-                    )
                 await self._emit_streaming_chunks(event, result)
                 return
 

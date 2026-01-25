@@ -28,6 +28,7 @@ from storey import (
     ParallelExecutionMechanisms,
     ParallelExecutionRunnable,
     Reduce,
+    RunnableExecutor,
     StreamingError,
     SyncEmitSource,
     build_flow,
@@ -897,6 +898,143 @@ class TestParallelExecutionStreaming:
             assert result == ["test_chunk_0", "test_chunk_1", "test_chunk_2"]
 
         asyncio.run(_test())
+
+    def test_parallel_execution_streaming_with_thread_pool(self):
+        """Test streaming works with thread_pool execution mechanism."""
+
+        class StreamingRunnable(ParallelExecutionRunnable):
+            def run(self, body, path, origin_name=None):
+                for i in range(3):
+                    yield f"{body}_chunk_{i}"
+
+        runnable = StreamingRunnable(name="streamer")
+        controller = build_flow(
+            [
+                SyncEmitSource(),
+                ParallelExecution(
+                    runnables=[runnable],
+                    execution_mechanism_by_runnable_name={"streamer": ParallelExecutionMechanisms.thread_pool},
+                ),
+                Reduce([], lambda acc, x: acc + [x]),
+            ]
+        ).run()
+
+        controller.emit("test")
+        controller.terminate()
+        result = controller.await_termination()
+
+        assert result == ["test_chunk_0", "test_chunk_1", "test_chunk_2"]
+
+    def test_parallel_execution_streaming_with_shared_executor_thread_based(self):
+        """Test streaming works with shared_executor when the shared executor uses threads."""
+
+        class StreamingRunnable(ParallelExecutionRunnable):
+            def run(self, body, path, origin_name=None):
+                for i in range(3):
+                    yield f"{body}_chunk_{i}"
+
+        # Create a shared executor with a thread-based runnable
+        shared_executor = RunnableExecutor()
+        shared_runnable = StreamingRunnable(name="shared_streamer")
+        shared_executor.add_runnable(shared_runnable, ParallelExecutionMechanisms.thread_pool)
+
+        # Create a proxy runnable that references the shared executor
+        proxy_runnable = StreamingRunnable(name="proxy", shared_runnable_name="shared_streamer")
+
+        class ContextWithExecutor:
+            def __init__(self, executor):
+                self.executor = executor
+
+        context = ContextWithExecutor(shared_executor)
+
+        controller = build_flow(
+            [
+                SyncEmitSource(),
+                ParallelExecution(
+                    runnables=[proxy_runnable],
+                    execution_mechanism_by_runnable_name={"proxy": ParallelExecutionMechanisms.shared_executor},
+                    context=context,
+                ),
+                Reduce([], lambda acc, x: acc + [x]),
+            ]
+        ).run()
+
+        controller.emit("test")
+        controller.terminate()
+        result = controller.await_termination()
+
+        assert result == ["test_chunk_0", "test_chunk_1", "test_chunk_2"]
+
+    def test_parallel_execution_streaming_with_process_pool_fails_at_init(self):
+        """Test that StreamingError is raised at init time when streaming runnable uses process_pool."""
+
+        class StreamingRunnable(ParallelExecutionRunnable):
+            def run(self, body, path, origin_name=None):
+                for i in range(3):
+                    yield f"{body}_chunk_{i}"
+
+        runnable = StreamingRunnable(name="streamer")
+
+        flow = build_flow(
+            [
+                SyncEmitSource(),
+                ParallelExecution(
+                    runnables=[runnable],
+                    execution_mechanism_by_runnable_name={"streamer": ParallelExecutionMechanisms.process_pool},
+                ),
+                Complete(),
+            ]
+        )
+
+        expected_error_message = (
+            "Streaming is not supported with process-based execution mechanisms. "
+            "Runnable 'streamer' uses 'process_pool'. "
+            "Use 'thread_pool', 'asyncio', or 'naive' for streaming runnables."
+        )
+        with pytest.raises(StreamingError, match=expected_error_message):
+            flow.run()
+
+    def test_parallel_execution_streaming_with_shared_executor_process_based_fails_at_init(self):
+        """Test that StreamingError is raised at init when shared_executor uses process-based mechanism."""
+
+        class StreamingRunnable(ParallelExecutionRunnable):
+            def run(self, body, path, origin_name=None):
+                for i in range(3):
+                    yield f"{body}_chunk_{i}"
+
+        # Create a shared executor with a process-based runnable
+        shared_executor = RunnableExecutor()
+        shared_runnable = StreamingRunnable(name="shared_streamer")
+        shared_executor.add_runnable(shared_runnable, ParallelExecutionMechanisms.process_pool)
+
+        # Create a proxy runnable that references the shared executor
+        proxy_runnable = StreamingRunnable(name="proxy", shared_runnable_name="shared_streamer")
+
+        class ContextWithExecutor:
+            def __init__(self, executor):
+                self.executor = executor
+
+        context = ContextWithExecutor(shared_executor)
+
+        flow = build_flow(
+            [
+                SyncEmitSource(),
+                ParallelExecution(
+                    runnables=[proxy_runnable],
+                    execution_mechanism_by_runnable_name={"proxy": ParallelExecutionMechanisms.shared_executor},
+                    context=context,
+                ),
+                Complete(),
+            ]
+        )
+
+        expected_error_message = (
+            "Streaming is not supported with process-based execution mechanisms. "
+            "Runnable 'shared_streamer' uses 'process_pool'. "
+            "Use 'thread_pool', 'asyncio', or 'naive' for streaming runnables."
+        )
+        with pytest.raises(StreamingError, match=expected_error_message):
+            flow.run()
 
 
 class TestAwaitableResultStreaming:
