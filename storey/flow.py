@@ -625,10 +625,8 @@ class _UnaryFunctionFlow(Flow):
         raise NotImplementedError()
 
     async def _do(self, event):
-        if event is _termination_obj:
-            return await self._do_downstream(_termination_obj)
-        # Forward StreamCompletion without processing
-        if isinstance(event, StreamCompletion):
+        # Forward termination object and StreamCompletion without processing
+        if event is _termination_obj or isinstance(event, StreamCompletion):
             return await self._do_downstream(event)
         element = self._get_event_or_body(event)
         fn_result = await self._call(element, self._fn)
@@ -859,10 +857,8 @@ class MapClass(Flow, _StreamingStepMixin):
         return res
 
     async def _do(self, event):
-        if event is _termination_obj:
-            return await self._do_downstream(_termination_obj)
-        # Forward StreamCompletion without processing
-        if isinstance(event, StreamCompletion):
+        # Forward termination object and StreamCompletion without processing
+        if event is _termination_obj or isinstance(event, StreamCompletion):
             return await self._do_downstream(event)
         element = self._get_event_or_body(event)
         fn_result = await self._call(element)
@@ -2115,10 +2111,8 @@ class ParallelExecution(Flow, _StreamingStepMixin):
         self.runnable_executor.init_executors()
 
     async def _do(self, event):
-        if event is _termination_obj:
-            return await self._do_downstream(_termination_obj)
-        # Forward StreamCompletion without processing
-        if isinstance(event, StreamCompletion):
+        # Forward termination object and StreamCompletion without processing
+        if event is _termination_obj or isinstance(event, StreamCompletion):
             return await self._do_downstream(event)
 
         event = self.preprocess_event(event)
