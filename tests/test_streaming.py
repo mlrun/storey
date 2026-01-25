@@ -1218,8 +1218,12 @@ class TestParallelExecutionStreaming:
             controller.terminate()
             controller.await_termination()
 
-    def test_parallel_execution_streaming_with_process_pool_fails_at_init(self):
-        """Test that StreamingError is raised at init time when streaming runnable uses process_pool."""
+    @pytest.mark.parametrize(
+        "mechanism",
+        [ParallelExecutionMechanisms.process_pool, ParallelExecutionMechanisms.dedicated_process],
+    )
+    def test_parallel_execution_streaming_with_process_based_fails_at_init(self, mechanism):
+        """Test that StreamingError is raised at init time when streaming runnable uses process-based mechanism."""
 
         class StreamingRunnable(ParallelExecutionRunnable):
             def run(self, body, path, origin_name=None):
@@ -1233,7 +1237,7 @@ class TestParallelExecutionStreaming:
                 SyncEmitSource(),
                 ParallelExecution(
                     runnables=[runnable],
-                    execution_mechanism_by_runnable_name={"streamer": ParallelExecutionMechanisms.process_pool},
+                    execution_mechanism_by_runnable_name={"streamer": mechanism},
                 ),
                 Complete(),
             ]
@@ -1241,7 +1245,7 @@ class TestParallelExecutionStreaming:
 
         expected_error_message = (
             "Streaming is not supported with process-based execution mechanisms. "
-            "Runnable 'streamer' uses 'process_pool'. "
+            f"Runnable 'streamer' uses '{mechanism}'. "
             "Use 'thread_pool', 'asyncio', or 'naive' for streaming runnables."
         )
         with pytest.raises(StreamingError, match=expected_error_message):
