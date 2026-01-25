@@ -728,6 +728,241 @@ class TestStreamingErrors:
 
         asyncio.run(_test())
 
+    def test_streaming_generator_raises_error(self):
+        """Test that error in generator mid-stream propagates without hanging."""
+
+        def error_stream(x):
+            yield f"{x}_chunk_0"
+            raise ValueError("Generator error mid-stream")
+
+        controller = build_flow(
+            [
+                SyncEmitSource(),
+                Map(error_stream),
+                Complete(),
+            ]
+        ).run()
+
+        try:
+            awaitable = controller.emit("test")
+            result = awaitable.await_result()
+
+            assert inspect.isgenerator(result)
+
+            # Collect chunks until error
+            chunks = []
+            with pytest.raises(ValueError, match="Generator error mid-stream"):
+                for chunk in result:
+                    chunks.append(chunk)
+
+            # Verify first chunk was received before error
+            assert chunks == ["test_chunk_0"]
+        finally:
+            controller.terminate()
+            # Error is also propagated through termination
+            with pytest.raises(ValueError, match="Generator error mid-stream"):
+                controller.await_termination()
+
+    def test_async_streaming_generator_raises_error(self):
+        """Async version: Test that error in generator mid-stream propagates without hanging."""
+
+        async def _test():
+            def error_stream(x):
+                yield f"{x}_chunk_0"
+                raise ValueError("Generator error mid-stream")
+
+            controller = build_flow(
+                [
+                    AsyncEmitSource(),
+                    Map(error_stream),
+                    Complete(),
+                ]
+            ).run()
+
+            try:
+                result = await controller.emit("test")
+
+                assert inspect.isasyncgen(result)
+
+                # Collect chunks until error
+                chunks = []
+                with pytest.raises(ValueError, match="Generator error mid-stream"):
+                    async for chunk in result:
+                        chunks.append(chunk)
+
+                # Verify first chunk was received before error
+                assert chunks == ["test_chunk_0"]
+            finally:
+                await controller.terminate()
+                # Error is also propagated through termination
+                with pytest.raises(ValueError, match="Generator error mid-stream"):
+                    await controller.await_termination()
+
+        asyncio.run(_test())
+
+    def test_streaming_error_in_intermediate_step(self):
+        """Test that error in non-streaming step processing chunks propagates correctly."""
+
+        def stream_chunks(x):
+            for i in range(3):
+                yield i
+
+        def failing_transform(x):
+            if x == 1:
+                raise RuntimeError("Failed on chunk 1")
+            return x * 10
+
+        controller = build_flow(
+            [
+                SyncEmitSource(),
+                Map(stream_chunks),
+                Map(failing_transform),
+                Complete(),
+            ]
+        ).run()
+
+        try:
+            awaitable = controller.emit("test")
+            result = awaitable.await_result()
+
+            assert inspect.isgenerator(result)
+
+            # Collect chunks until error
+            chunks = []
+            with pytest.raises(RuntimeError, match="Failed on chunk 1"):
+                for chunk in result:
+                    chunks.append(chunk)
+
+            # Verify first chunk (0 * 10 = 0) was received before error
+            assert chunks == [0]
+        finally:
+            controller.terminate()
+            # Error is also propagated through termination
+            with pytest.raises(RuntimeError, match="Failed on chunk 1"):
+                controller.await_termination()
+
+    def test_async_streaming_error_in_intermediate_step(self):
+        """Async version: Test that error in non-streaming step processing chunks propagates."""
+
+        async def _test():
+            def stream_chunks(x):
+                for i in range(3):
+                    yield i
+
+            def failing_transform(x):
+                if x == 1:
+                    raise RuntimeError("Failed on chunk 1")
+                return x * 10
+
+            controller = build_flow(
+                [
+                    AsyncEmitSource(),
+                    Map(stream_chunks),
+                    Map(failing_transform),
+                    Complete(),
+                ]
+            ).run()
+
+            try:
+                result = await controller.emit("test")
+
+                assert inspect.isasyncgen(result)
+
+                # Collect chunks until error
+                chunks = []
+                with pytest.raises(RuntimeError, match="Failed on chunk 1"):
+                    async for chunk in result:
+                        chunks.append(chunk)
+
+                # Verify first chunk (0 * 10 = 0) was received before error
+                assert chunks == [0]
+            finally:
+                await controller.terminate()
+                # Error is also propagated through termination
+                with pytest.raises(RuntimeError, match="Failed on chunk 1"):
+                    await controller.await_termination()
+
+        asyncio.run(_test())
+
+    def test_streaming_in_cycle_fails(self):
+        """Test that streaming step inside a cycle fails on second iteration.
+
+        When a streaming step is inside a cycle, the first iteration streams chunks.
+        When those chunks loop back to the streaming step, they already have
+        streaming_step set, so the step should fail with StreamingError.
+        """
+
+        class AlwaysLoop(Map):
+            """A Map step that always routes back to the loop target."""
+
+            def __init__(self, loop_target, **kwargs):
+                super().__init__(**kwargs)
+                self._loop_target = loop_target
+
+            def select_outlets(self, event_body):
+                # Always loop back - the streaming error should stop us
+                return [self._loop_target]
+
+        def stream_chunks(x):
+            yield f"{x}_chunk_0"
+            yield f"{x}_chunk_1"
+
+        source = SyncEmitSource()
+        # The streaming map is the entry point of the loop
+        streaming_map = Map(stream_chunks, name="streamer", max_iterations=5)
+        loop_controller = AlwaysLoop(fn=lambda x: x, name="loop_ctrl", loop_target="streamer", max_iterations=5)
+        end = Reduce([], lambda acc, x: acc + [x], name="end")
+
+        source.to(streaming_map)
+        streaming_map.to(loop_controller)
+        loop_controller.to(end)
+        loop_controller.to(streaming_map)  # Create cycle
+
+        controller = source.run()
+
+        controller.emit("test")
+        controller.terminate()
+
+        # Should fail because chunks looping back already have streaming_step set
+        with pytest.raises(StreamingError, match="Streaming on top of streaming is not allowed"):
+            controller.await_termination()
+
+    def test_async_streaming_in_cycle_fails(self):
+        """Async version: Test that streaming step inside a cycle fails on second iteration."""
+
+        async def _test():
+            class AlwaysLoop(Map):
+                def __init__(self, loop_target, **kwargs):
+                    super().__init__(**kwargs)
+                    self._loop_target = loop_target
+
+                def select_outlets(self, event_body):
+                    return [self._loop_target]
+
+            def stream_chunks(x):
+                yield f"{x}_chunk_0"
+                yield f"{x}_chunk_1"
+
+            source = AsyncEmitSource()
+            streaming_map = Map(stream_chunks, name="streamer", max_iterations=5)
+            loop_controller = AlwaysLoop(fn=lambda x: x, name="loop_ctrl", loop_target="streamer", max_iterations=5)
+            end = Reduce([], lambda acc, x: acc + [x], name="end")
+
+            source.to(streaming_map)
+            streaming_map.to(loop_controller)
+            loop_controller.to(end)
+            loop_controller.to(streaming_map)  # Create cycle
+
+            controller = source.run()
+
+            await controller.emit("test")
+            await controller.terminate()
+
+            with pytest.raises(StreamingError, match="Streaming on top of streaming is not allowed"):
+                await controller.await_termination()
+
+        asyncio.run(_test())
+
 
 class TestStreamingWithIntermediateSteps:
     """Tests for streaming through intermediate non-streaming steps."""
@@ -1451,244 +1686,5 @@ class TestStreamingGraphSplits:
             assert len(empty_results) == 2
             assert "LOW_low_value_chunk_0" in low_result[0]
             assert "HIGH_high_value_chunk_0" in high_result[0]
-
-        asyncio.run(_test())
-
-
-class TestStreamingErrorHandling:
-    """Tests for error handling in streaming scenarios."""
-
-    def test_streaming_generator_raises_error(self):
-        """Test that error in generator mid-stream propagates without hanging."""
-
-        def error_stream(x):
-            yield f"{x}_chunk_0"
-            raise ValueError("Generator error mid-stream")
-
-        controller = build_flow(
-            [
-                SyncEmitSource(),
-                Map(error_stream),
-                Complete(),
-            ]
-        ).run()
-
-        try:
-            awaitable = controller.emit("test")
-            result = awaitable.await_result()
-
-            assert inspect.isgenerator(result)
-
-            # Collect chunks until error
-            chunks = []
-            with pytest.raises(ValueError, match="Generator error mid-stream"):
-                for chunk in result:
-                    chunks.append(chunk)
-
-            # Verify first chunk was received before error
-            assert chunks == ["test_chunk_0"]
-        finally:
-            controller.terminate()
-            # Error is also propagated through termination
-            with pytest.raises(ValueError, match="Generator error mid-stream"):
-                controller.await_termination()
-
-    def test_async_streaming_generator_raises_error(self):
-        """Async version: Test that error in generator mid-stream propagates without hanging."""
-
-        async def _test():
-            def error_stream(x):
-                yield f"{x}_chunk_0"
-                raise ValueError("Generator error mid-stream")
-
-            controller = build_flow(
-                [
-                    AsyncEmitSource(),
-                    Map(error_stream),
-                    Complete(),
-                ]
-            ).run()
-
-            try:
-                result = await controller.emit("test")
-
-                assert inspect.isasyncgen(result)
-
-                # Collect chunks until error
-                chunks = []
-                with pytest.raises(ValueError, match="Generator error mid-stream"):
-                    async for chunk in result:
-                        chunks.append(chunk)
-
-                # Verify first chunk was received before error
-                assert chunks == ["test_chunk_0"]
-            finally:
-                await controller.terminate()
-                # Error is also propagated through termination
-                with pytest.raises(ValueError, match="Generator error mid-stream"):
-                    await controller.await_termination()
-
-        asyncio.run(_test())
-
-    def test_streaming_error_in_intermediate_step(self):
-        """Test that error in non-streaming step processing chunks propagates correctly."""
-
-        def stream_chunks(x):
-            for i in range(3):
-                yield i
-
-        def failing_transform(x):
-            if x == 1:
-                raise RuntimeError("Failed on chunk 1")
-            return x * 10
-
-        controller = build_flow(
-            [
-                SyncEmitSource(),
-                Map(stream_chunks),
-                Map(failing_transform),
-                Complete(),
-            ]
-        ).run()
-
-        try:
-            awaitable = controller.emit("test")
-            result = awaitable.await_result()
-
-            assert inspect.isgenerator(result)
-
-            # Collect chunks until error
-            chunks = []
-            with pytest.raises(RuntimeError, match="Failed on chunk 1"):
-                for chunk in result:
-                    chunks.append(chunk)
-
-            # Verify first chunk (0 * 10 = 0) was received before error
-            assert chunks == [0]
-        finally:
-            controller.terminate()
-            # Error is also propagated through termination
-            with pytest.raises(RuntimeError, match="Failed on chunk 1"):
-                controller.await_termination()
-
-    def test_async_streaming_error_in_intermediate_step(self):
-        """Async version: Test that error in non-streaming step processing chunks propagates."""
-
-        async def _test():
-            def stream_chunks(x):
-                for i in range(3):
-                    yield i
-
-            def failing_transform(x):
-                if x == 1:
-                    raise RuntimeError("Failed on chunk 1")
-                return x * 10
-
-            controller = build_flow(
-                [
-                    AsyncEmitSource(),
-                    Map(stream_chunks),
-                    Map(failing_transform),
-                    Complete(),
-                ]
-            ).run()
-
-            try:
-                result = await controller.emit("test")
-
-                assert inspect.isasyncgen(result)
-
-                # Collect chunks until error
-                chunks = []
-                with pytest.raises(RuntimeError, match="Failed on chunk 1"):
-                    async for chunk in result:
-                        chunks.append(chunk)
-
-                # Verify first chunk (0 * 10 = 0) was received before error
-                assert chunks == [0]
-            finally:
-                await controller.terminate()
-                # Error is also propagated through termination
-                with pytest.raises(RuntimeError, match="Failed on chunk 1"):
-                    await controller.await_termination()
-
-        asyncio.run(_test())
-
-    def test_streaming_in_cycle_fails(self):
-        """Test that streaming step inside a cycle fails on second iteration.
-
-        When a streaming step is inside a cycle, the first iteration streams chunks.
-        When those chunks loop back to the streaming step, they already have
-        streaming_step set, so the step should fail with StreamingError.
-        """
-
-        class AlwaysLoop(Map):
-            """A Map step that always routes back to the loop target."""
-
-            def __init__(self, loop_target, **kwargs):
-                super().__init__(**kwargs)
-                self._loop_target = loop_target
-
-            def select_outlets(self, event_body):
-                # Always loop back - the streaming error should stop us
-                return [self._loop_target]
-
-        def stream_chunks(x):
-            yield f"{x}_chunk_0"
-            yield f"{x}_chunk_1"
-
-        source = SyncEmitSource()
-        # The streaming map is the entry point of the loop
-        streaming_map = Map(stream_chunks, name="streamer", max_iterations=5)
-        loop_controller = AlwaysLoop(fn=lambda x: x, name="loop_ctrl", loop_target="streamer", max_iterations=5)
-        end = Reduce([], lambda acc, x: acc + [x], name="end")
-
-        source.to(streaming_map)
-        streaming_map.to(loop_controller)
-        loop_controller.to(end)
-        loop_controller.to(streaming_map)  # Create cycle
-
-        controller = source.run()
-
-        controller.emit("test")
-        controller.terminate()
-
-        # Should fail because chunks looping back already have streaming_step set
-        with pytest.raises(StreamingError, match="Streaming on top of streaming is not allowed"):
-            controller.await_termination()
-
-    def test_async_streaming_in_cycle_fails(self):
-        """Async version: Test that streaming step inside a cycle fails on second iteration."""
-
-        async def _test():
-            class AlwaysLoop(Map):
-                def __init__(self, loop_target, **kwargs):
-                    super().__init__(**kwargs)
-                    self._loop_target = loop_target
-
-                def select_outlets(self, event_body):
-                    return [self._loop_target]
-
-            def stream_chunks(x):
-                yield f"{x}_chunk_0"
-                yield f"{x}_chunk_1"
-
-            source = AsyncEmitSource()
-            streaming_map = Map(stream_chunks, name="streamer", max_iterations=5)
-            loop_controller = AlwaysLoop(fn=lambda x: x, name="loop_ctrl", loop_target="streamer", max_iterations=5)
-            end = Reduce([], lambda acc, x: acc + [x], name="end")
-
-            source.to(streaming_map)
-            streaming_map.to(loop_controller)
-            loop_controller.to(end)
-            loop_controller.to(streaming_map)  # Create cycle
-
-            controller = source.run()
-
-            await controller.emit("test")
-            await controller.terminate()
-
-            with pytest.raises(StreamingError, match="Streaming on top of streaming is not allowed"):
-                await controller.await_termination()
 
         asyncio.run(_test())
