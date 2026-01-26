@@ -2011,7 +2011,7 @@ class ParallelExecution(Flow):
                     original_sub_events.append(sub_event_copy)
                     # for the invocation, we only want to pass the body
                     event_bodies.append(copy.deepcopy(sub_event.body))
-            event.body = event_bodies
+                event.body = event_bodies
 
             runnables = self.select_runnables(event)
             if runnables is None:
