@@ -13,6 +13,7 @@
 # limitations under the License.
 #
 from .assertion import Assert  # noqa: F401
+from .collector import Collector  # noqa: F401
 from .flatten import Flatten  # noqa: F401
 from .foreach import ForEach  # noqa: F401
 from .partition import Partition  # noqa: F401

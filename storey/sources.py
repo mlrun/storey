@@ -32,7 +32,7 @@ import pyarrow
 import pytz
 from nuclio_sdk import QualifiedOffset
 
-from .dtypes import Event, _termination_obj
+from .dtypes import Event, StreamChunk, StreamCompletion, _termination_obj
 from .flow import Complete, Flow, WithUUID
 from .queue import SimpleAsyncQueue
 from .utils import (
@@ -47,6 +47,15 @@ class AwaitableResult:
     """
     Future result of a computation. Calling await_result() will return with the result once the computation is
     completed.
+
+    For non-streaming flows, await_result() returns the result value directly.
+    For streaming flows, await_result() returns a generator that yields chunk bodies
+    until the stream is complete.
+
+    :param on_error: Callback to invoke on error (optional).
+    :param expected_number_of_results: Number of completions to wait for. For non-streaming,
+        this is the number of results. For streaming, this is the number of StreamCompletion
+        sentinels to receive before the stream is considered complete. Useful for graph splits.
     """
 
     def __init__(
@@ -56,32 +65,70 @@ class AwaitableResult:
     ):
         self._on_error = on_error
         self._expected_number_of_results = expected_number_of_results
-        self._number_of_results = 0
-        self._q = queue.Queue(expected_number_of_results)
+        self._q = queue.Queue()
 
     def await_result(self):
-        """Returns the result, once the computation is completed"""
-        results = []
-        for _ in range(self._expected_number_of_results):
+        """Returns the result, once the computation is completed.
+
+        For streaming responses (when a step emits a generator), returns a generator
+        that yields chunk bodies until the expected number of StreamCompletion sentinels
+        are received.
+
+        For non-streaming responses, returns the result value directly (or a list of
+        results if expected_number_of_results > 1).
+        """
+        first_result = self._q.get()
+
+        # Handle errors
+        if isinstance(first_result, BaseException):
+            if self._on_error:
+                self._on_error()
+            raise copy.copy(first_result)
+
+        # If this is a stream response, return a generator
+        if isinstance(first_result, (StreamChunk, StreamCompletion)):
+            return self._stream_generator(first_result)
+
+        # Non-streaming: collect expected number of results
+        results = [first_result]
+        for _ in range(self._expected_number_of_results - 1):
             result = self._q.get()
             if isinstance(result, BaseException):
                 if self._on_error:
                     self._on_error()
-                # Python appends trace frames to a raised exception, so we must copy
-                # it before raising to prevent it from growing each time
                 raise copy.copy(result)
             results.append(result)
+
         if len(results) == 1:
-            results = results[0]
+            return results[0]
         return results
 
+    def _stream_generator(self, first_item):
+        """Generator that yields streaming chunk bodies until completion."""
+        completions_received = 0
+        if isinstance(first_item, StreamChunk):
+            yield first_item.body
+        elif isinstance(first_item, StreamCompletion):
+            completions_received = 1
+
+        while completions_received < self._expected_number_of_results:
+            item = self._q.get()
+            if isinstance(item, BaseException):
+                if self._on_error:
+                    self._on_error()
+                raise copy.copy(item)
+            if isinstance(item, StreamCompletion):
+                completions_received += 1
+            elif isinstance(item, StreamChunk):
+                yield item.body
+
     def _set_result(self, element):
-        if self._number_of_results < self._expected_number_of_results:
-            self._number_of_results += 1
-            self._q.put(element)
+        """Push a result or streaming item to the queue."""
+        self._q.put(element)
 
     def _set_error(self, ex):
-        self._set_result(ex)
+        """Push an error to the queue."""
+        self._q.put(ex)
 
 
 class FlowControllerBase(WithUUID):
@@ -215,7 +262,7 @@ class _EventOffset:
         return self.event_weakref() is None
 
     def __repr__(self):
-        return f"_EventOffset({self.offset})"
+        return f"_EventOffset({self.offset!r})"
 
 
 class SyncEmitSource(Flow):
@@ -410,6 +457,10 @@ class SyncEmitSource(Flow):
 class AsyncAwaitableResult:
     """Future result of a computation. Calling await_result() will return with the result once the computation is
     completed. Same as AwaitableResult but for an async context.
+
+    For non-streaming flows, await_result() returns the result value directly.
+    For streaming flows, await_result() returns an async generator that yields chunk bodies
+    until the stream is complete.
     """
 
     def __init__(
@@ -419,32 +470,70 @@ class AsyncAwaitableResult:
     ):
         self._on_error = on_error
         self._expected_number_of_results = expected_number_of_results
-        self._number_of_results = 0
-        self._q = asyncio.Queue(expected_number_of_results)
+        self._q = asyncio.Queue()
 
     async def await_result(self):
-        """returns the result of the computation, once the computation is complete"""
-        results = []
-        for _ in range(self._expected_number_of_results):
+        """Returns the result of the computation, once the computation is complete.
+
+        For streaming responses (when a step emits a generator), returns an async generator
+        that yields chunk bodies until the expected number of StreamCompletion sentinels
+        are received.
+
+        For non-streaming responses, returns the result value directly (or a list of
+        results if expected_number_of_results > 1).
+        """
+        first_result = await self._q.get()
+
+        # Handle errors
+        if isinstance(first_result, BaseException):
+            if self._on_error:
+                await self._on_error()
+            raise copy.copy(first_result)
+
+        # If this is a stream response, return a generator
+        if isinstance(first_result, (StreamChunk, StreamCompletion)):
+            return self._stream_generator(first_result)
+
+        # Non-streaming: collect expected number of results
+        results = [first_result]
+        for _ in range(self._expected_number_of_results - 1):
             result = await self._q.get()
             if isinstance(result, BaseException):
                 if self._on_error:
                     await self._on_error()
-                # Python appends trace frames to a raised exception, so we must copy
-                # it before raising to prevent it from growing each time
                 raise copy.copy(result)
             results.append(result)
+
         if len(results) == 1:
-            results = results[0]
+            return results[0]
         return results
 
+    async def _stream_generator(self, first_item):
+        """Async generator that yields streaming chunk bodies until completion."""
+        completions_received = 0
+        if isinstance(first_item, StreamChunk):
+            yield first_item.body
+        elif isinstance(first_item, StreamCompletion):
+            completions_received = 1
+
+        while completions_received < self._expected_number_of_results:
+            item = await self._q.get()
+            if isinstance(item, BaseException):
+                if self._on_error:
+                    await self._on_error()
+                raise copy.copy(item)
+            if isinstance(item, StreamCompletion):
+                completions_received += 1
+            elif isinstance(item, StreamChunk):
+                yield item.body
+
     async def _set_result(self, element):
-        if self._number_of_results < self._expected_number_of_results:
-            self._number_of_results += 1
-            await self._q.put(element)
+        """Push a result or streaming item to the queue."""
+        await self._q.put(element)
 
     async def _set_error(self, ex):
-        await self._set_result(ex)
+        """Push an error to the queue."""
+        await self._q.put(ex)
 
 
 class AsyncFlowController(FlowControllerBase):

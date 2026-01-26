@@ -4677,7 +4677,7 @@ def test_concurrent_execution_max_in_flight_push_error():
 
 def test_event_to_string():
     event = Event("body", "key")
-    assert str(event) == "Event(id=None, key=key, body=body)"
+    assert str(event) == "Event(id=None, key='key', body='body')"
 
 
 class MockLogger:
@@ -5592,7 +5592,7 @@ def test_cyclic_graphs(iterations, with_recovery):
     counter.to(my_loop)
     my_loop.to(end)
     end.to(Complete())
-    my_loop._outlets.append(counter)
+    my_loop.to(counter)
     if with_recovery:
         recovery_step = Map(lambda x: -1, name="end-2")
         counter.set_recovery_step(recovery_step)
@@ -5636,10 +5636,10 @@ def test_two_cyclic_graphs():
     start.to(counter)
     counter.to(my_loop)
     my_loop.to(counter_2)
-    my_loop._outlets.append(counter)
+    my_loop.to(counter)
     counter_2.to(my_loop_2)
     my_loop_2.to(end)
-    my_loop_2._outlets.append(counter_2)
+    my_loop_2.to(counter_2)
     end.to(Complete())
     controller = source.run()
 
@@ -5666,7 +5666,7 @@ def test_flow_reuse_with_cycle():
     my_loop.to(end)
     end.to(Complete())
     # Create the cycle by appending counter as an outlet of my_loop
-    my_loop._outlets.append(counter)
+    my_loop.to(counter)
 
     # Run the SAME flow 3 times to test reusability with cyclic structure
     for run_num in range(3):

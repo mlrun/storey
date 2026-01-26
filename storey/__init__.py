@@ -33,6 +33,7 @@ from .dtypes import FixedWindows  # noqa: F401
 from .dtypes import FixedWindowType  # noqa: F401
 from .dtypes import LateDataHandling  # noqa: F401
 from .dtypes import SlidingWindows  # noqa: F401
+from .dtypes import StreamingError  # noqa: F401
 from .flow import Batch  # noqa: F401
 from .flow import Choice  # noqa: F401
 from .flow import Complete  # noqa: F401
@@ -66,6 +67,7 @@ from .sources import ParquetSource  # noqa: F401
 from .sources import SQLSource  # noqa: F401
 from .sources import SyncEmitSource  # noqa: F401
 from .sql_driver import SQLDriver  # noqa: F401
+from .steps import Collector  # noqa: F401
 from .table import Table  # noqa: F401
 from .targets import CSVTarget  # noqa: F401
 from .targets import KafkaTarget  # noqa: F401
