@@ -14,6 +14,7 @@
 #
 import asyncio
 import inspect
+from typing import AsyncGenerator, Generator, Optional
 
 import pytest
 
@@ -40,7 +41,7 @@ from storey.flow import _is_generator
 class StreamingRunnable(ParallelExecutionRunnable):
     """A streaming runnable that yields 3 chunks for testing."""
 
-    def run(self, body, path, origin_name=None):
+    def run(self, body, path: str, origin_name: Optional[str] = None) -> Generator:
         for i in range(3):
             yield f"{body}_chunk_{i}"
 
@@ -48,7 +49,7 @@ class StreamingRunnable(ParallelExecutionRunnable):
 class AsyncStreamingRunnable(ParallelExecutionRunnable):
     """An async streaming runnable that yields 3 chunks for testing."""
 
-    async def run_async(self, body, path, origin_name=None):
+    async def run_async(self, body, path: str, origin_name: Optional[str] = None) -> AsyncGenerator:
         for i in range(3):
             yield f"{body}_chunk_{i}"
 

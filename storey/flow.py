@@ -311,18 +311,16 @@ class Flow:
     def _should_terminate(self):
         return self._termination_received == len(self._inlets)
 
-    def _deepcopy_event_for_outlet(self, event, target_obj, is_stream_completion):
+    def _deepcopy_event_for_outlet(self, event, target_obj, is_stream_completion: bool):
         """Deepcopy event while handling unpicklable attributes on target_obj.
 
-        Args:
-            event: The event to deepcopy.
-            target_obj: The object containing _awaitable_result and _original_events
-                        (either the event itself or event.original_event for StreamCompletion).
-            is_stream_completion: If True, copy target is event_copy.original_event,
-                                  otherwise it's event_copy itself.
+        :param event: The event to deepcopy.
+        :param target_obj: The object containing _awaitable_result and _original_events
+                           (either the event itself or event.original_event for StreamCompletion).
+        :param is_stream_completion: If True, copy target is event_copy.original_event,
+                                     otherwise it's event_copy itself.
 
-        Returns:
-            The deepcopied event with unpicklable attributes restored.
+        :returns: The deepcopied event with unpicklable attributes restored.
         """
         awaitable_result = target_obj._awaitable_result
         target_obj._awaitable_result = None
@@ -562,9 +560,8 @@ class _StreamingStepMixin:
     async def _emit_streaming_chunks(self, event, generator: Union[Generator, AsyncGenerator]) -> None:
         """Emit streaming chunks from a generator, then send StreamCompletion.
 
-        Args:
-            event: The event that will be used to create chunk events.
-            generator: A sync or async generator yielding chunk bodies.
+        :param event: The event that will be used to create chunk events.
+        :param generator: A sync or async generator yielding chunk bodies.
         """
         self._validate_not_already_streaming(event)
 
