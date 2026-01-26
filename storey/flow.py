@@ -2155,7 +2155,15 @@ class ParallelExecution(Flow, _StreamingStepMixin):
                 return None
 
         # Non-streaming path
-        if len(runnables) == 1:
+        # Check if any results are generators (not allowed with multiple runnables)
+        for result in results:
+            if _is_generator(result):
+                raise StreamingError(
+                    "Streaming is not supported when multiple runnables are selected. "
+                    "Streaming runnables must be the only runnable selected for an event."
+                )
+        # Use self.runnables (registered) not runnables (selected) to determine wrapping
+        if len(self.runnables) == 1:
             result: _ParallelExecutionRunnableResult = results[0]
             event.body = result.data if results else None
 
@@ -2164,13 +2172,6 @@ class ParallelExecution(Flow, _StreamingStepMixin):
                 "when": result.timestamp.isoformat(sep=" ", timespec="microseconds"),
             }
         else:
-            # Check if any results are generators (not allowed with multiple runnables)
-            for result in results:
-                if _is_generator(result):
-                    raise StreamingError(
-                        "Streaming is not supported when multiple runnables are selected. "
-                        "Streaming runnables must be the only runnable selected for an event."
-                    )
             event.body = {result.runnable_name: result.data for result in results}
             metadata = {
                 result.runnable_name: {
