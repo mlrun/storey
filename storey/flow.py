@@ -2162,11 +2162,14 @@ class ParallelExecution(Flow, _StreamingStepMixin):
                     "Streaming is not supported when multiple runnables are selected. "
                     "Streaming runnables must be the only runnable selected for an event."
                 )
+        # If no runnables were selected, don't emit the event
+        if not results:
+            return None
+
         # Use self.runnables (registered) not runnables (selected) to determine wrapping
         if len(self.runnables) == 1:
             result: _ParallelExecutionRunnableResult = results[0]
-            event.body = result.data if results else None
-
+            event.body = result.data
             metadata = {
                 "microsec": result.runtime,
                 "when": result.timestamp.isoformat(sep=" ", timespec="microseconds"),

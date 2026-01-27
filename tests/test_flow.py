@@ -5420,6 +5420,35 @@ def test_parallel_execution_single_selection_from_multiple_runnables():
     assert result == {"model2": 1}
 
 
+def test_parallel_execution_empty_selection():
+    """When 1 runnable is registered but 0 are selected, event should not be emitted."""
+    runnable = RunnableNaiveNoOp("model1")
+
+    class EmptySelectParallelExecution(ParallelExecution):
+        def select_runnables(self, event):
+            # Return empty list - select no runnables
+            return []
+
+    parallel_execution = EmptySelectParallelExecution(
+        [runnable],
+        execution_mechanism_by_runnable_name={"model1": "naive"},
+    )
+
+    controller = build_flow(
+        [
+            SyncEmitSource(),
+            parallel_execution,
+            Reduce([], lambda acc, x: acc + [x]),
+        ]
+    ).run()
+    controller.emit({"value": 42})
+    controller.terminate()
+    termination_result = controller.await_termination()
+
+    # When no runnables are selected, event should not be emitted downstream
+    assert termination_result == []
+
+
 def test_enrichment():
     busy_wait_pool = RunnableBusyWait("busy1")
     busy_wait_dedicated = RunnableBusyWait("busy2")
