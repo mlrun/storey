@@ -2193,7 +2193,7 @@ class ParallelExecution(Flow, _StreamingStepMixin):
                 )
             runnables_encountered.add(id(runnable))
             futures.append(future)
-        results: list[_ParallelExecutionRunnableResult] = await asyncio.gather(*futures)
+        results = await asyncio.gather(*futures)
         # Check for streaming response (only when a single runnable is selected)
         if len(runnables) == 1 and results:
             result = results[0]
