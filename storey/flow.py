@@ -347,7 +347,7 @@ class Flow:
         target_obj._original_events = original_events
         if is_batched:
             event_copy.body = sub_event_copies
-            for sub_event, sub_event_copy in zip(event, sub_event_copies):
+            for sub_event, sub_event_copy in zip(event.body, sub_event_copies):
                 sub_event._awaitable_result = sub_event_copy._awaitable_result
                 sub_event._original_events = sub_event_copy._original_events
         return event_copy
