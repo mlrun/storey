@@ -1876,22 +1876,6 @@ def _static_streaming_run(input, path: str, origin_name: Optional[str], queue: m
     _streaming_run_wrapper(_sval, input, path, origin_name, queue)
 
 
-def _read_streaming_queue(queue: multiprocessing.Queue) -> Generator:
-    """Generator that reads chunks from a multiprocessing queue.
-
-    This runs in the parent process and yields chunks sent by the child process.
-    """
-    while True:
-        msg_type, payload = queue.get()
-        if msg_type == "chunk":
-            yield payload
-        elif msg_type == "done":
-            break
-        elif msg_type == "error":
-            exc_type, exc_msg, exc_tb = payload
-            raise RuntimeError(f"{exc_type}: {exc_msg}\n\nOriginal traceback:\n{exc_tb}")
-
-
 async def _async_read_streaming_queue(
     queue: multiprocessing.Queue, loop: Optional[asyncio.AbstractEventLoop] = None
 ) -> AsyncGenerator:
