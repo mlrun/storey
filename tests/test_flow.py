@@ -22,8 +22,9 @@ import tempfile
 import time
 import traceback
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from random import choice
+from time import sleep
 from unittest.mock import MagicMock
 
 import fakeredis
@@ -2336,6 +2337,8 @@ def test_batch_with_timeout():
 
 def test_batch_with_parallel_execution():
     """Test that Batch step with full_event=True works correctly with ParallelExecution."""
+    batch_size = 3
+    number_of_events = 10
 
     class RunnableMultiplyBy2(ParallelExecutionRunnable):
         def init(self):
@@ -2355,51 +2358,66 @@ def test_batch_with_parallel_execution():
                 return [sub_value + 10 for sub_value in data]
             return data + 10
 
+    class RunnableGetTime(ParallelExecutionRunnable):
+        def init(self):
+            pass
+
+        def run(self, data, path, origin_name=None):
+            now = datetime.now(timezone.utc)
+            if isinstance(data, list):
+                return [now] * len(data)
+            return now
+
     runnables = [
         RunnableMultiplyBy2("multiply"),
         RunnableAdd10("add"),
+        RunnableGetTime("now"),
     ]
 
     class MyParallelExecution(ParallelExecution):
         def select_runnables(self, event):
-            return ["multiply", "add"]
+            return ["multiply", "add", "now"]
 
     parallel_execution = MyParallelExecution(
         runnables,
         execution_mechanism_by_runnable_name={
             "multiply": "naive",
             "add": "naive",
+            "now": "naive",
         },
     )
 
     controller = build_flow(
         [
             SyncEmitSource(),
-            Batch(3, 100, full_event=True),
+            Batch(batch_size, 100, full_event=True),
             parallel_execution,
             FlatMap(fn=lambda x: x.body, full_event=True),
             Reduce([], lambda acc, x: append_and_return(acc, x)),
         ]
     ).run()
 
-    # Emit 10 events
-    for i in range(10):
+    for i in range(number_of_events):
+        sleep(0.2)
         controller.emit(i)
 
     controller.terminate()
     termination_result = controller.await_termination()
+    assert len(termination_result) == number_of_events
 
-    assert len(termination_result) == 10
-    assert termination_result[0] == {"multiply": 0, "add": 10}
-    assert termination_result[1] == {"multiply": 2, "add": 11}
-    assert termination_result[2] == {"multiply": 4, "add": 12}
-    assert termination_result[3] == {"multiply": 6, "add": 13}
-    assert termination_result[4] == {"multiply": 8, "add": 14}
-    assert termination_result[5] == {"multiply": 10, "add": 15}
-    assert termination_result[6] == {"multiply": 12, "add": 16}
-    assert termination_result[7] == {"multiply": 14, "add": 17}
-    assert termination_result[8] == {"multiply": 16, "add": 18}
-    assert termination_result[9] == {"multiply": 18, "add": 19}
+    previous_batch_number = -1
+    expected_timestamp = datetime.min
+    for i in range(number_of_events):
+        expected_add = 10 + i
+        expected_multiply = i * 2
+        assert termination_result[i]["add"] == expected_add
+        assert termination_result[i]["multiply"] == expected_multiply
+        batch_number = math.floor(i / batch_size)
+        if previous_batch_number == -1 or batch_number != previous_batch_number:
+            expected_timestamp = termination_result[i]["now"]
+        else:
+            assert termination_result[i]["now"] == expected_timestamp
+        previous_batch_number = batch_number
 
 
 async def async_test_write_csv(tmpdir):
