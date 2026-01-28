@@ -324,16 +324,14 @@ class Flow:
 
             # Check if event body is a list of Event/MockEvent
             is_batched = (
-                    isinstance(event.body, list) and
-                    event.body and
-                    all("event" in sub_event.__class__.__name__.lower() for sub_event in event.body)
+                isinstance(event.body, list)
+                and event.body
+                and all("event" in sub_event.__class__.__name__.lower() for sub_event in event.body)
             )
 
             if is_batched:
                 # Prepare deepcopy info for each sub-event
-                sub_event_thread_lock_values = [
-                    self._prepare_event_for_deepcopy(sub_event) for sub_event in event.body
-                ]
+                sub_event_thread_lock_values = [self._prepare_event_for_deepcopy(sub_event) for sub_event in event.body]
 
             # Create tasks for outlets[1:]
             for outlet in outlets[1:]:
@@ -342,8 +340,9 @@ class Flow:
                 event_copy._original_events = original_events
 
                 if is_batched:
-                    for sub_event_copy, (sub_awaitable, sub_original) in zip(event_copy.body,
-                                                                             sub_event_thread_lock_values):
+                    for sub_event_copy, (sub_awaitable, sub_original) in zip(
+                        event_copy.body, sub_event_thread_lock_values
+                    ):
                         sub_event_copy._awaitable_result = sub_awaitable
                         sub_event_copy._original_events = sub_original
 
@@ -2000,7 +1999,10 @@ class ParallelExecution(Flow):
             event = self.preprocess_event(event)
             original_sub_events = []
             is_full_event_batched = (
-                all("event" in sub_event.__class__.__name__.lower() for sub_event in event.body))
+                isinstance(event.body, list)
+                and event.body
+                and all("event" in sub_event.__class__.__name__.lower() for sub_event in event.body)
+            )
             if is_full_event_batched:
                 event_bodies = []
                 for sub_event in event.body:
@@ -2064,8 +2066,7 @@ class ParallelExecution(Flow):
                 }
                 if is_full_event_batched:
                     for i, sub_event in enumerate(original_sub_events):
-                        sub_event.body = {result.runnable_name:
-                                              result.data[i] for result in results}
+                        sub_event.body = {result.runnable_name: result.data[i] for result in results}
                     event.body = original_sub_events
                 else:
                     event.body = {result.runnable_name: result.data for result in results}

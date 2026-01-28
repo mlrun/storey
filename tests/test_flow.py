@@ -2334,6 +2334,74 @@ def test_batch_with_timeout():
     assert termination_result == [[0, 1, 2], [3, 4, 5, 6], [7, 8, 9]]
 
 
+def test_batch_with_parallel_execution():
+    """Test that Batch step with full_event=True works correctly with ParallelExecution."""
+
+    class RunnableMultiplyBy2(ParallelExecutionRunnable):
+        def init(self):
+            pass
+
+        def run(self, data, path, origin_name=None):
+            if isinstance(data, list):
+                return [sub_value * 2 for sub_value in data]
+            return data * 2
+
+    class RunnableAdd10(ParallelExecutionRunnable):
+        def init(self):
+            pass
+
+        def run(self, data, path, origin_name=None):
+            if isinstance(data, list):
+                return [sub_value + 10 for sub_value in data]
+            return data + 10
+
+    runnables = [
+        RunnableMultiplyBy2("multiply"),
+        RunnableAdd10("add"),
+    ]
+
+    class MyParallelExecution(ParallelExecution):
+        def select_runnables(self, event):
+            return ["multiply", "add"]
+
+    parallel_execution = MyParallelExecution(
+        runnables,
+        execution_mechanism_by_runnable_name={
+            "multiply": "naive",
+            "add": "naive",
+        },
+    )
+
+    controller = build_flow(
+        [
+            SyncEmitSource(),
+            Batch(3, 100, full_event=True),
+            parallel_execution,
+            FlatMap(fn=lambda x: x.body, full_event=True),
+            Reduce([], lambda acc, x: append_and_return(acc, x)),
+        ]
+    ).run()
+
+    # Emit 10 events
+    for i in range(10):
+        controller.emit(i)
+
+    controller.terminate()
+    termination_result = controller.await_termination()
+
+    assert len(termination_result) == 10
+    assert termination_result[0] == {"multiply": 0, "add": 10}
+    assert termination_result[1] == {"multiply": 2, "add": 11}
+    assert termination_result[2] == {"multiply": 4, "add": 12}
+    assert termination_result[3] == {"multiply": 6, "add": 13}
+    assert termination_result[4] == {"multiply": 8, "add": 14}
+    assert termination_result[5] == {"multiply": 10, "add": 15}
+    assert termination_result[6] == {"multiply": 12, "add": 16}
+    assert termination_result[7] == {"multiply": 14, "add": 17}
+    assert termination_result[8] == {"multiply": 16, "add": 18}
+    assert termination_result[9] == {"multiply": 18, "add": 19}
+
+
 async def async_test_write_csv(tmpdir):
     file_path = f"{tmpdir}/test_write_csv/out.csv"
     controller = build_flow([AsyncEmitSource(), CSVTarget(file_path, columns=["n", "n*10"], header=True)]).run()
