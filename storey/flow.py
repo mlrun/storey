@@ -113,15 +113,6 @@ class Flow:
         if self._method_is_overridden("select_outlets", Flow) and self._create_name_to_outlet:
             self._init_name_to_outlet()
 
-    @staticmethod
-    def _prepare_event_for_deepcopy(event):
-        # Temporarily delete self-reference to avoid deepcopy getting stuck in an infinite loop
-        awaitable_result = event._awaitable_result
-        event._awaitable_result = None
-        original_events = getattr(event, "_original_events", None)
-        event._original_events = None
-        return awaitable_result, original_events
-
     def _init_name_to_outlet(self):
         for outlet in self._outlets:
             if outlet.name in self._name_to_outlet:
@@ -320,7 +311,7 @@ class Flow:
     def _should_terminate(self):
         return self._termination_received == len(self._inlets)
 
-    def _deepcopy_event_for_outlet(self, event, target_obj, is_stream_completion: bool, is_batched=False):
+    def _deepcopy_event(self, event, target_obj, is_stream_completion: bool, is_batched=False):
         """Deepcopy event while handling unpicklable attributes on target_obj.
 
         :param event: The event to deepcopy.
@@ -341,7 +332,7 @@ class Flow:
             for sub_event in event.body:
                 if isinstance(sub_event, StreamCompletion):
                     raise ValueError("batching is not supported with streaming")
-                sub_event_copies.append(self._deepcopy_event_for_outlet(sub_event, sub_event, False, False))
+                sub_event_copies.append(self._deepcopy_event(sub_event, sub_event, False, False))
                 sub_event._awaitable_result = None
                 sub_event._original_events = None
         event_copy = copy.deepcopy(event)
@@ -398,7 +389,7 @@ class Flow:
                     raise ValueError("batching is not supported with streaming")
 
             for i in range(1, len(outlets)):
-                event_copy = self._deepcopy_event_for_outlet(event, target_obj, is_stream_completion)
+                event_copy = self._deepcopy_event(event, target_obj, is_stream_completion)
                 tasks.append(asyncio.get_running_loop().create_task(outlets[i]._do_and_recover(event_copy)))
         if self.verbose and self.logger:
             step_name = self.name
@@ -2156,7 +2147,7 @@ class ParallelExecution(Flow, _StreamingStepMixin):
         if event is _termination_obj or isinstance(event, StreamCompletion):
             return await self._do_downstream(event)
         event = self.preprocess_event(event)
-        original_sub_events = []
+        sub_events_to_modify = []
         is_full_event_batched = (
             isinstance(event.body, list)
             and event.body
@@ -2165,11 +2156,11 @@ class ParallelExecution(Flow, _StreamingStepMixin):
         if is_full_event_batched:
             event_bodies = []
             for sub_event in event.body:
-                awaitable_result, original_events = self._prepare_event_for_deepcopy(sub_event)
-                sub_event_copy = copy.deepcopy(sub_event)
-                sub_event_copy._awaitable_result = awaitable_result
-                sub_event_copy._original_events = original_events
-                original_sub_events.append(sub_event_copy)
+                # copy sub events for avoiding overriding original sub events
+                if isinstance(sub_event, StreamCompletion):
+                    raise ValueError("batching is not supported with streaming")
+                sub_event_copy = self._deepcopy_event(sub_event, sub_event, False, False)
+                sub_events_to_modify.append(sub_event_copy)
                 # for the invocation, we only want to pass the body
                 event_bodies.append(copy.deepcopy(sub_event.body))
             event.body = event_bodies
@@ -2229,9 +2220,9 @@ class ParallelExecution(Flow, _StreamingStepMixin):
             }
             if is_full_event_batched:
                 # reconstruct the full event batch
-                for i, sub_event in enumerate(original_sub_events):
+                for i, sub_event in enumerate(sub_events_to_modify):
                     sub_event.body = result.data[i]
-                event.body = original_sub_events
+                event.body = sub_events_to_modify
             else:
                 event.body = result.data
         else:
@@ -2243,9 +2234,9 @@ class ParallelExecution(Flow, _StreamingStepMixin):
                 for result in results
             }
             if is_full_event_batched:
-                for i, sub_event in enumerate(original_sub_events):
+                for i, sub_event in enumerate(sub_events_to_modify):
                     sub_event.body = {result.runnable_name: result.data[i] for result in results}
-                event.body = original_sub_events
+                event.body = sub_events_to_modify
             else:
                 event.body = {result.runnable_name: result.data for result in results}
 
