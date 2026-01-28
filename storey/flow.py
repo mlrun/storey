@@ -2148,6 +2148,7 @@ class ParallelExecution(Flow, _StreamingStepMixin):
         # Forward termination object and StreamCompletion without processing
         if event is _termination_obj or isinstance(event, StreamCompletion):
             return await self._do_downstream(event)
+
         event = self.preprocess_event(event)
         sub_events_to_modify = []
         is_full_event_batched = (
@@ -2193,6 +2194,7 @@ class ParallelExecution(Flow, _StreamingStepMixin):
             runnables_encountered.add(id(runnable))
             futures.append(future)
         results = await asyncio.gather(*futures)
+
         # Check for streaming response (only when a single runnable is selected)
         if len(runnables) == 1 and results:
             result = results[0]
@@ -2212,6 +2214,7 @@ class ParallelExecution(Flow, _StreamingStepMixin):
         # If no runnables were selected, don't emit the event
         if not results:
             return None
+
         # Use self.runnables (registered) not runnables (selected) to determine wrapping
         if len(self.runnables) == 1:
             result: _ParallelExecutionRunnableResult = results[0]
