@@ -319,6 +319,9 @@ class Flow:
                            (either the event itself or event.original_event for StreamCompletion).
         :param is_stream_completion: If True, copy target is event_copy.original_event,
                                      otherwise it's event_copy itself.
+        :param is_batched: If True, performs nested copying for batched events where event.body contains
+                          a list of sub-events. Only 1 layer of batching is supported. Not supported with
+                          StreamCompletion events.
 
         :returns: The deepcopied event with unpicklable attributes restored.
         """
