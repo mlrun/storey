@@ -326,7 +326,7 @@ class Flow:
             is_batched = (
                     isinstance(event.body, list) and
                     event.body and
-                    all(sub_event.__class__.__name__ in ("MockEvent", "Event") for sub_event in event.body)
+                    all("event" in sub_event.__class__.__name__.lower() for sub_event in event.body)
             )
 
             if is_batched:
@@ -1998,10 +1998,10 @@ class ParallelExecution(Flow):
             return await self._do_downstream(_termination_obj)
         else:
             event = self.preprocess_event(event)
+            original_sub_events = []
             is_full_event_batched = (
-                all(sub_event.__class__.__name__ in ("MockEvent", "Event") for sub_event in event.body))
+                all("event" in sub_event.__class__.__name__.lower() for sub_event in event.body))
             if is_full_event_batched:
-                original_sub_events = []
                 event_bodies = []
                 for sub_event in event.body:
                     awaitable_result, original_events = self._prepare_event_for_deepcopy(sub_event)
@@ -2047,7 +2047,6 @@ class ParallelExecution(Flow):
                     "microsec": results[0].runtime,
                     "when": results[0].timestamp.isoformat(sep=" ", timespec="microseconds"),
                 }
-                # TODO: batching support
                 if is_full_event_batched:
                     # reconstruct the full event batch
                     for i, sub_event in enumerate(original_sub_events):
