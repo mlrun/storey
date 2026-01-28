@@ -2358,7 +2358,7 @@ def test_batch_with_parallel_execution():
                 return [sub_value + 10 for sub_value in data]
             return data + 10
 
-    class RunnableGetTime(ParallelExecutionRunnable):
+    class RunnableGetNow(ParallelExecutionRunnable):
         def init(self):
             pass
 
@@ -2371,7 +2371,7 @@ def test_batch_with_parallel_execution():
     runnables = [
         RunnableMultiplyBy2("multiply"),
         RunnableAdd10("add"),
-        RunnableGetTime("now"),
+        RunnableGetNow("now"),
     ]
 
     class MyParallelExecution(ParallelExecution):
