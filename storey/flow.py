@@ -2208,18 +2208,18 @@ class ParallelExecution(Flow, _StreamingStepMixin):
                 await self._emit_streaming_chunks(event, result)
                 return None
 
-            # Non-streaming path
-            # Check if any results are generators (not allowed with multiple runnables)
+        # Non-streaming path
+        # Check if any results are generators (not allowed with multiple runnables)
         for result in results:
             if _is_generator(result):
                 raise StreamingError(
                     "Streaming is not supported when multiple runnables are selected. "
                     "Streaming runnables must be the only runnable selected for an event."
                 )
-            # If no runnables were selected, don't emit the event
+        # If no runnables were selected, don't emit the event
         if not results:
             return None
-            # Use self.runnables (registered) not runnables (selected) to determine wrapping
+        # Use self.runnables (registered) not runnables (selected) to determine wrapping
         if len(self.runnables) == 1:
             result: _ParallelExecutionRunnableResult = results[0]
             event.body = result.data
