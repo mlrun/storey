@@ -39,6 +39,10 @@ class Event:
     :param content_type: Request content type (HTTP only) (Optional)
     :param awaitable_result: Generally not passed directly. (Optional)
     :type awaitable_result: AwaitableResult (Optional)
+
+    Streaming attributes (set dynamically by streaming steps):
+        streaming_step: Name of the step that initiated the stream (set on chunk events).
+        chunk_id: Sequential identifier for chunks within a stream (0, 1, 2, ...).
     """
 
     def __init__(
@@ -88,7 +92,7 @@ class Event:
         )  # noqa: E127
 
     def __str__(self):
-        return f"Event(id={self.id}, key={str(self.key)}, body={self.body})"
+        return f"Event(id={self.id!r}, key={str(self.key)!r}, body={self.body!r})"
 
 
 class V3ioError(Exception):
@@ -101,6 +105,47 @@ class RedisError(Exception):
 
 class FlowError(Exception):
     pass
+
+
+class StreamingError(Exception):
+    """Exception raised for streaming-related errors."""
+
+    pass
+
+
+class StreamChunk:
+    """Wrapper for streaming chunks in the AwaitableResult queue.
+
+    When a streaming step emits chunks, Complete wraps each chunk body
+    in a StreamChunk before pushing to the queue. This allows await_result()
+    to detect streaming responses and return a generator.
+    """
+
+    def __init__(self, body):
+        self.body = body
+
+    def __repr__(self):
+        return f"StreamChunk({self.body!r})"
+
+
+class StreamCompletion:
+    """Sentinel marking the end of a stream from a specific step.
+
+    When a streaming step finishes yielding chunks, this sentinel is
+    pushed downstream and eventually to the AwaitableResult queue to
+    signal that the stream is complete.
+
+    :param streaming_step: Name of the step that originated the stream.
+    :param original_event: Reference to the original event that was streamed.
+    """
+
+    def __init__(self, streaming_step: str, original_event: Event):
+        self.streaming_step = streaming_step
+        self.original_event = original_event
+
+    def __repr__(self):
+        event_id = self.original_event.id if self.original_event else None
+        return f"StreamCompletion(streaming_step={self.streaming_step!r}, event_id={event_id!r})"
 
 
 class WindowBase:
