@@ -320,7 +320,7 @@ class Flow:
     def _should_terminate(self):
         return self._termination_received == len(self._inlets)
 
-    def _deepcopy_event_for_outlet(self, event, target_obj, is_stream_completion: bool, is_batched = False):
+    def _deepcopy_event_for_outlet(self, event, target_obj, is_stream_completion: bool, is_batched=False):
         """Deepcopy event while handling unpicklable attributes on target_obj.
 
         :param event: The event to deepcopy.
@@ -341,7 +341,7 @@ class Flow:
             for sub_event in event.body:
                 if isinstance(sub_event, StreamCompletion):
                     raise ValueError("batching is not supported with streaming")
-                sub_event_copies.append(self._deepcopy_event_for_outlet(sub_event,sub_event, False,False))
+                sub_event_copies.append(self._deepcopy_event_for_outlet(sub_event, sub_event, False, False))
                 sub_event._awaitable_result = None
                 sub_event._original_events = None
         event_copy = copy.deepcopy(event)
@@ -389,14 +389,13 @@ class Flow:
             is_stream_completion = isinstance(event, StreamCompletion)
             target_obj = event.original_event if is_stream_completion else event
             is_batched = (
-                    isinstance(event.body, list)
-                    and event.body
-                    and all("event" in sub_event.__class__.__name__.lower() for sub_event in event.body)
+                isinstance(event.body, list)
+                and event.body
+                and all("event" in sub_event.__class__.__name__.lower() for sub_event in event.body)
             )
             if is_batched:
                 if is_stream_completion:
                     raise ValueError("batching is not supported with streaming")
-
 
             for i in range(1, len(outlets)):
                 event_copy = self._deepcopy_event_for_outlet(event, target_obj, is_stream_completion)
@@ -2154,14 +2153,14 @@ class ParallelExecution(Flow, _StreamingStepMixin):
 
     async def _do(self, event):
         # Forward termination object and StreamCompletion without processing
-        if event is _termination_obj:
-            return await self._do_downstream(_termination_obj)
+        if event is _termination_obj or isinstance(event, StreamCompletion):
+            return await self._do_downstream(event)
         event = self.preprocess_event(event)
         original_sub_events = []
         is_full_event_batched = (
-                isinstance(event.body, list)
-                and event.body
-                and all("event" in sub_event.__class__.__name__.lower() for sub_event in event.body)
+            isinstance(event.body, list)
+            and event.body
+            and all("event" in sub_event.__class__.__name__.lower() for sub_event in event.body)
         )
         if is_full_event_batched:
             event_bodies = []
