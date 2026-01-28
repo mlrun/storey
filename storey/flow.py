@@ -392,7 +392,7 @@ class Flow:
                     raise ValueError("batching is not supported with streaming")
 
             for i in range(1, len(outlets)):
-                event_copy = self._deepcopy_event(event, target_obj, is_stream_completion)
+                event_copy = self._deepcopy_event(event, target_obj, is_stream_completion, is_batched)
                 tasks.append(asyncio.get_running_loop().create_task(outlets[i]._do_and_recover(event_copy)))
         if self.verbose and self.logger:
             step_name = self.name
