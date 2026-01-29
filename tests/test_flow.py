@@ -2392,16 +2392,10 @@ def test_basic_batch_with_parallel_execution():
             "now": "naive",
         },
     )
-    flat_map1 = FlatMap(fn=lambda x: x.body, full_event=True)
-
-    collector = Collector(expected_completions=2)
+    flat_map = FlatMap(fn=lambda x: x.body, full_event=True)
     reducer = Reduce([], lambda acc, x: append_and_return(acc, x))
-
     source.to(batch_step).to(parallel_execution)
-    parallel_execution.to(flat_map1).to(collector)
-
-    collector.to(reducer)
-
+    parallel_execution.to(flat_map).to(reducer)
     controller = source.run()
 
     for i in range(number_of_events):
@@ -2417,6 +2411,73 @@ def test_basic_batch_with_parallel_execution():
     for i in range(number_of_events):
         expected_add = 10 + i
         expected_multiply = i * 2
+        assert termination_result[i]["add"] == expected_add
+        assert termination_result[i]["multiply"] == expected_multiply
+        batch_number = math.floor(i / batch_size)
+        if previous_batch_number == -1 or batch_number != previous_batch_number:
+            expected_timestamp = termination_result[i]["now"]
+        else:
+            assert termination_result[i]["now"] == expected_timestamp
+        previous_batch_number = batch_number
+
+
+def test_batch_with_parallel_execution_split():
+    """Test batched ParallelExecution with splitting to multiple outlets (len(outlets) > 1 path)."""
+    batch_size = 3
+    number_of_events = 10
+
+    runnables = [
+        RunnableMultiplyBy2("multiply"),
+        RunnableAdd10("add"),
+        RunnableGetNow("now"),
+    ]
+
+    source = SyncEmitSource()
+    batch_step = Batch(batch_size, 100, full_event=True)
+    parallel_execution = MyParallelExecution(
+        runnables,
+        execution_mechanism_by_runnable_name={
+            "multiply": "naive",
+            "add": "naive",
+            "now": "naive",
+        },
+    )
+
+    flat_map1 = FlatMap(fn=lambda x: x.body, full_event=True)
+    flat_map2 = FlatMap(fn=lambda x: x.body, full_event=True)
+    collector = Collector(expected_completions=2)
+    reducer = Reduce([], lambda acc, x: append_and_return(acc, x))
+
+    source.to(batch_step).to(parallel_execution)
+    parallel_execution.to(flat_map1).to(collector)
+    parallel_execution.to(flat_map2).to(collector)
+    collector.to(reducer)
+
+    controller = source.run()
+
+    for i in range(number_of_events):
+        sleep(0.2)
+        controller.emit(i)
+
+    controller.terminate()
+    termination_result = controller.await_termination()
+
+    # The final result should contain a duplicated value since the flow is split into two branches
+    expected_number_of_events = number_of_events * 2
+    assert len(termination_result) == expected_number_of_events
+
+    # Sort by timestamp and then by value to ensure correct order after split
+    termination_result = sorted(termination_result, key=lambda x: (x["now"], x["add"]))
+
+    previous_batch_number = -1
+    expected_timestamp = datetime.min
+    # because of the split, the batch size of the results is doubled
+    batch_size = batch_size * 2
+    for i in range(expected_number_of_events):
+        # because of the split, we expect alternating add/multiply values every two items
+        fixed_index = math.floor(i / 2)
+        expected_add = 10 + fixed_index
+        expected_multiply = fixed_index * 2
         assert termination_result[i]["add"] == expected_add
         assert termination_result[i]["multiply"] == expected_multiply
         batch_number = math.floor(i / batch_size)
