@@ -41,6 +41,7 @@ from storey import (
     AsyncEmitSource,
     Batch,
     Choice,
+    Collector,
     Complete,
     CSVSource,
     CSVTarget,
@@ -100,6 +101,42 @@ class RaiseEx:
         if self._counter == self._raise_after:
             raise ATestException("test")
         return element
+
+
+class RunnableMultiplyBy2(ParallelExecutionRunnable):
+    def init(self):
+        pass
+
+    def run(self, data, path, origin_name=None):
+        if isinstance(data, list):
+            return [sub_value * 2 for sub_value in data]
+        return data * 2
+
+
+class RunnableAdd10(ParallelExecutionRunnable):
+    def init(self):
+        pass
+
+    def run(self, data, path, origin_name=None):
+        if isinstance(data, list):
+            return [sub_value + 10 for sub_value in data]
+        return data + 10
+
+
+class RunnableGetNow(ParallelExecutionRunnable):
+    def init(self):
+        pass
+
+    def run(self, data, path, origin_name=None):
+        now = datetime.now(timezone.utc)
+        if isinstance(data, list):
+            return [now] * len(data)
+        return now
+
+
+class MyParallelExecution(ParallelExecution):
+    def select_runnables(self, event):
+        return ["multiply", "add", "now"]
 
 
 def test_functional_flow():
@@ -2335,49 +2372,18 @@ def test_batch_with_timeout():
     assert termination_result == [[0, 1, 2], [3, 4, 5, 6], [7, 8, 9]]
 
 
-def test_batch_with_parallel_execution():
+def test_basic_batch_with_parallel_execution():
     """Test that Batch step with full_event=True works correctly with ParallelExecution."""
     batch_size = 3
     number_of_events = 10
-
-    class RunnableMultiplyBy2(ParallelExecutionRunnable):
-        def init(self):
-            pass
-
-        def run(self, data, path, origin_name=None):
-            if isinstance(data, list):
-                return [sub_value * 2 for sub_value in data]
-            return data * 2
-
-    class RunnableAdd10(ParallelExecutionRunnable):
-        def init(self):
-            pass
-
-        def run(self, data, path, origin_name=None):
-            if isinstance(data, list):
-                return [sub_value + 10 for sub_value in data]
-            return data + 10
-
-    class RunnableGetNow(ParallelExecutionRunnable):
-        def init(self):
-            pass
-
-        def run(self, data, path, origin_name=None):
-            now = datetime.now(timezone.utc)
-            if isinstance(data, list):
-                return [now] * len(data)
-            return now
 
     runnables = [
         RunnableMultiplyBy2("multiply"),
         RunnableAdd10("add"),
         RunnableGetNow("now"),
     ]
-
-    class MyParallelExecution(ParallelExecution):
-        def select_runnables(self, event):
-            return ["multiply", "add", "now"]
-
+    source = SyncEmitSource()
+    batch_step = Batch(batch_size, 100, full_event=True)
     parallel_execution = MyParallelExecution(
         runnables,
         execution_mechanism_by_runnable_name={
@@ -2386,16 +2392,17 @@ def test_batch_with_parallel_execution():
             "now": "naive",
         },
     )
+    flat_map1 = FlatMap(fn=lambda x: x.body, full_event=True)
 
-    controller = build_flow(
-        [
-            SyncEmitSource(),
-            Batch(batch_size, 100, full_event=True),
-            parallel_execution,
-            FlatMap(fn=lambda x: x.body, full_event=True),
-            Reduce([], lambda acc, x: append_and_return(acc, x)),
-        ]
-    ).run()
+    collector = Collector(expected_completions=2)
+    reducer = Reduce([], lambda acc, x: append_and_return(acc, x))
+
+    source.to(batch_step).to(parallel_execution)
+    parallel_execution.to(flat_map1).to(collector)
+
+    collector.to(reducer)
+
+    controller = source.run()
 
     for i in range(number_of_events):
         sleep(0.2)
