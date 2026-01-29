@@ -2382,8 +2382,6 @@ def test_basic_batch_with_parallel_execution():
         RunnableAdd10("add"),
         RunnableGetNow("now"),
     ]
-    source = SyncEmitSource()
-    batch_step = Batch(batch_size, 100, full_event=True)
     parallel_execution = MyParallelExecution(
         runnables,
         execution_mechanism_by_runnable_name={
@@ -2392,11 +2390,15 @@ def test_basic_batch_with_parallel_execution():
             "now": "naive",
         },
     )
-    flat_map = FlatMap(fn=lambda x: x.body, full_event=True)
-    reducer = Reduce([], lambda acc, x: append_and_return(acc, x))
-    source.to(batch_step).to(parallel_execution)
-    parallel_execution.to(flat_map).to(reducer)
-    controller = source.run()
+    controller = build_flow(
+        [
+            SyncEmitSource(),
+            Batch(max_events=batch_size, flush_after_seconds=100, full_event=True),
+            parallel_execution,
+            FlatMap(fn=lambda x: x.body, full_event=True),
+            Reduce(initial_value=[], fn=lambda acc, x: append_and_return(acc, x)),
+        ]
+    ).run()
 
     for i in range(number_of_events):
         sleep(0.2)

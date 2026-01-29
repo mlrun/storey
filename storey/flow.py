@@ -333,8 +333,6 @@ class Flow:
         sub_event_copies = []
         if is_batched:
             for sub_event in event.body:
-                if isinstance(sub_event, StreamCompletion):
-                    raise ValueError("batching is not supported with streaming")
                 sub_event_copies.append(self._deepcopy_event(sub_event, sub_event, False, False))
                 sub_event._awaitable_result = None
                 sub_event._original_events = None
@@ -386,7 +384,7 @@ class Flow:
                 not is_stream_completion
                 and isinstance(getattr(event, "body", None), list)
                 and event.body
-                and all("event" in sub_event.__class__.__name__.lower() for sub_event in event.body)
+                and all(hasattr(sub_event, "body") for sub_event in event.body)
             )
 
             for i in range(1, len(outlets)):
@@ -2154,14 +2152,12 @@ class ParallelExecution(Flow, _StreamingStepMixin):
             not isinstance(event, StreamCompletion)
             and isinstance(getattr(event, "body", None), list)
             and event.body
-            and all("event" in sub_event.__class__.__name__.lower() for sub_event in event.body)
+            and all(hasattr(sub_event, "body") for sub_event in event.body)
         )
         if is_full_event_batched:
             event_bodies = []
             for sub_event in event.body:
                 # copy sub events for avoiding overriding original sub events
-                if isinstance(sub_event, StreamCompletion):
-                    raise ValueError("batching is not supported with streaming")
                 sub_event_copy = self._deepcopy_event(sub_event, sub_event, False, False)
                 sub_events_to_modify.append(sub_event_copy)
                 # for the invocation, we only want to pass the body
