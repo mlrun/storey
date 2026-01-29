@@ -123,20 +123,20 @@ class RunnableAdd10(ParallelExecutionRunnable):
         return data + 10
 
 
-class RunnableGetNow(ParallelExecutionRunnable):
+class RunnableGetRandom(ParallelExecutionRunnable):
     def init(self):
         pass
 
     def run(self, data, path, origin_name=None):
-        now = datetime.now(timezone.utc)
+        random_uuid = str(uuid.uuid4())
         if isinstance(data, list):
-            return [now] * len(data)
-        return now
+            return [random_uuid] * len(data)
+        return random_uuid
 
 
 class MyParallelExecution(ParallelExecution):
     def select_runnables(self, event):
-        return ["multiply", "add", "now"]
+        return ["multiply", "add", "uuid"]
 
 
 def test_functional_flow():
@@ -2380,20 +2380,20 @@ def test_basic_batch_with_parallel_execution():
     runnables = [
         RunnableMultiplyBy2("multiply"),
         RunnableAdd10("add"),
-        RunnableGetNow("now"),
+        RunnableGetRandom("uuid"),
     ]
     parallel_execution = MyParallelExecution(
         runnables,
         execution_mechanism_by_runnable_name={
             "multiply": "naive",
             "add": "naive",
-            "now": "naive",
+            "uuid": "naive",
         },
     )
     controller = build_flow(
         [
             SyncEmitSource(),
-            Batch(max_events=batch_size, flush_after_seconds=100, full_event=True),
+            Batch(max_events=batch_size, flush_after_seconds=4, full_event=True),
             parallel_execution,
             FlatMap(fn=lambda x: x.body, full_event=True),
             Reduce(initial_value=[], fn=lambda acc, x: append_and_return(acc, x)),
@@ -2409,7 +2409,7 @@ def test_basic_batch_with_parallel_execution():
     assert len(termination_result) == number_of_events
 
     previous_batch_number = -1
-    expected_timestamp = datetime.min
+    expected_uuid = ""
     for i in range(number_of_events):
         expected_add = 10 + i
         expected_multiply = i * 2
@@ -2417,9 +2417,9 @@ def test_basic_batch_with_parallel_execution():
         assert termination_result[i]["multiply"] == expected_multiply
         batch_number = math.floor(i / batch_size)
         if previous_batch_number == -1 or batch_number != previous_batch_number:
-            expected_timestamp = termination_result[i]["now"]
+            expected_uuid = termination_result[i]["uuid"]
         else:
-            assert termination_result[i]["now"] == expected_timestamp
+            assert termination_result[i]["uuid"] == expected_uuid
         previous_batch_number = batch_number
 
 
@@ -2431,17 +2431,17 @@ def test_batch_with_parallel_execution_split():
     runnables = [
         RunnableMultiplyBy2("multiply"),
         RunnableAdd10("add"),
-        RunnableGetNow("now"),
+        RunnableGetRandom("uuid"),
     ]
 
     source = SyncEmitSource()
-    batch_step = Batch(batch_size, 100, full_event=True)
+    batch_step = Batch(max_events=batch_size, flush_after_seconds=4, full_event=True)
     parallel_execution = MyParallelExecution(
         runnables,
         execution_mechanism_by_runnable_name={
             "multiply": "naive",
             "add": "naive",
-            "now": "naive",
+            "uuid": "naive",
         },
     )
 
@@ -2468,11 +2468,11 @@ def test_batch_with_parallel_execution_split():
     expected_number_of_events = number_of_events * 2
     assert len(termination_result) == expected_number_of_events
 
-    # Sort by timestamp and then by value to ensure correct order after split
-    termination_result = sorted(termination_result, key=lambda x: (x["now"], x["add"]))
+    # Sort by value to ensure correct order after split
+    termination_result = sorted(termination_result, key=lambda x: (x["add"]))
 
     previous_batch_number = -1
-    expected_timestamp = datetime.min
+    expected_uuid = ""
     # because of the split, the batch size of the results is doubled
     batch_size = batch_size * 2
     for i in range(expected_number_of_events):
@@ -2484,9 +2484,9 @@ def test_batch_with_parallel_execution_split():
         assert termination_result[i]["multiply"] == expected_multiply
         batch_number = math.floor(i / batch_size)
         if previous_batch_number == -1 or batch_number != previous_batch_number:
-            expected_timestamp = termination_result[i]["now"]
+            expected_uuid = termination_result[i]["uuid"]
         else:
-            assert termination_result[i]["now"] == expected_timestamp
+            assert termination_result[i]["uuid"] == expected_uuid
         previous_batch_number = batch_number
 
 
