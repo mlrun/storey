@@ -383,12 +383,11 @@ class Flow:
             is_stream_completion = isinstance(event, StreamCompletion)
             target_obj = event.original_event if is_stream_completion else event
             is_batched = (
-                isinstance(event.body, list)
+                not is_stream_completion
+                and isinstance(getattr(event, "body", None), list)
                 and event.body
                 and all("event" in sub_event.__class__.__name__.lower() for sub_event in event.body)
             )
-            if is_batched and is_stream_completion:
-                raise ValueError("batching is not supported with streaming")
 
             for i in range(1, len(outlets)):
                 event_copy = self._deepcopy_event(event, target_obj, is_stream_completion, is_batched)
@@ -2152,7 +2151,8 @@ class ParallelExecution(Flow, _StreamingStepMixin):
         event = self.preprocess_event(event)
         sub_events_to_modify = []
         is_full_event_batched = (
-            isinstance(event.body, list)
+            not isinstance(event, StreamCompletion)
+            and isinstance(getattr(event, "body", None), list)
             and event.body
             and all("event" in sub_event.__class__.__name__.lower() for sub_event in event.body)
         )
