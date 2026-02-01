@@ -22,7 +22,7 @@ import tempfile
 import time
 import traceback
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from random import choice
 from time import sleep
 from unittest.mock import MagicMock
