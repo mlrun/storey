@@ -102,8 +102,6 @@ class RaiseEx:
 
 
 class RunnableMultiplyBy2(ParallelExecutionRunnable):
-    def init(self):
-        pass
 
     def run(self, data, path, origin_name=None):
         if isinstance(data, list):
@@ -112,8 +110,6 @@ class RunnableMultiplyBy2(ParallelExecutionRunnable):
 
 
 class RunnableAdd10(ParallelExecutionRunnable):
-    def init(self):
-        pass
 
     def run(self, data, path, origin_name=None):
         if isinstance(data, list):
@@ -2391,15 +2387,32 @@ def test_basic_batch_with_parallel_execution():
     controller = build_flow(
         [
             SyncEmitSource(),
-            Batch(max_events=batch_size, flush_after_seconds=4, full_event=True),
+            Batch(max_events=batch_size, full_event=True, flush_after_seconds=4),
             parallel_execution,
             FlatMap(fn=lambda x: x.body, full_event=True),
+            Complete(),
             Reduce(initial_value=[], fn=lambda acc, x: append_and_return(acc, x)),
         ]
     ).run()
 
-    for i in range(number_of_events):
-        controller.emit(i)
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    def emit_event(i):
+        awaitable_result = controller.emit(i)
+        result = awaitable_result.await_result()
+        # Verify each event has the expected fields after parallel execution
+        assert "add" in result
+        assert "multiply" in result
+        assert "uuid" in result
+        assert result["add"] == 10 + i
+        assert result["multiply"] == i * 2
+        return result
+
+    # Emit events in parallel using ThreadPoolExecutor with batch_size threads
+    with ThreadPoolExecutor(max_workers=batch_size) as executor:
+        futures = [executor.submit(emit_event, i) for i in range(number_of_events)]
+        for future in as_completed(futures):
+            future.result()  # Wait for all to complete and raise any exceptions
 
     controller.terminate()
     termination_result = controller.await_termination()
@@ -2408,10 +2421,6 @@ def test_basic_batch_with_parallel_execution():
     previous_batch_number = -1
     expected_uuid = ""
     for i in range(number_of_events):
-        expected_add = 10 + i
-        expected_multiply = i * 2
-        assert termination_result[i]["add"] == expected_add
-        assert termination_result[i]["multiply"] == expected_multiply
         batch_number = math.floor(i / batch_size)
         if previous_batch_number == -1 or batch_number != previous_batch_number:
             expected_uuid = termination_result[i]["uuid"]
@@ -2432,7 +2441,7 @@ def test_batch_with_parallel_execution_split():
     ]
 
     source = SyncEmitSource()
-    batch_step = Batch(max_events=batch_size, flush_after_seconds=4, full_event=True)
+    batch_step = Batch(max_events=batch_size, full_event=True, flush_after_seconds=4)
     parallel_execution = MyParallelExecution(
         runnables,
         execution_mechanism_by_runnable_name={
@@ -2444,16 +2453,32 @@ def test_batch_with_parallel_execution_split():
 
     flat_map1 = FlatMap(fn=lambda x: x.body, full_event=True)
     flat_map2 = FlatMap(fn=lambda x: x.body, full_event=True)
+    complete = Complete()
     reducer = Reduce([], lambda acc, x: append_and_return(acc, x))
 
     source.to(batch_step).to(parallel_execution)
-    parallel_execution.to(flat_map1).to(reducer)
+    parallel_execution.to(flat_map1).to(complete).to(reducer)
     parallel_execution.to(flat_map2).to(reducer)
 
     controller = source.run()
 
-    for i in range(number_of_events):
-        controller.emit(i)
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    def emit_event(i):
+        awaitable_result = controller.emit(i)
+        result = awaitable_result.await_result()
+        # Each event should get results from both branches (2 completions)
+        assert len(result) == 3
+        assert result["add"] == 10 + i
+        assert result["multiply"] == i * 2
+        assert "uuid" in result
+        return result
+
+    # Emit events in parallel using ThreadPoolExecutor with batch_size threads
+    with ThreadPoolExecutor(max_workers=batch_size) as executor:
+        futures = [executor.submit(emit_event, i) for i in range(number_of_events)]
+        for future in as_completed(futures):
+            future.result()  # Wait for all to complete and raise any exceptions
 
     controller.terminate()
     termination_result = controller.await_termination()

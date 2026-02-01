@@ -332,7 +332,9 @@ class Flow:
         sub_event_copies = []
         if is_batched:
             for sub_event in event.body:
-                sub_event_copies.append(self._deepcopy_event(sub_event, sub_event, False, False))
+                sub_event_copies.append(
+                    self._deepcopy_event(sub_event, sub_event, is_stream_completion=False, is_batched=False)
+                )
                 sub_event._awaitable_result = None
                 sub_event._original_events = None
         event_copy = copy.deepcopy(event)
@@ -387,7 +389,9 @@ class Flow:
             )
 
             for i in range(1, len(outlets)):
-                event_copy = self._deepcopy_event(event, target_obj, is_stream_completion, is_batched)
+                event_copy = self._deepcopy_event(
+                    event, target_obj, is_stream_completion=is_stream_completion, is_batched=is_batched
+                )
                 tasks.append(asyncio.get_running_loop().create_task(outlets[i]._do_and_recover(event_copy)))
         if self.verbose and self.logger:
             step_name = self.name
@@ -2219,7 +2223,9 @@ class ParallelExecution(Flow, _StreamingStepMixin):
             event_bodies = []
             for sub_event in event.body:
                 # copy sub events for avoiding overriding original sub events
-                sub_event_copy = self._deepcopy_event(sub_event, sub_event, False, False)
+                sub_event_copy = self._deepcopy_event(
+                    sub_event, sub_event, is_stream_completion=False, is_batched=False
+                )
                 sub_events_to_modify.append(sub_event_copy)
                 # for the invocation, we only want to pass the body
                 event_bodies.append(copy.deepcopy(sub_event.body))
@@ -2304,7 +2310,7 @@ class ParallelExecution(Flow, _StreamingStepMixin):
 
         if is_full_event_batched:
             for sub_event in event.body:
-                self.set_event_metadata(sub_event, metadata)
+                self.set_event_metadata(sub_event, copy.deepcopy(metadata))
         self.set_event_metadata(event, metadata)
         return await self._do_downstream(event)
 
