@@ -24,7 +24,6 @@ import traceback
 import uuid
 from datetime import datetime
 from random import choice
-from time import sleep
 from unittest.mock import MagicMock
 
 import fakeredis
@@ -41,7 +40,6 @@ from storey import (
     AsyncEmitSource,
     Batch,
     Choice,
-    Collector,
     Complete,
     CSVSource,
     CSVTarget,
@@ -2401,7 +2399,6 @@ def test_basic_batch_with_parallel_execution():
     ).run()
 
     for i in range(number_of_events):
-        sleep(0.2)
         controller.emit(i)
 
     controller.terminate()
@@ -2447,18 +2444,15 @@ def test_batch_with_parallel_execution_split():
 
     flat_map1 = FlatMap(fn=lambda x: x.body, full_event=True)
     flat_map2 = FlatMap(fn=lambda x: x.body, full_event=True)
-    collector = Collector(expected_completions=2)
     reducer = Reduce([], lambda acc, x: append_and_return(acc, x))
 
     source.to(batch_step).to(parallel_execution)
-    parallel_execution.to(flat_map1).to(collector)
-    parallel_execution.to(flat_map2).to(collector)
-    collector.to(reducer)
+    parallel_execution.to(flat_map1).to(reducer)
+    parallel_execution.to(flat_map2).to(reducer)
 
     controller = source.run()
 
     for i in range(number_of_events):
-        sleep(0.2)
         controller.emit(i)
 
     controller.terminate()
