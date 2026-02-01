@@ -62,6 +62,15 @@ def _is_generator(obj) -> bool:
     return inspect.isgenerator(obj) or inspect.isasyncgen(obj)
 
 
+def is_batched_event(event) -> bool:
+    return (
+        not isinstance(event, StreamCompletion)
+        and isinstance(getattr(event, "body", None), list)
+        and event.body
+        and all(hasattr(sub_event, "body") for sub_event in event.body)
+    )
+
+
 class Flow:
     _legal_first_step = False
 
@@ -381,16 +390,10 @@ class Flow:
             # Deep copy event and create a task per outlet (except the first, which is awaited directly below)
             is_stream_completion = isinstance(event, StreamCompletion)
             target_obj = event.original_event if is_stream_completion else event
-            is_batched = (
-                not is_stream_completion
-                and isinstance(getattr(event, "body", None), list)
-                and event.body
-                and all(hasattr(sub_event, "body") for sub_event in event.body)
-            )
 
             for i in range(1, len(outlets)):
                 event_copy = self._deepcopy_event(
-                    event, target_obj, is_stream_completion=is_stream_completion, is_batched=is_batched
+                    event, target_obj, is_stream_completion=is_stream_completion, is_batched=is_batched_event(event)
                 )
                 tasks.append(asyncio.get_running_loop().create_task(outlets[i]._do_and_recover(event_copy)))
         if self.verbose and self.logger:
@@ -2213,12 +2216,7 @@ class ParallelExecution(Flow, _StreamingStepMixin):
 
         event = self.preprocess_event(event)
         sub_events_to_modify = []
-        is_full_event_batched = (
-            not isinstance(event, StreamCompletion)
-            and isinstance(getattr(event, "body", None), list)
-            and event.body
-            and all(hasattr(sub_event, "body") for sub_event in event.body)
-        )
+        is_full_event_batched = is_batched_event(event)
         if is_full_event_batched:
             event_bodies = []
             for sub_event in event.body:
