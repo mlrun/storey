@@ -62,6 +62,13 @@ class ErrorStreamingRunnable(ParallelExecutionRunnable):
         raise ValueError("Simulated streaming error")
 
 
+class NonStreamingRunnable(ParallelExecutionRunnable):
+    """A non-streaming runnable that returns a single value."""
+
+    def run(self, body, path: str, origin_name: Optional[str] = None):
+        return f"{body}_result"
+
+
 class TestStreamingPrimitives:
     """Tests for streaming primitive classes."""
 
@@ -118,6 +125,46 @@ class TestIsGenerator:
             assert not _is_generator(c)
         finally:
             c.close()
+
+
+class TestIsStreamingMethod:
+    """Tests for ParallelExecutionRunnable.is_streaming() method."""
+
+    def test_is_streaming_sync_generator(self):
+        """Test that a runnable with a sync generator run() is detected as streaming."""
+        runnable = StreamingRunnable(name="test")
+        assert runnable.is_streaming() is True
+
+    def test_is_streaming_async_generator(self):
+        """Test that a runnable with an async generator run_async() is detected as streaming."""
+        runnable = AsyncStreamingRunnable(name="test")
+        assert runnable.is_streaming() is True
+
+    def test_is_streaming_non_generator(self):
+        """Test that a runnable with a non-generator run() is not detected as streaming."""
+        runnable = NonStreamingRunnable(name="test")
+        assert runnable.is_streaming() is False
+
+    def test_is_streaming_base_class(self):
+        """Test that the base ParallelExecutionRunnable is not streaming by default."""
+        runnable = ParallelExecutionRunnable(name="test")
+        assert runnable.is_streaming() is False
+
+    def test_is_streaming_override(self):
+        """Test that is_streaming() can be overridden by subclasses."""
+
+        class OverriddenRunnable(ParallelExecutionRunnable):
+            """A runnable that overrides is_streaming() to return True."""
+
+            def is_streaming(self) -> bool:
+                return True
+
+            def run(self, body, path: str, origin_name: Optional[str] = None):
+                # Even though run() is not a generator, is_streaming() returns True
+                return f"{body}_result"
+
+        runnable = OverriddenRunnable(name="test")
+        assert runnable.is_streaming() is True
 
 
 class TestMapStreaming:

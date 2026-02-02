@@ -1823,6 +1823,18 @@ class ParallelExecutionRunnable:
         """
         return body
 
+    def is_streaming(self) -> bool:
+        """
+        Returns True if this runnable produces streaming output (generator).
+
+        Override this method if your runnable's streaming behavior cannot be detected
+        by inspecting the run()/run_async() methods directly (e.g., when run() delegates
+        to another method that returns a generator).
+
+        :return: True if the runnable produces streaming output, False otherwise.
+        """
+        return inspect.isgeneratorfunction(self.run) or inspect.isasyncgenfunction(self.run_async)
+
     def _run(self, body: Any, path: str, origin_name: Optional[str] = None) -> Any:
         timestamp = datetime.datetime.now(tz=datetime.timezone.utc)
         start = time.monotonic()
@@ -1990,8 +2002,7 @@ class RunnableExecutor:
         execution_mechanism = self._execution_mechanism_by_runnable_name[runnable.name]
 
         # Record whether this runnable is a streaming runnable (generator function)
-        is_streaming = inspect.isgeneratorfunction(runnable.run) or inspect.isasyncgenfunction(runnable.run_async)
-        self._is_streaming_by_runnable_name[runnable.name] = is_streaming
+        self._is_streaming_by_runnable_name[runnable.name] = runnable.is_streaming()
 
         if execution_mechanism == ParallelExecutionMechanisms.process_pool:
             self.num_processes += 1
