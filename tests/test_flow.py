@@ -118,8 +118,6 @@ class RunnableAdd10(ParallelExecutionRunnable):
 
 
 class RunnableGetRandom(ParallelExecutionRunnable):
-    def init(self):
-        pass
 
     def run(self, data, path, origin_name=None):
         random_uuid = str(uuid.uuid4())
