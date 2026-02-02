@@ -67,7 +67,7 @@ def is_batched_event(event) -> bool:
         not isinstance(event, StreamCompletion)
         and isinstance(getattr(event, "body", None), list)
         and event.body
-        and all(hasattr(sub_event, "body") for sub_event in event.body)
+        and any(hasattr(sub_event, "body") for sub_event in event.body)
     )
 
 
