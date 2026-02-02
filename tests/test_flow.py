@@ -4016,6 +4016,9 @@ async def async_test_async_metadata_fields():
     assert result.key == "k1"
     assert result.body == body
 
+def test_async_metadata_fields():
+    asyncio.run(async_test_async_metadata_fields())
+
 
 def test_uuid():
     def copy_and_set_body(event):
