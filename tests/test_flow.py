@@ -101,6 +101,36 @@ class RaiseEx:
         return element
 
 
+class RunnableMultiplyBy2(ParallelExecutionRunnable):
+
+    def run(self, data, path, origin_name=None):
+        if isinstance(data, list):
+            return [sub_value * 2 for sub_value in data]
+        return data * 2
+
+
+class RunnableAdd10(ParallelExecutionRunnable):
+
+    def run(self, data, path, origin_name=None):
+        if isinstance(data, list):
+            return [sub_value + 10 for sub_value in data]
+        return data + 10
+
+
+class RunnableGetRandom(ParallelExecutionRunnable):
+
+    def run(self, data, path, origin_name=None):
+        random_uuid = str(uuid.uuid4())
+        if isinstance(data, list):
+            return [random_uuid] * len(data)
+        return random_uuid
+
+
+class MyParallelExecution(ParallelExecution):
+    def select_runnables(self, event):
+        return ["multiply", "add", "uuid"]
+
+
 def test_functional_flow():
     controller = build_flow(
         [
@@ -2332,6 +2362,147 @@ def test_batch_with_timeout():
     controller.terminate()
     termination_result = controller.await_termination()
     assert termination_result == [[0, 1, 2], [3, 4, 5, 6], [7, 8, 9]]
+
+
+def test_basic_batch_with_parallel_execution():
+    asyncio.run(async_test_basic_batch_with_parallel_execution())
+
+
+async def async_test_basic_batch_with_parallel_execution():
+    """Test that Batch step with full_event=True works correctly with ParallelExecution."""
+    batch_size = 3
+    number_of_events = 10
+
+    runnables = [
+        RunnableMultiplyBy2("multiply"),
+        RunnableAdd10("add"),
+        RunnableGetRandom("uuid"),
+    ]
+    parallel_execution = MyParallelExecution(
+        runnables,
+        execution_mechanism_by_runnable_name={
+            "multiply": "naive",
+            "add": "naive",
+            "uuid": "naive",
+        },
+    )
+    controller = build_flow(
+        [
+            AsyncEmitSource(),
+            Batch(max_events=batch_size, full_event=True, flush_after_seconds=2),
+            parallel_execution,
+            FlatMap(fn=lambda x: x.body, full_event=True),
+            Complete(),
+            Reduce(initial_value=[], fn=lambda acc, x: append_and_return(acc, x)),
+        ]
+    ).run()
+
+    async def emit_event(i):
+        result = await controller.emit(i)
+        # Verify each event has the expected fields after parallel execution
+        assert "add" in result
+        assert "multiply" in result
+        assert "uuid" in result
+        assert result["add"] == 10 + i
+        assert result["multiply"] == i * 2
+
+    # Emit events in parallel using asyncio
+    try:
+        tasks = [asyncio.create_task(emit_event(i)) for i in range(number_of_events)]
+        await asyncio.gather(*tasks)
+    finally:
+        await controller.terminate()
+        termination_result = await controller.await_termination()
+    assert len(termination_result) == number_of_events
+
+    previous_batch_number = -1
+    expected_uuid = ""
+    for i in range(number_of_events):
+        batch_number = math.floor(i / batch_size)
+        if previous_batch_number == -1 or batch_number != previous_batch_number:
+            expected_uuid = termination_result[i]["uuid"]
+        else:
+            assert termination_result[i]["uuid"] == expected_uuid
+        previous_batch_number = batch_number
+
+
+def test_batch_with_parallel_execution_split():
+    asyncio.run(async_test_batch_with_parallel_execution_split())
+
+
+async def async_test_batch_with_parallel_execution_split():
+    """Test batched ParallelExecution with splitting to multiple outlets (len(outlets) > 1 path)."""
+    batch_size = 3
+    number_of_events = 10
+
+    runnables = [
+        RunnableMultiplyBy2("multiply"),
+        RunnableAdd10("add"),
+        RunnableGetRandom("uuid"),
+    ]
+
+    source = AsyncEmitSource()
+    batch_step = Batch(max_events=batch_size, full_event=True, flush_after_seconds=2)
+    parallel_execution = MyParallelExecution(
+        runnables,
+        execution_mechanism_by_runnable_name={
+            "multiply": "naive",
+            "add": "naive",
+            "uuid": "naive",
+        },
+    )
+
+    flat_map1 = FlatMap(fn=lambda x: x.body, full_event=True)
+    flat_map2 = FlatMap(fn=lambda x: x.body, full_event=True)
+    complete = Complete()
+    reducer = Reduce([], lambda acc, x: append_and_return(acc, x))
+
+    source.to(batch_step).to(parallel_execution)
+    parallel_execution.to(flat_map1).to(complete).to(reducer)
+    parallel_execution.to(flat_map2).to(reducer)
+
+    controller = source.run()
+
+    async def emit_event(i):
+        result = await controller.emit(i)
+        # Each event should get results from both branches (2 completions)
+        assert len(result) == 3
+        assert result["add"] == 10 + i
+        assert result["multiply"] == i * 2
+        assert "uuid" in result
+        return result
+
+    try:
+        tasks = [asyncio.create_task(emit_event(i)) for i in range(number_of_events)]
+        await asyncio.gather(*tasks)
+    finally:
+        await controller.terminate()
+        termination_result = await controller.await_termination()
+
+    # The final result should contain a duplicated value since the flow is split into two branches
+    expected_number_of_events = number_of_events * 2
+    assert len(termination_result) == expected_number_of_events
+
+    # Sort by value to ensure correct order after split
+    termination_result = sorted(termination_result, key=lambda x: (x["add"]))
+
+    previous_batch_number = -1
+    expected_uuid = ""
+    # because of the split, the batch size of the results is doubled
+    batch_size = batch_size * 2
+    for i in range(expected_number_of_events):
+        # because of the split, we expect alternating add/multiply values every two items
+        fixed_index = math.floor(i / 2)
+        expected_add = 10 + fixed_index
+        expected_multiply = fixed_index * 2
+        assert termination_result[i]["add"] == expected_add
+        assert termination_result[i]["multiply"] == expected_multiply
+        batch_number = math.floor(i / batch_size)
+        if previous_batch_number == -1 or batch_number != previous_batch_number:
+            expected_uuid = termination_result[i]["uuid"]
+        else:
+            assert termination_result[i]["uuid"] == expected_uuid
+        previous_batch_number = batch_number
 
 
 async def async_test_write_csv(tmpdir):

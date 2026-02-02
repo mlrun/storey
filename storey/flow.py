@@ -62,6 +62,15 @@ def _is_generator(obj) -> bool:
     return inspect.isgenerator(obj) or inspect.isasyncgen(obj)
 
 
+def is_batched_event(event) -> bool:
+    return (
+        not isinstance(event, StreamCompletion)
+        and isinstance(getattr(event, "body", None), list)
+        and event.body
+        and any(hasattr(sub_event, "body") for sub_event in event.body)
+    )
+
+
 class Flow:
     _legal_first_step = False
 
@@ -311,7 +320,7 @@ class Flow:
     def _should_terminate(self):
         return self._termination_received == len(self._inlets)
 
-    def _deepcopy_event_for_outlet(self, event, target_obj, is_stream_completion: bool):
+    def _deepcopy_event(self, event, target_obj, is_stream_completion: bool, is_batched=False):
         """Deepcopy event while handling unpicklable attributes on target_obj.
 
         :param event: The event to deepcopy.
@@ -319,6 +328,8 @@ class Flow:
                            (either the event itself or event.original_event for StreamCompletion).
         :param is_stream_completion: If True, copy target is event_copy.original_event,
                                      otherwise it's event_copy itself.
+        :param is_batched: If True, performs nested copying for batched events where event.body contains
+                          a list of sub-events. Only 1 layer of batching is supported.
 
         :returns: The deepcopied event with unpicklable attributes restored.
         """
@@ -327,6 +338,14 @@ class Flow:
         original_events = getattr(target_obj, "_original_events", None)
         target_obj._original_events = None
 
+        sub_event_copies = []
+        if is_batched:
+            for sub_event in event.body:
+                sub_event_copies.append(
+                    self._deepcopy_event(sub_event, sub_event, is_stream_completion=False, is_batched=False)
+                )
+                sub_event._awaitable_result = None
+                sub_event._original_events = None
         event_copy = copy.deepcopy(event)
         copy_target = event_copy.original_event if is_stream_completion else event_copy
         copy_target._awaitable_result = awaitable_result
@@ -334,6 +353,11 @@ class Flow:
 
         target_obj._awaitable_result = awaitable_result
         target_obj._original_events = original_events
+        if is_batched:
+            event_copy.body = sub_event_copies
+            for sub_event, sub_event_copy in zip(event.body, sub_event_copies):
+                sub_event._awaitable_result = sub_event_copy._awaitable_result
+                sub_event._original_events = sub_event_copy._original_events
         return event_copy
 
     async def _do_downstream(self, event, outlets=None, select_outlets: bool = True):
@@ -366,8 +390,11 @@ class Flow:
             # Deep copy event and create a task per outlet (except the first, which is awaited directly below)
             is_stream_completion = isinstance(event, StreamCompletion)
             target_obj = event.original_event if is_stream_completion else event
+
             for i in range(1, len(outlets)):
-                event_copy = self._deepcopy_event_for_outlet(event, target_obj, is_stream_completion)
+                event_copy = self._deepcopy_event(
+                    event, target_obj, is_stream_completion=is_stream_completion, is_batched=is_batched_event(event)
+                )
                 tasks.append(asyncio.get_running_loop().create_task(outlets[i]._do_and_recover(event_copy)))
         if self.verbose and self.logger:
             step_name = self.name
@@ -2153,6 +2180,13 @@ class ParallelExecution(Flow, _StreamingStepMixin):
         self.max_threads = max_threads or 32
         self.pool_factor = pool_factor or 1
 
+    @staticmethod
+    def set_event_metadata(event, metadata: dict):
+        if hasattr(event, "_metadata") and isinstance(event._metadata, dict):
+            event._metadata.update(metadata)
+        else:
+            event._metadata = metadata
+
     def select_runnables(self, event) -> Optional[Union[list[str], list[ParallelExecutionRunnable]]]:
         """
         Given an event, returns a list of runnables (or a list of runnable names) to execute on it. It can also return
@@ -2192,6 +2226,20 @@ class ParallelExecution(Flow, _StreamingStepMixin):
             return await self._do_downstream(event)
 
         event = self.preprocess_event(event)
+        sub_events_to_modify = []
+        is_full_event_batched = is_batched_event(event)
+        if is_full_event_batched:
+            event_bodies = []
+            for sub_event in event.body:
+                # copy sub events for avoiding overriding original sub events
+                sub_event_copy = self._deepcopy_event(
+                    sub_event, sub_event, is_stream_completion=False, is_batched=False
+                )
+                sub_events_to_modify.append(sub_event_copy)
+                # for the invocation, we only want to pass the body
+                event_bodies.append(copy.deepcopy(sub_event.body))
+            event.body = event_bodies
+
         runnables = self.select_runnables(event)
         if runnables is None:
             runnables = self.runnables
@@ -2247,8 +2295,14 @@ class ParallelExecution(Flow, _StreamingStepMixin):
                 "microsec": result.runtime,
                 "when": result.timestamp.isoformat(sep=" ", timespec="microseconds"),
             }
+            if is_full_event_batched:
+                # reconstruct the full event batch
+                for i, sub_event in enumerate(sub_events_to_modify):
+                    sub_event.body = result.data[i]
+                event.body = sub_events_to_modify
+            else:
+                event.body = result.data
         else:
-            event.body = {result.runnable_name: result.data for result in results}
             metadata = {
                 result.runnable_name: {
                     "microsec": result.runtime,
@@ -2256,11 +2310,17 @@ class ParallelExecution(Flow, _StreamingStepMixin):
                 }
                 for result in results
             }
+            if is_full_event_batched:
+                for i, sub_event in enumerate(sub_events_to_modify):
+                    sub_event.body = {result.runnable_name: result.data[i] for result in results}
+                event.body = sub_events_to_modify
+            else:
+                event.body = {result.runnable_name: result.data for result in results}
 
-        if hasattr(event, "_metadata") and isinstance(event._metadata, dict):
-            event._metadata.update(metadata)
-        else:
-            event._metadata = metadata
+        if is_full_event_batched:
+            for sub_event in event.body:
+                self.set_event_metadata(sub_event, copy.deepcopy(metadata))
+        self.set_event_metadata(event, metadata)
         return await self._do_downstream(event)
 
     def _verify_runnables(self, runnables: List[Union[str, ParallelExecutionRunnable]]):
