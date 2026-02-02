@@ -2367,6 +2367,10 @@ def test_batch_with_timeout():
 
 
 def test_basic_batch_with_parallel_execution():
+    asyncio.run(async_test_basic_batch_with_parallel_execution())
+
+
+async def async_test_basic_batch_with_parallel_execution():
     """Test that Batch step with full_event=True works correctly with ParallelExecution."""
     batch_size = 3
     number_of_events = 10
@@ -2386,8 +2390,8 @@ def test_basic_batch_with_parallel_execution():
     )
     controller = build_flow(
         [
-            SyncEmitSource(),
-            Batch(max_events=batch_size, full_event=True, flush_after_seconds=4),
+            AsyncEmitSource(),
+            Batch(max_events=batch_size, full_event=True, flush_after_seconds=2),
             parallel_execution,
             FlatMap(fn=lambda x: x.body, full_event=True),
             Complete(),
@@ -2395,27 +2399,22 @@ def test_basic_batch_with_parallel_execution():
         ]
     ).run()
 
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-
-    def emit_event(i):
-        awaitable_result = controller.emit(i)
-        result = awaitable_result.await_result()
+    async def emit_event(i):
+        result = await controller.emit(i)
         # Verify each event has the expected fields after parallel execution
         assert "add" in result
         assert "multiply" in result
         assert "uuid" in result
         assert result["add"] == 10 + i
         assert result["multiply"] == i * 2
-        return result
 
-    # Emit events in parallel using ThreadPoolExecutor with batch_size threads
-    with ThreadPoolExecutor(max_workers=batch_size) as executor:
-        futures = [executor.submit(emit_event, i) for i in range(number_of_events)]
-        for future in as_completed(futures):
-            future.result()  # Wait for all to complete and raise any exceptions
-
-    controller.terminate()
-    termination_result = controller.await_termination()
+    # Emit events in parallel using asyncio
+    try:
+        tasks = [asyncio.create_task(emit_event(i)) for i in range(number_of_events)]
+        await asyncio.gather(*tasks)
+    finally:
+        await controller.terminate()
+        termination_result = await controller.await_termination()
     assert len(termination_result) == number_of_events
 
     previous_batch_number = -1
@@ -2430,6 +2429,10 @@ def test_basic_batch_with_parallel_execution():
 
 
 def test_batch_with_parallel_execution_split():
+    asyncio.run(async_test_batch_with_parallel_execution_split())
+
+
+async def async_test_batch_with_parallel_execution_split():
     """Test batched ParallelExecution with splitting to multiple outlets (len(outlets) > 1 path)."""
     batch_size = 3
     number_of_events = 10
@@ -2440,8 +2443,8 @@ def test_batch_with_parallel_execution_split():
         RunnableGetRandom("uuid"),
     ]
 
-    source = SyncEmitSource()
-    batch_step = Batch(max_events=batch_size, full_event=True, flush_after_seconds=4)
+    source = AsyncEmitSource()
+    batch_step = Batch(max_events=batch_size, full_event=True, flush_after_seconds=2)
     parallel_execution = MyParallelExecution(
         runnables,
         execution_mechanism_by_runnable_name={
@@ -2462,11 +2465,8 @@ def test_batch_with_parallel_execution_split():
 
     controller = source.run()
 
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-
-    def emit_event(i):
-        awaitable_result = controller.emit(i)
-        result = awaitable_result.await_result()
+    async def emit_event(i):
+        result = await controller.emit(i)
         # Each event should get results from both branches (2 completions)
         assert len(result) == 3
         assert result["add"] == 10 + i
@@ -2474,14 +2474,12 @@ def test_batch_with_parallel_execution_split():
         assert "uuid" in result
         return result
 
-    # Emit events in parallel using ThreadPoolExecutor with batch_size threads
-    with ThreadPoolExecutor(max_workers=batch_size) as executor:
-        futures = [executor.submit(emit_event, i) for i in range(number_of_events)]
-        for future in as_completed(futures):
-            future.result()  # Wait for all to complete and raise any exceptions
-
-    controller.terminate()
-    termination_result = controller.await_termination()
+    try:
+        tasks = [asyncio.create_task(emit_event(i)) for i in range(number_of_events)]
+        await asyncio.gather(*tasks)
+    finally:
+        await controller.terminate()
+        termination_result = await controller.await_termination()
 
     # The final result should contain a duplicated value since the flow is split into two branches
     expected_number_of_events = number_of_events * 2
@@ -4019,10 +4017,6 @@ async def async_test_async_metadata_fields():
     result = result[0]
     assert result.key == "k1"
     assert result.body == body
-
-
-def test_async_metadata_fields():
-    asyncio.run(async_test_async_metadata_fields())
 
 
 def test_uuid():
