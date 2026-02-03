@@ -2298,7 +2298,11 @@ class ParallelExecution(Flow, _StreamingStepMixin):
             if is_full_event_batched:
                 # reconstruct the full event batch
                 for i, sub_event in enumerate(sub_events_to_modify):
-                    sub_event.body = result.data[i]
+                    if isinstance(result.data, list):
+                        sub_event.body = result.data[i]
+                    elif isinstance(result.data, dict) and "error" in result.data:
+                        #  error case, set error to all sub events
+                        sub_event.body = result.data
                 event.body = sub_events_to_modify
             else:
                 event.body = result.data
@@ -2312,7 +2316,14 @@ class ParallelExecution(Flow, _StreamingStepMixin):
             }
             if is_full_event_batched:
                 for i, sub_event in enumerate(sub_events_to_modify):
-                    sub_event.body = {result.runnable_name: result.data[i] for result in results}
+                    sub_event_body = {}
+                    for result in results:
+                        if isinstance(result.data, list):
+                            sub_event_body[result.runnable_name] = result.data[i]
+                        else:
+                            #  error case, set error to all sub events
+                            sub_event_body[result.runnable_name] = result.data
+                    sub_event.body = sub_event_body
                 event.body = sub_events_to_modify
             else:
                 event.body = {result.runnable_name: result.data for result in results}
