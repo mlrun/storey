@@ -2504,6 +2504,66 @@ async def async_test_batch_with_parallel_execution_split():
             assert termination_result[i]["uuid"] == expected_uuid
         previous_batch_number = batch_number
 
+def test_batch_error_handling_single_runnable():
+    asyncio.run(async_test_batch_error_handling_single_runnable())
+
+@pytest.mark.asyncio
+async def async_test_batch_error_handling_single_runnable():
+    """Test error handling in batched parallel execution with single runnable."""
+
+    class RunnableRaiseIfNegative(ParallelExecutionRunnable):
+        def run(self, data, path, origin_name=None):
+            if isinstance(data, list):
+                results = []
+                for item in data:
+                    if item < 0:
+                        raise ValueError(f"Value {item} is negative!")
+                    results.append(item * 2)
+                return results
+            else:
+                if data < 0:
+                    raise ValueError(f"Value {data} is negative!")
+                return data * 2
+
+    batch_size = 3
+    runnables = [RunnableRaiseIfNegative("check_positive", raise_exception=False)]
+
+    source = AsyncEmitSource()
+    batch_step = Batch(max_events=batch_size, full_event=True, flush_after_seconds=1)
+    parallel_execution = ParallelExecution(
+        runnables,
+        execution_mechanism_by_runnable_name={
+            "check_positive": "naive",
+        },
+
+    )
+    reducer = Reduce([], append_and_return)
+
+    controller = build_flow([
+        source,
+        batch_step,
+        parallel_execution,
+        FlatMap(fn=lambda x: x.body, full_event=True),
+        Complete(),
+        reducer,
+    ]).run()
+
+    # Emit batch with negative value concurrently (should error for all in batch)
+    async def emit_event(value):
+        invocation_result = await controller.emit(value)
+        assert invocation_result == {'error': 'ValueError: Value -5 is negative!'}
+
+    tasks = [asyncio.create_task(emit_event(v)) for v in [4, -5, 6]]  # Middle value is negative
+    await asyncio.gather(*tasks)
+
+    await controller.terminate()
+    batch_result = await controller.await_termination()
+
+    # All 3 should have error (error propagated to all in batch)
+    assert len(batch_result) == 3
+    for single_result in batch_result:
+        assert single_result == {'error': 'ValueError: Value -5 is negative!'}
+
 
 async def async_test_write_csv(tmpdir):
     file_path = f"{tmpdir}/test_write_csv/out.csv"
