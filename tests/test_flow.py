@@ -2510,7 +2510,7 @@ def test_batch_error_handling_single_runnable():
 @pytest.mark.asyncio
 async def async_test_batch_error_handling_single_runnable():
     """Test error handling in batched parallel execution with single runnable."""
-
+    flush_after_seconds = 0.3
     class RunnableRaiseIfNegative(ParallelExecutionRunnable):
         def run(self, data, path, origin_name=None):
             if isinstance(data, list):
@@ -2529,7 +2529,7 @@ async def async_test_batch_error_handling_single_runnable():
     runnables = [RunnableRaiseIfNegative("check_positive", raise_exception=False)]
 
     source = AsyncEmitSource()
-    batch_step = Batch(max_events=batch_size, full_event=True, flush_after_seconds=1)
+    batch_step = Batch(max_events=batch_size, full_event=True, flush_after_seconds=flush_after_seconds)
     parallel_execution = ParallelExecution(
         runnables,
         execution_mechanism_by_runnable_name={
@@ -2548,20 +2548,35 @@ async def async_test_batch_error_handling_single_runnable():
         reducer,
     ]).run()
 
-    # Emit batch with negative value concurrently (should error for all in batch)
-    async def emit_event(value):
+    async def emit_valid_event(value):
+        invocation_result = await controller.emit(value)
+        assert invocation_result == value * 2
+    time.sleep(flush_after_seconds + 0.2)  # Ensure different batch window
+    async def emit_error_event(value):
         invocation_result = await controller.emit(value)
         assert invocation_result == {'error': 'ValueError: Value -5 is negative!'}
 
-    tasks = [asyncio.create_task(emit_event(v)) for v in [4, -5, 6]]  # Middle value is negative
+    # Emit valid batch first (should succeed)
+    tasks = [asyncio.create_task(emit_valid_event(v)) for v in [1, 2, 3]]  # All positive
+    await asyncio.gather(*tasks)
+
+    # Emit batch with negative value concurrently (should error for all in batch)
+    tasks = [asyncio.create_task(emit_error_event(v)) for v in [4, -5, 6]]  # Middle value is negative
     await asyncio.gather(*tasks)
 
     await controller.terminate()
     batch_result = await controller.await_termination()
 
-    # All 3 should have error (error propagated to all in batch)
-    assert len(batch_result) == 3
-    for single_result in batch_result:
+    # Should have 6 results total (3 valid + 3 error)
+    assert len(batch_result) == 6
+
+    # First 3 should succeed
+    assert batch_result[0] == 2  # 1 * 2
+    assert batch_result[1] == 4  # 2 * 2
+    assert batch_result[2] == 6  # 3 * 2
+
+    # Next 3 should all have error (error propagated to all in batch)
+    for single_result in batch_result[3:]:
         assert single_result == {'error': 'ValueError: Value -5 is negative!'}
 
 
