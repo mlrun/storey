@@ -2658,12 +2658,12 @@ async def async_test_batch_error_handling_multiple_runnables():
     assert len(batch_result) == 6
 
     # First 3 should succeed with both runnables
-    assert batch_result[0]["check_positive"] == 2  # 1 * 2
-    assert batch_result[0]["add_ten"] == 11  # 1 + 10
-    assert batch_result[1]["check_positive"] == 4  # 2 * 2
-    assert batch_result[1]["add_ten"] == 12  # 2 + 10
-    assert batch_result[2]["check_positive"] == 6  # 3 * 2
-    assert batch_result[2]["add_ten"] == 13  # 3 + 10
+    assert batch_result[0]["check_positive"] == 2
+    assert batch_result[0]["add_ten"] == 11
+    assert batch_result[1]["check_positive"] == 4
+    assert batch_result[1]["add_ten"] == 12
+    assert batch_result[2]["check_positive"] == 6
+    assert batch_result[2]["add_ten"] == 13
 
     # Next 3 should have error for check_positive but add_ten should work
     for i, single_result in enumerate(batch_result[3:]):
