@@ -6049,27 +6049,18 @@ class TestBatchWithParallelExecution:
                 assert termination_result[i]["uuid"] == expected_uuid
             previous_batch_number = batch_number
 
-    def test_batch_error_handling_single_runnable(self):
-        asyncio.run(self.async_test_batch_error_handling_single_runnable())
-
-    async def async_test_batch_error_handling_single_runnable(self):
-        """Test error handling in batched parallel execution with single runnable."""
-        flush_after_seconds = 0.3
-
-        batch_size = 3
-        runnables = [self.RunnableRaiseIfNegative("check_positive", raise_exception=False)]
-
+    def _create_error_handling_flow(self, runnables, batch_size=3, flush_after_seconds=0.3):
+        """Helper to create flow for error handling tests."""
         source = AsyncEmitSource()
         batch_step = Batch(max_events=batch_size, full_event=True, flush_after_seconds=flush_after_seconds)
+
+        execution_mechanism_by_runnable_name = {runnable.name: "naive" for runnable in runnables}
         parallel_execution = ParallelExecution(
-            runnables,
-            execution_mechanism_by_runnable_name={
-                "check_positive": "naive",
-            },
+            runnables, execution_mechanism_by_runnable_name=execution_mechanism_by_runnable_name
         )
         reducer = Reduce([], append_and_return)
 
-        controller = build_flow(
+        return build_flow(
             [
                 source,
                 batch_step,
@@ -6080,23 +6071,36 @@ class TestBatchWithParallelExecution:
             ]
         ).run()
 
+    async def _emit_batch_concurrently(self, emit_fn, values):
+        """Helper to emit multiple values concurrently."""
+        tasks = [asyncio.create_task(emit_fn(v)) for v in values]
+        await asyncio.gather(*tasks)
+
+    def test_batch_error_handling_single_runnable(self):
+        asyncio.run(self.async_test_batch_error_handling_single_runnable())
+
+    async def async_test_batch_error_handling_single_runnable(self):
+        """Test error handling in batched parallel execution with single runnable."""
+
         async def emit_valid_event(value):
             invocation_result = await controller.emit(value)
             assert invocation_result == value * 2
-
-        time.sleep(flush_after_seconds + 0.2)  # Ensure different batch window
 
         async def emit_error_event(value):
             invocation_result = await controller.emit(value)
             assert invocation_result == {"error": "ValueError: Value -5 is negative!"}
 
+        flush_after_seconds = 0.3
+        runnables = [self.RunnableRaiseIfNegative("check_positive", raise_exception=False)]
+        controller = self._create_error_handling_flow(runnables, flush_after_seconds=flush_after_seconds)
+
         # Emit valid batch first (should succeed)
-        tasks = [asyncio.create_task(emit_valid_event(v)) for v in [1, 2, 3]]  # All positive
-        await asyncio.gather(*tasks)
+        await self._emit_batch_concurrently(emit_valid_event, [1, 2, 3])
+
+        time.sleep(flush_after_seconds + 0.2)  # Ensure different batch window
 
         # Emit batch with negative value concurrently (should error for all in batch)
-        tasks = [asyncio.create_task(emit_error_event(v)) for v in [4, -5, 6]]  # Middle value is negative
-        await asyncio.gather(*tasks)
+        await self._emit_batch_concurrently(emit_error_event, [4, -5, 6])
 
         await controller.terminate()
         batch_result = await controller.await_termination()
@@ -6127,54 +6131,28 @@ class TestBatchWithParallelExecution:
                     return [item + 10 for item in data]
                 return data + 10
 
-        batch_size = 3
-        runnables = [
-            self.RunnableRaiseIfNegative("check_positive", raise_exception=False),
-            RunnableAddTen("add_ten", raise_exception=False),
-        ]
-
-        source = AsyncEmitSource()
-        batch_step = Batch(max_events=batch_size, full_event=True, flush_after_seconds=flush_after_seconds)
-        parallel_execution = ParallelExecution(
-            runnables,
-            execution_mechanism_by_runnable_name={
-                "check_positive": "naive",
-                "add_ten": "naive",
-            },
-        )
-        reducer = Reduce([], append_and_return)
-
-        controller = build_flow(
-            [
-                source,
-                batch_step,
-                parallel_execution,
-                FlatMap(fn=lambda x: x.body, full_event=True),
-                Complete(),
-                reducer,
-            ]
-        ).run()
-
-        async def emit_valid_event(value):
-            invocation_result = await controller.emit(value)
-            assert invocation_result["check_positive"] == value * 2
-            assert invocation_result["add_ten"] == value + 10
-
-        time.sleep(flush_after_seconds + 0.2)  # Ensure different batch window
-
         async def emit_error_event(value):
             invocation_result = await controller.emit(value)
             # check_positive should have error, but add_ten should still work
             assert invocation_result["check_positive"] == {"error": "ValueError: Value -5 is negative!"}
             assert invocation_result["add_ten"] == value + 10
 
-        # Emit valid batch first (should succeed)
-        tasks = [asyncio.create_task(emit_valid_event(v)) for v in [1, 2, 3]]  # All positive
-        await asyncio.gather(*tasks)
+        async def emit_valid_event(value):
+            invocation_result = await controller.emit(value)
+            assert invocation_result["check_positive"] == value * 2
+            assert invocation_result["add_ten"] == value + 10
 
+        runnables = [
+            self.RunnableRaiseIfNegative("check_positive", raise_exception=False),
+            RunnableAddTen("add_ten", raise_exception=False),
+        ]
+        controller = self._create_error_handling_flow(runnables, flush_after_seconds=flush_after_seconds)
+        # Emit valid batch first (should succeed)
+        await self._emit_batch_concurrently(emit_valid_event, [1, 2, 3])
+
+        time.sleep(flush_after_seconds + 0.2)  # Ensure different batch window
         # Emit batch with negative value concurrently (should error for check_positive, but add_ten works)
-        tasks = [asyncio.create_task(emit_error_event(v)) for v in [4, -5, 6]]  # Middle value is negative
-        await asyncio.gather(*tasks)
+        await self._emit_batch_concurrently(emit_error_event, [4, -5, 6])
 
         await controller.terminate()
         batch_result = await controller.await_termination()
