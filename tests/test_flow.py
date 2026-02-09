@@ -5955,8 +5955,7 @@ class TestBatchWithParallelExecution:
 
         # Emit events in parallel using asyncio
         try:
-            tasks = [asyncio.create_task(emit_event(i)) for i in range(number_of_events)]
-            await asyncio.gather(*tasks)
+            await self._emit_batch_concurrently(emit_event, range(number_of_events))
         finally:
             await controller.terminate()
             termination_result = await controller.await_termination()
@@ -6018,8 +6017,7 @@ class TestBatchWithParallelExecution:
             return result
 
         try:
-            tasks = [asyncio.create_task(emit_event(i)) for i in range(number_of_events)]
-            await asyncio.gather(*tasks)
+            await self._emit_batch_concurrently(emit_event, range(number_of_events))
         finally:
             await controller.terminate()
             termination_result = await controller.await_termination()
