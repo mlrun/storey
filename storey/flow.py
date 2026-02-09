@@ -2187,17 +2187,25 @@ class ParallelExecution(Flow, _StreamingStepMixin):
         else:
             event._metadata = metadata
 
-    @staticmethod
-    def _get_subevent_body_in_batched_event(result, result_data_index=0):
+    def _get_subevent_body_in_batched_event(self, result, result_data_index=0):
+        unexpected_result_type = False
         if isinstance(result.data, list):
             sub_event_body = result.data[result_data_index]
-        elif isinstance(result.data, dict) and "error" in result.data:
+        elif isinstance(result.data, dict):
             #  error case, set error to all sub events
             sub_event_body = result.data
+            if not "error" in result.data:
+                unexpected_result_type = True
         else:
-            raise ValueError(
-                "Received a non list/ error dict result from runnable for a full event batch," " which is not supported"
-            )
+            unexpected_result_type = True
+            sub_event_body = result.data
+        if unexpected_result_type:
+            if self.logger:
+                self.logger.warn(
+                    f"Got result data for batched event that it is not a list."
+                    f" This result will be set as body for all sub events in the batch."
+                    f" Result data: {result.data}"
+                )
         return sub_event_body
 
     def select_runnables(self, event) -> Optional[Union[list[str], list[ParallelExecutionRunnable]]]:

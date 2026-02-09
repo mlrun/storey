@@ -5908,6 +5908,13 @@ class TestBatchWithParallelExecution:
                     raise ValueError(f"Value {data} is negative!")
                 return data * 2
 
+    class RunnableReturnWrongType(ParallelExecutionRunnable):
+        def run(self, data, path, origin_name=None):
+            if isinstance(data, list):
+                # Wrong! Should return a list, not a dict
+                return {"result": "wrong_type"}
+            return data
+
     class MyParallelExecution(ParallelExecution):
         def select_runnables(self, event):
             return ["multiply", "add", "uuid"]
@@ -6172,3 +6179,56 @@ class TestBatchWithParallelExecution:
             # add_ten should still work for values [4, -5, 6]
             expected_add_values = [14, 5, 16]
             assert single_result["add_ten"] == expected_add_values[i]
+
+    def test_batch_unexpected_return_type_single_runnable(self):
+        asyncio.run(self.async_test_batch_unexpected_return_type_single_runnable())
+
+    async def async_test_batch_unexpected_return_type_single_runnable(self):
+        flush_after_seconds = 0.3
+        runnables = [self.RunnableReturnWrongType("wrong_type", raise_exception=False)]
+        controller = self._create_error_handling_flow(runnables, flush_after_seconds=flush_after_seconds)
+
+        async def emit_event(value):
+            invocation_result = await controller.emit(value)
+            # All events in batch should get the same dict result
+            assert invocation_result == {"result": "wrong_type"}
+
+        # Emit batch that will trigger the warning (returning dict instead of list)
+        await self._emit_batch_concurrently(emit_event, [1, 2, 3])
+
+        await controller.terminate()
+        batch_result = await controller.await_termination()
+
+        # All 3 should have the same dict body (warning was logged, but flow continued)
+        assert len(batch_result) == 3
+        for single_result in batch_result:
+            assert single_result == {"result": "wrong_type"}
+
+    def test_batch_unexpected_return_type_multiple_runnables(self):
+        asyncio.run(self.async_test_batch_unexpected_return_type_multiple_runnables())
+
+    async def async_test_batch_unexpected_return_type_multiple_runnables(self):
+        flush_after_seconds = 0.3
+        runnables = [
+            self.RunnableReturnWrongType("wrong_type", raise_exception=False),
+            self.RunnableAdd10("add_ten", raise_exception=False),
+        ]
+        controller = self._create_error_handling_flow(runnables, flush_after_seconds=flush_after_seconds)
+
+        async def emit_event(value):
+            invocation_result = await controller.emit(value)
+            # wrong_type should return same dict for all, add_ten should work correctly
+            assert invocation_result["wrong_type"] == {"result": "wrong_type"}
+            assert invocation_result["add_ten"] == value + 10
+
+        # Emit batch that will trigger the warning (returning dict instead of list)
+        await self._emit_batch_concurrently(emit_event, [1, 2, 3])
+
+        await controller.terminate()
+        batch_result = await controller.await_termination()
+
+        # All 3 should have the same dict for wrong_type, correct values for add_ten
+        assert len(batch_result) == 3
+        for single_result in batch_result:
+            assert single_result["wrong_type"] == {"result": "wrong_type"}
+            assert single_result["add_ten"] in [11, 12, 13]
