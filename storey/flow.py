@@ -2187,6 +2187,19 @@ class ParallelExecution(Flow, _StreamingStepMixin):
         else:
             event._metadata = metadata
 
+    @staticmethod
+    def _get_subevent_body_in_batched_event(result, result_data_index=0):
+        if isinstance(result.data, list):
+            sub_event_body = result.data[result_data_index]
+        elif isinstance(result.data, dict) and "error" in result.data:
+            #  error case, set error to all sub events
+            sub_event_body = result.data
+        else:
+            raise ValueError(
+                "Received a non list/ error dict result from runnable for a full event batch," " which is not supported"
+            )
+        return sub_event_body
+
     def select_runnables(self, event) -> Optional[Union[list[str], list[ParallelExecutionRunnable]]]:
         """
         Given an event, returns a list of runnables (or a list of runnable names) to execute on it. It can also return
@@ -2298,11 +2311,7 @@ class ParallelExecution(Flow, _StreamingStepMixin):
             if is_full_event_batched:
                 # reconstruct the full event batch
                 for i, sub_event in enumerate(sub_events_to_modify):
-                    if isinstance(result.data, list):
-                        sub_event.body = result.data[i]
-                    elif isinstance(result.data, dict) and "error" in result.data:
-                        #  error case, set error to all sub events
-                        sub_event.body = result.data
+                    sub_event.body = self._get_subevent_body_in_batched_event(result, i)
                 event.body = sub_events_to_modify
             else:
                 event.body = result.data
@@ -2318,11 +2327,7 @@ class ParallelExecution(Flow, _StreamingStepMixin):
                 for i, sub_event in enumerate(sub_events_to_modify):
                     sub_event_body = {}
                     for result in results:
-                        if isinstance(result.data, list):
-                            sub_event_body[result.runnable_name] = result.data[i]
-                        else:
-                            #  error case, set error to all sub events
-                            sub_event_body[result.runnable_name] = result.data
+                        sub_event_body[result.runnable_name] = self._get_subevent_body_in_batched_event(result, i)
                     sub_event.body = sub_event_body
                 event.body = sub_events_to_modify
             else:
