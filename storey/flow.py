@@ -2194,7 +2194,7 @@ class ParallelExecution(Flow, _StreamingStepMixin):
         elif isinstance(result.data, dict):
             #  error case, set error to all sub events
             sub_event_body = result.data
-            if not "error" in result.data:
+            if "error" not in result.data:
                 unexpected_result_type = True
         else:
             unexpected_result_type = True
