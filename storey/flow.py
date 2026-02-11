@@ -1728,6 +1728,20 @@ class _ParallelExecutionRunnableResult:
         self.timestamp = timestamp
 
 
+class _StreamingResult:
+    """Wraps a streaming generator with timing metadata for model monitoring."""
+
+    def __init__(
+        self,
+        runnable_name: str,
+        generator: Generator | AsyncGenerator,
+        timestamp: datetime.datetime,
+    ):
+        self.runnable_name = runnable_name
+        self.generator = generator
+        self.timestamp = timestamp
+
+
 class ParallelExecutionMechanisms(str, enum.Enum):
     process_pool = "process_pool"
     dedicated_process = "dedicated_process"
@@ -1840,9 +1854,9 @@ class ParallelExecutionRunnable:
         start = time.monotonic()
         try:
             result = self.run(body, path, origin_name)
-            # Return generator directly for streaming support
+            # Return streaming result with timing metadata for streaming support
             if _is_generator(result):
-                return result
+                return _StreamingResult(origin_name or self.name, result, timestamp)
             body = result
         except Exception as e:
             if self._raise_exception:
@@ -1858,9 +1872,9 @@ class ParallelExecutionRunnable:
         try:
             result = self.run_async(body, path, origin_name)
 
-            # Return generator directly for streaming support
+            # Return streaming result with timing metadata for streaming support
             if _is_generator(result):
-                return result
+                return _StreamingResult(origin_name or self.name, result, timestamp)
 
             # Await if coroutine
             if asyncio.iscoroutine(result):
@@ -1902,7 +1916,10 @@ def _streaming_run_wrapper(
     sending each chunk through the multiprocessing queue.
     """
     try:
-        for chunk in runnable._run(input, path, origin_name):
+        result = runnable._run(input, path, origin_name)
+        # Unwrap _StreamingResult to get the generator
+        generator = result.generator if isinstance(result, _StreamingResult) else result
+        for chunk in generator:
             queue.put(("chunk", chunk))
         queue.put(("done", None))
     except Exception as e:
@@ -2270,15 +2287,33 @@ class ParallelExecution(Flow, _StreamingStepMixin):
         # Check for streaming response (only when a single runnable is selected)
         if len(runnables) == 1 and results:
             result = results[0]
-            # Check if the result is a generator (streaming response)
-            if _is_generator(result):
+            # Check if the result is a streaming result (contains generator with timing metadata)
+            if isinstance(result, _StreamingResult):
+                # Set timing metadata on the event before emitting chunks
+                # For streaming, microsec is None since we don't have total runtime
+                metadata = {
+                    "microsec": None,
+                    "when": result.timestamp.isoformat(sep=" ", timespec="microseconds"),
+                }
+                self.set_event_metadata(event, metadata)
+                await self._emit_streaming_chunks(event, result.generator)
+                return None
+            # Handle raw generator from process-based streaming (no timing info from subprocess)
+            elif _is_generator(result):
+                # Use current timestamp as fallback for process-based streaming
+                timestamp = datetime.datetime.now(tz=datetime.timezone.utc)
+                metadata = {
+                    "microsec": None,
+                    "when": timestamp.isoformat(sep=" ", timespec="microseconds"),
+                }
+                self.set_event_metadata(event, metadata)
                 await self._emit_streaming_chunks(event, result)
                 return None
 
         # Non-streaming path
-        # Check if any results are generators (not allowed with multiple runnables)
+        # Check if any results are streaming (not allowed with multiple runnables)
         for result in results:
-            if _is_generator(result):
+            if isinstance(result, _StreamingResult):
                 raise StreamingError(
                     "Streaming is not supported when multiple runnables are selected. "
                     "Streaming runnables must be the only runnable selected for an event."
