@@ -13,6 +13,7 @@
 # limitations under the License.
 #
 import copy
+import datetime
 from collections import defaultdict
 
 from ..dtypes import StreamCompletion, _termination_obj
@@ -46,6 +47,31 @@ class Collector(Flow):
             lambda: {"chunks": [], "completions": 0, "first_event": None}
         )
 
+    def _calculate_streaming_duration(self, event):
+        """
+        Calculate total streaming duration and update event metadata with microsec.
+
+        Uses the 'when' timestamp from the first chunk's metadata (set by ParallelExecution)
+        to calculate total elapsed time from stream start to completion.
+
+        Streaming is only supported with a single selected runnable, so metadata is always
+        flat (top-level 'when' and 'microsec'), never nested under model names.
+        """
+        if not hasattr(event, "_metadata") or not event._metadata:
+            return
+
+        when_str = event._metadata.get("when")
+        if not when_str:
+            return
+
+        try:
+            start_time = datetime.datetime.fromisoformat(when_str)
+            now = datetime.datetime.now(tz=datetime.timezone.utc)
+            event._metadata["microsec"] = int((now - start_time).total_seconds() * 1_000_000)
+        except (ValueError, TypeError) as exc:
+            if self.logger:
+                self.logger.warning(f"Failed to calculate streaming duration from 'when' timestamp '{when_str}': {exc}")
+
     async def _do(self, event):
         if event is _termination_obj:
             return await self._do_downstream(_termination_obj)
@@ -73,6 +99,10 @@ class Collector(Flow):
                     del collected_event.streaming_step
                 if hasattr(collected_event, "chunk_id"):
                     del collected_event.chunk_id
+
+                # Calculate total streaming duration (microsec) if timing metadata exists
+                self._calculate_streaming_duration(collected_event)
+
                 await self._do_downstream(collected_event)
 
                 # Clean up

@@ -1084,6 +1084,32 @@ class TestStreamingErrors:
 
         asyncio.run(_test())
 
+    def test_streaming_with_multiple_runnables_raises_error(self):
+        """Test that streaming raises an error when multiple runnables are selected."""
+        streaming = StreamingRunnable(name="streamer")
+        non_streaming = NonStreamingRunnable(name="non_streamer")
+
+        controller = build_flow(
+            [
+                SyncEmitSource(),
+                ParallelExecution(
+                    runnables=[streaming, non_streaming],
+                    execution_mechanism_by_runnable_name={
+                        "streamer": ParallelExecutionMechanisms.naive,
+                        "non_streamer": ParallelExecutionMechanisms.naive,
+                    },
+                ),
+                Reduce([], lambda acc, x: acc + [x]),
+            ]
+        ).run()
+
+        try:
+            controller.emit("test")
+        finally:
+            controller.terminate()
+            with pytest.raises(StreamingError, match="Streaming is not supported when multiple runnables are selected"):
+                controller.await_termination()
+
 
 class TestStreamingWithIntermediateSteps:
     """Tests for streaming through intermediate non-streaming steps."""
@@ -1337,6 +1363,44 @@ class TestParallelExecutionStreaming:
             # Error is also propagated through termination
             with pytest.raises(expected_error, match="Simulated streaming error"):
                 controller.await_termination()
+
+    def test_parallel_execution_streaming_single_runnable_sets_metadata(self):
+        """Test that streaming ParallelExecution with single runnable sets timing metadata.
+
+        This mirrors the non-streaming behavior where _metadata includes 'when' and 'microsec'.
+        After Collector aggregates chunks, the collected event should have timing metadata.
+        The 'microsec' field should contain the total streaming duration calculated by Collector.
+        """
+        runnable = StreamingRunnable(name="streamer")
+        controller = build_flow(
+            [
+                SyncEmitSource(),
+                ParallelExecution(
+                    runnables=[runnable],
+                    execution_mechanism_by_runnable_name={"streamer": ParallelExecutionMechanisms.naive},
+                ),
+                Collector(),
+                Reduce([], lambda acc, x: acc + [x], full_event=True),
+            ]
+        ).run()
+
+        try:
+            controller.emit("test")
+        finally:
+            controller.terminate()
+            result = controller.await_termination()
+
+        assert len(result) == 1
+        event = result[0]
+        assert hasattr(event, "_metadata"), "Expected event to have _metadata attribute"
+        metadata = event._metadata
+        assert "when" in metadata, "Expected _metadata to include 'when' field"
+        assert "microsec" in metadata, "Expected _metadata to include 'microsec' field"
+        # Verify 'when' is a valid ISO timestamp string
+        assert isinstance(metadata["when"], str), "Expected 'when' to be a string"
+        # Verify 'microsec' is a positive integer (total streaming duration calculated by Collector)
+        assert isinstance(metadata["microsec"], int), "Expected 'microsec' to be an integer"
+        assert metadata["microsec"] >= 0, "Expected 'microsec' to be non-negative"
 
 
 class TestStreamingGraphSplits:
