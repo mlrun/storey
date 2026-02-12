@@ -1084,6 +1084,32 @@ class TestStreamingErrors:
 
         asyncio.run(_test())
 
+    def test_streaming_with_multiple_runnables_raises_error(self):
+        """Test that streaming raises an error when multiple runnables are selected."""
+        streaming = StreamingRunnable(name="streamer")
+        non_streaming = NonStreamingRunnable(name="non_streamer")
+
+        controller = build_flow(
+            [
+                SyncEmitSource(),
+                ParallelExecution(
+                    runnables=[streaming, non_streaming],
+                    execution_mechanism_by_runnable_name={
+                        "streamer": ParallelExecutionMechanisms.naive,
+                        "non_streamer": ParallelExecutionMechanisms.naive,
+                    },
+                ),
+                Reduce([], lambda acc, x: acc + [x]),
+            ]
+        ).run()
+
+        try:
+            controller.emit("test")
+        finally:
+            controller.terminate()
+            with pytest.raises(StreamingError, match="Streaming is not supported when multiple runnables are selected"):
+                controller.await_termination()
+
 
 class TestStreamingWithIntermediateSteps:
     """Tests for streaming through intermediate non-streaming steps."""
