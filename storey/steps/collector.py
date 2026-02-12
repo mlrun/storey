@@ -53,39 +53,21 @@ class Collector(Flow):
 
         Uses the 'when' timestamp from the first chunk's metadata (set by ParallelExecution)
         to calculate total elapsed time from stream start to completion.
+
+        Streaming is only supported with a single selected runnable, so metadata is always
+        flat (top-level 'when' and 'microsec'), never nested under model names.
         """
         if not hasattr(event, "_metadata") or not event._metadata:
             return
 
-        # Get the start timestamp - could be at top level or nested under model name
-        when_str = None
-        if "when" in event._metadata:
-            when_str = event._metadata.get("when")
-        else:
-            # For multi-model (ModelRunnerStep), metadata is nested under model name
-            for value in event._metadata.values():
-                if isinstance(value, dict) and "when" in value:
-                    when_str = value.get("when")
-                    break
-
+        when_str = event._metadata.get("when")
         if not when_str:
             return
 
         try:
-            # Parse the ISO format timestamp
             start_time = datetime.datetime.fromisoformat(when_str)
             now = datetime.datetime.now(tz=datetime.timezone.utc)
-            elapsed_microsec = int((now - start_time).total_seconds() * 1_000_000)
-
-            # Update metadata with calculated microsec
-            if "when" in event._metadata:
-                event._metadata["microsec"] = elapsed_microsec
-            else:
-                # For nested metadata (ModelRunnerStep), update in the same nested dict
-                for value in event._metadata.values():
-                    if isinstance(value, dict) and "when" in value:
-                        value["microsec"] = elapsed_microsec
-                        break
+            event._metadata["microsec"] = int((now - start_time).total_seconds() * 1_000_000)
         except (ValueError, TypeError) as exc:
             if self.logger:
                 self.logger.warning(f"Failed to calculate streaming duration from 'when' timestamp '{when_str}': {exc}")
