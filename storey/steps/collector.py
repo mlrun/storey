@@ -88,9 +88,7 @@ class Collector(Flow):
                         break
         except (ValueError, TypeError) as exc:
             if self.logger:
-                self.logger.warning(
-                    f"Failed to calculate streaming duration from 'when' timestamp '{when_str}': {exc}"
-                )
+                self.logger.warning(f"Failed to calculate streaming duration from 'when' timestamp '{when_str}': {exc}")
 
     async def _do(self, event):
         if event is _termination_obj:
