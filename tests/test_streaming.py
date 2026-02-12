@@ -1343,6 +1343,7 @@ class TestParallelExecutionStreaming:
 
         This mirrors the non-streaming behavior where _metadata includes 'when' and 'microsec'.
         After Collector aggregates chunks, the collected event should have timing metadata.
+        The 'microsec' field should contain the total streaming duration calculated by Collector.
         """
         runnable = StreamingRunnable(name="streamer")
         controller = build_flow(
@@ -1371,6 +1372,9 @@ class TestParallelExecutionStreaming:
         assert "microsec" in metadata, "Expected _metadata to include 'microsec' field"
         # Verify 'when' is a valid ISO timestamp string
         assert isinstance(metadata["when"], str), "Expected 'when' to be a string"
+        # Verify 'microsec' is a positive integer (total streaming duration calculated by Collector)
+        assert isinstance(metadata["microsec"], int), "Expected 'microsec' to be an integer"
+        assert metadata["microsec"] >= 0, "Expected 'microsec' to be non-negative"
 
 
 class TestStreamingGraphSplits:

@@ -13,6 +13,7 @@
 # limitations under the License.
 #
 import copy
+import datetime
 from collections import defaultdict
 
 from ..dtypes import StreamCompletion, _termination_obj
@@ -46,6 +47,51 @@ class Collector(Flow):
             lambda: {"chunks": [], "completions": 0, "first_event": None}
         )
 
+    def _calculate_streaming_duration(self, event):
+        """
+        Calculate total streaming duration and update event metadata with microsec.
+
+        Uses the 'when' timestamp from the first chunk's metadata (set by ParallelExecution)
+        to calculate total elapsed time from stream start to completion.
+        """
+        if not hasattr(event, "_metadata") or not event._metadata:
+            return
+
+        # Get the start timestamp - could be at top level or nested under model name
+        when_str = None
+        if "when" in event._metadata:
+            when_str = event._metadata.get("when")
+        else:
+            # For multi-model (ModelRunnerStep), metadata is nested under model name
+            for value in event._metadata.values():
+                if isinstance(value, dict) and "when" in value:
+                    when_str = value.get("when")
+                    break
+
+        if not when_str:
+            return
+
+        try:
+            # Parse the ISO format timestamp
+            start_time = datetime.datetime.fromisoformat(when_str)
+            now = datetime.datetime.now(tz=datetime.timezone.utc)
+            elapsed_microsec = int((now - start_time).total_seconds() * 1_000_000)
+
+            # Update metadata with calculated microsec
+            if "when" in event._metadata:
+                event._metadata["microsec"] = elapsed_microsec
+            else:
+                # For nested metadata (ModelRunnerStep), update in the same nested dict
+                for value in event._metadata.values():
+                    if isinstance(value, dict) and "when" in value:
+                        value["microsec"] = elapsed_microsec
+                        break
+        except (ValueError, TypeError) as exc:
+            if self.logger:
+                self.logger.warning(
+                    f"Failed to calculate streaming duration from 'when' timestamp '{when_str}': {exc}"
+                )
+
     async def _do(self, event):
         if event is _termination_obj:
             return await self._do_downstream(_termination_obj)
@@ -73,6 +119,10 @@ class Collector(Flow):
                     del collected_event.streaming_step
                 if hasattr(collected_event, "chunk_id"):
                     del collected_event.chunk_id
+
+                # Calculate total streaming duration (microsec) if timing metadata exists
+                self._calculate_streaming_duration(collected_event)
+
                 await self._do_downstream(collected_event)
 
                 # Clean up
