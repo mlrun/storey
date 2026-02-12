@@ -94,11 +94,12 @@ class Collector(Flow):
                 # Copy the original event to preserve all attributes (important for offset management)
                 collected_event = copy.copy(base_event)
                 collected_event.body = collected_body
-                # Clear streaming attributes
+                # Clear streaming attributes and mark as collected
                 if hasattr(collected_event, "streaming_step"):
                     del collected_event.streaming_step
                 if hasattr(collected_event, "chunk_id"):
                     del collected_event.chunk_id
+                collected_event.stream_collected = True
 
                 # Calculate total streaming duration (microsec) if timing metadata exists
                 self._calculate_streaming_duration(collected_event)

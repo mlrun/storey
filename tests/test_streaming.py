@@ -447,6 +447,50 @@ class TestCollector:
         assert ["a_0", "a_1"] in result
         assert ["b_0", "b_1"] in result
 
+    def test_collector_sets_stream_collected_marker(self):
+        """Test that Collector sets stream_collected=True on collected events."""
+
+        def stream_chunks(x):
+            for i in range(2):
+                yield f"{x}_{i}"
+
+        controller = build_flow(
+            [
+                SyncEmitSource(),
+                Map(stream_chunks),
+                Collector(),
+                Reduce([], lambda acc, x: acc + [x], full_event=True),
+            ]
+        ).run()
+
+        controller.emit("test")
+        controller.terminate()
+        result = controller.await_termination()
+
+        assert len(result) == 1
+        event = result[0]
+        assert event.stream_collected is True
+
+    def test_collector_passthrough_no_stream_collected_marker(self):
+        """Test that Collector does NOT set stream_collected on non-streaming events."""
+
+        controller = build_flow(
+            [
+                SyncEmitSource(),
+                Map(lambda x: x * 2),
+                Collector(),
+                Reduce([], lambda acc, x: acc + [x], full_event=True),
+            ]
+        ).run()
+
+        controller.emit(5)
+        controller.terminate()
+        result = controller.await_termination()
+
+        assert len(result) == 1
+        event = result[0]
+        assert getattr(event, "stream_collected", False) is False
+
     def test_collector_invalid_expected_completions(self):
         """Test that Collector raises error for invalid expected_completions."""
         with pytest.raises(ValueError, match="expected_completions must be at least 1"):
