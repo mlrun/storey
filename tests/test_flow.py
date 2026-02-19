@@ -2338,7 +2338,13 @@ def test_batch_full_event_false_raises_error():
     with pytest.raises(
         ValueError, match="Batch step supports full_event=True. Setting full_event=False is not supported."
     ):
-        build_flow([SyncEmitSource(), Batch(4, 100, full_event=False), Reduce([], lambda acc, x: acc)]).run()
+        build_flow(
+            [
+                SyncEmitSource(),
+                Batch(4, 100, full_event=False),
+                Reduce([], lambda acc, x: acc),
+            ]
+        ).run()
 
 
 async def async_test_write_csv(tmpdir):
