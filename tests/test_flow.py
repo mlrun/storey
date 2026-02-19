@@ -763,6 +763,12 @@ def append_and_return(lst, x):
     return lst
 
 
+def batch_append_and_return(lst, x):
+    extract_event_bodies = [sub_event.body for sub_event in x]
+    lst.append(extract_event_bodies)
+    return lst
+
+
 def test_csv_reader_as_dict_with_key_and_timestamp():
     controller = build_flow(
         [
@@ -2062,28 +2068,6 @@ def test_metadata_immutability():
     assert result.body == "new body"
 
 
-def test_batch():
-    controller = build_flow(
-        [
-            SyncEmitSource(),
-            Batch(4, 100),
-            Reduce([], lambda acc, x: append_and_return(acc, x), full_event=True),
-        ]
-    ).run()
-
-    for i in range(10):
-        controller.emit(i)
-    controller.terminate()
-    termination_result = controller.await_termination()
-    assert len(termination_result) == 3
-    assert termination_result[0].id
-    assert termination_result[0].body == [0, 1, 2, 3]
-    assert termination_result[1].id
-    assert termination_result[1].body == [4, 5, 6, 7]
-    assert termination_result[2].id
-    assert termination_result[2].body == [8, 9]
-
-
 def test_batch_full_event():
     def append_body_and_return(lst, x):
         ll = []
@@ -2108,9 +2092,6 @@ def test_batch_full_event():
 
 
 def test_batch_by_user_key():
-    def append_and_return(lst, x):
-        lst.append(x)
-        return lst
 
     controller = build_flow(
         [
@@ -2136,10 +2117,10 @@ def test_batch_by_user_key():
         values_3.remove(rand_val_3)
         values_4.remove(rand_val_4)
 
-        controller.emit({"value": rand_val_1})
-        controller.emit({"value": rand_val_2})
-        controller.emit({"value": rand_val_3})
-        controller.emit({"value": rand_val_4})
+        controller.emit({"value": rand_val_1, "other_field": "x"})
+        controller.emit({"value": rand_val_2, "other_field": "x"})
+        controller.emit({"value": rand_val_3, "other_field": "x"})
+        controller.emit({"value": rand_val_4, "other_field": "x"})
 
     controller.terminate()
     termination_result = controller.await_termination()
@@ -2148,20 +2129,22 @@ def test_batch_by_user_key():
 
     for element in termination_result:
         assert len(element) == 2
-        numbers = [e["value"] for e in element]
-        assert numbers[0] == numbers[1]
+        previous_number = None
+        for sub_event in element:
+            assert isinstance(sub_event, Event)
+            if previous_number is None:
+                previous_number = sub_event.body["value"]
+            else:
+                assert sub_event.body["value"] == previous_number
 
 
 def test_batch_by_event_key():
-    def append_and_return(lst, x):
-        lst.append(x)
-        return lst
 
     controller = build_flow(
         [
             SyncEmitSource(),
             Batch(5, 100, "$key"),
-            Reduce([], lambda acc, x: append_and_return(acc, x)),
+            Reduce([], lambda acc, x: batch_append_and_return(acc, x)),
         ]
     ).run()
 
@@ -2187,9 +2170,6 @@ def test_batch_by_event_key():
 
 
 def test_batch_by_field_value_key_extractor():
-    def append_and_return(lst, x):
-        lst.append(x)
-        return lst
 
     controller = build_flow(
         [
@@ -2312,9 +2292,10 @@ def test_batch_with_timeout():
     q = queue.Queue(1)
 
     def reduce_fn(acc, x):
-        if x[0] == 0:
+        if x[0].body == 0:
             q.put(None)
-        acc.append(x)
+        events_body_list = [event.body for event in x]
+        acc.append(events_body_list)
         return acc
 
     controller = build_flow(
@@ -4052,7 +4033,7 @@ def test_to_code():
 
     reconstructed_code = flow.to_code()
     expected = """sync_emit_source0 = SyncEmitSource()
-batch0 = Batch(max_events=5)
+batch0 = Batch(full_event=True, max_events=5)
 to_data_frame0 = ToDataFrame()
 reduce0 = Reduce(full_event=True, initial_value=[])
 
