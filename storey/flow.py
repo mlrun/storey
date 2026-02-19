@@ -1492,6 +1492,12 @@ class Batch(_Batching, WithUUID):
     _do_downstream_per_event = False
 
     def __init__(self, *args, **kwargs):
+        # Set full_event to True by default if not specified
+        if "full_event" not in kwargs:
+            kwargs["full_event"] = True
+        elif kwargs["full_event"] is False:
+            raise ValueError("Batch step supports full_event=True. Setting full_event=False is not supported.")
+
         _Batching.__init__(self, *args, **kwargs)
         WithUUID.__init__(self)
 

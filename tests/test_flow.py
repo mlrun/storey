@@ -2334,6 +2334,13 @@ def test_batch_with_timeout():
     assert termination_result == [[0, 1, 2], [3, 4, 5, 6], [7, 8, 9]]
 
 
+def test_batch_full_event_false_raises_error():
+    with pytest.raises(
+        ValueError, match="Batch step supports full_event=True. Setting full_event=False is not supported."
+    ):
+        build_flow([SyncEmitSource(), Batch(4, 100, full_event=False), Reduce([], lambda acc, x: acc)]).run()
+
+
 async def async_test_write_csv(tmpdir):
     file_path = f"{tmpdir}/test_write_csv/out.csv"
     controller = build_flow([AsyncEmitSource(), CSVTarget(file_path, columns=["n", "n*10"], header=True)]).run()
