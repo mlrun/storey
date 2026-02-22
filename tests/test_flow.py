@@ -2175,7 +2175,7 @@ def test_batch_by_field_value_key_extractor():
         [
             SyncEmitSource(),
             Batch(3, 100, "field"),
-            Reduce([], lambda acc, x: append_and_return(acc, x)),
+            Reduce([], lambda acc, x: batch_append_and_return(acc, x)),
         ]
     ).run()
 
@@ -2217,15 +2217,12 @@ def test_batch_by_field_value_key_extractor():
 
 
 def test_batch_by_function_key_extractor():
-    def append_and_return(lst, x):
-        lst.append(x)
-        return lst
 
     controller = build_flow(
         [
             SyncEmitSource(),
             Batch(10, 100, lambda event: event.body % 3 == 0),
-            Reduce([], lambda acc, x: append_and_return(acc, x)),
+            Reduce([], lambda acc, x: batch_append_and_return(acc, x)),
         ]
     ).run()
 
@@ -2254,15 +2251,15 @@ def test_batch_grouping_with_timeout():
     q = queue.Queue(1)
 
     def reduce_fn(acc, event):
-        if event == [1]:
+        if len(event) == 1 and event[0].body == 1:
             q.put(None)
-        acc.append(event)
+        acc.append([sub_Event.body for sub_Event in event])
         return acc
 
     controller = build_flow(
         [
             SyncEmitSource(),
-            Batch(3, 1, "$key"),
+            Batch(max_events=3, flush_after_seconds=1, key_field="$key"),
             Reduce([], lambda acc, x: reduce_fn(acc, x)),
         ]
     ).run()
@@ -2731,11 +2728,20 @@ def test_reduce_to_dataframe_indexed_by_key():
 
 
 def test_to_dataframe_with_index():
+    # Note: This test validates to_dataframe() and batching in isolation.
+    # Event IDs are not preserved, so this specific pattern won't work on remote serving function.
+
+    def extract_batch_bodies(event):
+        event_bodies = [sub_event.body for sub_event in event.body]
+        event.body = event_bodies
+        return event
+
     index = "my_int"
     controller = build_flow(
         [
             SyncEmitSource(),
             Batch(5),
+            Map(fn=extract_batch_bodies, full_event=True),
             ToDataFrame(index=index),
             Reduce([], append_and_return, full_event=True),
         ]
@@ -4057,9 +4063,9 @@ def test_split_flow_to_code():
 
     reconstructed_code = flow.to_code()
     expected = """sync_emit_source0 = SyncEmitSource()
-batch0 = Batch(max_events=5)
+batch0 = Batch(full_event=True, max_events=5)
 reduce0 = Reduce(initial_value=[])
-batch1 = Batch(max_events=5)
+batch1 = Batch(full_event=True, max_events=5)
 to_data_frame0 = ToDataFrame()
 reduce1 = Reduce(full_event=True, initial_value=[])
 
