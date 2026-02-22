@@ -2117,10 +2117,10 @@ def test_batch_by_user_key():
         values_3.remove(rand_val_3)
         values_4.remove(rand_val_4)
 
-        controller.emit({"value": rand_val_1, "other_field": "x"})
-        controller.emit({"value": rand_val_2, "other_field": "x"})
-        controller.emit({"value": rand_val_3, "other_field": "x"})
-        controller.emit({"value": rand_val_4, "other_field": "x"})
+        controller.emit({"value": rand_val_1})
+        controller.emit({"value": rand_val_2})
+        controller.emit({"value": rand_val_3})
+        controller.emit({"value": rand_val_4})
 
     controller.terminate()
     termination_result = controller.await_termination()
@@ -2728,8 +2728,8 @@ def test_reduce_to_dataframe_indexed_by_key():
 
 
 def test_to_dataframe_with_index():
-    # Note: This test validates to_dataframe() and batching in isolation.
-    # Event IDs are not preserved, so this specific pattern won't work on remote serving function.
+    # Note: This test validates to_dataframe() and batching in isolation
+    # Event IDs are not preserved, so this specific pattern won't work on remote serving function
 
     def extract_batch_bodies(event):
         event_bodies = [sub_event.body for sub_event in event.body]
