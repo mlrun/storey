@@ -32,7 +32,13 @@ import pyarrow
 import pytz
 from nuclio_sdk import QualifiedOffset
 
-from .dtypes import Event, StreamChunk, StreamCompletion, _termination_obj
+from .dtypes import (
+    Event,
+    StreamChunk,
+    StreamCompletion,
+    StreamingError,
+    _termination_obj,
+)
 from .flow import Complete, Flow, WithUUID
 from .queue import SimpleAsyncQueue
 from .utils import (
@@ -109,6 +115,10 @@ class AwaitableResult:
         if isinstance(first_item, StreamChunk):
             yield first_item.body
         elif isinstance(first_item, StreamCompletion):
+            if first_item.error:
+                if self._on_error:
+                    self._on_error()
+                raise StreamingError(first_item.error)
             completions_received = 1
 
         while completions_received < self._expected_number_of_results:
@@ -118,6 +128,10 @@ class AwaitableResult:
                     self._on_error()
                 raise copy.copy(item)
             if isinstance(item, StreamCompletion):
+                if item.error:
+                    if self._on_error:
+                        self._on_error()
+                    raise StreamingError(item.error)
                 completions_received += 1
             elif isinstance(item, StreamChunk):
                 yield item.body
@@ -514,6 +528,10 @@ class AsyncAwaitableResult:
         if isinstance(first_item, StreamChunk):
             yield first_item.body
         elif isinstance(first_item, StreamCompletion):
+            if first_item.error:
+                if self._on_error:
+                    await self._on_error()
+                raise StreamingError(first_item.error)
             completions_received = 1
 
         while completions_received < self._expected_number_of_results:
@@ -523,6 +541,10 @@ class AsyncAwaitableResult:
                     await self._on_error()
                 raise copy.copy(item)
             if isinstance(item, StreamCompletion):
+                if item.error:
+                    if self._on_error:
+                        await self._on_error()
+                    raise StreamingError(item.error)
                 completions_received += 1
             elif isinstance(item, StreamChunk):
                 yield item.body
