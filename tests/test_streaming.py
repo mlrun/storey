@@ -687,34 +687,49 @@ class TestCollector:
             ]
         ).run()
 
-        controller.emit("test")
-        controller.terminate()
+        try:
+            controller.emit("test")
+        finally:
+            controller.terminate()
+            result = controller.await_termination()
 
-        # The error is raised but Collector still emits the error event
-        with pytest.raises(ValueError, match="Generator error mid-stream"):
-            controller.await_termination()
+        assert len(result) == 1
+        assert isinstance(result[0], dict)
+        assert "error" in result[0]
+        assert "ValueError" in result[0]["error"]
+        assert "Generator error mid-stream" in result[0]["error"]
 
-    def test_collector_streaming_error_body_format(self):
-        """Verify the exact format of error body emitted by Collector."""
+    def test_async_collector_streaming_error(self):
+        """Async version: Test streaming error propagation through Collector."""
 
-        def error_stream(x):
-            yield f"{x}_chunk_0"
-            raise RuntimeError("stream failure")
+        async def _test():
 
-        controller = build_flow(
-            [
-                SyncEmitSource(),
-                Map(error_stream),
-                Collector(),
-                Reduce([], lambda acc, x: acc + [x], full_event=True),
-            ]
-        ).run()
+            def error_stream(x):
+                yield f"{x}_chunk_0"
+                raise RuntimeError("async stream failure")
 
-        controller.emit("test")
-        controller.terminate()
+            controller = build_flow(
+                [
+                    AsyncEmitSource(),
+                    Map(error_stream),
+                    Collector(),
+                    Reduce([], lambda acc, x: acc + [x]),
+                ]
+            ).run()
 
-        with pytest.raises(RuntimeError, match="stream failure"):
-            controller.await_termination()
+            try:
+                await controller.emit("test")
+            finally:
+                await controller.terminate()
+                result = await controller.await_termination()
+
+            assert len(result) == 1
+            assert isinstance(result[0], dict)
+            assert "error" in result[0]
+            assert "RuntimeError" in result[0]["error"]
+            assert "async stream failure" in result[0]["error"]
+
+        asyncio.run(_test())
 
     def test_collector_streaming_error_sets_stream_collected(self):
         """Test that Collector sets stream_collected=True even on error."""
@@ -745,10 +760,10 @@ class TestCollector:
 
             controller = source.run()
 
-            await controller.emit("test")
-            await controller.terminate()
-
-            with pytest.raises(ValueError, match="test error"):
+            try:
+                await controller.emit("test")
+            finally:
+                await controller.terminate()
                 await controller.await_termination()
 
             # Verify we captured an event with stream_collected=True and error body
@@ -759,32 +774,6 @@ class TestCollector:
             assert "error" in event.body
             assert "ValueError" in event.body["error"]
             assert "test error" in event.body["error"]
-
-        asyncio.run(_test())
-
-    def test_async_collector_streaming_error(self):
-        """Async version: Test streaming error propagation through Collector."""
-
-        async def _test():
-
-            def error_stream(x):
-                yield f"{x}_chunk_0"
-                raise RuntimeError("async stream failure")
-
-            controller = build_flow(
-                [
-                    AsyncEmitSource(),
-                    Map(error_stream),
-                    Collector(),
-                    Reduce([], lambda acc, x: acc + [x]),
-                ]
-            ).run()
-
-            await controller.emit("test")
-            await controller.terminate()
-
-            with pytest.raises(RuntimeError, match="async stream failure"):
-                await controller.await_termination()
 
         asyncio.run(_test())
 
@@ -806,10 +795,10 @@ class TestCollector:
 
             controller = source.run()
 
-            await controller.emit("test")
-            await controller.terminate()
-
-            with pytest.raises(ValueError, match="cleanup test error"):
+            try:
+                await controller.emit("test")
+            finally:
+                await controller.terminate()
                 await controller.await_termination()
 
             # Verify collector cleaned up (no memory leak)
@@ -1062,7 +1051,7 @@ class TestStreamingErrors:
         asyncio.run(_test())
 
     def test_streaming_generator_raises_error(self):
-        """Test that error in generator mid-stream propagates without hanging."""
+        """Test that error in generator mid-stream is delivered to consumer without killing the flow."""
 
         def error_stream(x):
             yield f"{x}_chunk_0"
@@ -1082,7 +1071,7 @@ class TestStreamingErrors:
 
             assert inspect.isgenerator(result)
 
-            # Collect chunks until error - consumer gets StreamingError wrapping the message
+            # Consumer gets StreamingError wrapping the error message
             chunks = []
             with pytest.raises(StreamingError, match="Generator error mid-stream"):
                 for chunk in result:
@@ -1092,12 +1081,10 @@ class TestStreamingErrors:
             assert chunks == ["test_chunk_0"]
         finally:
             controller.terminate()
-            # Original exception propagates through termination
-            with pytest.raises(ValueError, match="Generator error mid-stream"):
-                controller.await_termination()
+            controller.await_termination()
 
     def test_async_streaming_generator_raises_error(self):
-        """Async version: Test that error in generator mid-stream propagates without hanging."""
+        """Async version: Test that error in generator mid-stream is delivered to consumer without killing the flow."""
 
         async def _test():
             def error_stream(x):
@@ -1117,7 +1104,7 @@ class TestStreamingErrors:
 
                 assert inspect.isasyncgen(result)
 
-                # Collect chunks until error - consumer gets StreamingError wrapping the message
+                # Consumer gets StreamingError wrapping the error message
                 chunks = []
                 with pytest.raises(StreamingError, match="Generator error mid-stream"):
                     async for chunk in result:
@@ -1127,9 +1114,7 @@ class TestStreamingErrors:
                 assert chunks == ["test_chunk_0"]
             finally:
                 await controller.terminate()
-                # Original exception propagates through termination
-                with pytest.raises(ValueError, match="Generator error mid-stream"):
-                    await controller.await_termination()
+                await controller.await_termination()
 
         asyncio.run(_test())
 
@@ -1536,17 +1521,16 @@ class TestParallelExecutionStreaming:
             controller.await_termination()
 
     @pytest.mark.parametrize(
-        "execution_mechanism,expected_termination_error",
+        "execution_mechanism",
         [
-            (ParallelExecutionMechanisms.naive, ValueError),
-            (ParallelExecutionMechanisms.thread_pool, ValueError),
-            # Process-based mechanisms wrap errors in RuntimeError
-            (ParallelExecutionMechanisms.process_pool, RuntimeError),
-            (ParallelExecutionMechanisms.dedicated_process, RuntimeError),
+            ParallelExecutionMechanisms.naive,
+            ParallelExecutionMechanisms.thread_pool,
+            ParallelExecutionMechanisms.process_pool,
+            ParallelExecutionMechanisms.dedicated_process,
         ],
     )
-    def test_parallel_execution_streaming_error_propagation(self, execution_mechanism, expected_termination_error):
-        """Test that errors in streaming are propagated correctly."""
+    def test_parallel_execution_streaming_error_propagation(self, execution_mechanism):
+        """Test that streaming errors are delivered to consumer without killing the flow."""
         runnable = ErrorStreamingRunnable(name="error_streamer")
         controller = build_flow(
             [
@@ -1563,7 +1547,7 @@ class TestParallelExecutionStreaming:
             awaitable = controller.emit("test")
             result = awaitable.await_result()
             assert inspect.isgenerator(result)
-            # Should get first chunk, then StreamingError wrapping the error message
+            # Consumer gets StreamingError wrapping the error message
             chunks = []
             with pytest.raises(StreamingError, match="Simulated streaming error"):
                 for chunk in result:
@@ -1572,9 +1556,7 @@ class TestParallelExecutionStreaming:
             assert chunks == ["test_chunk_0"]
         finally:
             controller.terminate()
-            # Original exception propagates through termination
-            with pytest.raises(expected_termination_error, match="Simulated streaming error"):
-                controller.await_termination()
+            controller.await_termination()
 
     def test_parallel_execution_streaming_single_runnable_sets_metadata(self):
         """Test that streaming ParallelExecution with single runnable sets timing metadata.

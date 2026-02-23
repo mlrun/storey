@@ -623,9 +623,6 @@ class _StreamingStepMixin:
         error_str = f"{type(generator_error).__name__}: {generator_error}" if generator_error else None
         await self._do_downstream(StreamCompletion(self.name, event, error=error_str))
 
-        if generator_error:
-            raise generator_error
-
 
 class _UnaryFunctionFlow(Flow):
     def __init__(
