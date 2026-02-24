@@ -6125,7 +6125,6 @@ class TestBatchWithParallelExecution:
     def test_batch_error_handling_multiple_runnables(self):
         asyncio.run(self.async_test_batch_error_handling_multiple_runnables())
 
-    @pytest.mark.asyncio
     async def async_test_batch_error_handling_multiple_runnables(self):
         """Test error handling in batched parallel execution with multiple runnables."""
         flush_after_seconds = 0.3

@@ -600,15 +600,28 @@ class _StreamingStepMixin:
         async_gen = gen_to_async_gen(generator) if inspect.isgenerator(generator) else generator
 
         chunk_id = 0
-        async for chunk_body in async_gen:
+        generator_error = None
+
+        # Use explicit iteration to separate generator errors from downstream errors.
+        # Only generator errors are caught; downstream errors propagate normally.
+        while True:
+            try:
+                chunk_body = await async_gen.__anext__()
+            except StopAsyncIteration:
+                break
+            except Exception as e:
+                generator_error = e
+                break
+
             chunk_event = self._user_fn_output_to_event(event, chunk_body)
             chunk_event.streaming_step = self.name
             chunk_event.chunk_id = chunk_id
             await self._do_downstream(chunk_event)
             chunk_id += 1
 
-        # Send completion signal
-        await self._do_downstream(StreamCompletion(self.name, event))
+        # Always send completion (even on error) so Collector can emit + clean up
+        error_str = f"{type(generator_error).__name__}: {generator_error}" if generator_error else None
+        await self._do_downstream(StreamCompletion(self.name, event, error=error_str))
 
 
 class _UnaryFunctionFlow(Flow):
