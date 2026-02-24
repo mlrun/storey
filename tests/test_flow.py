@@ -5873,6 +5873,7 @@ def test_maximum_recursion(monkeypatch):
     with pytest.raises(RuntimeError, match=r"exceeded the default cycle"):
         controller.await_termination()
 
+
 def test_maximum_recursion_two_cycles(monkeypatch):
     monkeypatch.setenv("DEFAULT_MAX_ITERATIONS_FOR_CYCLES", "5")
     source = SyncEmitSource()
