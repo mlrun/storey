@@ -5816,6 +5816,101 @@ def test_map_with_state_reuse_resets_closeables():
         )
 
 
+class Tracer(MapClass):
+    def do(self, x):
+        loop_count = x.get("loop", 0) + 1
+        trace = x.get("trace", []) + [self.name]
+        result = {"data": x.get("data"), "trace": trace, "loop": loop_count}
+        loop_count = loop_count / 6
+        if loop_count % 10 == 0:
+            print(f"Loop {loop_count}: Last 10 steps: {trace[-10:]}")
+        return result
+
+    def select_outlets(self, event):
+        loop_count = event.get("loop", 0)
+
+        if loop_count >= 100000:
+            return ["end"]
+        if self.name == "step_6":
+            return ["step_1"]
+        if self.name == "step_7":
+            return ["step_1", "step_2"]
+        return None
+
+
+def test_maximum_recursion(monkeypatch):
+    monkeypatch.setenv("DEFAULT_MAX_ITERATIONS_FOR_CYCLES", "5")
+    source = SyncEmitSource()
+
+    # Create 6 steps WITHOUT max_iterations
+    step1 = Tracer(name="step_1", full_event=False)
+    step2 = Tracer(name="step_2", full_event=False)
+    step3 = Tracer(name="step_3", full_event=False)
+    step4 = Tracer(name="step_4", full_event=False)
+    step5 = Tracer(name="step_5", full_event=False)
+    step6 = Tracer(name="step_6", full_event=False)
+
+    # NO Complete() - just create a pure cycle
+    source.to(step1)
+    step1.to(step2)
+    step2.to(step3)
+    step3.to(step4)
+    step4.to(step5)
+    step5.to(step6)
+
+    # Create the cycle: step6 -> step1
+    step6.to(step1)
+    step6.to(Complete(name="end"))
+
+    controller = source.run()
+    awaitable_result = controller.emit({"data": "test"})
+
+    try:
+        with pytest.raises(RuntimeError, match=r"exceeded the default cycle"):
+            awaitable_result.await_result()
+    finally:
+        controller.terminate()
+    with pytest.raises(RuntimeError, match=r"exceeded the default cycle"):
+        controller.await_termination()
+
+
+def test_maximum_recursion_two_cycles(monkeypatch):
+    monkeypatch.setenv("DEFAULT_MAX_ITERATIONS_FOR_CYCLES", "5")
+    source = SyncEmitSource()
+
+    # Create 6 steps WITHOUT max_iterations
+    step1 = Tracer(name="step_1", full_event=False)
+    step2 = Tracer(name="step_2", full_event=False)
+    step3 = Tracer(name="step_3", full_event=False)
+    step4 = Tracer(name="step_4", full_event=False)
+    step5 = Tracer(name="step_5", full_event=False)
+    step7 = Tracer(name="step_7", full_event=False)
+
+    # NO Complete() - just create a pure cycle
+    source.to(step1)
+    step1.to(step2)
+    step2.to(step3)
+    step3.to(step4)
+    step4.to(step5)
+    step5.to(step7)
+
+    # Create the cycle: step6 -> step1
+    step7.to(step1)
+    step7.to(step2)
+    step7.to(Complete(name="end"))
+
+    controller = source.run()
+    awaitable_result = controller.emit({"data": "test"})
+
+    try:
+        with pytest.raises(RuntimeError, match=r"exceeded the default cycle"):
+            awaitable_result.await_result()
+    finally:
+        controller.terminate()
+    with pytest.raises(RuntimeError, match=r"exceeded the default cycle"):
+        controller.await_termination()
+
+
 def test_map_with_state_no_closeables_without_close_method():
     """Test that MapWithState doesn't add state to _closeables if it has no close method.
 
