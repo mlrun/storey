@@ -5871,7 +5871,6 @@ def test_maximum_recursion():
         controller.await_termination()
 
 
-
 def test_map_with_state_no_closeables_without_close_method():
     """Test that MapWithState doesn't add state to _closeables if it has no close method.
 
