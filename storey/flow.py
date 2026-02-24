@@ -423,9 +423,8 @@ class Flow:
         # This ensures errors from background tasks are properly propagated
         for i, task in enumerate(tasks):
             if self.verbose and self.logger and (i > 0 or use_task_to_prevent_recursion):
-                outlet_index = i if not use_task_to_prevent_recursion else i
-                if outlet_index < len(outlets):
-                    self.logger.debug(f"{step_name} -> {outlets[outlet_index].name} | {event_string}")
+                if i < len(outlets):
+                    self.logger.debug(f"{step_name} -> {outlets[i].name} | {event_string}")
             await task  # This will raise any exception that occurred in the task
 
     def _get_event_or_body(self, event):
