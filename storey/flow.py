@@ -56,10 +56,6 @@ from .queue import AsyncQueue
 from .table import Table
 from .utils import _split_path, get_in, stringify_key, update_in
 
-# Default maximum iterations for cyclic graphs to prevent accidental infinite loops.
-# This provides a safety net when max_iterations is not explicitly set.
-# Users can override by setting max_iterations explicitly (or set to a large number).
-DEFAULT_MAX_ITERATIONS_FOR_CYCLES = 10_000
 
 
 def _is_generator(obj) -> bool:
@@ -118,6 +114,11 @@ class Flow:
         self._closeables = []
         self._selected_outlets: Optional[list[str]] = None
         self._create_name_to_outlet = True
+
+        # Default maximum iterations for cyclic graphs to prevent accidental infinite loops.
+        # This provides a safety net when max_iterations is not explicitly set.
+        # Users can override by setting max_iterations explicitly (or set to a large number).
+        self._default_max_iterations_for_cycle = int(os.environ.get("DEFAULT_MAX_ITERATIONS_FOR_CYCLES") or 10_000)
 
     def _init(self):
         self._closeables = []
@@ -492,7 +493,7 @@ class Flow:
             # Users experiencing this can either:
             # 1. Fix their cycle to have an exit condition, OR
             # 2. Set max_iterations explicitly to a higher value (or very high for "unlimited")
-            effective_max_iterations = DEFAULT_MAX_ITERATIONS_FOR_CYCLES
+            effective_max_iterations = self._default_max_iterations_for_cycle
 
         if counter >= effective_max_iterations:
             if self._max_iterations is None:

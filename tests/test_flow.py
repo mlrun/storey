@@ -5833,10 +5833,13 @@ class Tracer(MapClass):
             return ["end"]
         if self.name == "step_6":
             return ["step_1"]
+        if self.name == "step_7":
+            return ["step_1", "step_2"]
         return None
 
 
-def test_maximum_recursion():
+def test_maximum_recursion(monkeypatch):
+    monkeypatch.setenv("DEFAULT_MAX_ITERATIONS_FOR_CYCLES", "5")
     source = SyncEmitSource()
 
     # Create 6 steps WITHOUT max_iterations
@@ -5858,6 +5861,42 @@ def test_maximum_recursion():
     # Create the cycle: step6 -> step1
     step6.to(step1)
     step6.to(Complete(name="end"))
+
+    controller = source.run()
+    awaitable_result = controller.emit({"data": "test"})
+
+    try:
+        with pytest.raises(RuntimeError, match=r"exceeded the default cycle"):
+            awaitable_result.await_result()
+    finally:
+        controller.terminate()
+    with pytest.raises(RuntimeError, match=r"exceeded the default cycle"):
+        controller.await_termination()
+
+def test_maximum_recursion_two_cycles(monkeypatch):
+    monkeypatch.setenv("DEFAULT_MAX_ITERATIONS_FOR_CYCLES", "5")
+    source = SyncEmitSource()
+
+    # Create 6 steps WITHOUT max_iterations
+    step1 = Tracer(name="step_1", full_event=False)
+    step2 = Tracer(name="step_2", full_event=False)
+    step3 = Tracer(name="step_3", full_event=False)
+    step4 = Tracer(name="step_4", full_event=False)
+    step5 = Tracer(name="step_5", full_event=False)
+    step7 = Tracer(name="step_7", full_event=False)
+
+    # NO Complete() - just create a pure cycle
+    source.to(step1)
+    step1.to(step2)
+    step2.to(step3)
+    step3.to(step4)
+    step4.to(step5)
+    step5.to(step7)
+
+    # Create the cycle: step6 -> step1
+    step7.to(step1)
+    step7.to(step2)
+    step7.to(Complete(name="end"))
 
     controller = source.run()
     awaitable_result = controller.emit({"data": "test"})
