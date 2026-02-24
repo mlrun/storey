@@ -57,7 +57,6 @@ from .table import Table
 from .utils import _split_path, get_in, stringify_key, update_in
 
 
-
 def _is_generator(obj) -> bool:
     """Check if an object is a sync or async generator."""
     return inspect.isgenerator(obj) or inspect.isasyncgen(obj)
