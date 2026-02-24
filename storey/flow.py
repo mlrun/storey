@@ -507,7 +507,8 @@ class Flow:
                 raise RuntimeError(
                     f"Step '{self.name}' exceeded the default cycle limit of {effective_max_iterations} iterations "
                     f"for event {event.id}. This typically indicates an infinite cycle without an exit condition. "
-                    f"To fix: 1) Add an exit condition to your cycle, OR 2) Set max_iterations explicitly if this is intentional."
+                    f"To fix: 1) Add an exit condition to your cycle, OR 2) Set max_iterations explicitly if "
+                    f"this is intentional."
                 )
             else:
                 # User explicitly set max_iterations
