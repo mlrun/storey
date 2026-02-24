@@ -5837,7 +5837,6 @@ class Tracer(MapClass):
 
 
 def test_maximum_recursion():
-    print("Creating cyclic graph without max_iterations...")
     source = SyncEmitSource()
 
     # Create 6 steps WITHOUT max_iterations
@@ -5864,16 +5863,13 @@ def test_maximum_recursion():
     awaitable_result = controller.emit({"data": "test"})
 
     try:
-        awaitable_result.await_result()
-    except RecursionError as e:
-        raise e
-    except RuntimeError as e:
-        if "exceeded the default cycle" in str(e):
-            pass  # Expected error due to cycle without max_iterations
-        else:
-            raise e
+        with pytest.raises(RuntimeError, match=r"exceeded the default cycle"):
+            awaitable_result.await_result()
     finally:
         controller.terminate()
+    with pytest.raises(RuntimeError, match=r"exceeded the default cycle"):
+        controller.await_termination()
+
 
 
 def test_map_with_state_no_closeables_without_close_method():

@@ -408,24 +408,18 @@ class Flow:
 
         # Prevent deep recursion in cyclic graphs
         iteration_count = getattr(event, "_cyclic_counter", {}).get(self.name, 0)
-        has_multiple_outlets = len(outlets) > 1
-        use_task_to_prevent_recursion = iteration_count > 2 and not has_multiple_outlets
+        use_task_to_prevent_recursion = iteration_count > 2
 
+        coro = outlets[0]._do_and_recover(event)
         if use_task_to_prevent_recursion:
             # Create a task to avoid building a deep await chain
-            task = asyncio.get_running_loop().create_task(outlets[0]._do_and_recover(event))
-            tasks.insert(0, task)  # Add to front so we await it first
-        else:
-            # Direct await - ensures errors propagate before any parallel outlets can return
-            await outlets[0]._do_and_recover(event)
+            coro = asyncio.get_running_loop().create_task(coro)
+        await coro
 
-        # Await all tasks and collect any exceptions
-        # This ensures errors from background tasks are properly propagated
-        for i, task in enumerate(tasks):
-            if self.verbose and self.logger and (i > 0 or use_task_to_prevent_recursion):
-                if i < len(outlets):
-                    self.logger.debug(f"{step_name} -> {outlets[i].name} | {event_string}")
-            await task  # This will raise any exception that occurred in the task
+        for i, task in enumerate(tasks, start=1):
+            if self.verbose and self.logger:
+                self.logger.debug(f"{step_name} -> {outlets[i].name} | {event_string}")
+            await task
 
     def _get_event_or_body(self, event):
         if self._full_event:
