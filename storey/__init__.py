@@ -68,6 +68,9 @@ from .sources import SQLSource  # noqa: F401
 from .sources import SyncEmitSource  # noqa: F401
 from .sql_driver import SQLDriver  # noqa: F401
 from .steps import Collector  # noqa: F401
+from .steps import Flatten  # noqa: F401
+from .steps import ForEach  # noqa: F401
+from .steps import SampleWindow  # noqa: F401
 from .table import Table  # noqa: F401
 from .targets import CSVTarget  # noqa: F401
 from .targets import KafkaTarget  # noqa: F401
