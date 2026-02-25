@@ -790,9 +790,10 @@ class AsyncEmitSource(Flow):
                     await self._q.get()
                 self._raise_on_error()
             finally:
-                # Commit on termination regardless of errors (ML-11919)
-                await _commit_handled_events(self._outstanding_offsets, committer, self.logger, commit_all=True)
                 if event is _termination_obj or self._ex:
+                    # Commit on termination regardless of errors (ML-11919).
+                    # Must only run on termination/error, NOT every event (ML-12076).
+                    await _commit_handled_events(self._outstanding_offsets, committer, self.logger, commit_all=True)
                     for closeable in self._closeables:
                         try:
                             maybe_coroutine = closeable.close()
