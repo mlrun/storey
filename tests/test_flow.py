@@ -487,12 +487,9 @@ async def async_offset_not_committed_prematurely_with_batch():
     # Events are still in the Batch buffer (not flushed).
     # Offsets must NOT be committed — they are not fully processed.
     offsets_before = copy.copy(platform.offsets)
-    try:
-        assert (
-            offsets_before == {}
-        ), f"ML-12076: Offsets committed prematurely while events in batch buffer: {offsets_before}"
-    finally:
-        termination_result = await controller.terminate(wait=True)
+    assert offsets_before == {}, f"Offsets committed prematurely while events in batch buffer: {offsets_before}"
+
+    termination_result = await controller.terminate(wait=True)
 
     # After termination, Batch._emit_all flushes remaining events,
     # then commit_all=True fires correctly.
@@ -501,7 +498,6 @@ async def async_offset_not_committed_prematurely_with_batch():
     assert offsets_after == {("/", 0): 5}
 
 
-# ML-12076
 def test_async_offset_not_committed_prematurely_with_batch():
     asyncio.run(async_offset_not_committed_prematurely_with_batch())
 
