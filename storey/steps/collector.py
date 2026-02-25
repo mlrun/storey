@@ -87,9 +87,13 @@ class Collector(Flow):
                 # Stream is complete - emit collected result
                 # Use first_event if we have chunks, otherwise use original_event from completion (empty stream)
                 base_event = stream_data["first_event"] or event.original_event
-                collected_body = [chunk.body for chunk in stream_data["chunks"]]
-                if len(collected_body) == 1:
-                    collected_body = collected_body[0]
+
+                if event.error:
+                    collected_body = {"error": event.error}
+                else:
+                    collected_body = [chunk.body for chunk in stream_data["chunks"]]
+                    if len(collected_body) == 1:
+                        collected_body = collected_body[0]
 
                 # Copy the original event to preserve all attributes (important for offset management)
                 collected_event = copy.copy(base_event)

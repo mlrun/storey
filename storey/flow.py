@@ -114,6 +114,11 @@ class Flow:
         self._selected_outlets: Optional[list[str]] = None
         self._create_name_to_outlet = True
 
+        # Default maximum iterations for cyclic graphs to prevent accidental infinite loops.
+        # This provides a safety net when max_iterations is not explicitly set.
+        # Users can override by setting max_iterations explicitly (or set to a large number).
+        self._default_max_iterations_for_cycle = int(os.environ.get("DEFAULT_MAX_ITERATIONS_FOR_CYCLES") or 10_000)
+
     def _init(self):
         self._closeables = []
         self._termination_received = 0
@@ -400,7 +405,17 @@ class Flow:
             step_name = self.name
             event_string = self._event_string(event)
             self.logger.debug(f"{step_name} -> {outlets[0].name} | {event_string}")
-        await outlets[0]._do_and_recover(event)  # Optimization - avoids creating a task for the first outlet.
+
+        # Prevent deep recursion in cyclic graphs
+        iteration_count = getattr(event, "_cyclic_counter", {}).get(self.name, 0)
+        use_task_to_prevent_recursion = iteration_count > 2
+
+        coro = outlets[0]._do_and_recover(event)
+        if use_task_to_prevent_recursion:
+            # Create a task to avoid building a deep await chain
+            coro = asyncio.get_running_loop().create_task(coro)
+        await coro
+
         for i, task in enumerate(tasks, start=1):
             if self.verbose and self.logger:
                 self.logger.debug(f"{step_name} -> {outlets[i].name} | {event_string}")
@@ -463,13 +478,37 @@ class Flow:
         # Skip iteration counting in case of StreamCompletion
         if isinstance(event, StreamCompletion):
             return
-        if hasattr(event, "_cyclic_counter") and self._max_iterations is not None:
-            counter = self.get_iteration_counter(event)
-            if counter >= self._max_iterations:
+        # Initialize counter dictionary if it doesn't exist (don't reset it!)
+        if not hasattr(event, "_cyclic_counter"):
+            event._cyclic_counter = {}
+
+        # Get current counter for this step
+        counter = self.get_iteration_counter(event)
+
+        # Check limit - use explicit max_iterations if set, otherwise apply safety limit
+        effective_max_iterations = self._max_iterations
+        if effective_max_iterations is None:
+            # Auto-protection: apply a high safety limit to prevent accidental infinite loops
+            # Users experiencing this can either:
+            # 1. Fix their cycle to have an exit condition, OR
+            # 2. Set max_iterations explicitly to a higher value (or very high for "unlimited")
+            effective_max_iterations = self._default_max_iterations_for_cycle
+
+        if counter >= effective_max_iterations:
+            if self._max_iterations is None:
+                # Provide helpful message for auto-protected cycles
+                raise RuntimeError(
+                    f"Step '{self.name}' exceeded the default cycle limit of {effective_max_iterations} iterations "
+                    f"for event {event.id}. This typically indicates an infinite cycle without an exit condition. "
+                    f"To fix: 1) Add an exit condition to your cycle, OR 2) Set max_iterations explicitly if "
+                    f"this is intentional."
+                )
+            else:
+                # User explicitly set max_iterations
                 raise RuntimeError(f"Max iterations exceeded in step '{self.name}' for event {event.id}")
-            event._cyclic_counter[self.name] = counter + 1
-        else:
-            event._cyclic_counter = {self.name: 1}
+
+        # Always increment counter (enables tracking and monitoring even without max_iterations)
+        event._cyclic_counter[self.name] = counter + 1
 
     def get_iteration_counter(self, event):
         return getattr(event, "_cyclic_counter", {}).get(self.name, 0)
@@ -600,15 +639,28 @@ class _StreamingStepMixin:
         async_gen = gen_to_async_gen(generator) if inspect.isgenerator(generator) else generator
 
         chunk_id = 0
-        async for chunk_body in async_gen:
+        generator_error = None
+
+        # Use explicit iteration to separate generator errors from downstream errors.
+        # Only generator errors are caught; downstream errors propagate normally.
+        while True:
+            try:
+                chunk_body = await async_gen.__anext__()
+            except StopAsyncIteration:
+                break
+            except Exception as e:
+                generator_error = e
+                break
+
             chunk_event = self._user_fn_output_to_event(event, chunk_body)
             chunk_event.streaming_step = self.name
             chunk_event.chunk_id = chunk_id
             await self._do_downstream(chunk_event)
             chunk_id += 1
 
-        # Send completion signal
-        await self._do_downstream(StreamCompletion(self.name, event))
+        # Always send completion (even on error) so Collector can emit + clean up
+        error_str = f"{type(generator_error).__name__}: {generator_error}" if generator_error else None
+        await self._do_downstream(StreamCompletion(self.name, event, error=error_str))
 
 
 class _UnaryFunctionFlow(Flow):

@@ -137,15 +137,24 @@ class StreamCompletion:
 
     :param streaming_step: Name of the step that originated the stream.
     :param original_event: Reference to the original event that was streamed.
+    :param error: Optional error string (e.g. "ValueError: message") indicating
+        the stream terminated due to an error.
     """
 
-    def __init__(self, streaming_step: str, original_event: Event):
+    def __init__(
+        self,
+        streaming_step: str,
+        original_event: Event,
+        error: Optional[str] = None,
+    ):
         self.streaming_step = streaming_step
         self.original_event = original_event
+        self.error = error
 
     def __repr__(self):
         event_id = self.original_event.id if self.original_event else None
-        return f"StreamCompletion(streaming_step={self.streaming_step!r}, event_id={event_id!r})"
+        error_info = f", error={self.error!r}" if self.error else ""
+        return f"StreamCompletion(streaming_step={self.streaming_step!r}, event_id={event_id!r}{error_info})"
 
 
 class WindowBase:
