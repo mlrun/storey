@@ -841,3 +841,72 @@ def test_timescaledb_retry_retry_configuration_defaults(timescaledb):
     assert default_target._max_retries == TimescaleDBTarget.DEFAULT_MAX_RETRIES
     assert default_target._retry_delay == TimescaleDBTarget.DEFAULT_RETRY_DELAY
     assert default_target.MAX_DEADLOCK_RETRIES == 3
+
+
+def test_timescaledb_dedup_with_unique_constraint(table_cleanup):
+    """ML-11979: Duplicate events from Kafka rebalance must be silently dropped
+    when the table has a UNIQUE constraint.
+
+    TimescaleDBTarget uses INSERT ... ON CONFLICT DO NOTHING, so re-delivered
+    events with the same (endpoint_id, end_infer_time) are deduplicated at write time.
+    """
+    table_name = f"test_dedup_{uuid4().hex[:8]}"
+    table_cleanup.add_table(table_name)
+
+    with psycopg.connect(dsn, autocommit=True) as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("CREATE EXTENSION IF NOT EXISTS timescaledb;")
+            cursor.execute(f"DROP TABLE IF EXISTS {table_name};")
+            cursor.execute(
+                f"""
+                CREATE TABLE {table_name} (
+                    end_infer_time TIMESTAMPTZ NOT NULL,
+                    endpoint_id VARCHAR(64),
+                    latency DOUBLE PRECISION,
+                    UNIQUE (endpoint_id, end_infer_time)
+                );
+                """
+            )
+            cursor.execute(
+                f"SELECT create_hypertable('{table_name}', 'end_infer_time', "
+                f"chunk_time_interval => INTERVAL '1 day', if_not_exists => TRUE);"
+            )
+
+    columns = ["endpoint_id", "latency"]
+    controller = build_flow(
+        [
+            SyncEmitSource(),
+            TimescaleDBTarget(
+                dsn=dsn,
+                table=table_name,
+                time_col="end_infer_time",
+                columns=columns,
+                max_events=10,
+            ),
+        ]
+    ).run()
+
+    # Emit 3 unique events
+    events = [
+        {"end_infer_time": "2024-01-01 00:00:01+00", "endpoint_id": "ep1", "latency": 0.1},
+        {"end_infer_time": "2024-01-01 00:00:02+00", "endpoint_id": "ep1", "latency": 0.2},
+        {"end_infer_time": "2024-01-01 00:00:03+00", "endpoint_id": "ep2", "latency": 0.3},
+    ]
+    for event in events:
+        controller.emit(event)
+
+    # Re-emit the same 3 events (simulating Kafka rebalance re-delivery)
+    for event in events:
+        controller.emit(event)
+
+    controller.terminate()
+    controller.await_termination()
+
+    # Only 3 unique rows should exist, not 6
+    with psycopg.connect(dsn, autocommit=True) as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
+            count = cursor.fetchone()[0]
+            assert count == 3, (
+                f"ML-11979: Expected 3 unique rows but got {count}. " f"Duplicates were not deduplicated at write time."
+            )
