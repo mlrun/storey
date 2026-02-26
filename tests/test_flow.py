@@ -461,7 +461,7 @@ def test_offset_not_committed_prematurely():
 
 
 async def async_offset_not_committed_prematurely_with_batch():
-    """ML-12076: AsyncEmitSource must not commit offsets for events still in batch buffers."""
+    """ML-11979: AsyncEmitSource must not commit offsets for events still in batch buffers."""
     platform = Committer()
     context = CommitterContext(platform)
 

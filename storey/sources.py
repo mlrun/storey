@@ -791,7 +791,7 @@ class AsyncEmitSource(Flow):
                 self._raise_on_error()
             finally:
                 if event is _termination_obj or self._ex:
-                    # Commit on termination/error only, not every event (ML-12076).
+                    # Commit on termination/error only, not every event (ML-11979).
                     await _commit_handled_events(self._outstanding_offsets, committer, self.logger, commit_all=True)
                     for closeable in self._closeables:
                         try:
