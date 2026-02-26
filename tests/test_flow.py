@@ -460,6 +460,48 @@ def test_offset_not_committed_prematurely():
     assert offsets == {("/", i): num_records_per_shard for i in range(num_shards)}
 
 
+async def async_offset_not_committed_prematurely_with_batch():
+    """ML-11979: AsyncEmitSource must not commit offsets for events still in batch buffers."""
+    platform = Committer()
+    context = CommitterContext(platform)
+
+    controller = build_flow(
+        [
+            AsyncEmitSource(context=context, explicit_ack=True, max_wait_before_commit=1),
+            Batch(max_events=100, flush_after_seconds=120),
+            Reduce(0, lambda acc, x: acc + len(x)),
+        ]
+    ).run()
+
+    # Emit 5 events to shard 0 — all stay in Batch buffer (batch needs 100 to flush)
+    for offset in range(1, 6):
+        event = Event(offset)
+        event.shard_id = 0
+        event.offset = offset
+        await controller.emit(event)
+    del event
+
+    # Wait for the commit loop to run (max_wait_before_commit=1s)
+    await asyncio.sleep(3)
+
+    # Events are still in the Batch buffer (not flushed).
+    # Offsets must NOT be committed — they are not fully processed.
+    offsets_before = copy.copy(platform.offsets)
+    assert offsets_before == {}, f"Offsets committed prematurely while events in batch buffer: {offsets_before}"
+
+    termination_result = await controller.terminate(wait=True)
+
+    # After termination, Batch._emit_all flushes remaining events,
+    # then commit_all=True fires correctly.
+    assert termination_result == 5
+    offsets_after = copy.copy(platform.offsets)
+    assert offsets_after == {("/", 0): 5}
+
+
+def test_async_offset_not_committed_prematurely_with_batch():
+    asyncio.run(async_offset_not_committed_prematurely_with_batch())
+
+
 async def async_offset_commit_error():
     platform = BadCommitter()
     logger = MockLogger()
