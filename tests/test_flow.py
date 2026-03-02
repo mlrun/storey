@@ -2112,13 +2112,15 @@ def test_batch_full_event():
     termination_result = controller.await_termination()
     assert termination_result == [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9]]
 
-
-def test_batch_by_user_key():
-
+@pytest.mark.parametrize("full_event", [True, False, None])
+def test_batch_by_user_key(full_event):
+    full_event_dict = {}
+    if full_event is not None:
+        full_event_dict = {"full_event": full_event}
     controller = build_flow(
         [
             SyncEmitSource(),
-            Batch(2, 100, "value"),
+            Batch(2, 100, "value", **full_event_dict),
             Reduce([], lambda acc, x: append_and_return(acc, x)),
         ]
     ).run()
@@ -2150,14 +2152,18 @@ def test_batch_by_user_key():
     assert len(termination_result) == 8
 
     for element in termination_result:
-        assert len(element) == 2
-        previous_number = None
-        for sub_event in element:
-            assert isinstance(sub_event, Event)
-            if previous_number is None:
-                previous_number = sub_event.body["value"]
-            else:
-                assert sub_event.body["value"] == previous_number
+        if full_event in (True, None):
+            assert len(element) == 2
+            previous_number = None
+            for sub_event in element:
+                assert isinstance(sub_event, Event)
+                if previous_number is None:
+                    previous_number = sub_event.body["value"]
+                else:
+                    assert sub_event.body["value"] == previous_number
+        else:
+            numbers = [e["value"] for e in element]
+            assert numbers[0] == numbers[1]
 
 
 def test_batch_by_event_key():
