@@ -2791,6 +2791,7 @@ def test_reduce_to_dataframe_indexed_by_key():
     termination_result = controller.await_termination()
     assert termination_result.equals(expected), f"{termination_result}\n!=\n{expected}"
 
+
 @pytest.mark.parametrize(
     "full_event",
     (False, True),
@@ -2805,15 +2806,16 @@ def test_to_dataframe_with_index(full_event):
         return event
 
     index = "my_int"
-    controller = build_flow(
-        [
-            SyncEmitSource(),
-            Batch(5),
-            Map(fn=extract_batch_bodies, full_event=True),
-            ToDataFrame(index=index),
-            Reduce([], append_and_return, full_event=True),
-        ]
-    ).run()
+    map_step = [Map(fn=extract_batch_bodies, full_event=True)] if full_event else []
+
+    steps = [
+        SyncEmitSource(),
+        Batch(5, full_event=full_event),
+        *map_step,
+        ToDataFrame(index=index),
+        Reduce([], append_and_return, full_event=True),
+    ]
+    controller = build_flow(steps).run()
 
     expected1 = []
     for i in range(5):
