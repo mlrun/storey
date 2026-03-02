@@ -2301,7 +2301,7 @@ def test_batch_by_function_key_extractor(full_event, reduce_fn):
     ]  # Group all numbers that return true on Event.body % 3 == 0
 
 
-def test_batch_grouping_with_timeout():
+def test_batch_full_event_grouping_with_timeout():
     q = queue.Queue(1)
 
     def reduce_fn(acc, event):
@@ -2338,6 +2338,42 @@ def test_batch_grouping_with_timeout():
     ]  # Emitted second due to max_events configuration
     assert termination_result[2] == [3, 3, 3]
 
+def test_batch_grouping_with_timeout():
+    q = queue.Queue(1)
+
+    def reduce_fn(acc, event):
+        if event == [1]:
+            q.put(None)
+        acc.append(event)
+        return acc
+
+    controller = build_flow(
+        [
+            SyncEmitSource(),
+            Batch(max_events=3, flush_after_seconds=1, key_field="$key", full_event = False),
+            Reduce([], lambda acc, x: reduce_fn(acc, x)),
+        ]
+    ).run()
+
+    controller.emit(1, key=1)
+    q.get()
+    controller.emit(2, key=2)
+    controller.emit(2, key=2)
+    controller.emit(2, key=2)
+    controller.emit(3, key=2)
+    controller.emit(3, key=2)
+    controller.emit(3, key=2)
+
+    controller.terminate()
+    termination_result = controller.await_termination()
+
+    assert termination_result[0] == [1]  # Emitted first due to timeout
+    assert termination_result[1] == [
+        2,
+        2,
+        2,
+    ]  # Emitted second due to max_events configuration
+    assert termination_result[2] == [3, 3, 3]
 
 def test_batch_with_timeout():
     q = queue.Queue(1)
