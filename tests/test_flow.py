@@ -2068,6 +2068,28 @@ def test_metadata_immutability():
     assert result.body == "new body"
 
 
+def test_batch():
+    controller = build_flow(
+        [
+            SyncEmitSource(),
+            Batch(4, 100, full_event=False),
+            Reduce([], lambda acc, x: append_and_return(acc, x), full_event=True),
+        ]
+    ).run()
+
+    for i in range(10):
+        controller.emit(i)
+    controller.terminate()
+    termination_result = controller.await_termination()
+    assert len(termination_result) == 3
+    assert termination_result[0].id
+    assert termination_result[0].body == [0, 1, 2, 3]
+    assert termination_result[1].id
+    assert termination_result[1].body == [4, 5, 6, 7]
+    assert termination_result[2].id
+    assert termination_result[2].body == [8, 9]
+
+
 def test_batch_full_event():
     def append_body_and_return(lst, x):
         ll = []
@@ -2310,19 +2332,6 @@ def test_batch_with_timeout():
     controller.terminate()
     termination_result = controller.await_termination()
     assert termination_result == [[0, 1, 2], [3, 4, 5, 6], [7, 8, 9]]
-
-
-def test_batch_full_event_false_raises_error():
-    with pytest.raises(
-        ValueError, match="Batch step supports full_event=True. Setting full_event=False is not supported."
-    ):
-        build_flow(
-            [
-                SyncEmitSource(),
-                Batch(4, 100, full_event=False),
-                Reduce([], lambda acc, x: acc),
-            ]
-        ).run()
 
 
 async def async_test_write_csv(tmpdir):
