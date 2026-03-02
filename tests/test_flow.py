@@ -2205,13 +2205,22 @@ def test_batch_by_event_key(full_event, reduce_fn):
     assert termination_result[2] == [6, 7]
 
 
-def test_batch_by_field_value_key_extractor():
+@pytest.mark.parametrize(
+    "full_event, reduce_fn",
+    [
+        (False, append_and_return),
+        (True, batch_append_and_return),
+        (None, batch_append_and_return),
+    ],
+)
+def test_batch_by_field_value_key_extractor(full_event, reduce_fn):
+    batch_kwargs = {"full_event": full_event} if full_event is not None else {}
 
     controller = build_flow(
         [
             SyncEmitSource(),
-            Batch(3, 100, "field"),
-            Reduce([], lambda acc, x: batch_append_and_return(acc, x)),
+            Batch(3, 100, "field", **batch_kwargs),
+            Reduce([], lambda acc, x: reduce_fn(acc, x)),
         ]
     ).run()
 
@@ -2252,13 +2261,22 @@ def test_batch_by_field_value_key_extractor():
     ]
 
 
-def test_batch_by_function_key_extractor():
+@pytest.mark.parametrize(
+    "full_event, reduce_fn",
+    [
+        (False, append_and_return),
+        (True, batch_append_and_return),
+        (None, batch_append_and_return),
+    ],
+)
+def test_batch_by_function_key_extractor(full_event, reduce_fn):
+    batch_kwargs = {"full_event": full_event} if full_event is not None else {}
 
     controller = build_flow(
         [
             SyncEmitSource(),
-            Batch(10, 100, lambda event: event.body % 3 == 0),
-            Reduce([], lambda acc, x: batch_append_and_return(acc, x)),
+            Batch(10, 100, lambda event: event.body % 3 == 0, **batch_kwargs),
+            Reduce([], lambda acc, x: reduce_fn(acc, x)),
         ]
     ).run()
 
