@@ -2301,44 +2301,11 @@ def test_batch_by_function_key_extractor(full_event, reduce_fn):
     ]  # Group all numbers that return true on Event.body % 3 == 0
 
 
-def test_batch_full_event_grouping_with_timeout():
-    q = queue.Queue(1)
-
-    def reduce_fn(acc, event):
-        if len(event) == 1 and event[0].body == 1:
-            q.put(None)
-        acc.append([sub_Event.body for sub_Event in event])
-        return acc
-
-    controller = build_flow(
-        [
-            SyncEmitSource(),
-            Batch(max_events=3, flush_after_seconds=1, key_field="$key"),
-            Reduce([], lambda acc, x: reduce_fn(acc, x)),
-        ]
-    ).run()
-
-    controller.emit(1, key=1)
-    q.get()
-    controller.emit(2, key=2)
-    controller.emit(2, key=2)
-    controller.emit(2, key=2)
-    controller.emit(3, key=2)
-    controller.emit(3, key=2)
-    controller.emit(3, key=2)
-
-    controller.terminate()
-    termination_result = controller.await_termination()
-
-    assert termination_result[0] == [1]  # Emitted first due to timeout
-    assert termination_result[1] == [
-        2,
-        2,
-        2,
-    ]  # Emitted second due to max_events configuration
-    assert termination_result[2] == [3, 3, 3]
-
-def test_batch_grouping_with_timeout():
+@pytest.mark.parametrize(
+    "full_event",
+    (False, True),
+)
+def test_batch_grouping_with_timeout(full_event):
     q = queue.Queue(1)
 
     def reduce_fn(acc, event):
@@ -2347,11 +2314,19 @@ def test_batch_grouping_with_timeout():
         acc.append(event)
         return acc
 
+    def reduce_fn_batch(acc, event):
+        if len(event) == 1 and event[0].body == 1:
+            q.put(None)
+        acc.append([sub_Event.body for sub_Event in event])
+        return acc
+
+    reduce_function = reduce_fn_batch if full_event else reduce_fn
+
     controller = build_flow(
         [
             SyncEmitSource(),
-            Batch(max_events=3, flush_after_seconds=1, key_field="$key", full_event = False),
-            Reduce([], lambda acc, x: reduce_fn(acc, x)),
+            Batch(max_events=3, flush_after_seconds=1, key_field="$key", full_event=full_event),
+            Reduce([], lambda acc, x: reduce_function(acc, x)),
         ]
     ).run()
 
@@ -2375,21 +2350,34 @@ def test_batch_grouping_with_timeout():
     ]  # Emitted second due to max_events configuration
     assert termination_result[2] == [3, 3, 3]
 
-def test_batch_with_timeout():
+
+@pytest.mark.parametrize(
+    "full_event",
+    (False, True),
+)
+def test_batch_with_timeout(full_event):
     q = queue.Queue(1)
 
     def reduce_fn(acc, x):
+        if x[0] == 0:
+            q.put(None)
+        acc.append(x)
+        return acc
+
+    def reduce_fn_batch(acc, x):
         if x[0].body == 0:
             q.put(None)
         events_body_list = [event.body for event in x]
         acc.append(events_body_list)
         return acc
 
+    reduce_function = reduce_fn_batch if full_event else reduce_fn
+
     controller = build_flow(
         [
             SyncEmitSource(),
-            Batch(4, 1),
-            Reduce([], reduce_fn),
+            Batch(4, 1, full_event=full_event),
+            Reduce([], reduce_function),
         ]
     ).run()
 
@@ -2803,8 +2791,11 @@ def test_reduce_to_dataframe_indexed_by_key():
     termination_result = controller.await_termination()
     assert termination_result.equals(expected), f"{termination_result}\n!=\n{expected}"
 
-
-def test_to_dataframe_with_index():
+@pytest.mark.parametrize(
+    "full_event",
+    (False, True),
+)
+def test_to_dataframe_with_index(full_event):
     # Note: This test validates to_dataframe() and batching in isolation
     # Event IDs are not preserved, so this specific pattern won't work on remote serving function
 
