@@ -23,6 +23,7 @@ import pickle
 import time
 import traceback
 import uuid
+import warnings
 from asyncio import Task
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
@@ -1544,6 +1545,14 @@ class Batch(_Batching, WithUUID):
     _do_downstream_per_event = False
 
     def __init__(self, *args, **kwargs):
+        # Set full_event to True by default if not specified
+        if "full_event" not in kwargs:
+            warnings.warn(
+                "The default value of full_event in Batch changed to True in mlrun 1.11.0."
+                " Please explicitly set full_event=False if you want to keep the old behavior"
+            )
+            kwargs["full_event"] = True
+
         _Batching.__init__(self, *args, **kwargs)
         WithUUID.__init__(self)
 

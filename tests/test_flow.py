@@ -805,6 +805,12 @@ def append_and_return(lst, x):
     return lst
 
 
+def batch_append_and_return(lst, x):
+    extract_event_bodies = [sub_event.body for sub_event in x]
+    lst.append(extract_event_bodies)
+    return lst
+
+
 def test_csv_reader_as_dict_with_key_and_timestamp():
     controller = build_flow(
         [
@@ -2108,7 +2114,7 @@ def test_batch():
     controller = build_flow(
         [
             SyncEmitSource(),
-            Batch(4, 100),
+            Batch(4, 100, full_event=False),
             Reduce([], lambda acc, x: append_and_return(acc, x), full_event=True),
         ]
     ).run()
@@ -2149,15 +2155,13 @@ def test_batch_full_event():
     assert termination_result == [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9]]
 
 
-def test_batch_by_user_key():
-    def append_and_return(lst, x):
-        lst.append(x)
-        return lst
-
+@pytest.mark.parametrize("full_event", [True, False, None])
+def test_batch_by_user_key(full_event):
+    batch_kwargs = {"full_event": full_event} if full_event is not None else {}
     controller = build_flow(
         [
             SyncEmitSource(),
-            Batch(2, 100, "value"),
+            Batch(2, 100, "value", **batch_kwargs),
             Reduce([], lambda acc, x: append_and_return(acc, x)),
         ]
     ).run()
@@ -2189,21 +2193,36 @@ def test_batch_by_user_key():
     assert len(termination_result) == 8
 
     for element in termination_result:
-        assert len(element) == 2
-        numbers = [e["value"] for e in element]
-        assert numbers[0] == numbers[1]
+        if full_event in (True, None):
+            assert len(element) == 2
+            previous_number = None
+            for sub_event in element:
+                assert isinstance(sub_event, Event)
+                if previous_number is None:
+                    previous_number = sub_event.body["value"]
+                else:
+                    assert sub_event.body["value"] == previous_number
+        else:
+            numbers = [e["value"] for e in element]
+            assert numbers[0] == numbers[1]
 
 
-def test_batch_by_event_key():
-    def append_and_return(lst, x):
-        lst.append(x)
-        return lst
+@pytest.mark.parametrize(
+    "full_event, reduce_fn",
+    [
+        (False, append_and_return),
+        (True, batch_append_and_return),
+        (None, batch_append_and_return),
+    ],
+)
+def test_batch_by_event_key(full_event, reduce_fn):
+    batch_kwargs = {"full_event": full_event} if full_event is not None else {}
 
     controller = build_flow(
         [
             SyncEmitSource(),
-            Batch(5, 100, "$key"),
-            Reduce([], lambda acc, x: append_and_return(acc, x)),
+            Batch(5, 100, "$key", **batch_kwargs),
+            Reduce([], lambda acc, x: reduce_fn(acc, x)),
         ]
     ).run()
 
@@ -2228,16 +2247,22 @@ def test_batch_by_event_key():
     assert termination_result[2] == [6, 7]
 
 
-def test_batch_by_field_value_key_extractor():
-    def append_and_return(lst, x):
-        lst.append(x)
-        return lst
+@pytest.mark.parametrize(
+    "full_event, reduce_fn",
+    [
+        (False, append_and_return),
+        (True, batch_append_and_return),
+        (None, batch_append_and_return),
+    ],
+)
+def test_batch_by_field_value_key_extractor(full_event, reduce_fn):
+    batch_kwargs = {"full_event": full_event} if full_event is not None else {}
 
     controller = build_flow(
         [
             SyncEmitSource(),
-            Batch(3, 100, "field"),
-            Reduce([], lambda acc, x: append_and_return(acc, x)),
+            Batch(3, 100, "field", **batch_kwargs),
+            Reduce([], lambda acc, x: reduce_fn(acc, x)),
         ]
     ).run()
 
@@ -2278,16 +2303,22 @@ def test_batch_by_field_value_key_extractor():
     ]
 
 
-def test_batch_by_function_key_extractor():
-    def append_and_return(lst, x):
-        lst.append(x)
-        return lst
+@pytest.mark.parametrize(
+    "full_event, reduce_fn",
+    [
+        (False, append_and_return),
+        (True, batch_append_and_return),
+        (None, batch_append_and_return),
+    ],
+)
+def test_batch_by_function_key_extractor(full_event, reduce_fn):
+    batch_kwargs = {"full_event": full_event} if full_event is not None else {}
 
     controller = build_flow(
         [
             SyncEmitSource(),
-            Batch(10, 100, lambda event: event.body % 3 == 0),
-            Reduce([], lambda acc, x: append_and_return(acc, x)),
+            Batch(10, 100, lambda event: event.body % 3 == 0, **batch_kwargs),
+            Reduce([], lambda acc, x: reduce_fn(acc, x)),
         ]
     ).run()
 
@@ -2312,7 +2343,11 @@ def test_batch_by_function_key_extractor():
     ]  # Group all numbers that return true on Event.body % 3 == 0
 
 
-def test_batch_grouping_with_timeout():
+@pytest.mark.parametrize(
+    "full_event",
+    (False, True),
+)
+def test_batch_grouping_with_timeout(full_event):
     q = queue.Queue(1)
 
     def reduce_fn(acc, event):
@@ -2321,11 +2356,19 @@ def test_batch_grouping_with_timeout():
         acc.append(event)
         return acc
 
+    def reduce_fn_batch(acc, event):
+        if len(event) == 1 and event[0].body == 1:
+            q.put(None)
+        acc.append([sub_event.body for sub_event in event])
+        return acc
+
+    reduce_function = reduce_fn_batch if full_event else reduce_fn
+
     controller = build_flow(
         [
             SyncEmitSource(),
-            Batch(3, 1, "$key"),
-            Reduce([], lambda acc, x: reduce_fn(acc, x)),
+            Batch(max_events=3, flush_after_seconds=1, key_field="$key", full_event=full_event),
+            Reduce([], lambda acc, x: reduce_function(acc, x)),
         ]
     ).run()
 
@@ -2350,7 +2393,11 @@ def test_batch_grouping_with_timeout():
     assert termination_result[2] == [3, 3, 3]
 
 
-def test_batch_with_timeout():
+@pytest.mark.parametrize(
+    "full_event",
+    (False, True),
+)
+def test_batch_with_timeout(full_event):
     q = queue.Queue(1)
 
     def reduce_fn(acc, x):
@@ -2359,11 +2406,20 @@ def test_batch_with_timeout():
         acc.append(x)
         return acc
 
+    def reduce_fn_batch(acc, x):
+        if x[0].body == 0:
+            q.put(None)
+        events_body_list = [event.body for event in x]
+        acc.append(events_body_list)
+        return acc
+
+    reduce_function = reduce_fn_batch if full_event else reduce_fn
+
     controller = build_flow(
         [
             SyncEmitSource(),
-            Batch(4, 1),
-            Reduce([], reduce_fn),
+            Batch(4, 1, full_event=full_event),
+            Reduce([], reduce_function),
         ]
     ).run()
 
@@ -2374,6 +2430,11 @@ def test_batch_with_timeout():
     controller.terminate()
     termination_result = controller.await_termination()
     assert termination_result == [[0, 1, 2], [3, 4, 5, 6], [7, 8, 9]]
+
+
+def test_batch_warns_when_full_event_not_specified():
+    with pytest.warns(Warning, match="The default value of full_event in Batch changed to True"):
+        Batch(4, 100)
 
 
 async def async_test_write_csv(tmpdir):
@@ -2778,16 +2839,30 @@ def test_reduce_to_dataframe_indexed_by_key():
     assert termination_result.equals(expected), f"{termination_result}\n!=\n{expected}"
 
 
-def test_to_dataframe_with_index():
+@pytest.mark.parametrize(
+    "full_event",
+    (False, True),
+)
+def test_to_dataframe_with_index(full_event):
+    # Note: This test validates to_dataframe() and batching in isolation
+    # Event IDs are not preserved, so this specific pattern won't work on remote serving function
+
+    def extract_batch_bodies(event):
+        event_bodies = [sub_event.body for sub_event in event.body]
+        event.body = event_bodies
+        return event
+
     index = "my_int"
-    controller = build_flow(
-        [
-            SyncEmitSource(),
-            Batch(5),
-            ToDataFrame(index=index),
-            Reduce([], append_and_return, full_event=True),
-        ]
-    ).run()
+    map_step = [Map(fn=extract_batch_bodies, full_event=True)] if full_event else []
+
+    steps = [
+        SyncEmitSource(),
+        Batch(5, full_event=full_event),
+        *map_step,
+        ToDataFrame(index=index),
+        Reduce([], append_and_return, full_event=True),
+    ]
+    controller = build_flow(steps).run()
 
     expected1 = []
     for i in range(5):
@@ -4081,7 +4156,7 @@ def test_to_code():
 
     reconstructed_code = flow.to_code()
     expected = """sync_emit_source0 = SyncEmitSource()
-batch0 = Batch(max_events=5)
+batch0 = Batch(full_event=True, max_events=5)
 to_data_frame0 = ToDataFrame()
 reduce0 = Reduce(full_event=True, initial_value=[])
 
@@ -4105,9 +4180,9 @@ def test_split_flow_to_code():
 
     reconstructed_code = flow.to_code()
     expected = """sync_emit_source0 = SyncEmitSource()
-batch0 = Batch(max_events=5)
+batch0 = Batch(full_event=True, max_events=5)
 reduce0 = Reduce(initial_value=[])
-batch1 = Batch(max_events=5)
+batch1 = Batch(full_event=True, max_events=5)
 to_data_frame0 = ToDataFrame()
 reduce1 = Reduce(full_event=True, initial_value=[])
 
