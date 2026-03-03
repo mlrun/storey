@@ -160,10 +160,6 @@ class StreamCompletion:
     def id(self):
         return self.original_event.id if self.original_event else None
 
-    @property
-    def body(self):
-        return self.original_event.body if self.original_event else None
-
 
 class WindowBase:
     def __init__(self, window, period, window_str):

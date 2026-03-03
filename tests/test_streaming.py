@@ -23,6 +23,7 @@ from storey import (
     Choice,
     Collector,
     Complete,
+    Flow,
     Map,
     MapClass,
     ParallelExecution,
@@ -36,6 +37,7 @@ from storey import (
 )
 from storey.dtypes import Event, StreamChunk, StreamCompletion
 from storey.flow import _is_generator
+from tests.test_flow import MockContext, MockLogger
 
 
 class StreamingRunnable(ParallelExecutionRunnable):
@@ -1894,33 +1896,6 @@ class TestStreamingGraphSplits:
         asyncio.run(_test())
 
 
-class MockLogger:
-    """A mock logger that records all log calls."""
-
-    def __init__(self):
-        self.logs = []
-
-    def error(self, *args, **kwargs):
-        self.logs.append(("error", args, kwargs))
-
-    def warn(self, *args, **kwargs):
-        self.logs.append(("warn", args, kwargs))
-
-    def info(self, *args, **kwargs):
-        self.logs.append(("info", args, kwargs))
-
-    def debug(self, *args, **kwargs):
-        self.logs.append(("debug", args, kwargs))
-
-
-class MockContext:
-    """A mock context with a logger and verbose flag."""
-
-    def __init__(self, logger, verbose):
-        self.logger = logger
-        self.verbose = verbose
-
-
 class TestVerboseLoggingWithStreamCompletion:
     """Tests for verbose logging with StreamCompletion events."""
 
@@ -1931,7 +1906,6 @@ class TestVerboseLoggingWithStreamCompletion:
         It must handle StreamCompletion objects which have a body property that
         delegates to original_event.body.
         """
-        from storey.flow import Flow
 
         event = Event(body="test_body", id="event_123", key="test_key")
         completion = StreamCompletion("streaming_step", event)
@@ -1939,9 +1913,8 @@ class TestVerboseLoggingWithStreamCompletion:
         # _event_string should handle StreamCompletion without error
         result = Flow._event_string(completion)
 
-        # The result should contain the event id and body from original_event
+        # The result should contain the event id from original_event
         assert "event_123" in result
-        assert "test_body" in result
         assert isinstance(result, str)
 
     def test_verbose_logging_with_streaming_flow(self):
@@ -1984,39 +1957,3 @@ class TestVerboseLoggingWithStreamCompletion:
         all_log_messages = " ".join(str(log[1]) for log in logger.logs)
         # The logs should contain references to the step names showing flow progression
         assert "StreamingMap" in all_log_messages or "Collector" in all_log_messages
-
-    def test_event_string_with_stream_completion_no_original_event(self):
-        """Test that _event_string handles StreamCompletion with None original_event.
-
-        Edge case: StreamCompletion.body returns None when original_event is None.
-        The _event_string method should handle this gracefully.
-        """
-        from storey.flow import Flow
-
-        completion = StreamCompletion("streaming_step", None)  # type: ignore[arg-type]
-
-        # _event_string should handle StreamCompletion with None original_event without error
-        result = Flow._event_string(completion)
-
-        # Should produce a valid string with body=None
-        assert isinstance(result, str)
-        assert "body=None" in result
-
-    def test_event_string_with_stream_completion_with_error(self):
-        """Test that _event_string handles StreamCompletion with error string.
-
-        StreamCompletion can carry an error string when the stream terminates
-        due to an error. The _event_string method should still work correctly.
-        """
-        from storey.flow import Flow
-
-        event = Event(body="test_body", id="event_456")
-        completion = StreamCompletion("streaming_step", event, error="ValueError: test error")
-
-        # _event_string should handle StreamCompletion with error
-        result = Flow._event_string(completion)
-
-        # Should produce a valid string representation with body from original event
-        assert isinstance(result, str)
-        assert "test_body" in result
-        assert "event_456" in result
