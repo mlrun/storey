@@ -2317,7 +2317,7 @@ def test_batch_grouping_with_timeout(full_event):
     def reduce_fn_batch(acc, event):
         if len(event) == 1 and event[0].body == 1:
             q.put(None)
-        acc.append([sub_Event.body for sub_Event in event])
+        acc.append([sub_event.body for sub_event in event])
         return acc
 
     reduce_function = reduce_fn_batch if full_event else reduce_fn
@@ -2388,6 +2388,11 @@ def test_batch_with_timeout(full_event):
     controller.terminate()
     termination_result = controller.await_termination()
     assert termination_result == [[0, 1, 2], [3, 4, 5, 6], [7, 8, 9]]
+
+
+def test_batch_warns_when_full_event_not_specified():
+    with pytest.warns(FutureWarning, match="The default value of full_event in Batch changed to True"):
+        Batch(4, 100)
 
 
 async def async_test_write_csv(tmpdir):
