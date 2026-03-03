@@ -1892,3 +1892,131 @@ class TestStreamingGraphSplits:
             assert "HIGH_high_value_chunk_0" in high_result[0]
 
         asyncio.run(_test())
+
+
+class MockLogger:
+    """A mock logger that records all log calls."""
+
+    def __init__(self):
+        self.logs = []
+
+    def error(self, *args, **kwargs):
+        self.logs.append(("error", args, kwargs))
+
+    def warn(self, *args, **kwargs):
+        self.logs.append(("warn", args, kwargs))
+
+    def info(self, *args, **kwargs):
+        self.logs.append(("info", args, kwargs))
+
+    def debug(self, *args, **kwargs):
+        self.logs.append(("debug", args, kwargs))
+
+
+class MockContext:
+    """A mock context with a logger and verbose flag."""
+
+    def __init__(self, logger, verbose):
+        self.logger = logger
+        self.verbose = verbose
+
+
+class TestVerboseLoggingWithStreamCompletion:
+    """Tests for verbose logging with StreamCompletion events."""
+
+    def test_event_string_with_stream_completion(self):
+        """Test that _event_string handles StreamCompletion objects correctly.
+
+        The _event_string method is called during verbose logging in _do_downstream.
+        It must handle StreamCompletion objects which have a body property that
+        delegates to original_event.body.
+        """
+        from storey.flow import Flow
+
+        event = Event(body="test_body", id="event_123", key="test_key")
+        completion = StreamCompletion("streaming_step", event)
+
+        # _event_string should handle StreamCompletion without error
+        result = Flow._event_string(completion)
+
+        # The result should contain the event id and body from original_event
+        assert "event_123" in result
+        assert "test_body" in result
+        assert isinstance(result, str)
+
+    def test_verbose_logging_with_streaming_flow(self):
+        """Test verbose logging when StreamCompletion passes through a flow.
+
+        This integration test verifies that when verbose=True, the flow logs
+        debug messages for StreamCompletion events without errors.
+        """
+
+        def stream_chunks(x):
+            for i in range(2):
+                yield f"{x}_chunk_{i}"
+
+        logger = MockLogger()
+        context = MockContext(logger, verbose=True)
+
+        controller = build_flow(
+            [
+                SyncEmitSource(context=context),
+                Map(stream_chunks, name="StreamingMap", context=context),
+                Collector(name="Collector", context=context),
+                Reduce([], lambda acc, x: acc + [x], name="Reducer", context=context),
+            ]
+        ).run()
+
+        controller.emit("test")
+        controller.terminate()
+        result = controller.await_termination()
+
+        # Verify the flow completed successfully
+        assert len(result) == 1
+        assert result[0] == ["test_chunk_0", "test_chunk_1"]
+
+        # Verify debug logs were recorded (verbose logging was active)
+        debug_logs = [log for log in logger.logs if log[0] == "debug"]
+        assert len(debug_logs) > 0
+
+        # Verify that StreamCompletion was logged - it should appear in at least one log entry
+        # since StreamCompletion goes through _do_downstream when verbose is True
+        all_log_messages = " ".join(str(log[1]) for log in logger.logs)
+        # The logs should contain references to the step names showing flow progression
+        assert "StreamingMap" in all_log_messages or "Collector" in all_log_messages
+
+    def test_event_string_with_stream_completion_no_original_event(self):
+        """Test that _event_string handles StreamCompletion with None original_event.
+
+        Edge case: StreamCompletion.body returns None when original_event is None.
+        The _event_string method should handle this gracefully.
+        """
+        from storey.flow import Flow
+
+        completion = StreamCompletion("streaming_step", None)  # type: ignore[arg-type]
+
+        # _event_string should handle StreamCompletion with None original_event without error
+        result = Flow._event_string(completion)
+
+        # Should produce a valid string with body=None
+        assert isinstance(result, str)
+        assert "body=None" in result
+
+    def test_event_string_with_stream_completion_with_error(self):
+        """Test that _event_string handles StreamCompletion with error string.
+
+        StreamCompletion can carry an error string when the stream terminates
+        due to an error. The _event_string method should still work correctly.
+        """
+        from storey.flow import Flow
+
+        event = Event(body="test_body", id="event_456")
+        completion = StreamCompletion("streaming_step", event, error="ValueError: test error")
+
+        # _event_string should handle StreamCompletion with error
+        result = Flow._event_string(completion)
+
+        # Should produce a valid string representation with body from original event
+        assert isinstance(result, str)
+        assert "test_body" in result
+        assert "event_456" in result
