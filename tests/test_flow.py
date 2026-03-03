@@ -2391,7 +2391,7 @@ def test_batch_with_timeout(full_event):
 
 
 def test_batch_warns_when_full_event_not_specified():
-    with pytest.warns(FutureWarning, match="The default value of full_event in Batch changed to True"):
+    with pytest.warns(Warning, match="The default value of full_event in Batch changed to True"):
         Batch(4, 100)
 
 

@@ -1497,8 +1497,7 @@ class Batch(_Batching, WithUUID):
         if "full_event" not in kwargs:
             warnings.warn(
                 "The default value of full_event in Batch changed to True in mlrun 1.11.0."
-                " Please explicitly set full_event=False if you want to keep the old behavior",
-                FutureWarning,
+                " Please explicitly set full_event=False if you want to keep the old behavior"
             )
             kwargs["full_event"] = True
 
