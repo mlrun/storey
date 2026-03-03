@@ -156,6 +156,10 @@ class StreamCompletion:
         error_info = f", error={self.error!r}" if self.error else ""
         return f"StreamCompletion(streaming_step={self.streaming_step!r}, event_id={event_id!r}{error_info})"
 
+    @property
+    def id(self):
+        return self.original_event.id if self.original_event else None
+
 
 class WindowBase:
     def __init__(self, window, period, window_str):
