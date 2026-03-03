@@ -311,7 +311,7 @@ class Flow:
     @staticmethod
     def _event_string(event):
         result = "Event("
-        if event.id:
+        if getattr(event, "id", None):
             result += f"id={event.id}, "
         if getattr(event, "key", None):
             result += f"key={event.key}, "
