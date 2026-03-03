@@ -37,7 +37,7 @@ from storey import (
 )
 from storey.dtypes import Event, StreamChunk, StreamCompletion
 from storey.flow import _is_generator
-from tests.test_flow import MockContext, MockLogger
+from tests.helpers import MockContext, MockLogger
 
 
 class StreamingRunnable(ParallelExecutionRunnable):
