@@ -321,7 +321,8 @@ class Flow:
         if getattr(event, "path", None):
             result += f"path={event.path}, "
         if hasattr(event, "body"):
-            result += f"body={event.body})"
+            result += f"body={event.body}"
+        result += ")"
         return result
 
     def _should_terminate(self):
