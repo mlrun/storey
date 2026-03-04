@@ -2132,7 +2132,8 @@ def test_batch():
     assert termination_result[2].body == [8, 9]
 
 
-def test_batch_full_event():
+@pytest.mark.parametrize("full_event", [True, None])
+def test_batch_full_event(full_event):
     def append_body_and_return(lst, x):
         ll = []
         for item in x:
@@ -2143,7 +2144,7 @@ def test_batch_full_event():
     controller = build_flow(
         [
             SyncEmitSource(),
-            Batch(4, 100, full_event=True),
+            Batch(4, 100, full_event=full_event),
             Reduce([], lambda acc, x: append_body_and_return(acc, x)),
         ]
     ).run()
