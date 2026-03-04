@@ -320,7 +320,7 @@ class Flow:
             result += f"processing_time={event.processing_time}, "
         if getattr(event, "path", None):
             result += f"path={event.path}, "
-        if getattr(event, "body", None):
+        if hasattr(event, "body"):
             result += f"body={event.body})"
         return result
 
