@@ -82,6 +82,7 @@ from storey.flow import (
     _Batching,
     _ConcurrentJobExecution,
 )
+from tests.helpers import MockContext, MockLogger
 
 
 class ATestException(Exception):
@@ -4795,29 +4796,6 @@ def test_concurrent_execution_max_in_flight_push_error():
 def test_event_to_string():
     event = Event("body", "key")
     assert str(event) == "Event(id=None, key='key', body='body')"
-
-
-class MockLogger:
-    def __init__(self):
-        self.logs = []
-
-    def error(self, *args, **kwargs):
-        self.logs.append(("error", args, kwargs))
-
-    def warn(self, *args, **kwargs):
-        self.logs.append(("warn", args, kwargs))
-
-    def info(self, *args, **kwargs):
-        self.logs.append(("info", args, kwargs))
-
-    def debug(self, *args, **kwargs):
-        self.logs.append(("debug", args, kwargs))
-
-
-class MockContext:
-    def __init__(self, logger, verbose):
-        self.logger = logger
-        self.verbose = verbose
 
 
 def test_verbose_logs():
