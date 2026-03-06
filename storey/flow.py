@@ -63,6 +63,16 @@ def _is_generator(obj) -> bool:
     return inspect.isgenerator(obj) or inspect.isasyncgen(obj)
 
 
+def _is_awaitable_coroutine(obj) -> bool:
+    """Check if an object is a coroutine that should be awaited.
+
+    Generators must be excluded because in Python <=3.11,
+    asyncio.iscoroutine() can return True for plain generators
+    due to the legacy _iscoroutine_typecache (removed in 3.12).
+    """
+    return not _is_generator(obj) and asyncio.iscoroutine(obj)
+
+
 def is_batched_event(event) -> bool:
     return (
         not isinstance(event, StreamCompletion)
@@ -1340,7 +1350,7 @@ class ConcurrentExecution(_ConcurrentJobExecution, _StreamingStepMixin):
         else:
             result = self._event_processor(*args)
 
-        if not _is_generator(result) and asyncio.iscoroutine(result):
+        if _is_awaitable_coroutine(result):
             result = await result
 
         if self._full_event:
