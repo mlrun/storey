@@ -1271,7 +1271,7 @@ class _ConcurrentJobExecution(Flow):
                     await self._worker_awaitable
 
 
-class ConcurrentExecution(_ConcurrentJobExecution):
+class ConcurrentExecution(_ConcurrentJobExecution, _StreamingStepMixin):
     """
     Inherit this class and override `process_event()` to process events concurrently.
 
@@ -1340,7 +1340,7 @@ class ConcurrentExecution(_ConcurrentJobExecution):
         else:
             result = self._event_processor(*args)
 
-        if asyncio.iscoroutine(result):
+        if not _is_generator(result) and asyncio.iscoroutine(result):
             result = await result
 
         if self._full_event:
@@ -1350,7 +1350,10 @@ class ConcurrentExecution(_ConcurrentJobExecution):
             return event
 
     async def _handle_completed(self, event, response):
-        await self._do_downstream(response)
+        if not self._full_event and _is_generator(response.body):
+            await self._emit_streaming_chunks(response, response.body)
+        else:
+            await self._do_downstream(response)
 
 
 class SendToHttp(_ConcurrentJobExecution):

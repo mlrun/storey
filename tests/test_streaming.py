@@ -23,6 +23,7 @@ from storey import (
     Choice,
     Collector,
     Complete,
+    ConcurrentExecution,
     Flow,
     Map,
     MapClass,
@@ -1957,3 +1958,87 @@ class TestVerboseLoggingWithStreamCompletion:
         all_log_messages = " ".join(str(log[1]) for log in logger.logs)
         # The logs should contain references to the step names showing flow progression
         assert "StreamingMap" in all_log_messages or "Collector" in all_log_messages
+
+
+class TestConcurrentExecutionStreaming:
+    """Tests for ConcurrentExecution streaming support (ML-12178).
+
+    ConcurrentExecution should handle async generator process_event functions
+    the same way Map handles generator functions -- by emitting streaming chunks
+    and StreamCompletion, so that a downstream Collector can aggregate them.
+    """
+
+    @pytest.mark.parametrize("use_async_generator", [False, True], ids=["sync_gen", "async_gen"])
+    def test_concurrent_execution_generator_with_collector(self, use_async_generator):
+        """Reproducer for ML-12178: ConcurrentExecution with generator -> Collector -> downstream.
+
+        When process_event is a generator (sync or async), ConcurrentExecution should emit
+        streaming chunks so the Collector can aggregate them into a list. Without
+        the fix, the Collector receives a raw generator object instead.
+        """
+
+        if use_async_generator:
+
+            async def stream_chunks(event):
+                for i in range(3):
+                    yield f"{event}_chunk_{i}"
+
+        else:
+
+            def stream_chunks(event):
+                for i in range(3):
+                    yield f"{event}_chunk_{i}"
+
+        controller = build_flow(
+            [
+                SyncEmitSource(),
+                ConcurrentExecution(stream_chunks),
+                Collector(),
+                Reduce([], lambda acc, x: acc + [x]),
+            ]
+        ).run()
+
+        try:
+            controller.emit("test")
+        finally:
+            controller.terminate()
+            result = controller.await_termination()
+
+        assert len(result) == 1
+        collected = result[0]
+        assert isinstance(
+            collected, list
+        ), f"Expected collected chunks as a list, got {type(collected).__name__}: {collected}"
+        assert collected == ["test_chunk_0", "test_chunk_1", "test_chunk_2"]
+
+    def test_concurrent_execution_generator_then_streaming_step(self):
+        """Full ML-12178 scenario: ConcurrentExecution -> Collector -> second streaming step.
+
+        The second streaming step should receive the collected list, not a generator object.
+        """
+
+        async def first_stream(event):
+            for i in range(2):
+                yield f"{event}_{i}"
+
+        def second_stream(collected):
+            for item in collected:
+                yield f"re_{item}"
+
+        controller = build_flow(
+            [
+                SyncEmitSource(),
+                ConcurrentExecution(first_stream),
+                Collector(),
+                Map(second_stream),
+                Reduce([], lambda acc, x: acc + [x]),
+            ]
+        ).run()
+
+        try:
+            controller.emit("test")
+        finally:
+            controller.terminate()
+            result = controller.await_termination()
+
+        assert result == ["re_test_0", "re_test_1"]
