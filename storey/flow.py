@@ -644,8 +644,21 @@ class _StreamingStepMixin:
         """
         self._validate_not_already_streaming(event)
 
+        _sentinel = object()
+
+        def _next_or_sentinel(gen):
+            try:
+                return next(gen)
+            except StopIteration:
+                return _sentinel
+
         async def gen_to_async_gen(sync_gen):
-            for item in sync_gen:
+            loop = asyncio.get_running_loop()
+            while True:
+                # Run next() in executor so blocking calls (e.g., time.sleep) don't block the event loop
+                item = await loop.run_in_executor(None, _next_or_sentinel, sync_gen)
+                if item is _sentinel:
+                    break
                 yield item
 
         # If needed, wrap sync generator as async to unify iteration

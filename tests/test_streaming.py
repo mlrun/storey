@@ -14,6 +14,7 @@
 #
 import asyncio
 import inspect
+import time
 from typing import AsyncGenerator, Generator, Optional
 
 import pytest
@@ -2042,3 +2043,117 @@ class TestConcurrentExecutionStreaming:
             result = controller.await_termination()
 
         assert result == ["re_test_0", "re_test_1"]
+
+
+class TestStreamingSyncGeneratorNonBlocking:
+    """Tests that sync generators with blocking calls don't block the event loop.
+
+    When a sync generator contains blocking operations like time.sleep(), these should
+    be executed in a thread pool so they don't block the asyncio event loop.
+    """
+
+    def test_sync_generator_with_sleep_does_not_block_event_loop(self):
+        """Test that a sync generator with time.sleep() doesn't block the event loop.
+
+        This verifies that the gen_to_async_gen wrapper in _emit_streaming_chunks
+        runs the sync generator's next() calls in an executor, allowing other
+        async tasks to proceed while the generator sleeps.
+        """
+
+        async def _test():
+            sleep_duration = 0.1
+            num_chunks = 3
+            concurrent_ticks = []
+
+            def slow_generator(x):
+                for i in range(num_chunks):
+                    time.sleep(sleep_duration)
+                    yield f"{x}_chunk_{i}"
+
+            async def concurrent_task():
+                """Task that runs concurrently with the streaming generator."""
+                tick_interval = sleep_duration / 3
+                for i in range(num_chunks * 4):
+                    concurrent_ticks.append(i)
+                    await asyncio.sleep(tick_interval)
+
+            source = AsyncEmitSource()
+            streaming_map = Map(slow_generator)
+            reducer = Reduce([], lambda acc, x: acc + [x])
+
+            source.to(streaming_map).to(reducer)
+
+            controller = source.run()
+
+            # Start concurrent task alongside streaming
+            concurrent = asyncio.create_task(concurrent_task())
+
+            try:
+                await controller.emit("test")
+            finally:
+                await controller.terminate()
+                result = await controller.await_termination()
+
+            await concurrent
+
+            # Verify streaming worked correctly
+            assert result == ["test_chunk_0", "test_chunk_1", "test_chunk_2"]
+
+            # Verify concurrent task made progress during the blocking sleeps.
+            # If time.sleep blocked the event loop, concurrent_ticks would be empty
+            # or have very few entries. With proper async handling, concurrent_task
+            # should have multiple ticks during each sleep.
+            assert len(concurrent_ticks) >= num_chunks * 2, (
+                f"Expected concurrent task to make progress during blocking sleeps. "
+                f"Got {len(concurrent_ticks)} ticks, expected at least {num_chunks * 2}. "
+                "This suggests time.sleep() blocked the event loop."
+            )
+
+        asyncio.run(_test())
+
+    def test_sync_generator_with_sleep_through_collector(self):
+        """Test sync generator with time.sleep through Collector aggregation."""
+
+        def slow_generator(x):
+            for i in range(3):
+                time.sleep(0.05)
+                yield f"{x}_chunk_{i}"
+
+        controller = build_flow(
+            [
+                SyncEmitSource(),
+                Map(slow_generator),
+                Collector(),
+                Reduce([], lambda acc, x: acc + [x]),
+            ]
+        ).run()
+
+        controller.emit("test")
+        controller.terminate()
+        result = controller.await_termination()
+
+        assert len(result) == 1
+        assert result[0] == ["test_chunk_0", "test_chunk_1", "test_chunk_2"]
+
+    def test_mapclass_sync_generator_with_sleep(self):
+        """Test MapClass with sync generator that uses time.sleep."""
+
+        class SlowStreamingMapper(MapClass):
+            def do(self, x):
+                for i in range(3):
+                    time.sleep(0.05)
+                    yield f"{x}_chunk_{i}"
+
+        controller = build_flow(
+            [
+                SyncEmitSource(),
+                SlowStreamingMapper(),
+                Reduce([], lambda acc, x: acc + [x]),
+            ]
+        ).run()
+
+        controller.emit("test")
+        controller.terminate()
+        result = controller.await_termination()
+
+        assert result == ["test_chunk_0", "test_chunk_1", "test_chunk_2"]
