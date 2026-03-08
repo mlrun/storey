@@ -77,7 +77,7 @@ class TimescaleDBTarget(_Batching, _Writer):
         - The target table must be created as a TimescaleDB hypertable before use
         - The time column should be a timestamp type, preferably TIMESTAMPTZ for timezone awareness
         - Events are written using INSERT ... ON CONFLICT DO NOTHING via executemany,
-          which silently deduplicates rows when the table has a UNIQUE constraint
+          which silently deduplicates rows when the table has a UNIQUE constraint (with some performance penalty)
         - Connection pooling is handled automatically with proper cleanup on termination
         - Built-in retry logic handles deadlocks (fast retry) and connection issues (exponential backoff)
         - Deadlock retries: 3 attempts with 0.1s, 0.2s, 0.4s delays (with jitter)
@@ -133,8 +133,8 @@ class TimescaleDBTarget(_Batching, _Writer):
         # Database connection configuration
         self._dsn = dsn
         # Connection pool: Single connection is sufficient for most use cases since:
-        # 1. COPY operations are already bulk-optimized and very fast
-        # 2. Multiple concurrent COPY operations may cause lock contention
+        # 1. executemany operations are already bulk-optimized and very fast
+        # 2. Multiple concurrent write operations may cause lock contention
         # 3. Most data flows process batches sequentially, not concurrently
         # For high-throughput scenarios with concurrent batches, consider increasing pool size
         self._pool: Optional[AsyncConnectionPool] = None  # Connection pool will be created lazily during first use
