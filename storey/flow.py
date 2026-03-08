@@ -63,6 +63,16 @@ def _is_generator(obj) -> bool:
     return inspect.isgenerator(obj) or inspect.isasyncgen(obj)
 
 
+def _is_awaitable_coroutine(obj) -> bool:
+    """Check if an object is a coroutine that should be awaited.
+
+    Generators must be excluded because in Python <=3.11,
+    asyncio.iscoroutine() can return True for plain generators
+    due to the legacy _iscoroutine_typecache (removed in 3.12).
+    """
+    return not _is_generator(obj) and asyncio.iscoroutine(obj)
+
+
 def is_batched_event(event) -> bool:
     return (
         not isinstance(event, StreamCompletion)
@@ -1271,7 +1281,7 @@ class _ConcurrentJobExecution(Flow):
                     await self._worker_awaitable
 
 
-class ConcurrentExecution(_ConcurrentJobExecution):
+class ConcurrentExecution(_ConcurrentJobExecution, _StreamingStepMixin):
     """
     Inherit this class and override `process_event()` to process events concurrently.
 
@@ -1340,7 +1350,7 @@ class ConcurrentExecution(_ConcurrentJobExecution):
         else:
             result = self._event_processor(*args)
 
-        if asyncio.iscoroutine(result):
+        if _is_awaitable_coroutine(result):
             result = await result
 
         if self._full_event:
@@ -1350,7 +1360,10 @@ class ConcurrentExecution(_ConcurrentJobExecution):
             return event
 
     async def _handle_completed(self, event, response):
-        await self._do_downstream(response)
+        if not self._full_event and _is_generator(response.body):
+            await self._emit_streaming_chunks(response, response.body)
+        else:
+            await self._do_downstream(response)
 
 
 class SendToHttp(_ConcurrentJobExecution):
