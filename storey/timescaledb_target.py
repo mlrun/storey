@@ -76,7 +76,8 @@ class TimescaleDBTarget(_Batching, _Writer):
     Note:
         - The target table must be created as a TimescaleDB hypertable before use
         - The time column should be a timestamp type, preferably TIMESTAMPTZ for timezone awareness
-        - Events are written using PostgreSQL's COPY protocol for optimal performance
+        - Events are written using INSERT ... ON CONFLICT DO NOTHING via executemany,
+          which silently deduplicates rows when the table has a UNIQUE constraint (with some performance penalty)
         - Connection pooling is handled automatically with proper cleanup on termination
         - Built-in retry logic handles deadlocks (fast retry) and connection issues (exponential backoff)
         - Deadlock retries: 3 attempts with 0.1s, 0.2s, 0.4s delays (with jitter)
@@ -132,8 +133,8 @@ class TimescaleDBTarget(_Batching, _Writer):
         # Database connection configuration
         self._dsn = dsn
         # Connection pool: Single connection is sufficient for most use cases since:
-        # 1. COPY operations are already bulk-optimized and very fast
-        # 2. Multiple concurrent COPY operations may cause lock contention
+        # 1. executemany operations are already bulk-optimized and very fast
+        # 2. Multiple concurrent write operations may cause lock contention
         # 3. Most data flows process batches sequentially, not concurrently
         # For high-throughput scenarios with concurrent batches, consider increasing pool size
         self._pool: Optional[AsyncConnectionPool] = None  # Connection pool will be created lazily during first use
@@ -297,8 +298,9 @@ class TimescaleDBTarget(_Batching, _Writer):
 
         This method performs the core data writing functionality:
         1. Ensures the connection pool is initialized
-        2. Converts dictionary events to tuples for efficient COPY operations
-        3. Uses PostgreSQL's COPY protocol for high-performance bulk inserts
+        2. Converts dictionary events to tuples with consistent column ordering
+        3. Uses INSERT ... ON CONFLICT DO NOTHING via executemany for bulk writes
+           with automatic deduplication when the table has a UNIQUE constraint
         4. Maintains proper column ordering for TimescaleDB compatibility
 
         Args:
@@ -318,8 +320,8 @@ class TimescaleDBTarget(_Batching, _Writer):
         # Get table schema for validation on first use
         schema = await self._get_table_schema()
 
-        # Convert dictionaries to tuples for copy_records_to_table
-        # PostgreSQL's COPY protocol requires data in tuple format with consistent column ordering
+        # Convert dictionaries to tuples for executemany
+        # Consistent column ordering required for parameterized INSERT
         # Validate against schema to catch missing required columns early
 
         records = []
@@ -354,20 +356,20 @@ class TimescaleDBTarget(_Batching, _Writer):
 
             async with self._pool.connection() as conn:
                 async with conn.cursor() as cur:
-                    # Use PostgreSQL's COPY protocol for optimal performance
-                    # This is significantly faster than individual INSERT statements
                     table_identifier = sql.Identifier(self._table)
                     if self._schema:
                         table_identifier = sql.Identifier(self._schema, self._table)
 
                     column_identifiers = [sql.Identifier(col) for col in self._column_names]
-                    copy_query = sql.SQL("COPY {} ({}) FROM STDIN").format(
-                        table_identifier, sql.SQL(", ").join(column_identifiers)
+                    placeholders = sql.SQL(", ").join([sql.Placeholder()] * len(self._column_names))
+
+                    insert_query = sql.SQL("INSERT INTO {} ({}) VALUES ({}) ON CONFLICT DO NOTHING").format(
+                        table_identifier,
+                        sql.SQL(", ").join(column_identifiers),
+                        placeholders,
                     )
 
-                    async with cur.copy(copy_query) as copy_context:
-                        for record in records:
-                            await copy_context.write_row(record)
+                    await cur.executemany(insert_query, records)
 
         await self._execute_with_retry(batch_write_operation)
 
