@@ -2061,9 +2061,10 @@ class TestStreamingSyncGeneratorNonBlocking:
         """
 
         async def _test():
-            sleep_duration = 0.1
+            sleep_duration = 0.15
             num_chunks = 3
             concurrent_ticks = []
+            streaming_done = asyncio.Event()
 
             def slow_generator(x):
                 for i in range(num_chunks):
@@ -2071,10 +2072,14 @@ class TestStreamingSyncGeneratorNonBlocking:
                     yield f"{x}_chunk_{i}"
 
             async def concurrent_task():
-                """Task that runs concurrently with the streaming generator."""
-                tick_interval = sleep_duration / 3
-                for i in range(num_chunks * 4):
-                    concurrent_ticks.append(i)
+                """Task that runs concurrently with the streaming generator.
+
+                Keeps ticking until streaming is done. If the event loop is blocked,
+                this task won't get a chance to run and concurrent_ticks will be empty.
+                """
+                tick_interval = sleep_duration / 4
+                while not streaming_done.is_set():
+                    concurrent_ticks.append(time.time())
                     await asyncio.sleep(tick_interval)
 
             source = AsyncEmitSource()
@@ -2085,7 +2090,7 @@ class TestStreamingSyncGeneratorNonBlocking:
 
             controller = source.run()
 
-            # Start concurrent task alongside streaming
+            # Start concurrent task BEFORE emitting
             concurrent = asyncio.create_task(concurrent_task())
 
             try:
@@ -2094,15 +2099,18 @@ class TestStreamingSyncGeneratorNonBlocking:
                 await controller.terminate()
                 result = await controller.await_termination()
 
+            # Signal concurrent task to stop and wait for it
+            streaming_done.set()
             await concurrent
 
             # Verify streaming worked correctly
             assert result == ["test_chunk_0", "test_chunk_1", "test_chunk_2"]
 
             # Verify concurrent task made progress during the blocking sleeps.
-            # If time.sleep blocked the event loop, concurrent_ticks would be empty
-            # or have very few entries. With proper async handling, concurrent_task
-            # should have multiple ticks during each sleep.
+            # Total sleep time is ~0.45s (3 chunks * 0.15s each).
+            # If event loop was NOT blocked, concurrent_task should tick multiple times
+            # during each sleep (~4 ticks per sleep = ~12 ticks total).
+            # If event loop WAS blocked, concurrent_ticks would have 0-3 entries.
             assert len(concurrent_ticks) >= num_chunks * 2, (
                 f"Expected concurrent task to make progress during blocking sleeps. "
                 f"Got {len(concurrent_ticks)} ticks, expected at least {num_chunks * 2}. "

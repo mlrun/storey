@@ -655,7 +655,7 @@ class _StreamingStepMixin:
         async def gen_to_async_gen(sync_gen):
             loop = asyncio.get_running_loop()
             while True:
-                # Run next() in executor so blocking calls (e.g., time.sleep) don't block the event loop
+                # Run next() in executor so blocking calls don't block the event loop
                 item = await loop.run_in_executor(None, _next_or_sentinel, sync_gen)
                 if item is _sentinel:
                     break
