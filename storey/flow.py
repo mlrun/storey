@@ -2198,7 +2198,14 @@ class RunnableExecutor:
                         executor, _streaming_run_wrapper, runnable, input, event.path, origin_runnable_name, queue
                     )
                 future = loop.create_future()
-                future.set_result(_async_read_streaming_queue(queue))
+                timestamp = datetime.datetime.now(tz=datetime.timezone.utc)
+                future.set_result(
+                    _StreamingResult(
+                        origin_runnable_name or runnable.name,
+                        _async_read_streaming_queue(queue),
+                        timestamp,
+                    )
+                )
             else:
                 # Use appropriate run function based on mechanism
                 if execution_mechanism == ParallelExecutionMechanisms.dedicated_process:
