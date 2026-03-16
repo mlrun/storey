@@ -31,6 +31,7 @@ from ..flow import _ConcurrentJobExecution  # noqa: F401
 from ..flow import _FunctionWithStateFlow  # noqa: F401
 from ..flow import _UnaryFunctionFlow  # noqa: F401
 from ..steps import Assert  # noqa: F401
+from ..steps import Collector  # noqa: F401
 from ..steps import Flatten  # noqa: F401
 from ..steps import ForEach  # noqa: F401
 from ..steps import Partition  # noqa: F401
