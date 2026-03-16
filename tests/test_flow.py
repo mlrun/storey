@@ -5705,14 +5705,15 @@ async def async_test_error_raising_batch_target():
     await controller.emit(1)
 
     await asyncio.sleep(0.1)
-    assert target._batch_events == {}
+    # After the failed _emit, the batch is re-inserted for retry
     assert target.sum == 0
     for i in range(2, 5):
         await controller.emit(i)
 
     await asyncio.sleep(0.1)
 
-    expected_sum = 9  # 2 + 3 + 4
+    # Event 1 was preserved after failure and retried with events 2-4
+    expected_sum = 10  # 1 + 2 + 3 + 4
 
     assert target._batch_events == {}
     assert target.sum == expected_sum
