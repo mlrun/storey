@@ -99,8 +99,7 @@ def _create_timescaledb_table_and_data(table_name: str, timestamp_precision: str
 
             # Drop and create table
             cursor.execute(f"DROP TABLE IF EXISTS {table_name};")
-            cursor.execute(
-                f"""
+            cursor.execute(f"""
                 CREATE TABLE {table_name} (
                     time TIMESTAMPTZ NOT NULL,
                     binary_col BYTEA,
@@ -113,8 +112,7 @@ def _create_timescaledb_table_and_data(table_name: str, timestamp_precision: str
                     varchar_col VARCHAR(255),
                     text_col TEXT
                 );
-                """
-            )
+                """)
 
             cursor.execute(f"SELECT create_hypertable('{table_name}', 'time');")
 
@@ -158,7 +156,7 @@ def timescaledb(table_cleanup) -> TimescaleDBData:
 
 def test_timescaledb_all_types_and_precision(timescaledb_multiple_precision):
     """Comprehensive test for all data types with millisecond and microsecond precision"""
-    (table_name, dsn_url, timestamp_precision, columns_config) = timescaledb_multiple_precision
+    table_name, dsn_url, timestamp_precision, columns_config = timescaledb_multiple_precision
 
     time_format = "%d/%m/%y %H:%M:%S UTC%z"
     if timestamp_precision in ["milliseconds", "microseconds"]:
@@ -258,7 +256,7 @@ def test_timescaledb_all_types_and_precision(timescaledb_multiple_precision):
 @pytest.mark.asyncio
 async def test_timescaledb_async_emit(timescaledb_multiple_precision):
     """Test async emission to TimescaleDB"""
-    (table_name, dsn_url, timestamp_precision, columns_config) = timescaledb_multiple_precision
+    table_name, dsn_url, timestamp_precision, columns_config = timescaledb_multiple_precision
 
     time_format = "%d/%m/%y %H:%M:%S UTC%z"
     if timestamp_precision in ["milliseconds", "microseconds"]:
@@ -297,7 +295,7 @@ async def test_timescaledb_async_emit(timescaledb_multiple_precision):
 @pytest.mark.parametrize("nullable", [True, False])
 def test_timescaledb_schema_validation_missing_column(timescaledb, nullable, table_cleanup):
     """Test that validation properly handles missing columns based on nullability"""
-    (table_name, dsn_url, _, _) = timescaledb
+    table_name, dsn_url, _, _ = timescaledb
 
     # Create a table with nullable and non-nullable columns
     validation_table = f"{table_name}_validation_{'nullable' if nullable else 'required'}"
@@ -311,15 +309,13 @@ def test_timescaledb_schema_validation_missing_column(timescaledb, nullable, tab
 
             # Create table with different column nullability based on parameter
             test_col_nullable = "NULL" if nullable else "NOT NULL"
-            cursor.execute(
-                f"""
+            cursor.execute(f"""
                 CREATE TABLE {validation_table} (
                     time TIMESTAMPTZ NOT NULL,
                     required_col INTEGER NOT NULL,
                     test_col VARCHAR(50) {test_col_nullable}
                 );
-            """
-            )
+            """)
             cursor.execute(f"SELECT create_hypertable('{validation_table}', 'time');")
 
     time_format = "%d/%m/%y %H:%M:%S UTC%z"
@@ -367,7 +363,7 @@ def test_timescaledb_schema_validation_missing_column(timescaledb, nullable, tab
 
 def test_timescaledb_schema_validation_table_not_found(timescaledb):
     """Test that schema validation raises appropriate error for non-existent table"""
-    (table_name, dsn_url, _, _) = timescaledb
+    table_name, dsn_url, _, _ = timescaledb
 
     non_existent_table = "non_existent_table_12345"
 
@@ -395,7 +391,7 @@ def test_timescaledb_schema_validation_table_not_found(timescaledb):
 
 def test_timescaledb_schema_validation_with_schema_prefix(timescaledb, table_cleanup):
     """Test schema validation works correctly with schema.table format"""
-    (table_name, dsn_url, _, _) = timescaledb
+    table_name, dsn_url, _, _ = timescaledb
 
     # Create a schema and table
     schema_name = "test_schema"
@@ -411,15 +407,13 @@ def test_timescaledb_schema_validation_with_schema_prefix(timescaledb, table_cle
             cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_name};")
             cursor.execute(f"DROP TABLE IF EXISTS {schema_table};")
 
-            cursor.execute(
-                f"""
+            cursor.execute(f"""
                 CREATE TABLE {schema_table} (
                     time TIMESTAMPTZ NOT NULL,
                     required_col INTEGER NOT NULL,
                     optional_col VARCHAR(50)
                 );
-            """
-            )
+            """)
             cursor.execute(f"SELECT create_hypertable('{schema_table}', 'time');")
 
     time_format = "%d/%m/%y %H:%M:%S UTC%z"
@@ -453,7 +447,7 @@ def test_timescaledb_schema_validation_with_schema_prefix(timescaledb, table_cle
 
 def test_timescaledb_schema_caching(timescaledb):
     """Test that schema information is properly cached to avoid repeated queries"""
-    (table_name, dsn_url, timestamp_precision, columns_config) = timescaledb
+    table_name, dsn_url, timestamp_precision, columns_config = timescaledb
 
     time_formats = {"milliseconds": "%d/%m/%y %H:%M:%S.%f UTC%z", "microseconds": "%d/%m/%y %H:%M:%S.%f UTC%z"}
     time_format = time_formats.get(timestamp_precision, "%d/%m/%y %H:%M:%S UTC%z")
@@ -507,7 +501,7 @@ def test_timescaledb_schema_caching(timescaledb):
 
 def test_timescaledb_validation_with_extra_columns(timescaledb):
     """Test that validation works when event has columns not in schema"""
-    (table_name, dsn_url, _, _) = timescaledb
+    table_name, dsn_url, _, _ = timescaledb
 
     time_format = "%d/%m/%y %H:%M:%S UTC%z"
 
@@ -563,7 +557,7 @@ def test_timescaledb_validation_with_extra_columns(timescaledb):
 )
 def test_timescaledb_validation_non_dict_data_type_error(timescaledb, invalid_data, expected_error):
     """Test that validation properly rejects non-dictionary data types"""
-    (table_name, dsn_url, _, columns_config) = timescaledb
+    table_name, dsn_url, _, columns_config = timescaledb
 
     time_format = "%d/%m/%y %H:%M:%S UTC%z"
     controller = build_flow(
@@ -589,7 +583,7 @@ def test_timescaledb_validation_non_dict_data_type_error(timescaledb, invalid_da
 
 def test_timescaledb_validation_non_dict_in_graph(timescaledb):
     """Test that non-dictionary data is properly rejected within a complete graph processing flow"""
-    (table_name, dsn_url, timestamp_precision, columns_config) = timescaledb
+    table_name, dsn_url, timestamp_precision, columns_config = timescaledb
 
     time_formats = {"milliseconds": "%d/%m/%y %H:%M:%S.%f UTC%z", "microseconds": "%d/%m/%y %H:%M:%S.%f UTC%z"}
     time_format = time_formats.get(timestamp_precision, "%d/%m/%y %H:%M:%S UTC%z")
@@ -619,7 +613,7 @@ def test_timescaledb_validation_non_dict_in_graph(timescaledb):
 
 def test_timescaledb_non_dict_emission_in_graph_context(timescaledb):
     """Test non-dictionary data emission within a complete graph processing context"""
-    (table_name, dsn_url, timestamp_precision, columns_config) = timescaledb
+    table_name, dsn_url, timestamp_precision, columns_config = timescaledb
 
     time_formats = {"milliseconds": "%d/%m/%y %H:%M:%S.%f UTC%z", "microseconds": "%d/%m/%y %H:%M:%S.%f UTC%z"}
     time_format = time_formats.get(timestamp_precision, "%d/%m/%y %H:%M:%S UTC%z")
@@ -684,7 +678,7 @@ def test_timescaledb_non_dict_emission_in_graph_context(timescaledb):
 @pytest.mark.asyncio
 async def test_timescaledb_retry_success_first_attempt(timescaledb):
     """Test successful operation on first attempt."""
-    (table_name, dsn_url, _, columns_config) = timescaledb
+    table_name, dsn_url, _, columns_config = timescaledb
 
     target = TimescaleDBTarget(
         dsn=dsn_url, time_col="time", columns=columns_config, table=table_name, max_retries=3, retry_delay=1.0
@@ -702,7 +696,7 @@ async def test_timescaledb_retry_success_first_attempt(timescaledb):
 @patch("asyncio.sleep")
 async def test_timescaledb_retry_deadlock_behavior(mock_sleep, timescaledb):
     """Test deadlock retry with correct timing and jitter."""
-    (table_name, dsn_url, _, columns_config) = timescaledb
+    table_name, dsn_url, _, columns_config = timescaledb
 
     target = TimescaleDBTarget(
         dsn=dsn_url, time_col="time", columns=columns_config, table=table_name, max_retries=3, retry_delay=1.0
@@ -734,7 +728,7 @@ async def test_timescaledb_retry_deadlock_behavior(mock_sleep, timescaledb):
 @patch("asyncio.sleep")
 async def test_timescaledb_retry_deadlock_exhaustion(mock_sleep, timescaledb):
     """Test deadlock retry gives up after MAX_DEADLOCK_RETRIES."""
-    (table_name, dsn_url, _, columns_config) = timescaledb
+    table_name, dsn_url, _, columns_config = timescaledb
 
     target = TimescaleDBTarget(
         dsn=dsn_url, time_col="time", columns=columns_config, table=table_name, max_retries=3, retry_delay=1.0
@@ -757,7 +751,7 @@ async def test_timescaledb_retry_deadlock_exhaustion(mock_sleep, timescaledb):
 @patch("asyncio.sleep")
 async def test_timescaledb_retry_connection_error_retry_behavior(mock_sleep, timescaledb):
     """Test connection error retry with exponential backoff."""
-    (table_name, dsn_url, _, columns_config) = timescaledb
+    table_name, dsn_url, _, columns_config = timescaledb
 
     target = TimescaleDBTarget(
         dsn=dsn_url, time_col="time", columns=columns_config, table=table_name, max_retries=3, retry_delay=1.0
@@ -785,7 +779,7 @@ async def test_timescaledb_retry_connection_error_retry_behavior(mock_sleep, tim
 @pytest.mark.asyncio
 async def test_timescaledb_retry_non_retriable_error_passthrough(timescaledb):
     """Test that non-retriable errors pass through without retry."""
-    (table_name, dsn_url, _, columns_config) = timescaledb
+    table_name, dsn_url, _, columns_config = timescaledb
 
     target = TimescaleDBTarget(
         dsn=dsn_url, time_col="time", columns=columns_config, table=table_name, max_retries=3, retry_delay=1.0
@@ -805,7 +799,7 @@ async def test_timescaledb_retry_non_retriable_error_passthrough(timescaledb):
 @patch("asyncio.sleep")
 async def test_timescaledb_retry_custom_retry_configuration(mock_sleep, timescaledb):
     """Test custom retry configuration parameters."""
-    (table_name, dsn_url, _, columns_config) = timescaledb
+    table_name, dsn_url, _, columns_config = timescaledb
 
     custom_target = TimescaleDBTarget(
         dsn=dsn_url,
@@ -834,7 +828,7 @@ async def test_timescaledb_retry_custom_retry_configuration(mock_sleep, timescal
 
 def test_timescaledb_retry_retry_configuration_defaults(timescaledb):
     """Test default retry configuration values."""
-    (table_name, dsn_url, _, columns_config) = timescaledb
+    table_name, dsn_url, _, columns_config = timescaledb
 
     default_target = TimescaleDBTarget(dsn=dsn_url, time_col="time", columns=columns_config, table=table_name)
 
@@ -857,16 +851,14 @@ def test_timescaledb_dedup_with_unique_constraint(table_cleanup):
         with conn.cursor() as cursor:
             cursor.execute("CREATE EXTENSION IF NOT EXISTS timescaledb;")
             cursor.execute(f"DROP TABLE IF EXISTS {table_name};")
-            cursor.execute(
-                f"""
+            cursor.execute(f"""
                 CREATE TABLE {table_name} (
                     end_infer_time TIMESTAMPTZ NOT NULL,
                     endpoint_id VARCHAR(64),
                     latency DOUBLE PRECISION,
                     UNIQUE (endpoint_id, end_infer_time)
                 );
-                """
-            )
+                """)
             cursor.execute(
                 f"SELECT create_hypertable('{table_name}', 'end_infer_time', "
                 f"chunk_time_interval => INTERVAL '1 day', if_not_exists => TRUE);"
