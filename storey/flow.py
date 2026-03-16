@@ -13,6 +13,7 @@
 # limitations under the License.
 #
 import asyncio
+import contextlib
 import copy
 import datetime
 import enum
@@ -1492,6 +1493,13 @@ class _Batching(Flow):
 
     async def _do(self, event):
         if event is _termination_obj:
+            # Cancel the timer task before flushing to prevent it from racing
+            # with _emit_all or writing to a closed target after _terminate.
+            if self._timeout_task is not None:
+                self._timeout_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError, Exception):
+                    await self._timeout_task
+                self._timeout_task = None
             if self.logger:
                 self.logger.info(f"Terminating Batching step '{self.name}': emitting all remaining batches")
             await self._emit_all()
@@ -1552,16 +1560,55 @@ class _Batching(Flow):
             return
         batch_time = self._batch_first_event_time.pop(batch_key)
         last_event_time = self._batch_last_event_time.pop(batch_key)
-        del self._batch_start_time[batch_key]
+        batch_start_time = self._batch_start_time.pop(batch_key)
+        # Pop batch_events BEFORE the await so concurrent _do() calls create
+        # a fresh list instead of appending to the one we're processing.
+        batch_events = self._batch_events.pop(batch_key, [])
         try:
-            await self._emit(batch_to_emit, batch_key, batch_time, self._batch_events[batch_key], last_event_time)
-        finally:
-            # whether we succeeded or failed, we are done with these events
-            del self._batch_events[batch_key]
+            await self._emit(batch_to_emit, batch_key, batch_time, batch_events, last_event_time)
+        except Exception:
+            # Re-insert the failed batch so it can be retried by the next timer
+            # cycle or redelivered by Kafka.  Prepend to any new events that
+            # arrived during the failed _emit.
+            if batch_key in self._batch:
+                self._batch[batch_key] = batch_to_emit + self._batch[batch_key]
+            else:
+                self._batch[batch_key] = batch_to_emit
+            if batch_key in self._batch_events:
+                self._batch_events[batch_key] = batch_events + self._batch_events[batch_key]
+            else:
+                self._batch_events[batch_key] = batch_events
+            if batch_key in self._batch_first_event_time:
+                self._batch_first_event_time[batch_key] = min(batch_time, self._batch_first_event_time[batch_key])
+            else:
+                self._batch_first_event_time[batch_key] = batch_time
+            if batch_key in self._batch_last_event_time:
+                self._batch_last_event_time[batch_key] = max(last_event_time, self._batch_last_event_time[batch_key])
+            else:
+                self._batch_last_event_time[batch_key] = last_event_time
+            self._batch_start_time.setdefault(batch_key, batch_start_time)
+            raise
 
     async def _emit_all(self):
-        for key in list(self._batch.keys()):
-            await self._emit_batch(key)
+        # Loop until empty instead of snapshot iteration, so keys added
+        # during a yielding _emit are not missed.
+        while self._batch:
+            key = next(iter(self._batch.keys()))
+            try:
+                await self._emit_batch(key)
+            except Exception:
+                if self.logger:
+                    self.logger.error(
+                        f"Failed to flush batch for key '{key}' in step '{self.name}' "
+                        f"during termination:\n{traceback.format_exc()}"
+                    )
+                # _emit_batch re-inserted the failed batch.  Remove the batch
+                # data to avoid infinite retry, but keep _batch_events so event
+                # references stay alive and Kafka offsets stay uncommitted.
+                self._batch.pop(key, None)
+                self._batch_first_event_time.pop(key, None)
+                self._batch_last_event_time.pop(key, None)
+                self._batch_start_time.pop(key, None)
 
 
 class Batch(_Batching, WithUUID):
