@@ -1599,6 +1599,47 @@ class TestParallelExecutionStreaming:
         assert isinstance(metadata["microsec"], int), "Expected 'microsec' to be an integer"
         assert metadata["microsec"] >= 0, "Expected 'microsec' to be non-negative"
 
+    @pytest.mark.parametrize(
+        "execution_mechanism",
+        [
+            ParallelExecutionMechanisms.process_pool,
+            ParallelExecutionMechanisms.dedicated_process,
+        ],
+    )
+    def test_multiple_streaming_runnables_with_process_raises_streaming_error(self, execution_mechanism):
+        """Regression test for ML-12205: selecting multiple streaming runnables
+        with process_pool or dedicated_process must raise StreamingError, not AttributeError.
+
+        Before the fix, process-based streaming returned a raw async generator instead of
+        a _StreamingResult. The multi-runnable streaming guard (isinstance check for
+        _StreamingResult) didn't match, so code fell through to the non-streaming path
+        which tried to access .runnable_name on the async generator, producing:
+            AttributeError: 'async_generator' object has no attribute 'runnable_name'
+        """
+        streamer1 = StreamingRunnable(name="streamer1")
+        streamer2 = StreamingRunnable(name="streamer2")
+
+        controller = build_flow(
+            [
+                SyncEmitSource(),
+                ParallelExecution(
+                    runnables=[streamer1, streamer2],
+                    execution_mechanism_by_runnable_name={
+                        "streamer1": execution_mechanism,
+                        "streamer2": execution_mechanism,
+                    },
+                ),
+                Reduce([], lambda acc, x: acc + [x]),
+            ]
+        ).run()
+
+        try:
+            controller.emit("test")
+        finally:
+            controller.terminate()
+            with pytest.raises(StreamingError, match="Streaming is not supported when multiple runnables are selected"):
+                controller.await_termination()
+
 
 class TestStreamingGraphSplits:
     """Tests for streaming through branching graph topologies."""
