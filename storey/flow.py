@@ -73,6 +73,20 @@ def _is_awaitable_coroutine(obj) -> bool:
     return not _is_generator(obj) and asyncio.iscoroutine(obj)
 
 
+_sync_gen_sentinel = object()
+
+
+async def _gen_to_async_gen(sync_gen):
+    """Wrap a synchronous generator as an async generator, offloading each
+    next() call to a thread so it doesn't block the event loop."""
+    loop = asyncio.get_running_loop()
+    while True:
+        item = await loop.run_in_executor(None, next, sync_gen, _sync_gen_sentinel)
+        if item is _sync_gen_sentinel:
+            break
+        yield item
+
+
 def is_batched_event(event) -> bool:
     return (
         not isinstance(event, StreamCompletion)
@@ -644,12 +658,8 @@ class _StreamingStepMixin:
         """
         self._validate_not_already_streaming(event)
 
-        async def gen_to_async_gen(sync_gen):
-            for item in sync_gen:
-                yield item
-
         # If needed, wrap sync generator as async to unify iteration
-        async_gen = gen_to_async_gen(generator) if inspect.isgenerator(generator) else generator
+        async_gen = _gen_to_async_gen(generator) if inspect.isgenerator(generator) else generator
 
         chunk_id = 0
         generator_error = None
