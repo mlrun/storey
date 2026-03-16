@@ -14,6 +14,7 @@
 #
 import asyncio
 import inspect
+import time
 from typing import AsyncGenerator, Generator, Optional
 
 import pytest
@@ -2083,3 +2084,52 @@ class TestConcurrentExecutionStreaming:
             result = controller.await_termination()
 
         assert result == ["re_test_0", "re_test_1"]
+
+
+class TestSyncGeneratorEventLoopBlocking:
+    def test_sync_generator_does_not_block_event_loop(self):
+        """A sync generator with time.sleep() must not starve the event loop.
+
+        Reproduces ML-12203: when em=naive or em=thread_pool, a blocking sync
+        generator in _emit_streaming_chunks prevents the event loop from flushing
+        HTTP chunks, causing them to be concatenated.
+        """
+
+        async def _test():
+            sleep_duration = 0.15
+            num_chunks = 3
+            concurrent_ticks = []
+            streaming_done = asyncio.Event()
+
+            def slow_generator(x):
+                for i in range(num_chunks):
+                    time.sleep(sleep_duration)
+                    yield f"{x}_chunk_{i}"
+
+            async def concurrent_task():
+                tick_interval = sleep_duration / 4
+                while not streaming_done.is_set():
+                    concurrent_ticks.append(time.monotonic())
+                    await asyncio.sleep(tick_interval)
+
+            source = AsyncEmitSource()
+            source.to(Map(slow_generator)).to(Reduce([], lambda acc, x: acc + [x]))
+            controller = source.run()
+
+            concurrent = asyncio.create_task(concurrent_task())
+            try:
+                await controller.emit("test")
+            finally:
+                await controller.terminate()
+                result = await controller.await_termination()
+
+            streaming_done.set()
+            await concurrent
+
+            assert result == ["test_chunk_0", "test_chunk_1", "test_chunk_2"]
+            assert len(concurrent_ticks) >= num_chunks * 2, (
+                f"Event loop was blocked: only {len(concurrent_ticks)} ticks "
+                f"during {sleep_duration * num_chunks:.2f}s of generator sleeps"
+            )
+
+        asyncio.run(_test())
