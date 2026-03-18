@@ -1581,7 +1581,15 @@ class Batch(_Batching, WithUUID):
 
     _do_downstream_per_event = False
 
-    def __init__(self, *args, **kwargs):
+    def __init__(
+        self,
+        max_events: Optional[int] = None,
+        flush_after_seconds: Union[int, float, None] = None,
+        key_field: Optional[Union[str, Callable[[Event], str]]] = None,
+        drop_key_field=False,
+        *args,
+        **kwargs,
+    ):
         # Set full_event to True by default if not specified
         if kwargs.get("full_event") is None:
             warnings.warn(
@@ -1589,11 +1597,16 @@ class Batch(_Batching, WithUUID):
                 " Please explicitly set full_event=False if you want to keep the old behavior"
             )
             kwargs["full_event"] = True
-        flush_after_seconds = kwargs.get("flush_after_seconds")
         if not flush_after_seconds:
             raise ValueError("flush_after_seconds is mandatory in Batch")
-        _Batching._validate_flush_after_seconds(flush_after_seconds)
-        _Batching.__init__(self, *args, **kwargs)
+        _Batching.__init__(
+            self,
+            max_events=max_events,
+            flush_after_seconds=flush_after_seconds,
+            key_field=key_field,
+            drop_key_field=drop_key_field,
+            **kwargs,
+        )
         WithUUID.__init__(self)
 
     async def _emit(self, batch, batch_key, batch_time, batch_events, last_event_time=None):

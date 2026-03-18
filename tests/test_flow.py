@@ -2439,6 +2439,45 @@ def test_batch_warns_when_full_event_not_specified():
         Batch(4, 100)
 
 
+@pytest.mark.parametrize(
+    "flush_after_seconds, expected_exc, expected_msg",
+    [
+        (None, ValueError, "flush_after_seconds is mandatory"),
+        (0, ValueError, "flush_after_seconds is mandatory"),
+        ("10", TypeError, "flush_after_seconds must be a number"),
+        ([10], TypeError, "flush_after_seconds must be a number"),
+        (-1, ValueError, "flush_after_seconds cannot be negative"),
+        (-0.5, ValueError, "flush_after_seconds cannot be negative"),
+    ],
+)
+def test_batch_invalid_flush_after_seconds(flush_after_seconds, expected_exc, expected_msg):
+    with pytest.raises(expected_exc, match=expected_msg):
+        build_flow(
+            [
+                SyncEmitSource(),
+                Batch(flush_after_seconds=flush_after_seconds, full_event=True),
+            ]
+        )
+
+
+@pytest.mark.parametrize(
+    "max_events, expected_exc, expected_msg",
+    [
+        ("5", TypeError, "max_events must be an integer"),
+        (5.1, TypeError, "max_events must be an integer"),
+        (-1, ValueError, "max_events must be a positive integer"),
+    ],
+)
+def test_batch_invalid_max_events(max_events, expected_exc, expected_msg):
+    with pytest.raises(expected_exc, match=expected_msg):
+        build_flow(
+            [
+                SyncEmitSource(),
+                Batch(max_events=max_events, flush_after_seconds=10, full_event=True),
+            ]
+        )
+
+
 async def async_test_write_csv(tmpdir):
     file_path = f"{tmpdir}/test_write_csv/out.csv"
     controller = build_flow([AsyncEmitSource(), CSVTarget(file_path, columns=["n", "n*10"], header=True)]).run()
