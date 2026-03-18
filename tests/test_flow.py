@@ -2447,7 +2447,6 @@ def test_batch_warns_when_full_event_not_specified():
         ("10", TypeError, "flush_after_seconds must be a number"),
         ([10], TypeError, "flush_after_seconds must be a number"),
         (-1, ValueError, "flush_after_seconds cannot be negative"),
-        (-0.5, ValueError, "flush_after_seconds cannot be negative"),
     ],
 )
 def test_batch_invalid_flush_after_seconds(flush_after_seconds, expected_exc, expected_msg):

@@ -99,7 +99,8 @@ def _create_timescaledb_table_and_data(table_name: str, timestamp_precision: str
 
             # Drop and create table
             cursor.execute(f"DROP TABLE IF EXISTS {table_name};")
-            cursor.execute(f"""
+            cursor.execute(
+                f"""
                 CREATE TABLE {table_name} (
                     time TIMESTAMPTZ NOT NULL,
                     binary_col BYTEA,
@@ -112,7 +113,8 @@ def _create_timescaledb_table_and_data(table_name: str, timestamp_precision: str
                     varchar_col VARCHAR(255),
                     text_col TEXT
                 );
-                """)
+                """
+            )
 
             cursor.execute(f"SELECT create_hypertable('{table_name}', 'time');")
 
@@ -309,13 +311,15 @@ def test_timescaledb_schema_validation_missing_column(timescaledb, nullable, tab
 
             # Create table with different column nullability based on parameter
             test_col_nullable = "NULL" if nullable else "NOT NULL"
-            cursor.execute(f"""
+            cursor.execute(
+                f"""
                 CREATE TABLE {validation_table} (
                     time TIMESTAMPTZ NOT NULL,
                     required_col INTEGER NOT NULL,
                     test_col VARCHAR(50) {test_col_nullable}
                 );
-            """)
+            """
+            )
             cursor.execute(f"SELECT create_hypertable('{validation_table}', 'time');")
 
     time_format = "%d/%m/%y %H:%M:%S UTC%z"
@@ -407,13 +411,15 @@ def test_timescaledb_schema_validation_with_schema_prefix(timescaledb, table_cle
             cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_name};")
             cursor.execute(f"DROP TABLE IF EXISTS {schema_table};")
 
-            cursor.execute(f"""
+            cursor.execute(
+                f"""
                 CREATE TABLE {schema_table} (
                     time TIMESTAMPTZ NOT NULL,
                     required_col INTEGER NOT NULL,
                     optional_col VARCHAR(50)
                 );
-            """)
+            """
+            )
             cursor.execute(f"SELECT create_hypertable('{schema_table}', 'time');")
 
     time_format = "%d/%m/%y %H:%M:%S UTC%z"
@@ -851,14 +857,16 @@ def test_timescaledb_dedup_with_unique_constraint(table_cleanup):
         with conn.cursor() as cursor:
             cursor.execute("CREATE EXTENSION IF NOT EXISTS timescaledb;")
             cursor.execute(f"DROP TABLE IF EXISTS {table_name};")
-            cursor.execute(f"""
+            cursor.execute(
+                f"""
                 CREATE TABLE {table_name} (
                     end_infer_time TIMESTAMPTZ NOT NULL,
                     endpoint_id VARCHAR(64),
                     latency DOUBLE PRECISION,
                     UNIQUE (endpoint_id, end_infer_time)
                 );
-                """)
+                """
+            )
             cursor.execute(
                 f"SELECT create_hypertable('{table_name}', 'end_infer_time', "
                 f"chunk_time_interval => INTERVAL '1 day', if_not_exists => TRUE);"
