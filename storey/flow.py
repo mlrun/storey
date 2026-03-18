@@ -1429,9 +1429,11 @@ class _Batching(Flow):
         drop_key_field=False,
         **kwargs,
     ):
-        if max_events:
+        if max_events is not None:
+            self._validate_max_events(max_events)
             kwargs["max_events"] = max_events
         if flush_after_seconds is not None:
+            self._validate_flush_after_seconds(flush_after_seconds)
             kwargs["flush_after_seconds"] = flush_after_seconds
         if isinstance(key_field, str):
             kwargs["key_field"] = key_field
@@ -1439,10 +1441,6 @@ class _Batching(Flow):
 
         self._max_events = max_events
         self._flush_after_seconds = flush_after_seconds
-
-        if self._flush_after_seconds is not None and self._flush_after_seconds < 0:
-            raise ValueError("flush_after_seconds cannot be negative")
-
         self._extract_key: Optional[Callable[[Event], str]] = self._create_key_extractor(key_field, drop_key_field)
 
     def _init(self):
@@ -1454,6 +1452,20 @@ class _Batching(Flow):
         self._batch_last_event_time: Dict[Optional[str], datetime.datetime] = {}
         self._batch_start_time: Dict[Optional[str], float] = {}
         self._timeout_task: Optional[Task] = None
+
+    @staticmethod
+    def _validate_max_events(max_events):
+        if not isinstance(max_events, int):
+            raise TypeError(f"max_events must be an integer, got {type(max_events).__name__}")
+        if max_events <= 0:
+            raise ValueError("max_events must be a positive integer")
+
+    @staticmethod
+    def _validate_flush_after_seconds(flush_after_seconds):
+        if not isinstance(flush_after_seconds, (int, float)):
+            raise TypeError(f"flush_after_seconds must be a number, got {type(flush_after_seconds).__name__}")
+        if flush_after_seconds < 0:
+            raise ValueError("flush_after_seconds cannot be negative")
 
     @staticmethod
     def _create_key_extractor(key_field, drop_key_field) -> Callable:
@@ -1577,7 +1589,10 @@ class Batch(_Batching, WithUUID):
                 " Please explicitly set full_event=False if you want to keep the old behavior"
             )
             kwargs["full_event"] = True
-
+        flush_after_seconds = kwargs.get("flush_after_seconds")
+        if not flush_after_seconds:
+            raise ValueError("flush_after_seconds is mandatory in Batch")
+        _Batching._validate_flush_after_seconds(flush_after_seconds)
         _Batching.__init__(self, *args, **kwargs)
         WithUUID.__init__(self)
 
