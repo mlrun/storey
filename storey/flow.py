@@ -1589,6 +1589,7 @@ class Batch(_Batching, WithUUID):
                 " Please explicitly set full_event=False if you want to keep the old behavior"
             )
             kwargs["full_event"] = True
+
         _Batching.__init__(self, *args, **kwargs)
         WithUUID.__init__(self)
 
