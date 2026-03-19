@@ -2442,8 +2442,8 @@ def test_batch_warns_when_full_event_not_specified():
 @pytest.mark.parametrize(
     "flush_after_seconds, expected_exc, expected_msg",
     [
-        (None, ValueError, "flush_after_seconds is mandatory"),
-        (0, ValueError, "flush_after_seconds is mandatory"),
+        (None, ValueError, "At least one of flush_after_seconds or max_events must be provided"),
+        (0, ValueError, "At least one of flush_after_seconds or max_events must be provided"),
         ("10", TypeError, "flush_after_seconds must be a number"),
         ([10], TypeError, "flush_after_seconds must be a number"),
         (-1, ValueError, "flush_after_seconds cannot be negative"),
@@ -2455,6 +2455,17 @@ def test_batch_invalid_flush_after_seconds(flush_after_seconds, expected_exc, ex
             [
                 SyncEmitSource(),
                 Batch(flush_after_seconds=flush_after_seconds, full_event=True),
+            ]
+        )
+
+
+def test_batch_neither_raises():
+    """Neither flush_after_seconds nor max_events should raise"""
+    with pytest.raises(ValueError, match="At least one of flush_after_seconds or max_events must be provided"):
+        build_flow(
+            [
+                SyncEmitSource(),
+                Batch(full_event=True),
             ]
         )
 

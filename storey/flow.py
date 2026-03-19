@@ -1597,8 +1597,8 @@ class Batch(_Batching, WithUUID):
                 " Please explicitly set full_event=False if you want to keep the old behavior"
             )
             kwargs["full_event"] = True
-        if not flush_after_seconds:
-            raise ValueError("flush_after_seconds is mandatory in Batch")
+        if not flush_after_seconds and not max_events:
+            raise ValueError("At least one of flush_after_seconds or max_events must be provided in Batch")
         _Batching.__init__(
             self,
             max_events=max_events,
