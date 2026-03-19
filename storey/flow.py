@@ -1581,11 +1581,7 @@ class Batch(_Batching, WithUUID):
 
     _do_downstream_per_event = False
 
-    def __init__(
-        self,
-        *args,
-        **kwargs,
-    ):
+    def __init__(self, *args, **kwargs):
         # Set full_event to True by default if not specified
         if kwargs.get("full_event") is None:
             warnings.warn(
@@ -1593,11 +1589,7 @@ class Batch(_Batching, WithUUID):
                 " Please explicitly set full_event=False if you want to keep the old behavior"
             )
             kwargs["full_event"] = True
-        _Batching.__init__(
-            self,
-            *args,
-            **kwargs,
-        )
+        _Batching.__init__(self, *args, **kwargs)
         WithUUID.__init__(self)
 
         if not self._flush_after_seconds and not self._max_events:
