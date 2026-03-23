@@ -1453,6 +1453,7 @@ class _Batching(Flow):
         self._batch_start_time: Dict[Optional[str], float] = {}
         self._timeout_task: Optional[Task] = None
         self._terminating = False
+        self._stop_timer_event: Optional[asyncio.Event] = None
 
     @staticmethod
     def _validate_max_events(max_events):
@@ -1493,10 +1494,13 @@ class _Batching(Flow):
 
     async def _do(self, event):
         if event is _termination_obj:
-            # Signal the timer to stop after its current emit, then wait for
-            # it to finish.  We avoid cancel() because that would interrupt a
-            # mid-flight _emit, losing already-popped batch data.
+            # Signal the timer to wake from its sleep and stop, then wait for
+            # it to finish any in-progress _emit before we run _emit_all.
+            # We avoid cancel() because that would interrupt a mid-flight _emit,
+            # losing already-popped batch data.
             self._terminating = True
+            if self._stop_timer_event is not None:
+                self._stop_timer_event.set()
             if self._timeout_task is not None:
                 await self._timeout_task
                 self._timeout_task = None
@@ -1525,6 +1529,7 @@ class _Batching(Flow):
             self._batch_last_event_time[key] = event_time
 
         if self._flush_after_seconds is not None and self._timeout_task is None:
+            self._stop_timer_event = asyncio.Event()
             self._timeout_task = asyncio.get_running_loop().create_task(self._sleep_and_emit())
 
         self._batch[key].append(self._event_to_batch_entry(event))
@@ -1542,7 +1547,13 @@ class _Batching(Flow):
                 key = next(iter(self._batch.keys()))
                 delta_seconds = time.monotonic() - self._batch_start_time[key]
                 if delta_seconds < self._flush_after_seconds:
-                    await asyncio.sleep(self._flush_after_seconds - delta_seconds)
+                    remaining = self._flush_after_seconds - delta_seconds
+                    try:
+                        # Wait until the flush interval elapses OR termination is signalled.
+                        await asyncio.wait_for(self._stop_timer_event.wait(), timeout=remaining)
+                        break  # Stop event was set; exit without emitting
+                    except asyncio.TimeoutError:
+                        pass  # Normal flush interval elapsed; proceed to emit
                 if self._terminating:
                     break
                 await self._emit_batch(key)
