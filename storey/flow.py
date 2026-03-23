@@ -13,7 +13,6 @@
 # limitations under the License.
 #
 import asyncio
-import contextlib
 import copy
 import datetime
 import enum
@@ -1453,6 +1452,7 @@ class _Batching(Flow):
         self._batch_last_event_time: Dict[Optional[str], datetime.datetime] = {}
         self._batch_start_time: Dict[Optional[str], float] = {}
         self._timeout_task: Optional[Task] = None
+        self._terminating = False
 
     @staticmethod
     def _validate_max_events(max_events):
@@ -1493,12 +1493,12 @@ class _Batching(Flow):
 
     async def _do(self, event):
         if event is _termination_obj:
-            # Cancel the timer task before flushing to prevent it from racing
-            # with _emit_all or writing to a closed target after _terminate.
+            # Signal the timer to stop after its current emit, then wait for
+            # it to finish.  We avoid cancel() because that would interrupt a
+            # mid-flight _emit, losing already-popped batch data.
+            self._terminating = True
             if self._timeout_task is not None:
-                self._timeout_task.cancel()
-                with contextlib.suppress(asyncio.CancelledError, Exception):
-                    await self._timeout_task
+                await self._timeout_task
                 self._timeout_task = None
             if self.logger:
                 self.logger.info(f"Terminating Batching step '{self.name}': emitting all remaining batches")
@@ -1538,11 +1538,13 @@ class _Batching(Flow):
 
     async def _sleep_and_emit(self):
         try:
-            while self._batch:
+            while self._batch and not self._terminating:
                 key = next(iter(self._batch.keys()))
                 delta_seconds = time.monotonic() - self._batch_start_time[key]
                 if delta_seconds < self._flush_after_seconds:
                     await asyncio.sleep(self._flush_after_seconds - delta_seconds)
+                if self._terminating:
+                    break
                 await self._emit_batch(key)
         except Exception:
             message = traceback.format_exc()
