@@ -112,10 +112,24 @@ class TestBatchingRaceConditions:
     def test_race1_concurrent_emit_batch_keyerror(self):
         """Timer and max_events both call _emit_batch for the same key.
 
-        The timer flushes a batch while _emit yields (slow write).  New
-        events arrive and hit max_events, triggering a second _emit_batch
-        for the same key.  With the fix, _batch_events is popped before
-        await so both calls operate on separate data.
+        Time  | Run loop (_do)                     | Timer (_sleep_and_emit)
+        ------+------------------------------------+------------------------------------
+          t0  | emit(ev1) -> append, start timer   | sleeping...
+          t1  | idle at _q.get()                   | wakes -> _emit_batch(None)
+          t2  | idle                               |   _batch.pop(None) -> batch1
+          t3  | idle                               |   await _emit(batch1) YIELDS
+        ------+------------------------------------+-- -- -- -- -- -- -- -- -- -- -- --
+          t4  | emit(ev2) -> append                |   (suspended in _emit)
+          t5  | emit(ev3) -> max_events hit        |   (suspended in _emit)
+          t6  |   _emit_batch(None)                |   (suspended in _emit)
+          t7  |     _batch.pop(None) -> batch2     |   (suspended in _emit)
+          t8  |     await _emit(batch2) YIELDS     |   (suspended in _emit)
+        ------+-- -- -- -- -- -- -- -- -- -- -- -- +-- -- -- -- -- -- -- -- -- -- -- --
+          t9  |   (suspended)                      |   _emit returns
+          t10 |   (suspended)                      |   pop _batch_events[None] (ok)
+        ------+-- -- -- -- -- -- -- -- -- -- -- -- +------------------------------------
+          t11 |   _emit returns                    |
+          t12 |   pop _batch_events[None]          |   FIX: separate list, no KeyError
         """
 
         async def _test():
@@ -123,23 +137,22 @@ class TestBatchingRaceConditions:
             target = GatedTarget(gate=gate, max_events=2, flush_after_seconds=0.01)
             controller = build_flow([AsyncEmitSource(), target]).run()
 
-            # Event 1 starts the timer
+            # t0: Event 1 starts the timer
             await controller.emit(_ev(1))
 
-            # Timer fires -> _emit_batch(None) -> blocks on gate inside _emit
+            # t1-t3: Wait for timer to fire (flush_after_seconds=0.01) and block on gate
             await asyncio.sleep(0.05)
             assert target.emit_count == 1, "Timer should have started _emit"
 
-            # Events 2,3 arrive while _emit is blocked.
+            # t4-t8: Events 2,3 arrive while _emit is blocked.
             # Event 3 hits max_events=2 -> _do calls _emit_batch(None).
             await controller.emit(_ev(2))
             await controller.emit(_ev(3))
-            # Yield to let the max_events _emit_batch start and reach the gate
-            await asyncio.sleep(0)
+            await asyncio.sleep(0)  # yield to let max_events _emit_batch reach gate
 
-            # Release gate — both _emit_batch calls complete without KeyError
+            # t9-t12: Release gate — both _emit_batch calls complete without KeyError
             gate.set()
-            await asyncio.sleep(0)
+            await asyncio.sleep(0)  # yield to let both _emit calls finish
 
             await controller.terminate()
             await controller.await_termination()
@@ -147,12 +160,25 @@ class TestBatchingRaceConditions:
         asyncio.run(_test())
 
     def test_race2_events_deleted_by_concurrent_finally(self):
-        """Events arriving during a slow _emit are isolated from the
-        in-flight batch.
+        """Events arriving during a slow _emit go into a separate list.
 
-        With the fix, _batch_events is popped before await, so new events
-        go into a fresh list and their references survive the completion
-        of the in-flight _emit.
+        Time  | Run loop (_do)                     | Timer (_sleep_and_emit)
+        ------+------------------------------------+------------------------------------
+          t0  | emit(ev1) -> append, start timer   | sleeping...
+          t1  | idle at _q.get()                   | sleeping...
+          t2  | idle                               | wakes -> _emit_batch(None)
+          t3  | idle                               |   _batch.pop, _batch_events.pop
+          t4  | idle                               |   await _emit(batch1) YIELDS
+        ------+------------------------------------+-- -- -- -- -- -- -- -- -- -- -- --
+          t5  | emit(ev2) -> _Batching._do         |   (suspended in _emit)
+          t6  |   _batch[None].append(data2)       |   (suspended in _emit)
+          t7  |   _batch_events[None].append(ev2)  |   FIX: fresh list, not timer's
+          t8  | idle at _q.get()                   |   (suspended in _emit)
+        ------+------------------------------------+-- -- -- -- -- -- -- -- -- -- -- --
+          t9  | idle                               |   _emit returns
+          t10 | idle                               |   (timer's batch_events is local)
+        ------+------------------------------------+------------------------------------
+              |                                    |   ev2 ref SURVIVES in new list
         """
 
         async def _test():
@@ -160,24 +186,21 @@ class TestBatchingRaceConditions:
             target = GatedTarget(gate=gate, flush_after_seconds=0.05)
             controller = build_flow([AsyncEmitSource(), target]).run()
 
-            # Emit first event
+            # t0: emit first event
             await controller.emit(_ev(1))
 
-            # Timer fires -> _emit_batch -> blocks on gate
+            # t2-t4: Wait for timer to fire (flush_after_seconds=0.05) and block on gate
             await asyncio.sleep(0.1)
             assert target.emit_count == 1
 
-            # Event 2 arrives while _emit is blocked.  The run loop picks
-            # it up from the queue and calls _do(), which appends to a
-            # fresh _batch_events[None] (the timer popped the old one).
+            # t5-t7: Event 2 arrives while _emit is blocked.  The run loop
+            # picks it up and appends to a fresh _batch_events[None].
             await controller.emit(_ev(2))
-            # Yield so the run loop processes the queued event
-            await asyncio.sleep(0)
+            await asyncio.sleep(0)  # yield so run loop processes the queued event
 
-            # Release gate -> timer's _emit completes and cleans up its
-            # own (already-popped) batch_events.  Event 2's list survives.
+            # t9-t10: Release gate -> timer's _emit completes
             gate.set()
-            await asyncio.sleep(0)
+            await asyncio.sleep(0)  # yield to let timer finish
 
             # Event 2's reference should survive — it's in a separate list
             has_pending_data = None in target._batch and len(target._batch[None]) > 0
@@ -196,9 +219,17 @@ class TestBatchingRaceConditions:
     def test_race3_timeout_task_not_cancelled_during_terminate(self):
         """_timeout_task must be stopped before _terminate runs.
 
-        Without the fix, _timeout_task is still alive when _terminate
-        closes connection pools / file handles, and could wake up and
-        try to write to a closed target.
+        Time  | _do(_termination_obj)              | Timer (_sleep_and_emit)
+        ------+------------------------------------+------------------------------------
+          t0  | emit(ev1) -> append, start timer   | sleeping for 60s...
+          t1  | terminate()                        | sleeping...
+          t2  |   _terminating = True              | sleeping...
+          t3  |   await _timeout_task              | checks _terminating -> exits loop
+          t4  |   _emit_all() -> _emit_batch(None) |
+          t5  |     _emit(batch) -> completes      |
+          t6  |   _terminate()                     |   FIX: task is done, not alive
+              |     closes DB pool / file handles  |
+          t7  |   _do_downstream(_termination_obj) |
         """
 
         async def _test():
@@ -206,10 +237,10 @@ class TestBatchingRaceConditions:
             target = RecordingTarget(flush_after_seconds=60.0)
             controller = build_flow([AsyncEmitSource(), target]).run()
 
-            # Emit event, starts timer
+            # t0: emit event, starts timer
             await controller.emit(_ev(1))
 
-            # Terminate — matches drain_callback path
+            # t1-t7: Terminate — matches drain_callback path
             await controller.terminate()
             await controller.await_termination()
 
@@ -225,11 +256,22 @@ class TestBatchingRaceConditions:
     def test_race4_emit_all_misses_new_keys(self):
         """_emit_all must flush keys added during a yielding _emit.
 
-        With the snapshot-based iteration (list(keys)), keys added while
-        _emit yields are missed.  The while-loop fix picks them up.
-
-        We inject a new key directly into _batch while _emit is blocked
-        to simulate a new partition key arriving during drain.
+        Time  | _do(_termination_obj)              | _batch keys
+        ------+------------------------------------+-----------------------------
+          t0  | emit(ev1, key="A") -> append       | {"A": [ev1]}
+          t1  | terminate()                        | {"A": [ev1]}
+          t2  |   _emit_all()                      |
+          t3  |     while _batch: key="A"          | {"A": [ev1]}
+          t4  |     _emit_batch("A")               |
+          t5  |       _batch.pop("A") -> batch_A   | {}
+          t6  |       await _emit(batch_A) YIELDS  | {}
+        ------+-- -- -- -- -- -- -- -- -- -- -- -- +-----------------------------
+          t7  |   (suspended in _emit)             | {"B": [ev2]}  (injected)
+        ------+-- -- -- -- -- -- -- -- -- -- -- -- +-----------------------------
+          t8  |       _emit returns                | {"B": [ev2]}
+          t9  |     while _batch: key="B"          |   FIX: loop continues
+          t10 |     _emit_batch("B") -> completes  | {}
+          t11 |   _terminate()                     | {}
         """
 
         async def _test():
@@ -238,15 +280,15 @@ class TestBatchingRaceConditions:
             target = GatedTarget(gate=gate, key_field="$key")
             controller = build_flow([AsyncEmitSource(), target]).run()
 
-            # Event with key "A"
+            # t0: event with key "A"
             await controller.emit(_ev(1, key="endpoint_A"))
 
-            # Start termination — _emit_all begins, blocks on gate for "endpoint_A"
+            # t1-t6: Start termination — _emit_all begins, blocks on gate
             term_task = asyncio.ensure_future(controller.terminate())
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.05)  # wait for termination to propagate to _emit
             assert target.emit_count == 1
 
-            # While _emit("endpoint_A") is blocked, inject a new partition key.
+            # t7: While _emit("endpoint_A") is blocked, inject a new partition key.
             # In production, this happens when the event loop processes a queued
             # event for a different endpoint during the S3 write yield.
             target._batch["endpoint_B"].append({"v": 2})
@@ -255,7 +297,7 @@ class TestBatchingRaceConditions:
             target._batch_last_event_time["endpoint_B"] = _dt.now()
             target._batch_start_time["endpoint_B"] = _time.monotonic()
 
-            # Release gate
+            # t8-t11: Release gate
             gate.set()
             await term_task
             await controller.await_termination()
