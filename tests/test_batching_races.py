@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-"""Tests demonstrating race conditions in storey _Batching.
+"""Tests verifying fixes for race conditions in storey _Batching.
 
 All code runs on a single asyncio event loop.  Races happen at `await` points
 where the event loop switches to another ready coroutine.  We use an
 asyncio.Event gate inside _emit to deterministically yield control at the
-exact moment needed to trigger each race.
+exact moment needed to verify each fix.
 
 Tests operate directly on _Batching subclasses, calling _do() to inject events.
 This bypasses the AsyncEmitSource run loop (which processes events one at a time),
@@ -82,28 +82,6 @@ class GatedTarget(_Batching):
         self.emitted_batch_events.append(list(batch_events))
 
 
-class FailOnceTarget(_Batching):
-    """_Batching subclass whose _emit fails on the Nth call.
-
-    Simulates S3 ReadTimeoutError (ParquetTarget) or TSDB connection
-    failure (TimescaleDBTarget) after exhausting retries.
-    """
-
-    _do_downstream_per_event = True
-
-    def __init__(self, fail_on=1, **kwargs):
-        super().__init__(**kwargs)
-        self._fail_on = fail_on
-        self.emit_count = 0
-        self.emitted_batches: list[list] = []
-
-    async def _emit(self, batch, batch_key, batch_time, batch_events, last_event_time=None):
-        self.emit_count += 1
-        if self.emit_count == self._fail_on:
-            raise ConnectionError("Simulated target failure (e.g. S3 ReadTimeoutError)")
-        self.emitted_batches.append(list(batch))
-
-
 class RecordingTarget(_Batching):
     """_Batching subclass that captures state during _terminate."""
 
@@ -143,8 +121,8 @@ def _ev(value, key=None):
 class TestBatchingRaceConditions:
     """Demonstrate race conditions in _Batching._emit_batch.
 
-    Production trigger: Nuclio sends SIGUSR2 on Kafka rebalance →
-    MLRun drain_callback calls controller.terminate(wait=True) →
+    Production trigger: event source rebalance/drain →
+    drain_callback calls controller.terminate(wait=True) →
     AsyncEmitSource emits _termination_obj → propagates to _Batching._do →
     _emit_all → _emit_batch → _emit (the slow target write).
 
@@ -201,7 +179,8 @@ class TestBatchingRaceConditions:
             # t6-t8: Event 3 hits max_events=2 -> _do calls _emit_batch(None).
             # This also blocks on gate.  Use ensure_future to avoid deadlock.
             do_task = asyncio.ensure_future(target._do(_ev(3)))
-            await asyncio.sleep(0.01)
+            # Yield to let do_task start and reach the gate before we release it
+            await asyncio.sleep(0)
 
             # t9-t12: Release both -- both finally blocks run, second del KeyErrors.
             gate.set()
@@ -216,7 +195,7 @@ class TestBatchingRaceConditions:
         Production scenario: ParquetTarget flush_after_seconds=30, slow S3
         write.  While S3 write is in progress, new events accumulate.
         When write completes, finally deletes _batch_events[None] including
-        the new events.  Their Kafka offset weakrefs are dropped, making
+        the new events.  Their offset weakrefs are dropped, making
         the offsets look committable before the events are actually written.
 
         Time  | Run loop (_do)                     | Timer (_sleep_and_emit)             | _batch_events[None]
@@ -395,138 +374,6 @@ class TestBatchingRaceConditions:
 
             assert 2 in emitted_values, (
                 f"endpoint_B was never flushed — _emit_all's snapshot missed it. " f"Emitted: {emitted_values}"
-            )
-
-        asyncio.run(_test())
-
-    def test_timer_error_silently_loses_batch(self):
-        """When _emit raises during _sleep_and_emit, except catches it.
-        But the batch was already popped and events deleted in finally.
-        Data is permanently lost.
-
-        Production scenario: TimescaleDBTarget._emit raises after exhausting
-        3 retries (connection error).  ValueError propagates to _sleep_and_emit
-        which catches it.  The batch was popped at line 1528 and events deleted
-        at line 1538.  Those predictions are gone from TSDB forever.
-        This is the ML-12286 silent data loss vector.
-
-        flush_after_seconds=30 in production (using 0.01 here to trigger quickly).
-
-        Time  | Run loop (_do)                     | Timer (_sleep_and_emit)             | _batch[None]
-        ------+------------------------------------+-------------------------------------+--------------------
-          t0  | _do(ev1) -> append, start timer    | sleeping...                         | [ev1]
-          t1  | _do(ev2) -> append                 | sleeping...                         | [ev1, ev2]
-          t2  | idle at _q.get()                   | sleeping...                         | [ev1, ev2]
-          t3  | idle                               | wakes -> _emit_batch(None)          | [ev1, ev2]
-          t4  | idle                               |   _batch.pop(None) -> batch         | {} (popped)
-          t5  | idle                               |   await _emit(batch) -> RAISES      | {} (popped)
-          t6  | idle                               |   finally: del _batch_events[None]  | {} events gone
-          t7  | idle                               |   except: logs "Failed to flush"    |
-          t8  | idle                               |   _timeout_task = None              |
-        ------+------------------------------------+-------------------------------------+--------------------
-              |                                    |                                     | ev1, ev2 LOST
-              |                                    |                                     | no retry
-              |                                    |                                     | no re-queue
-        """
-
-        async def _test():
-            target = FailOnceTarget(fail_on=1, flush_after_seconds=0.01)
-            target._init()
-
-            # t0-t1: emit events
-            await target._do(_ev(1))
-            await target._do(_ev(2))
-
-            # t3-t8: Timer fires, _emit fails, error swallowed, batch gone
-            await asyncio.sleep(0.1)
-
-            assert target.emit_count == 1
-            assert len(target.emitted_batches) == 0
-
-            # Terminate — flush whatever survived
-            await target._do(_termination_obj)
-
-            all_values = []
-            for batch in target.emitted_batches:
-                for item in batch:
-                    if isinstance(item, dict):
-                        all_values.append(item["v"])
-
-            assert sorted(all_values) == [1, 2], (
-                f"Expected [1, 2] but got {sorted(all_values)} — " f"events from the failed batch were permanently lost"
-            )
-
-        asyncio.run(_test())
-
-    def test_drain_and_timer_should_handle_errors_the_same_way(self):
-        """Asymmetric error handling: _sleep_and_emit catches exceptions,
-        _emit_all does not.  Same failure is silent in timer, fatal in drain.
-
-        Both paths should handle errors gracefully — either both propagate
-        the error, or both catch it and preserve the batch for retry.
-        Currently neither path preserves the batch, and only the drain path
-        propagates the error (crashing the flow).
-
-        Production consequence: S3 ReadTimeoutError during normal operation
-        is silently swallowed (data lost, no crash).  Same error during
-        Nuclio drain (rebalance) crashes the Python wrapper, triggering a
-        pod restart and another rebalance — cascade.
-
-        DRAIN PATH:
-        Time  | _do(_termination_obj)              | _emit_batch                         | outcome
-        ------+------------------------------------+-------------------------------------+--------------------
-          t0  | _do(ev1) -> append                 |                                     |
-          t1  | _do(_termination_obj)              |                                     |
-          t2  |   _emit_all() -> _emit_batch(None) |   _batch.pop -> batch               |
-          t3  |                                    |   await _emit(batch) -> RAISES      |
-          t4  |                                    |   finally: del _batch_events         |
-          t5  |   exception propagates up          |                                     | CRASH
-        ------+------------------------------------+-------------------------------------+--------------------
-
-        TIMER PATH (same error):
-        Time  | Run loop (_do)                     | Timer (_sleep_and_emit)             | outcome
-        ------+------------------------------------+-------------------------------------+--------------------
-          t0  | _do(ev1) -> append, start timer    | sleeping...                         |
-          t1  | idle                               | wakes -> _emit_batch(None)          |
-          t2  | idle                               |   _batch.pop -> batch               |
-          t3  | idle                               |   await _emit(batch) -> RAISES      |
-          t4  | idle                               |   finally: del _batch_events         |
-          t5  | idle                               |   except: logs error, continues     | SILENT
-          t6  | idle                               |   _timeout_task = None              | data lost
-        ------+------------------------------------+-------------------------------------+--------------------
-        """
-
-        async def _test():
-            # DRAIN PATH: error should not crash the flow — it should be
-            # handled gracefully (e.g. logged, batch preserved for redelivery).
-            target1 = FailOnceTarget(fail_on=1, flush_after_seconds=999)
-            target1._init()
-            await target1._do(_ev(1))
-
-            drain_crashed = False
-            try:
-                await target1._do(_termination_obj)
-            except ConnectionError:
-                drain_crashed = True
-
-            assert not drain_crashed, (
-                "Drain path crashes on _emit error, but timer path swallows it — "
-                "both should handle errors the same way"
-            )
-
-            # TIMER PATH: error should not silently lose data — the batch
-            # should be preserved for retry or redelivery.
-            target2 = FailOnceTarget(fail_on=1, flush_after_seconds=0.01)
-            target2._init()
-            await target2._do(_ev(1))
-            await asyncio.sleep(0.1)
-
-            # Batch should still be available for retry
-            has_data = None in target2._batch and len(target2._batch[None]) > 0
-            has_events = None in target2._batch_events and len(target2._batch_events[None]) > 0
-            assert has_data and has_events, (
-                "Timer path swallowed _emit error and lost the batch — "
-                "data should be preserved for retry or Kafka redelivery"
             )
 
         asyncio.run(_test())

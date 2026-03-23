@@ -1560,55 +1560,18 @@ class _Batching(Flow):
             return
         batch_time = self._batch_first_event_time.pop(batch_key)
         last_event_time = self._batch_last_event_time.pop(batch_key)
-        batch_start_time = self._batch_start_time.pop(batch_key)
+        self._batch_start_time.pop(batch_key, None)
         # Pop batch_events BEFORE the await so concurrent _do() calls create
         # a fresh list instead of appending to the one we're processing.
         batch_events = self._batch_events.pop(batch_key, [])
-        try:
-            await self._emit(batch_to_emit, batch_key, batch_time, batch_events, last_event_time)
-        except Exception:
-            # Re-insert the failed batch so it can be retried by the next timer
-            # cycle or redelivered by Kafka.  Prepend to any new events that
-            # arrived during the failed _emit.
-            if batch_key in self._batch:
-                self._batch[batch_key] = batch_to_emit + self._batch[batch_key]
-            else:
-                self._batch[batch_key] = batch_to_emit
-            if batch_key in self._batch_events:
-                self._batch_events[batch_key] = batch_events + self._batch_events[batch_key]
-            else:
-                self._batch_events[batch_key] = batch_events
-            if batch_key in self._batch_first_event_time:
-                self._batch_first_event_time[batch_key] = min(batch_time, self._batch_first_event_time[batch_key])
-            else:
-                self._batch_first_event_time[batch_key] = batch_time
-            if batch_key in self._batch_last_event_time:
-                self._batch_last_event_time[batch_key] = max(last_event_time, self._batch_last_event_time[batch_key])
-            else:
-                self._batch_last_event_time[batch_key] = last_event_time
-            self._batch_start_time.setdefault(batch_key, batch_start_time)
-            raise
+        await self._emit(batch_to_emit, batch_key, batch_time, batch_events, last_event_time)
 
     async def _emit_all(self):
         # Loop until empty instead of snapshot iteration, so keys added
         # during a yielding _emit are not missed.
         while self._batch:
             key = next(iter(self._batch.keys()))
-            try:
-                await self._emit_batch(key)
-            except Exception:
-                if self.logger:
-                    self.logger.error(
-                        f"Failed to flush batch for key '{key}' in step '{self.name}' "
-                        f"during termination:\n{traceback.format_exc()}"
-                    )
-                # _emit_batch re-inserted the failed batch.  Remove the batch
-                # data to avoid infinite retry, but keep _batch_events so event
-                # references stay alive and Kafka offsets stay uncommitted.
-                self._batch.pop(key, None)
-                self._batch_first_event_time.pop(key, None)
-                self._batch_last_event_time.pop(key, None)
-                self._batch_start_time.pop(key, None)
+            await self._emit_batch(key)
 
 
 class Batch(_Batching, WithUUID):
