@@ -1452,6 +1452,7 @@ class _Batching(Flow):
         self._batch_last_event_time: Dict[Optional[str], datetime.datetime] = {}
         self._batch_start_time: Dict[Optional[str], float] = {}
         self._timeout_task: Optional[Task] = None
+        self._terminating = False
 
     @staticmethod
     def _validate_max_events(max_events):
@@ -1492,6 +1493,13 @@ class _Batching(Flow):
 
     async def _do(self, event):
         if event is _termination_obj:
+            # Signal the timer to stop after its current emit, then wait for
+            # it to finish.  We avoid cancel() because that would interrupt a
+            # mid-flight _emit, losing already-popped batch data.
+            self._terminating = True
+            if self._timeout_task is not None:
+                await self._timeout_task
+                self._timeout_task = None
             if self.logger:
                 self.logger.info(f"Terminating Batching step '{self.name}': emitting all remaining batches")
             await self._emit_all()
@@ -1530,11 +1538,13 @@ class _Batching(Flow):
 
     async def _sleep_and_emit(self):
         try:
-            while self._batch:
+            while self._batch and not self._terminating:
                 key = next(iter(self._batch.keys()))
                 delta_seconds = time.monotonic() - self._batch_start_time[key]
                 if delta_seconds < self._flush_after_seconds:
                     await asyncio.sleep(self._flush_after_seconds - delta_seconds)
+                if self._terminating:
+                    break
                 await self._emit_batch(key)
         except Exception:
             message = traceback.format_exc()
@@ -1552,15 +1562,17 @@ class _Batching(Flow):
             return
         batch_time = self._batch_first_event_time.pop(batch_key)
         last_event_time = self._batch_last_event_time.pop(batch_key)
-        del self._batch_start_time[batch_key]
-        try:
-            await self._emit(batch_to_emit, batch_key, batch_time, self._batch_events[batch_key], last_event_time)
-        finally:
-            # whether we succeeded or failed, we are done with these events
-            del self._batch_events[batch_key]
+        self._batch_start_time.pop(batch_key, None)
+        # Pop batch_events BEFORE the await so concurrent _do() calls create
+        # a fresh list instead of appending to the one we're processing.
+        batch_events = self._batch_events.pop(batch_key, [])
+        await self._emit(batch_to_emit, batch_key, batch_time, batch_events, last_event_time)
 
     async def _emit_all(self):
-        for key in list(self._batch.keys()):
+        # Loop until empty instead of snapshot iteration, so keys added
+        # during a yielding _emit are not missed.
+        while self._batch:
+            key = next(iter(self._batch.keys()))
             await self._emit_batch(key)
 
 
