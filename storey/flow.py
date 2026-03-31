@@ -76,6 +76,25 @@ def _is_awaitable_coroutine(obj) -> bool:
 _sync_gen_sentinel = object()
 
 
+class _GeneratorDone:
+    """Sentinel placed on a streaming queue when the generator is exhausted."""
+
+    __slots__ = ("error",)
+
+    def __init__(self, error=None):
+        self.error = error
+
+
+class _StreamingQueue:
+    """Wrapper around an asyncio.Queue fed by a background generator consumer."""
+
+    __slots__ = ("queue", "task")
+
+    def __init__(self, queue, task):
+        self.queue = queue
+        self.task = task
+
+
 async def _gen_to_async_gen(sync_gen):
     """Wrap a synchronous generator as an async generator, offloading each
     next() call to a thread so it doesn't block the event loop."""
@@ -1297,10 +1316,15 @@ class ConcurrentExecution(_ConcurrentJobExecution, _StreamingStepMixin):
 
     :param process_event: Function that will be run on each event
 
-    :param concurrency_mechanism: One of:
-      * "asyncio" (default) – for I/O implemented using asyncio
-      * "threading" – for blocking I/O
-      * "multiprocessing" – for processing-intensive tasks
+    :param concurrency_mechanism: Execution mechanism. One of the ``ParallelExecutionMechanisms``
+      values, or a legacy name for backward compatibility:
+
+      * ``"asyncio"`` (default) – for I/O implemented using asyncio
+      * ``"thread_pool"`` (or legacy ``"threading"``) – for blocking I/O
+      * ``"process_pool"`` (or legacy ``"multiprocessing"``) – for processing-intensive tasks
+      * ``"dedicated_process"`` – like process_pool with a single dedicated worker
+      * ``"shared_executor"`` – use an externally supplied executor
+      * ``"naive"`` – run synchronously on the event loop (for trivial work)
 
     :param max_in_flight: Maximum number of events to be processed at a time (default 8)
     :param retries: Maximum number of retries per event (default 0)
@@ -1312,7 +1336,10 @@ class ConcurrentExecution(_ConcurrentJobExecution, _StreamingStepMixin):
         or only the payload (when False). Defaults to False.
     """
 
-    _supported_concurrency_mechanisms = ["asyncio", "threading", "multiprocessing"]
+    _LEGACY_MECHANISM_MAP = {
+        "threading": "thread_pool",
+        "multiprocessing": "process_pool",
+    }
 
     def __init__(
         self,
@@ -1323,40 +1350,105 @@ class ConcurrentExecution(_ConcurrentJobExecution, _StreamingStepMixin):
     ):
         super().__init__(**kwargs)
 
-        if concurrency_mechanism == "multiprocessing" and kwargs.get("full_event"):
+        self._event_processor = event_processor
+        self._pass_context = pass_context
+
+        # Resolve mechanism: map legacy names, default to asyncio
+        original_mechanism = concurrency_mechanism
+        if concurrency_mechanism is None:
+            concurrency_mechanism = ParallelExecutionMechanisms.asyncio
+        elif concurrency_mechanism in self._LEGACY_MECHANISM_MAP:
+            concurrency_mechanism = self._LEGACY_MECHANISM_MAP[concurrency_mechanism]
+        else:
+            ParallelExecutionMechanisms.validate(concurrency_mechanism)
+
+        self._concurrency_mechanism = ParallelExecutionMechanisms(concurrency_mechanism)
+
+        # Use original name in error messages so legacy callers see what they passed
+        mechanism_label = original_mechanism or "asyncio"
+
+        if self._concurrency_mechanism in ParallelExecutionMechanisms.process() and kwargs.get("full_event"):
             raise ValueError(
-                'concurrency_mechanism="multiprocessing" may not be used in conjunction with full_event=True'
+                f'concurrency_mechanism="{mechanism_label}" may not be used ' "in conjunction with full_event=True"
             )
 
-        self._event_processor = event_processor
-
-        if concurrency_mechanism and concurrency_mechanism not in self._supported_concurrency_mechanisms:
-            raise ValueError(f"Concurrency mechanism '{concurrency_mechanism}' is not supported")
-
-        if concurrency_mechanism == "multiprocessing" and pass_context:
+        if self._concurrency_mechanism in ParallelExecutionMechanisms.process() and pass_context:
             try:
                 pickle.dumps(self.context)
             except Exception as ex:
                 raise ValueError(
-                    'When concurrency_mechanism="multiprocessing" is used in conjunction with '
+                    f'When concurrency_mechanism="{mechanism_label}" is used in conjunction with '
                     "pass_context=True, context must be serializable"
                 ) from ex
 
         self._executor = None
-        if concurrency_mechanism == "threading":
-            self._executor = ThreadPoolExecutor(max_workers=self.max_in_flight or self._DEFAULT_MAX_IN_FLIGHT)
-        elif concurrency_mechanism == "multiprocessing":
-            self._executor = ProcessPoolExecutor(max_workers=self.max_in_flight or self._DEFAULT_MAX_IN_FLIGHT)
+        self._mp_manager = None
+        self._is_generator_fn = inspect.isgeneratorfunction(event_processor)
+        pool_size = self.max_in_flight or self._DEFAULT_MAX_IN_FLIGHT
+        if self._concurrency_mechanism == ParallelExecutionMechanisms.thread_pool:
+            self._executor = ThreadPoolExecutor(max_workers=pool_size)
+        elif self._concurrency_mechanism == ParallelExecutionMechanisms.process_pool:
+            self._executor = ProcessPoolExecutor(max_workers=pool_size)
+        elif self._concurrency_mechanism == ParallelExecutionMechanisms.dedicated_process:
+            self._executor = ProcessPoolExecutor(max_workers=1)
 
-        self._pass_context = pass_context
+    async def _iterate_generator(self, generator, queue):
+        """Background task: consume a generator into an asyncio.Queue.
+
+        For async generators, iterates directly.  For sync generators,
+        dispatches each next() via run_in_executor to avoid blocking the
+        event loop (uses self._executor when set, otherwise the default
+        thread pool).
+        """
+        error = None
+        try:
+            if inspect.isasyncgen(generator):
+                async for chunk in generator:
+                    await queue.put(chunk)
+            else:
+                loop = asyncio.get_running_loop()
+                while True:
+                    chunk = await loop.run_in_executor(self._executor, next, generator, _sync_gen_sentinel)
+                    if chunk is _sync_gen_sentinel:
+                        break
+                    await queue.put(chunk)
+        except Exception as e:
+            error = e
+        await queue.put(_GeneratorDone(error))
+
+    def _get_mp_manager(self):
+        if self._mp_manager is None:
+            self._mp_manager = multiprocessing.get_context("spawn").Manager()
+        return self._mp_manager
 
     async def _process_event(self, event):
         args = [event if self._full_event else event.body]
 
         if self._pass_context:
             args.append(self.context)
+
+        loop = asyncio.get_running_loop()
+
+        # Process-based mechanisms with generator functions: use IPC pattern
+        # (run event processor + iterate generator in subprocess, stream chunks
+        # via multiprocessing.Queue).
+        if self._is_generator_fn and self._concurrency_mechanism in ParallelExecutionMechanisms.process():
+            mp_queue = self._get_mp_manager().Queue()
+            loop.run_in_executor(
+                self._executor,
+                _concurrent_streaming_run_in_subprocess,
+                self._event_processor,
+                args,
+                mp_queue,
+            )
+            ipc_gen = _async_read_streaming_queue(mp_queue)
+            async_queue = asyncio.Queue()
+            task = loop.create_task(self._iterate_generator(ipc_gen, async_queue))
+            event.body = _StreamingQueue(async_queue, task)
+            return event
+
         if self._executor:
-            result = await asyncio.get_running_loop().run_in_executor(self._executor, self._event_processor, *args)
+            result = await loop.run_in_executor(self._executor, self._event_processor, *args)
         else:
             result = self._event_processor(*args)
 
@@ -1365,12 +1457,46 @@ class ConcurrentExecution(_ConcurrentJobExecution, _StreamingStepMixin):
 
         if self._full_event:
             return result
+
+        if _is_generator(result):
+            async_queue = asyncio.Queue()
+            task = loop.create_task(self._iterate_generator(result, async_queue))
+            event.body = _StreamingQueue(async_queue, task)
         else:
             event.body = result
-            return event
+        return event
+
+    async def _emit_streaming_from_queue(self, event, queue):
+        """Read chunks from an asyncio.Queue and emit them downstream.
+
+        Mirrors _emit_streaming_chunks but reads from a queue fed by a
+        background _iterate_generator task rather than iterating a
+        generator directly.
+        """
+        self._validate_not_already_streaming(event)
+        chunk_id = 0
+        generator_error = None
+
+        while True:
+            item = await queue.get()
+            if isinstance(item, _GeneratorDone):
+                generator_error = item.error
+                break
+            chunk_event = self._user_fn_output_to_event(event, item)
+            chunk_event.streaming_step = self.name
+            chunk_event.chunk_id = chunk_id
+            await self._do_downstream(chunk_event)
+            chunk_id += 1
+
+        error_str = f"{type(generator_error).__name__}: {generator_error}" if generator_error else None
+        await self._do_downstream(StreamCompletion(self.name, event, error=error_str))
 
     async def _handle_completed(self, event, response):
-        if not self._full_event and _is_generator(response.body):
+        if isinstance(response.body, _StreamingQueue):
+            streaming_queue = response.body
+            await self._emit_streaming_from_queue(response, streaming_queue.queue)
+            await streaming_queue.task
+        elif not self._full_event and _is_generator(response.body):
             await self._emit_streaming_chunks(response, response.body)
         else:
             await self._do_downstream(response)
@@ -2025,6 +2151,23 @@ def _set_global(sval):
 def _static_run(*args, **kwargs):
     global _sval
     return _sval._run(*args, **kwargs)
+
+
+def _concurrent_streaming_run_in_subprocess(event_processor, args, queue):
+    """Run an event processor in a subprocess and stream generator chunks via queue.
+
+    Used by ConcurrentExecution for process-based mechanisms when the event
+    processor is a generator function.  Follows the same (msg_type, payload)
+    protocol as _streaming_run_wrapper so _async_read_streaming_queue can
+    consume the results.
+    """
+    try:
+        result = event_processor(*args)
+        for chunk in result:
+            queue.put(("chunk", chunk))
+        queue.put(("done", None))
+    except Exception as e:
+        queue.put(("error", (type(e).__name__, str(e), traceback.format_exc())))
 
 
 def _streaming_run_wrapper(
