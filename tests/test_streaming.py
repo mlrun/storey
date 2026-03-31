@@ -41,6 +41,21 @@ from storey.dtypes import Event, StreamChunk, StreamCompletion
 from storey.flow import _is_generator
 from tests.helpers import MockContext, MockLogger
 
+_SYNC_STREAMING_DELAY = 1.0
+
+
+def _sync_streaming_fn(event):
+    """Module-level sync streaming function for concurrency tests (must be picklable for process_pool)."""
+    time.sleep(_SYNC_STREAMING_DELAY)
+    for i in range(3):
+        yield f"{event}_chunk_{i}"
+
+
+def _sync_error_streaming_fn(event):
+    """Module-level sync generator that yields one chunk then raises (must be picklable for process_pool)."""
+    yield f"{event}_chunk_0"
+    raise ValueError("sync generator error mid-stream")
+
 
 class StreamingRunnable(ParallelExecutionRunnable):
     """A streaming runnable that yields 3 chunks for testing."""
@@ -2084,6 +2099,270 @@ class TestConcurrentExecutionStreaming:
             result = controller.await_termination()
 
         assert result == ["re_test_0", "re_test_1"]
+
+    # -- ML-12378 concurrency tests ----------------------------------------
+    # Verify that streaming generators run concurrently (not serially) when
+    # max_in_flight > 1, across execution mechanisms.
+    #
+    # async gen (asyncio): deterministic active-counter check with
+    #   ``await asyncio.sleep(0)`` as yield points.
+    # sync gen (thread_pool, process_pool, naive): time-based check using
+    #   ``time.sleep`` to simulate blocking work.  For naive (synchronous
+    #   by design) only correctness is asserted.
+    #
+    # NOTE: a future robustness improvement is to add an explicit
+    # ``await asyncio.sleep(0)`` inside ``_iterate_generator`` itself so
+    # that even async generators with no internal await points get fair
+    # scheduling.
+
+    _ML12378_NUM_CHUNKS = 3
+    _ML12378_NUM_EVENTS = 4
+
+    def _assert_streaming_results(self, result):
+        """Check all events were collected with the correct chunks (order-independent)."""
+        n, k = self._ML12378_NUM_EVENTS, self._ML12378_NUM_CHUNKS
+        assert len(result) == n, f"Expected {n} collected events, got {len(result)}"
+        expected = {tuple(f"event_{i}_chunk_{j}" for j in range(k)) for i in range(n)}
+        actual = {tuple(collected) for collected in result}
+        assert actual == expected, f"Unexpected results: {actual} != {expected}"
+
+    def test_concurrent_streaming_asyncio_async_gen(self):
+        """ML-12378: default (asyncio) mechanism + async generator.
+
+        Tracks max simultaneously-active generators.  ``await asyncio.sleep(0)``
+        between yields simulates realistic I/O and gives the event loop a
+        chance to schedule other generator tasks.
+        """
+
+        n_chunks = self._ML12378_NUM_CHUNKS
+        n_events = self._ML12378_NUM_EVENTS
+
+        async def _run():
+            active = 0
+            max_active = 0
+
+            async def stream_chunks(event):
+                nonlocal active, max_active
+                active += 1
+                if active > max_active:
+                    max_active = active
+                try:
+                    for i in range(n_chunks):
+                        await asyncio.sleep(0)
+                        yield f"{event}_chunk_{i}"
+                finally:
+                    active -= 1
+
+            controller = build_flow(
+                [
+                    AsyncEmitSource(),
+                    ConcurrentExecution(stream_chunks, max_in_flight=n_events),
+                    Collector(),
+                    Reduce([], lambda acc, x: acc + [x]),
+                ]
+            ).run()
+
+            for i in range(n_events):
+                await controller.emit(f"event_{i}")
+
+            await controller.terminate()
+            result = await controller.await_termination()
+
+            self._assert_streaming_results(result)
+            assert max_active > 1, (
+                f"Generators not concurrent: max active was {max_active}, "
+                f"expected > 1 with max_in_flight={n_events} (ML-12378)"
+            )
+
+        asyncio.run(_run())
+
+    @pytest.mark.parametrize(
+        "mechanism, expect_concurrent",
+        [
+            ("thread_pool", True),
+            ("process_pool", True),
+            ("dedicated_process", False),  # single worker — generators serialize
+            # shared_executor omitted: requires an executor= parameter not yet
+            # supported by ConcurrentExecution.
+            ("naive", False),
+        ],
+    )
+    def test_concurrent_streaming_sync_gen(self, mechanism, expect_concurrent):
+        """ML-12378: sync generator across execution mechanisms.
+
+        Uses a module-level function with ``time.sleep`` per event to
+        simulate blocking work.  For mechanisms that support concurrency the
+        total elapsed time must be well below the serial estimate.  For naive
+        and dedicated_process (single worker) only correctness is checked.
+        """
+
+        n_events = self._ML12378_NUM_EVENTS
+        chunk_delay = _SYNC_STREAMING_DELAY
+
+        async def _run():
+            controller = build_flow(
+                [
+                    AsyncEmitSource(),
+                    ConcurrentExecution(
+                        _sync_streaming_fn,
+                        concurrency_mechanism=mechanism,
+                        max_in_flight=n_events,
+                    ),
+                    Collector(),
+                    Reduce([], lambda acc, x: acc + [x]),
+                ]
+            ).run()
+
+            start = time.monotonic()
+            for i in range(n_events):
+                await controller.emit(f"event_{i}")
+
+            await controller.terminate()
+            result = await controller.await_termination()
+            elapsed = time.monotonic() - start
+
+            self._assert_streaming_results(result)
+
+            if expect_concurrent:
+                serial_duration = chunk_delay * n_events
+                assert elapsed < serial_duration * 0.75, (
+                    f"{mechanism} streaming serialized: {elapsed:.2f}s "
+                    f"vs serial estimate {serial_duration:.2f}s (ML-12378)"
+                )
+
+        asyncio.run(_run())
+
+    # -- Error handling tests --------------------------------------------------
+    # Verify that generator errors in ConcurrentExecution are propagated
+    # correctly through _iterate_generator → _GeneratorDone → Collector,
+    # producing an error dict rather than killing the flow.
+
+    def test_concurrent_streaming_error_asyncio_async_gen(self):
+        """Async generator raising mid-stream via asyncio mechanism.
+
+        Chunks emitted before the error should be collected, and the
+        Collector should emit an error dict for the failed stream.
+        """
+
+        async def error_stream(event):
+            yield f"{event}_chunk_0"
+            raise ValueError("async generator error mid-stream")
+
+        async def _run():
+            controller = build_flow(
+                [
+                    AsyncEmitSource(),
+                    ConcurrentExecution(error_stream),
+                    Collector(),
+                    Reduce([], lambda acc, x: acc + [x]),
+                ]
+            ).run()
+
+            try:
+                await controller.emit("test")
+            finally:
+                await controller.terminate()
+                result = await controller.await_termination()
+
+            assert len(result) == 1
+            assert isinstance(result[0], dict)
+            assert "error" in result[0]
+            assert "ValueError" in result[0]["error"]
+            assert "async generator error mid-stream" in result[0]["error"]
+
+        asyncio.run(_run())
+
+    @pytest.mark.parametrize(
+        "mechanism",
+        [
+            "thread_pool",
+            "process_pool",
+            "dedicated_process",
+            "naive",
+        ],
+    )
+    def test_concurrent_streaming_error_sync_gen(self, mechanism):
+        """Sync generator raising mid-stream across executor mechanisms.
+
+        Uses the module-level _sync_error_streaming_fn so it is picklable
+        for process-based mechanisms.
+        """
+
+        async def _run():
+            controller = build_flow(
+                [
+                    AsyncEmitSource(),
+                    ConcurrentExecution(
+                        _sync_error_streaming_fn,
+                        concurrency_mechanism=mechanism,
+                    ),
+                    Collector(),
+                    Reduce([], lambda acc, x: acc + [x]),
+                ]
+            ).run()
+
+            try:
+                await controller.emit("test")
+            finally:
+                await controller.terminate()
+                result = await controller.await_termination()
+
+            assert len(result) == 1
+            assert isinstance(result[0], dict)
+            assert "error" in result[0]
+            error_str = result[0]["error"]
+            assert "ValueError" in error_str
+            assert "sync generator error mid-stream" in error_str
+
+        asyncio.run(_run())
+
+    def test_concurrent_streaming_error_mixed_with_healthy(self):
+        """One event's generator fails while others succeed.
+
+        With max_in_flight > 1, a single failing generator must not
+        prevent healthy events from completing successfully.
+        """
+
+        async def maybe_error_stream(event):
+            yield f"{event}_chunk_0"
+            await asyncio.sleep(0)
+            if event == "event_bad":
+                raise ValueError("bad event error")
+            yield f"{event}_chunk_1"
+
+        async def _run():
+            controller = build_flow(
+                [
+                    AsyncEmitSource(),
+                    ConcurrentExecution(maybe_error_stream, max_in_flight=4),
+                    Collector(),
+                    Reduce([], lambda acc, x: acc + [x]),
+                ]
+            ).run()
+
+            await controller.emit("event_ok_1")
+            await controller.emit("event_bad")
+            await controller.emit("event_ok_2")
+
+            await controller.terminate()
+            result = await controller.await_termination()
+
+            assert len(result) == 3
+
+            error_results = [r for r in result if isinstance(r, dict) and "error" in r]
+            assert len(error_results) == 1
+            assert "ValueError" in error_results[0]["error"]
+            assert "bad event error" in error_results[0]["error"]
+
+            ok_results = [r for r in result if isinstance(r, list)]
+            assert len(ok_results) == 2
+            ok_chunks = {tuple(r) for r in ok_results}
+            assert ok_chunks == {
+                ("event_ok_1_chunk_0", "event_ok_1_chunk_1"),
+                ("event_ok_2_chunk_0", "event_ok_2_chunk_1"),
+            }
+
+        asyncio.run(_run())
 
 
 class TestSyncGeneratorEventLoopBlocking:
