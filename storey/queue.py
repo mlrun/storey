@@ -60,14 +60,18 @@ def _release_waiter(waiter):
 
 
 class SimpleAsyncQueue:
-    """
-    A simple async queue with built-in timeout.
+    """A bounded async queue with built-in timeout on get().
+
+    Replaces asyncio.Queue + asyncio.wait_for, which can silently swallow
+    items on timeout in Python < 3.12. See
+    https://github.com/python/cpython/pull/98518
     """
 
     def __init__(self, capacity):
         self._capacity = capacity
         self._deque = collections.deque()
         self._not_empty_futures = collections.deque()
+        self._not_full_futures = collections.deque()
         self._loop = asyncio.get_running_loop()
 
     async def get(self, timeout=None):
@@ -83,16 +87,28 @@ class SimpleAsyncQueue:
                     raise TimeoutError(f"Queue get() timed out after {timeout} seconds")
 
         result = self._deque.popleft()
+
+        while self._not_full_futures:
+            not_full_future = self._not_full_futures.popleft()
+            if not not_full_future.done():
+                not_full_future.set_result(True)
+                break
+
         return result
 
     async def put(self, item):
+        while len(self._deque) >= self._capacity:
+            not_full_future = asyncio.get_running_loop().create_future()
+            self._not_full_futures.append(not_full_future)
+            await not_full_future
+
+        self._deque.append(item)
+
         while self._not_empty_futures:
             not_empty_future = self._not_empty_futures.popleft()
             if not not_empty_future.done():
                 not_empty_future.set_result(True)
                 break
-
-        return self._deque.append(item)
 
     def empty(self):
         return len(self._deque) == 0

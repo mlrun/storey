@@ -18,6 +18,8 @@ async def async_test_simple_async_queue():
     await q.put("x")
     await q.put("y")
     put_task = asyncio.create_task(q.put("z"))
+    await asyncio.sleep(0)
+    assert not put_task.done(), "put() should block when queue is at capacity"
     assert await q.get() == "x"
     await put_task
     assert await q.get() == "y"
@@ -26,3 +28,24 @@ async def async_test_simple_async_queue():
 
 def test_simple_async_queue():
     asyncio.run(async_test_simple_async_queue())
+
+
+async def async_test_put_blocks_at_capacity():
+    q = SimpleAsyncQueue(2)
+    await q.put("a")
+    await q.put("b")
+
+    put_task = asyncio.create_task(q.put("c"))
+    await asyncio.sleep(0)
+    assert not put_task.done(), "put() should block when queue is at capacity"
+
+    assert await q.get() == "a"
+    await asyncio.sleep(0)
+    assert put_task.done(), "put() should resume after get() frees a slot"
+
+    assert await q.get() == "b"
+    assert await q.get() == "c"
+
+
+def test_put_blocks_at_capacity():
+    asyncio.run(async_test_put_blocks_at_capacity())
