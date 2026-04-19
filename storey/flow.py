@@ -1441,9 +1441,9 @@ class ConcurrentExecution(_ConcurrentJobExecution, _StreamingStepMixin):
                 args,
                 mp_queue,
             )
-            ipc_gen = _async_read_streaming_queue(mp_queue)
+            subprocess_chunks = _async_read_streaming_queue(mp_queue)
             async_queue = asyncio.Queue()
-            task = loop.create_task(self._iterate_generator(ipc_gen, async_queue))
+            task = loop.create_task(self._iterate_generator(subprocess_chunks, async_queue))
             event.body = _StreamingQueue(async_queue, task)
             return event
 

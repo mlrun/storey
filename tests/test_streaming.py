@@ -2103,39 +2103,24 @@ class TestConcurrentExecutionStreaming:
     # -- ML-12378 concurrency tests ----------------------------------------
     # Verify that streaming generators run concurrently (not serially) when
     # max_in_flight > 1, across execution mechanisms.
-    #
-    # async gen (asyncio): deterministic active-counter check with
-    #   ``await asyncio.sleep(0)`` as yield points.
-    # sync gen (thread_pool, process_pool, naive): time-based check using
-    #   ``time.sleep`` to simulate blocking work.  For naive (synchronous
-    #   by design) only correctness is asserted.
-    #
-    # NOTE: a future robustness improvement is to add an explicit
-    # ``await asyncio.sleep(0)`` inside ``_iterate_generator`` itself so
-    # that even async generators with no internal await points get fair
-    # scheduling.
 
-    _ML12378_NUM_CHUNKS = 3
-    _ML12378_NUM_EVENTS = 4
-
-    def _assert_streaming_results(self, result):
+    def _assert_streaming_results(self, result, n_events, n_chunks):
         """Check all events were collected with the correct chunks (order-independent)."""
-        n, k = self._ML12378_NUM_EVENTS, self._ML12378_NUM_CHUNKS
-        assert len(result) == n, f"Expected {n} collected events, got {len(result)}"
-        expected = {tuple(f"event_{i}_chunk_{j}" for j in range(k)) for i in range(n)}
+        assert len(result) == n_events, f"Expected {n_events} collected events, got {len(result)}"
+        expected = {tuple(f"event_{i}_chunk_{j}" for j in range(n_chunks)) for i in range(n_events)}
         actual = {tuple(collected) for collected in result}
         assert actual == expected, f"Unexpected results: {actual} != {expected}"
 
     def test_concurrent_streaming_asyncio_async_gen(self):
-        """ML-12378: default (asyncio) mechanism + async generator.
+        """Default (asyncio) mechanism + async generator.
 
         Tracks max simultaneously-active generators.  ``await asyncio.sleep(0)``
         between yields simulates realistic I/O and gives the event loop a
         chance to schedule other generator tasks.
         """
 
-        n_chunks = self._ML12378_NUM_CHUNKS
-        n_events = self._ML12378_NUM_EVENTS
+        n_chunks = 3
+        n_events = 4
 
         async def _run():
             active = 0
@@ -2168,10 +2153,10 @@ class TestConcurrentExecutionStreaming:
             await controller.terminate()
             result = await controller.await_termination()
 
-            self._assert_streaming_results(result)
+            self._assert_streaming_results(result, n_events, n_chunks)
             assert max_active > 1, (
                 f"Generators not concurrent: max active was {max_active}, "
-                f"expected > 1 with max_in_flight={n_events} (ML-12378)"
+                f"expected > 1 with max_in_flight={n_events}"
             )
 
         asyncio.run(_run())
@@ -2188,7 +2173,7 @@ class TestConcurrentExecutionStreaming:
         ],
     )
     def test_concurrent_streaming_sync_gen(self, mechanism, expect_concurrent):
-        """ML-12378: sync generator across execution mechanisms.
+        """Sync generator across execution mechanisms.
 
         Uses a module-level function with ``time.sleep`` per event to
         simulate blocking work.  For mechanisms that support concurrency the
@@ -2196,7 +2181,7 @@ class TestConcurrentExecutionStreaming:
         and dedicated_process (single worker) only correctness is checked.
         """
 
-        n_events = self._ML12378_NUM_EVENTS
+        n_events = 4
         chunk_delay = _SYNC_STREAMING_DELAY
 
         async def _run():
@@ -2221,13 +2206,12 @@ class TestConcurrentExecutionStreaming:
             result = await controller.await_termination()
             elapsed = time.monotonic() - start
 
-            self._assert_streaming_results(result)
+            self._assert_streaming_results(result, n_events, 3)
 
             if expect_concurrent:
                 serial_duration = chunk_delay * n_events
                 assert elapsed < serial_duration * 0.75, (
-                    f"{mechanism} streaming serialized: {elapsed:.2f}s "
-                    f"vs serial estimate {serial_duration:.2f}s (ML-12378)"
+                    f"{mechanism} streaming serialized: {elapsed:.2f}s " f"vs serial estimate {serial_duration:.2f}s"
                 )
 
         asyncio.run(_run())
