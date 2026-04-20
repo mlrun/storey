@@ -60,39 +60,63 @@ def _release_waiter(waiter):
 
 
 class SimpleAsyncQueue:
-    """
-    A simple async queue with built-in timeout.
+    """A bounded async queue with built-in timeout on get().
+
+    Replaces asyncio.Queue + asyncio.wait_for, which can silently swallow
+    items on timeout in Python < 3.12. See
+    https://github.com/python/cpython/pull/98518
     """
 
     def __init__(self, capacity):
         self._capacity = capacity
         self._deque = collections.deque()
-        self._not_empty_futures = collections.deque()
+        self._getters = collections.deque()
+        self._putters = collections.deque()
+        # Tracks claimed capacity: items in deque + slots reserved for
+        # woken putters that haven't appended yet. get() only decrements
+        # _size when there are no waiting putters, preventing new put()
+        # calls from stealing a slot freed for a waiting putter.
+        self._size = 0
         self._loop = asyncio.get_running_loop()
 
     async def get(self, timeout=None):
         if not self._deque:
-            not_empty_future = asyncio.get_running_loop().create_future()
-            self._not_empty_futures.append(not_empty_future)
+            getter = self._loop.create_future()
+            self._getters.append(getter)
             if timeout is None:
-                await not_empty_future
+                await getter
             else:
-                self._loop.call_later(timeout, _release_waiter, not_empty_future)
-                got_result = await not_empty_future
+                self._loop.call_later(timeout, _release_waiter, getter)
+                got_result = await getter
                 if not got_result:
                     raise TimeoutError(f"Queue get() timed out after {timeout} seconds")
 
         result = self._deque.popleft()
+
+        if self._putters:
+            putter = self._putters.popleft()
+            putter.set_result(True)
+        else:
+            self._size -= 1
+
         return result
 
     async def put(self, item):
-        while self._not_empty_futures:
-            not_empty_future = self._not_empty_futures.popleft()
-            if not not_empty_future.done():
-                not_empty_future.set_result(True)
-                break
+        assert 0 <= self._size <= self._capacity
+        if self._size == self._capacity:
+            putter = self._loop.create_future()
+            self._putters.append(putter)
+            await putter
+        else:
+            self._size += 1
 
-        return self._deque.append(item)
+        self._deque.append(item)
+
+        while self._getters:
+            getter = self._getters.popleft()
+            if not getter.done():
+                getter.set_result(True)
+                break
 
     def empty(self):
         return len(self._deque) == 0

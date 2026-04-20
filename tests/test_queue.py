@@ -26,3 +26,31 @@ async def async_test_simple_async_queue():
 
 def test_simple_async_queue():
     asyncio.run(async_test_simple_async_queue())
+
+
+async def async_test_put_fifo_no_starvation():
+    q = SimpleAsyncQueue(2)
+    await q.put("a")
+    await q.put("b")
+
+    p1 = asyncio.create_task(q.put("c"))
+    await asyncio.sleep(0)
+    assert not p1.done()
+
+    # get() wakes p1; new put must not steal the slot before p1 resumes
+    assert await q.get() == "a"
+    p_new = asyncio.create_task(q.put("e"))
+    await asyncio.sleep(0)
+    assert p1.done(), "waiting putter must not be starved by a new put()"
+    assert not p_new.done(), "new put() must wait behind the existing waiter"
+
+    assert await q.get() == "b"
+    await asyncio.sleep(0)
+    assert p_new.done()
+
+    assert await q.get() == "c"
+    assert await q.get() == "e"
+
+
+def test_put_fifo_no_starvation():
+    asyncio.run(async_test_put_fifo_no_starvation())
