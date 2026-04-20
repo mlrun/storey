@@ -606,7 +606,7 @@ class ParquetTarget(_Batching, _Writer):
     def _event_to_batch_entry(self, event):
         return self._event_to_writer_entry(event)
 
-    async def _emit(self, batch, batch_key, batch_time, batch_events, last_event_time=None):
+    def _blocking_emit(self, batch, batch_key, batch_time, batch_events, last_event_time=None):
         df_columns = []
         if self._non_partition_columns:
             if self._index_cols:
@@ -659,6 +659,12 @@ class ParquetTarget(_Batching, _Writer):
             df.to_parquet(path=file, index=bool(self._index_cols), version="2.4", **kwargs)
             if not self._last_written_event or last_event_time > self._last_written_event:
                 self._last_written_event = last_event_time
+
+    async def _emit(self, batch, batch_key, batch_time, batch_events, last_event_time=None):
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(
+            None, self._blocking_emit, batch, batch_key, batch_time, batch_events, last_event_time
+        )
 
     async def _terminate(self):
         if self._mlrun_callback:
