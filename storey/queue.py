@@ -72,6 +72,7 @@ class SimpleAsyncQueue:
         self._deque = collections.deque()
         self._getters = collections.deque()
         self._putters = collections.deque()
+        self._size = 0
         self._loop = asyncio.get_running_loop()
 
     async def get(self, timeout=None):
@@ -88,20 +89,21 @@ class SimpleAsyncQueue:
 
         result = self._deque.popleft()
 
-        while self._putters:
+        if self._putters:
             putter = self._putters.popleft()
-            if not putter.done():
-                putter.set_result(True)
-                break
+            putter.set_result(True)
+        else:
+            self._size -= 1
 
         return result
 
     async def put(self, item):
-        assert len(self._deque) <= self._capacity
-        while len(self._deque) == self._capacity:
+        if self._size >= self._capacity:
             putter = self._loop.create_future()
             self._putters.append(putter)
             await putter
+        else:
+            self._size += 1
 
         self._deque.append(item)
 
