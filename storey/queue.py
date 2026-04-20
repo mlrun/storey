@@ -76,7 +76,7 @@ class SimpleAsyncQueue:
 
     async def get(self, timeout=None):
         if not self._deque:
-            not_empty_future = asyncio.get_running_loop().create_future()
+            not_empty_future = self._loop.create_future()
             self._not_empty_futures.append(not_empty_future)
             if timeout is None:
                 await not_empty_future
@@ -97,8 +97,9 @@ class SimpleAsyncQueue:
         return result
 
     async def put(self, item):
-        while len(self._deque) >= self._capacity:
-            not_full_future = asyncio.get_running_loop().create_future()
+        assert len(self._deque) <= self._capacity
+        while len(self._deque) == self._capacity:
+            not_full_future = self._loop.create_future()
             self._not_full_futures.append(not_full_future)
             await not_full_future
 
