@@ -70,28 +70,28 @@ class SimpleAsyncQueue:
     def __init__(self, capacity):
         self._capacity = capacity
         self._deque = collections.deque()
-        self._not_empty_futures = collections.deque()
-        self._not_full_futures = collections.deque()
+        self._getters = collections.deque()
+        self._putters = collections.deque()
         self._loop = asyncio.get_running_loop()
 
     async def get(self, timeout=None):
         if not self._deque:
-            not_empty_future = self._loop.create_future()
-            self._not_empty_futures.append(not_empty_future)
+            getter = self._loop.create_future()
+            self._getters.append(getter)
             if timeout is None:
-                await not_empty_future
+                await getter
             else:
-                self._loop.call_later(timeout, _release_waiter, not_empty_future)
-                got_result = await not_empty_future
+                self._loop.call_later(timeout, _release_waiter, getter)
+                got_result = await getter
                 if not got_result:
                     raise TimeoutError(f"Queue get() timed out after {timeout} seconds")
 
         result = self._deque.popleft()
 
-        while self._not_full_futures:
-            not_full_future = self._not_full_futures.popleft()
-            if not not_full_future.done():
-                not_full_future.set_result(True)
+        while self._putters:
+            putter = self._putters.popleft()
+            if not putter.done():
+                putter.set_result(True)
                 break
 
         return result
@@ -99,16 +99,16 @@ class SimpleAsyncQueue:
     async def put(self, item):
         assert len(self._deque) <= self._capacity
         while len(self._deque) == self._capacity:
-            not_full_future = self._loop.create_future()
-            self._not_full_futures.append(not_full_future)
-            await not_full_future
+            putter = self._loop.create_future()
+            self._putters.append(putter)
+            await putter
 
         self._deque.append(item)
 
-        while self._not_empty_futures:
-            not_empty_future = self._not_empty_futures.popleft()
-            if not not_empty_future.done():
-                not_empty_future.set_result(True)
+        while self._getters:
+            getter = self._getters.popleft()
+            if not getter.done():
+                getter.set_result(True)
                 break
 
     def empty(self):
