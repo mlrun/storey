@@ -72,6 +72,10 @@ class SimpleAsyncQueue:
         self._deque = collections.deque()
         self._getters = collections.deque()
         self._putters = collections.deque()
+        # Tracks claimed capacity: items in deque + slots reserved for
+        # woken putters that haven't appended yet. get() only decrements
+        # _size when there are no waiting putters, preventing new put()
+        # calls from stealing a slot freed for a waiting putter.
         self._size = 0
         self._loop = asyncio.get_running_loop()
 
@@ -98,7 +102,8 @@ class SimpleAsyncQueue:
         return result
 
     async def put(self, item):
-        if self._size >= self._capacity:
+        assert 0 <= self._size <= self._capacity
+        if self._size == self._capacity:
             putter = self._loop.create_future()
             self._putters.append(putter)
             await putter
