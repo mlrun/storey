@@ -32,10 +32,6 @@ from opentelemetry.proto.collector.metrics.v1 import (  # noqa: E402
 from storey import AsyncEmitSource, Event, build_flow  # noqa: E402
 from storey.otel_metrics_exporter import OTelMetricsExporter  # noqa: E402
 
-_PORT = 14317
-_ENDPOINT = f"localhost:{_PORT}"
-
-
 # ─── Embedded receiver ────────────────────────────────────────────────────────
 
 
@@ -43,6 +39,7 @@ class _CapturingMetricsServicer(metrics_service_pb2_grpc.MetricsServiceServicer)
     def __init__(self):
         self.requests = []
         self.metadata_per_call = []
+        self.endpoint = None
 
     def Export(self, request, context):
         self.requests.append(request)
@@ -85,10 +82,11 @@ def otel_receiver():
     servicer = _CapturingMetricsServicer()
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=2))
     metrics_service_pb2_grpc.add_MetricsServiceServicer_to_server(servicer, server)
-    server.add_insecure_port(f"[::]:{_PORT}")
+    port = server.add_insecure_port("[::]:0")
+    servicer.endpoint = f"localhost:{port}"
     server.start()
     yield servicer
-    server.stop(grace=1)
+    server.stop(grace=1).wait()
 
 
 # ─── Tests ────────────────────────────────────────────────────────────────────
@@ -96,15 +94,15 @@ def otel_receiver():
 
 def test_e2e_periodic_export(otel_receiver):
     """N events in periodic mode are received by the embedded collector."""
-    asyncio.run(_e2e_periodic_export())
+    asyncio.run(_e2e_periodic_export(otel_receiver.endpoint))
     assert "e2e.gauge" in otel_receiver.metric_names()
 
 
-async def _e2e_periodic_export():
+async def _e2e_periodic_export(endpoint):
     controller = build_flow(
         [
             AsyncEmitSource(),
-            OTelMetricsExporter(endpoint=_ENDPOINT, insecure=True, flush_mode="periodic", export_interval_millis=500),
+            OTelMetricsExporter(endpoint=endpoint, insecure=True, flush_mode="periodic", export_interval_millis=500),
         ]
     ).run()
 
@@ -118,18 +116,18 @@ async def _e2e_periodic_export():
 
 def test_e2e_immediate_export(otel_receiver):
     """Immediate mode: correct value and attributes reach the collector."""
-    asyncio.run(_e2e_immediate_export())
+    asyncio.run(_e2e_immediate_export(otel_receiver.endpoint))
     assert "e2e.immediate" in otel_receiver.metric_names()
     points = otel_receiver.data_points("e2e.immediate")
     assert any(v == 42.0 for v, _ in points), f"Expected value 42.0, got {points}"
     assert any(a.get("env") == "test" for _, a in points), f"Expected env=test, got {points}"
 
 
-async def _e2e_immediate_export():
+async def _e2e_immediate_export(endpoint):
     controller = build_flow(
         [
             AsyncEmitSource(),
-            OTelMetricsExporter(endpoint=_ENDPOINT, insecure=True, flush_mode="immediate"),
+            OTelMetricsExporter(endpoint=endpoint, insecure=True, flush_mode="immediate"),
         ]
     ).run()
 
@@ -140,17 +138,17 @@ async def _e2e_immediate_export():
 
 def test_e2e_custom_headers(otel_receiver):
     """Custom auth headers are forwarded as gRPC metadata."""
-    asyncio.run(_e2e_custom_headers())
+    asyncio.run(_e2e_custom_headers(otel_receiver.endpoint))
     received = {k: v for meta in otel_receiver.metadata_per_call for k, v in meta.items()}
     assert received.get("x-custom-header") == "test-value", f"Got {received}"
 
 
-async def _e2e_custom_headers():
+async def _e2e_custom_headers(endpoint):
     controller = build_flow(
         [
             AsyncEmitSource(),
             OTelMetricsExporter(
-                endpoint=_ENDPOINT,
+                endpoint=endpoint,
                 insecure=True,
                 headers={"x-custom-header": "test-value"},
                 flush_mode="immediate",
@@ -165,7 +163,7 @@ async def _e2e_custom_headers():
 
 def test_e2e_multi_metric_per_event(otel_receiver):
     """Multi-metric event: both metrics arrive at the collector with correct values."""
-    asyncio.run(_e2e_multi_metric_per_event())
+    asyncio.run(_e2e_multi_metric_per_event(otel_receiver.endpoint))
     names = otel_receiver.metric_names()
     assert "e2e.latency" in names
     assert "e2e.throughput" in names
@@ -173,11 +171,11 @@ def test_e2e_multi_metric_per_event(otel_receiver):
     assert otel_receiver.data_points("e2e.throughput")[0][0] == 420.0
 
 
-async def _e2e_multi_metric_per_event():
+async def _e2e_multi_metric_per_event(endpoint):
     controller = build_flow(
         [
             AsyncEmitSource(),
-            OTelMetricsExporter(endpoint=_ENDPOINT, insecure=True, flush_mode="immediate"),
+            OTelMetricsExporter(endpoint=endpoint, insecure=True, flush_mode="immediate"),
         ]
     ).run()
 
@@ -197,19 +195,19 @@ async def _e2e_multi_metric_per_event():
 
 def test_e2e_custom_field_mapping(otel_receiver):
     """Custom metric_name_field/value_field/attribute_fields produce correct wire data."""
-    asyncio.run(_e2e_custom_field_mapping())
+    asyncio.run(_e2e_custom_field_mapping(otel_receiver.endpoint))
     assert "sensor.temp" in otel_receiver.metric_names()
     points = otel_receiver.data_points("sensor.temp")
     assert any(v == 22.5 for v, _ in points), f"Expected 22.5, got {points}"
     assert any(a.get("host") == "rack-1" for _, a in points), f"Expected host=rack-1, got {points}"
 
 
-async def _e2e_custom_field_mapping():
+async def _e2e_custom_field_mapping(endpoint):
     controller = build_flow(
         [
             AsyncEmitSource(),
             OTelMetricsExporter(
-                endpoint=_ENDPOINT,
+                endpoint=endpoint,
                 insecure=True,
                 flush_mode="immediate",
                 metric_name_field="name",
@@ -226,7 +224,7 @@ async def _e2e_custom_field_mapping():
 
 def test_e2e_mixed_types_in_one_event(otel_receiver):
     """A single event with all 4 instrument types produces data points for each on the wire."""
-    asyncio.run(_e2e_mixed_types_in_one_event())
+    asyncio.run(_e2e_mixed_types_in_one_event(otel_receiver.endpoint))
     names = otel_receiver.metric_names()
     assert "e2e.mix.gauge" in names
     assert "e2e.mix.counter" in names
@@ -238,11 +236,11 @@ def test_e2e_mixed_types_in_one_event(otel_receiver):
     assert len(otel_receiver.data_points("e2e.mix.hist")) > 0
 
 
-async def _e2e_mixed_types_in_one_event():
+async def _e2e_mixed_types_in_one_event(endpoint):
     controller = build_flow(
         [
             AsyncEmitSource(),
-            OTelMetricsExporter(endpoint=_ENDPOINT, insecure=True, flush_mode="immediate"),
+            OTelMetricsExporter(endpoint=endpoint, insecure=True, flush_mode="immediate"),
         ]
     ).run()
 
@@ -264,18 +262,18 @@ async def _e2e_mixed_types_in_one_event():
 
 def test_e2e_periodic_termination_flush(otel_receiver):
     """Periodic mode: buffered events are flushed on terminate() with no sleep."""
-    asyncio.run(_e2e_periodic_termination_flush())
+    asyncio.run(_e2e_periodic_termination_flush(otel_receiver.endpoint))
     assert "e2e.termflush" in otel_receiver.metric_names()
     points = otel_receiver.data_points("e2e.termflush")
     assert any(v == 7.0 for v, _ in points), f"Expected 7.0, got {points}"
 
 
-async def _e2e_periodic_termination_flush():
+async def _e2e_periodic_termination_flush(endpoint):
     controller = build_flow(
         [
             AsyncEmitSource(),
             OTelMetricsExporter(
-                endpoint=_ENDPOINT,
+                endpoint=endpoint,
                 insecure=True,
                 flush_mode="periodic",
                 export_interval_millis=600_000,
@@ -300,7 +298,7 @@ async def _e2e_periodic_termination_flush():
 )
 def test_e2e_all_instrument_types(otel_receiver, flush_mode, itype, metric_name, value):
     """All 4 instrument types × both flush modes reach the collector."""
-    asyncio.run(_e2e_instrument_type(itype, metric_name, value, flush_mode))
+    asyncio.run(_e2e_instrument_type(otel_receiver.endpoint, itype, metric_name, value, flush_mode))
     assert (
         metric_name in otel_receiver.metric_names()
     ), f"Metric {metric_name!r} ({flush_mode}) not found; received: {otel_receiver.metric_names()}"
@@ -308,7 +306,7 @@ def test_e2e_all_instrument_types(otel_receiver, flush_mode, itype, metric_name,
     assert len(points) > 0, f"No data points for {metric_name} in {flush_mode} mode"
 
 
-async def _e2e_instrument_type(itype, metric_name, value, flush_mode):
+async def _e2e_instrument_type(endpoint, itype, metric_name, value, flush_mode):
     kwargs = {"flush_mode": flush_mode}
     if flush_mode == "periodic":
         kwargs["export_interval_millis"] = 600_000
@@ -316,7 +314,7 @@ async def _e2e_instrument_type(itype, metric_name, value, flush_mode):
     controller = build_flow(
         [
             AsyncEmitSource(),
-            OTelMetricsExporter(endpoint=_ENDPOINT, insecure=True, instrument_type=itype, **kwargs),
+            OTelMetricsExporter(endpoint=endpoint, insecure=True, instrument_type=itype, **kwargs),
         ]
     ).run()
 

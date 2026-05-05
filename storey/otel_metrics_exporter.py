@@ -13,8 +13,8 @@
 # limitations under the License.
 
 import asyncio
-import math
 import re
+import sys
 from typing import Literal, Optional
 
 from storey.flow import Flow, _termination_obj
@@ -155,6 +155,11 @@ class OTelMetricsExporter(Flow):
         return item.get("attributes", {})
 
     def _register_instrument(self, name: str, instrument_type: str) -> None:
+        if instrument_type not in _SUPPORTED_INSTRUMENT_TYPES:
+            raise ValueError(
+                f"OTelMetricsExporter: instrument_type {instrument_type!r} is not supported. "
+                f"Use one of {sorted(_SUPPORTED_INSTRUMENT_TYPES)}."
+            )
         if len(self._instruments) >= self._max_instruments:
             raise ValueError(f"OTelMetricsExporter: exceeded max_instruments={self._max_instruments}.")
         _validate_otel_metric_name(name)
@@ -173,7 +178,7 @@ class OTelMetricsExporter(Flow):
             return
         if OTLPMetricExporter is None:
             raise ImportError("Install with: pip install storey[otel]")
-        interval = math.inf if self._flush_mode == "immediate" else self._export_interval_millis
+        interval = sys.maxsize if self._flush_mode == "immediate" else self._export_interval_millis
         reader = PeriodicExportingMetricReader(
             OTLPMetricExporter(
                 endpoint=self._endpoint,
