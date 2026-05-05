@@ -101,10 +101,12 @@ def test_e2e_periodic_export(otel_receiver):
 
 
 async def _e2e_periodic_export():
-    controller = build_flow([
-        AsyncEmitSource(),
-        OTelMetricsExporter(endpoint=_ENDPOINT, insecure=True, flush_mode="periodic", export_interval_millis=500),
-    ]).run()
+    controller = build_flow(
+        [
+            AsyncEmitSource(),
+            OTelMetricsExporter(endpoint=_ENDPOINT, insecure=True, flush_mode="periodic", export_interval_millis=500),
+        ]
+    ).run()
 
     for i in range(5):
         await controller.emit(Event({"metric_name": "e2e.gauge", "value": float(i), "attributes": {}}))
@@ -124,10 +126,12 @@ def test_e2e_immediate_export(otel_receiver):
 
 
 async def _e2e_immediate_export():
-    controller = build_flow([
-        AsyncEmitSource(),
-        OTelMetricsExporter(endpoint=_ENDPOINT, insecure=True, flush_mode="immediate"),
-    ]).run()
+    controller = build_flow(
+        [
+            AsyncEmitSource(),
+            OTelMetricsExporter(endpoint=_ENDPOINT, insecure=True, flush_mode="immediate"),
+        ]
+    ).run()
 
     await controller.emit(Event({"metric_name": "e2e.immediate", "value": 42.0, "attributes": {"env": "test"}}))
     await controller.terminate()
@@ -142,14 +146,17 @@ def test_e2e_custom_headers(otel_receiver):
 
 
 async def _e2e_custom_headers():
-    controller = build_flow([
-        AsyncEmitSource(),
-        OTelMetricsExporter(
-            endpoint=_ENDPOINT, insecure=True,
-            headers={"x-custom-header": "test-value"},
-            flush_mode="immediate",
-        ),
-    ]).run()
+    controller = build_flow(
+        [
+            AsyncEmitSource(),
+            OTelMetricsExporter(
+                endpoint=_ENDPOINT,
+                insecure=True,
+                headers={"x-custom-header": "test-value"},
+                flush_mode="immediate",
+            ),
+        ]
+    ).run()
 
     await controller.emit(Event({"metric_name": "e2e.headers", "value": 1.0, "attributes": {}}))
     await controller.terminate()
@@ -167,17 +174,23 @@ def test_e2e_multi_metric_per_event(otel_receiver):
 
 
 async def _e2e_multi_metric_per_event():
-    controller = build_flow([
-        AsyncEmitSource(),
-        OTelMetricsExporter(endpoint=_ENDPOINT, insecure=True, flush_mode="immediate"),
-    ]).run()
-
-    await controller.emit(Event({
-        "metrics": [
-            {"metric_name": "e2e.latency",    "value": 0.12,  "attributes": {"endpoint_id": "ep1"}},
-            {"metric_name": "e2e.throughput", "value": 420.0, "attributes": {"endpoint_id": "ep1"}},
+    controller = build_flow(
+        [
+            AsyncEmitSource(),
+            OTelMetricsExporter(endpoint=_ENDPOINT, insecure=True, flush_mode="immediate"),
         ]
-    }))
+    ).run()
+
+    await controller.emit(
+        Event(
+            {
+                "metrics": [
+                    {"metric_name": "e2e.latency", "value": 0.12, "attributes": {"endpoint_id": "ep1"}},
+                    {"metric_name": "e2e.throughput", "value": 420.0, "attributes": {"endpoint_id": "ep1"}},
+                ]
+            }
+        )
+    )
     await controller.terminate()
     await controller.await_termination()
 
@@ -192,17 +205,19 @@ def test_e2e_custom_field_mapping(otel_receiver):
 
 
 async def _e2e_custom_field_mapping():
-    controller = build_flow([
-        AsyncEmitSource(),
-        OTelMetricsExporter(
-            endpoint=_ENDPOINT,
-            insecure=True,
-            flush_mode="immediate",
-            metric_name_field="name",
-            value_field="reading",
-            attribute_fields=["host"],
-        ),
-    ]).run()
+    controller = build_flow(
+        [
+            AsyncEmitSource(),
+            OTelMetricsExporter(
+                endpoint=_ENDPOINT,
+                insecure=True,
+                flush_mode="immediate",
+                metric_name_field="name",
+                value_field="reading",
+                attribute_fields=["host"],
+            ),
+        ]
+    ).run()
 
     await controller.emit(Event({"name": "sensor.temp", "reading": 22.5, "host": "rack-1"}))
     await controller.terminate()
@@ -224,19 +239,25 @@ def test_e2e_mixed_types_in_one_event(otel_receiver):
 
 
 async def _e2e_mixed_types_in_one_event():
-    controller = build_flow([
-        AsyncEmitSource(),
-        OTelMetricsExporter(endpoint=_ENDPOINT, insecure=True, flush_mode="immediate"),
-    ]).run()
-
-    await controller.emit(Event({
-        "metrics": [
-            {"metric_name": "e2e.mix.gauge",   "value": 0.75, "type": "gauge",          "attributes": {}},
-            {"metric_name": "e2e.mix.counter", "value": 3.0,  "type": "counter",        "attributes": {}},
-            {"metric_name": "e2e.mix.updown",  "value": -1.0, "type": "updown_counter", "attributes": {}},
-            {"metric_name": "e2e.mix.hist",    "value": 0.05, "type": "histogram",      "attributes": {}},
+    controller = build_flow(
+        [
+            AsyncEmitSource(),
+            OTelMetricsExporter(endpoint=_ENDPOINT, insecure=True, flush_mode="immediate"),
         ]
-    }))
+    ).run()
+
+    await controller.emit(
+        Event(
+            {
+                "metrics": [
+                    {"metric_name": "e2e.mix.gauge", "value": 0.75, "type": "gauge", "attributes": {}},
+                    {"metric_name": "e2e.mix.counter", "value": 3.0, "type": "counter", "attributes": {}},
+                    {"metric_name": "e2e.mix.updown", "value": -1.0, "type": "updown_counter", "attributes": {}},
+                    {"metric_name": "e2e.mix.hist", "value": 0.05, "type": "histogram", "attributes": {}},
+                ]
+            }
+        )
+    )
     await controller.terminate()
     await controller.await_termination()
 
@@ -250,14 +271,17 @@ def test_e2e_periodic_termination_flush(otel_receiver):
 
 
 async def _e2e_periodic_termination_flush():
-    controller = build_flow([
-        AsyncEmitSource(),
-        OTelMetricsExporter(
-            endpoint=_ENDPOINT, insecure=True,
-            flush_mode="periodic",
-            export_interval_millis=600_000,
-        ),
-    ]).run()
+    controller = build_flow(
+        [
+            AsyncEmitSource(),
+            OTelMetricsExporter(
+                endpoint=_ENDPOINT,
+                insecure=True,
+                flush_mode="periodic",
+                export_interval_millis=600_000,
+            ),
+        ]
+    ).run()
 
     await controller.emit(Event({"metric_name": "e2e.termflush", "value": 7.0, "attributes": {}}))
     await controller.terminate()
@@ -265,18 +289,21 @@ async def _e2e_periodic_termination_flush():
 
 
 @pytest.mark.parametrize("flush_mode", ["immediate", "periodic"])
-@pytest.mark.parametrize("itype,metric_name,value", [
-    ("gauge",          "e2e.type.gauge",    5.0),
-    ("counter",        "e2e.type.counter",  3.0),
-    ("updown_counter", "e2e.type.updown",   2.0),
-    ("histogram",      "e2e.type.hist",     0.05),
-])
+@pytest.mark.parametrize(
+    "itype,metric_name,value",
+    [
+        ("gauge", "e2e.type.gauge", 5.0),
+        ("counter", "e2e.type.counter", 3.0),
+        ("updown_counter", "e2e.type.updown", 2.0),
+        ("histogram", "e2e.type.hist", 0.05),
+    ],
+)
 def test_e2e_all_instrument_types(otel_receiver, flush_mode, itype, metric_name, value):
     """All 4 instrument types × both flush modes reach the collector."""
     asyncio.run(_e2e_instrument_type(itype, metric_name, value, flush_mode))
-    assert metric_name in otel_receiver.metric_names(), (
-        f"Metric {metric_name!r} ({flush_mode}) not found; received: {otel_receiver.metric_names()}"
-    )
+    assert (
+        metric_name in otel_receiver.metric_names()
+    ), f"Metric {metric_name!r} ({flush_mode}) not found; received: {otel_receiver.metric_names()}"
     points = otel_receiver.data_points(metric_name)
     assert len(points) > 0, f"No data points for {metric_name} in {flush_mode} mode"
 
@@ -286,10 +313,12 @@ async def _e2e_instrument_type(itype, metric_name, value, flush_mode):
     if flush_mode == "periodic":
         kwargs["export_interval_millis"] = 600_000
 
-    controller = build_flow([
-        AsyncEmitSource(),
-        OTelMetricsExporter(endpoint=_ENDPOINT, insecure=True, instrument_type=itype, **kwargs),
-    ]).run()
+    controller = build_flow(
+        [
+            AsyncEmitSource(),
+            OTelMetricsExporter(endpoint=_ENDPOINT, insecure=True, instrument_type=itype, **kwargs),
+        ]
+    ).run()
 
     await controller.emit(Event({"metric_name": metric_name, "value": value, "attributes": {}}))
     await controller.terminate()

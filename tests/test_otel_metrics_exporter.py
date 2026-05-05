@@ -25,7 +25,6 @@ from storey import AsyncEmitSource, Event, Map, build_flow  # noqa: E402
 from storey.flow import _termination_obj  # noqa: E402
 from storey.otel_metrics_exporter import OTelMetricsExporter, _validate_otel_metric_name  # noqa: E402
 
-
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 
@@ -58,12 +57,15 @@ def _make_event(metric_name="my.metric", value=1.0, attributes=None, instrument_
 
 
 @pytest.mark.parametrize("flush_mode", ["immediate", "periodic"])
-@pytest.mark.parametrize("itype,method", [
-    ("gauge", "set"),
-    ("histogram", "record"),
-    ("counter", "add"),
-    ("updown_counter", "add"),
-])
+@pytest.mark.parametrize(
+    "itype,method",
+    [
+        ("gauge", "set"),
+        ("histogram", "record"),
+        ("counter", "add"),
+        ("updown_counter", "add"),
+    ],
+)
 def test_instrument_method_dispatch(flush_mode, itype, method):
     asyncio.run(_instrument_method_dispatch(flush_mode, itype, method))
 
@@ -112,14 +114,16 @@ def test_all_four_types_registered_from_multi_metric():
 
 async def _all_four_types_registered_from_multi_metric():
     step = await _init_step()
-    event = Event({
-        "metrics": [
-            {"metric_name": "cpu.usage",   "value": 0.75, "type": "gauge",          "attributes": {}},
-            {"metric_name": "req.count",   "value": 1.0,  "type": "counter",        "attributes": {}},
-            {"metric_name": "active.conn", "value": 5.0,  "type": "updown_counter", "attributes": {}},
-            {"metric_name": "req.latency", "value": 0.01, "type": "histogram",      "attributes": {}},
-        ]
-    })
+    event = Event(
+        {
+            "metrics": [
+                {"metric_name": "cpu.usage", "value": 0.75, "type": "gauge", "attributes": {}},
+                {"metric_name": "req.count", "value": 1.0, "type": "counter", "attributes": {}},
+                {"metric_name": "active.conn", "value": 5.0, "type": "updown_counter", "attributes": {}},
+                {"metric_name": "req.latency", "value": 0.01, "type": "histogram", "attributes": {}},
+            ]
+        }
+    )
     await step._do(event)
     assert step._instruments["cpu.usage"][1] == "gauge"
     assert step._instruments["req.count"][1] == "counter"
@@ -135,33 +139,40 @@ def test_mixed_types_in_one_event_correct_sdk_method():
 async def _mixed_types_in_one_event_correct_sdk_method():
     step = await _init_step()
     # Register all 4 instruments with a first event
-    await step._do(Event({
-        "metrics": [
-            {"metric_name": "cpu.usage",   "value": 0.1, "type": "gauge",          "attributes": {}},
-            {"metric_name": "req.count",   "value": 1.0, "type": "counter",        "attributes": {}},
-            {"metric_name": "active.conn", "value": 5.0, "type": "updown_counter", "attributes": {}},
-            {"metric_name": "req.latency", "value": 0.5, "type": "histogram",      "attributes": {}},
-        ]
-    }))
+    await step._do(
+        Event(
+            {
+                "metrics": [
+                    {"metric_name": "cpu.usage", "value": 0.1, "type": "gauge", "attributes": {}},
+                    {"metric_name": "req.count", "value": 1.0, "type": "counter", "attributes": {}},
+                    {"metric_name": "active.conn", "value": 5.0, "type": "updown_counter", "attributes": {}},
+                    {"metric_name": "req.latency", "value": 0.5, "type": "histogram", "attributes": {}},
+                ]
+            }
+        )
+    )
 
-    gauge_inst,   _ = step._instruments["cpu.usage"]
+    gauge_inst, _ = step._instruments["cpu.usage"]
     counter_inst, _ = step._instruments["req.count"]
-    updown_inst,  _ = step._instruments["active.conn"]
-    hist_inst,    _ = step._instruments["req.latency"]
+    updown_inst, _ = step._instruments["active.conn"]
+    hist_inst, _ = step._instruments["req.latency"]
 
     # Second event — patch every instrument and confirm the right method is called
-    with patch.object(gauge_inst, "set") as mock_set, \
-         patch.object(counter_inst, "add") as mock_add_c, \
-         patch.object(updown_inst, "add") as mock_add_u, \
-         patch.object(hist_inst, "record") as mock_record:
-        await step._do(Event({
-            "metrics": [
-                {"metric_name": "cpu.usage",   "value": 0.75, "type": "gauge",          "attributes": {}},
-                {"metric_name": "req.count",   "value": 2.0,  "type": "counter",        "attributes": {}},
-                {"metric_name": "active.conn", "value": -1.0, "type": "updown_counter", "attributes": {}},
-                {"metric_name": "req.latency", "value": 0.12, "type": "histogram",      "attributes": {}},
-            ]
-        }))
+    with patch.object(gauge_inst, "set") as mock_set, patch.object(counter_inst, "add") as mock_add_c, patch.object(
+        updown_inst, "add"
+    ) as mock_add_u, patch.object(hist_inst, "record") as mock_record:
+        await step._do(
+            Event(
+                {
+                    "metrics": [
+                        {"metric_name": "cpu.usage", "value": 0.75, "type": "gauge", "attributes": {}},
+                        {"metric_name": "req.count", "value": 2.0, "type": "counter", "attributes": {}},
+                        {"metric_name": "active.conn", "value": -1.0, "type": "updown_counter", "attributes": {}},
+                        {"metric_name": "req.latency", "value": 0.12, "type": "histogram", "attributes": {}},
+                    ]
+                }
+            )
+        )
 
     mock_set.assert_called_once_with(0.75, {})
     mock_add_c.assert_called_once_with(2.0, {})
@@ -250,11 +261,13 @@ def test_event_passes_downstream_in_flow():
 async def _event_passes_downstream_in_flow():
     received = []
     with patch("storey.otel_metrics_exporter.OTLPMetricExporter", return_value=_mock_exporter()):
-        controller = build_flow([
-            AsyncEmitSource(),
-            OTelMetricsExporter(endpoint="localhost:4317", insecure=True, flush_mode="immediate"),
-            Map(lambda body: received.append(body) or body),
-        ]).run()
+        controller = build_flow(
+            [
+                AsyncEmitSource(),
+                OTelMetricsExporter(endpoint="localhost:4317", insecure=True, flush_mode="immediate"),
+                Map(lambda body: received.append(body) or body),
+            ]
+        ).run()
 
         for i in range(3):
             await controller.emit(Event({"metric_name": "m", "value": float(i), "attributes": {}}))
@@ -295,6 +308,7 @@ async def _termination_triggers_flush_and_shutdown():
 
 def test_termination_before_lazy_init():
     """_termination_obj when provider was never initialised is a no-op."""
+
     async def _test():
         step = OTelMetricsExporter(endpoint="localhost:4317")
         assert step._provider is None
@@ -423,12 +437,14 @@ def test_multi_metric_per_event():
 
 async def _multi_metric_per_event():
     step = await _init_step()
-    event = Event({
-        "metrics": [
-            {"metric_name": "latency.p99",   "value": 0.12,  "attributes": {}},
-            {"metric_name": "throughput.rps", "value": 420.0, "attributes": {}},
-        ]
-    })
+    event = Event(
+        {
+            "metrics": [
+                {"metric_name": "latency.p99", "value": 0.12, "attributes": {}},
+                {"metric_name": "throughput.rps", "value": 420.0, "attributes": {}},
+            ]
+        }
+    )
     await step._do(event)
     assert "latency.p99" in step._instruments
     assert "throughput.rps" in step._instruments
@@ -441,12 +457,14 @@ def test_multi_metric_custom_metrics_field():
 
 async def _multi_metric_custom_metrics_field():
     step = await _init_step(metrics_field="readings")
-    event = Event({
-        "readings": [
-            {"metric_name": "temp.cpu", "value": 72.0, "attributes": {}},
-            {"metric_name": "temp.gpu", "value": 85.0, "attributes": {}},
-        ]
-    })
+    event = Event(
+        {
+            "readings": [
+                {"metric_name": "temp.cpu", "value": 72.0, "attributes": {}},
+                {"metric_name": "temp.gpu", "value": 85.0, "attributes": {}},
+            ]
+        }
+    )
     await step._do(event)
     assert "temp.cpu" in step._instruments
     assert "temp.gpu" in step._instruments
