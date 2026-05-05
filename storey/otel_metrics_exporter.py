@@ -17,7 +17,7 @@ import math
 import re
 from typing import Literal, Optional
 
-from storey.flow import _termination_obj, Flow
+from storey.flow import Flow, _termination_obj
 
 _OTEL_NAME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9_./-]{0,254}$")
 _SUPPORTED_INSTRUMENT_TYPES = frozenset({"gauge", "counter", "updown_counter", "histogram"})
@@ -32,7 +32,9 @@ def _validate_otel_metric_name(name: str) -> None:
 
 
 try:
-    from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+    from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import (
+        OTLPMetricExporter,
+    )
     from opentelemetry.sdk.metrics import MeterProvider
     from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 except ImportError:

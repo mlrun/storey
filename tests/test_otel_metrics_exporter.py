@@ -23,7 +23,10 @@ from opentelemetry.sdk.metrics.export import MetricExportResult  # noqa: E402
 
 from storey import AsyncEmitSource, Event, Map, build_flow  # noqa: E402
 from storey.flow import _termination_obj  # noqa: E402
-from storey.otel_metrics_exporter import OTelMetricsExporter, _validate_otel_metric_name  # noqa: E402
+from storey.otel_metrics_exporter import (  # noqa: E402
+    OTelMetricsExporter,
+    _validate_otel_metric_name,
+)
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
