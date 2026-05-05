@@ -79,6 +79,7 @@ from .targets import ParquetTarget  # noqa: F401
 from .targets import StreamTarget  # noqa: F401
 from .targets import TSDBTarget  # noqa: F401
 from .timescaledb_target import TimescaleDBTarget  # noqa: F401
+from .otel_metrics_exporter import OTelMetricsExporter  # noqa: F401
 
 # clear module namespace
 del v3iofs
