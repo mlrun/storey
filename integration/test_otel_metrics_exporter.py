@@ -24,13 +24,13 @@ import pytest
 
 pytest.importorskip("opentelemetry.sdk.metrics")
 
-from opentelemetry.proto.collector.metrics.v1 import (
+from opentelemetry.proto.collector.metrics.v1 import (  # noqa: E402
     metrics_service_pb2,
     metrics_service_pb2_grpc,
 )
 
-from storey import AsyncEmitSource, Event, build_flow
-from storey.otel_metrics_exporter import OTelMetricsExporter
+from storey import AsyncEmitSource, Event, build_flow  # noqa: E402
+from storey.otel_metrics_exporter import OTelMetricsExporter  # noqa: E402
 
 _PORT = 14317
 _ENDPOINT = f"localhost:{_PORT}"
@@ -213,14 +213,14 @@ def test_e2e_mixed_types_in_one_event(otel_receiver):
     """A single event with all 4 instrument types produces data points for each on the wire."""
     asyncio.run(_e2e_mixed_types_in_one_event())
     names = otel_receiver.metric_names()
-    assert "e2e.mix.gauge"   in names
+    assert "e2e.mix.gauge" in names
     assert "e2e.mix.counter" in names
-    assert "e2e.mix.updown"  in names
-    assert "e2e.mix.hist"    in names
-    assert len(otel_receiver.data_points("e2e.mix.gauge"))   > 0
+    assert "e2e.mix.updown" in names
+    assert "e2e.mix.hist" in names
+    assert len(otel_receiver.data_points("e2e.mix.gauge")) > 0
     assert len(otel_receiver.data_points("e2e.mix.counter")) > 0
-    assert len(otel_receiver.data_points("e2e.mix.updown"))  > 0
-    assert len(otel_receiver.data_points("e2e.mix.hist"))    > 0
+    assert len(otel_receiver.data_points("e2e.mix.updown")) > 0
+    assert len(otel_receiver.data_points("e2e.mix.hist")) > 0
 
 
 async def _e2e_mixed_types_in_one_event():

@@ -19,11 +19,11 @@ import pytest
 
 pytest.importorskip("opentelemetry.sdk.metrics")
 
-from opentelemetry.sdk.metrics.export import MetricExportResult
+from opentelemetry.sdk.metrics.export import MetricExportResult  # noqa: E402
 
-from storey import AsyncEmitSource, Event, Map, build_flow
-from storey.flow import _termination_obj
-from storey.otel_metrics_exporter import OTelMetricsExporter, _validate_otel_metric_name
+from storey import AsyncEmitSource, Event, Map, build_flow  # noqa: E402
+from storey.flow import _termination_obj  # noqa: E402
+from storey.otel_metrics_exporter import OTelMetricsExporter, _validate_otel_metric_name  # noqa: E402
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -150,10 +150,10 @@ async def _mixed_types_in_one_event_correct_sdk_method():
     hist_inst,    _ = step._instruments["req.latency"]
 
     # Second event — patch every instrument and confirm the right method is called
-    with patch.object(gauge_inst,   "set")    as mock_set, \
-         patch.object(counter_inst, "add")    as mock_add_c, \
-         patch.object(updown_inst,  "add")    as mock_add_u, \
-         patch.object(hist_inst,    "record") as mock_record:
+    with patch.object(gauge_inst, "set") as mock_set, \
+         patch.object(counter_inst, "add") as mock_add_c, \
+         patch.object(updown_inst, "add") as mock_add_u, \
+         patch.object(hist_inst, "record") as mock_record:
         await step._do(Event({
             "metrics": [
                 {"metric_name": "cpu.usage",   "value": 0.75, "type": "gauge",          "attributes": {}},
