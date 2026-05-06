@@ -45,8 +45,11 @@ except ImportError:
 
 def _flush_and_shutdown(provider) -> None:
     """Blocking flush + shutdown — always run via run_in_executor."""
-    provider.force_flush(timeout_millis=10_000)
-    provider.shutdown(timeout_millis=30_000)
+    try:
+        provider.force_flush(timeout_millis=10_000)
+        provider.shutdown(timeout_millis=30_000)
+    except Exception:
+        pass
 
 
 class OTelMetricsExporter(Flow):
@@ -131,6 +134,12 @@ class OTelMetricsExporter(Flow):
                 f"OTelMetricsExporter: instrument_type {instrument_type!r} is not supported. "
                 f"Use one of {sorted(_SUPPORTED_INSTRUMENT_TYPES)}."
             )
+        if export_interval_millis <= 0:
+            raise ValueError(
+                f"OTelMetricsExporter: export_interval_millis must be positive, got {export_interval_millis}."
+            )
+        if max_instruments <= 0:
+            raise ValueError(f"OTelMetricsExporter: max_instruments must be positive, got {max_instruments}.")
         self._endpoint = endpoint
         self._headers = headers or {}
         self._export_interval_millis = export_interval_millis
