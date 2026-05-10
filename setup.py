@@ -43,6 +43,10 @@ extras_require = {
     "redis": ["redis~=4.3"],
     "sqlalchemy": ["sqlalchemy~=1.3"],
     "psycopg": "psycopg[binary,pool]~=3.2",
+    "otel": [
+        "opentelemetry-sdk>=1.25.0,<2.0.0",
+        "opentelemetry-exporter-otlp-proto-grpc>=1.25.0,<2.0.0",
+    ],
 }
 
 
