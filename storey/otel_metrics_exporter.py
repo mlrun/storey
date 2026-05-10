@@ -209,9 +209,7 @@ class OTelMetricsExporter(Flow):
     async def _do(self, event):
         if event is _termination_obj:
             if self._provider:
-                await asyncio.get_running_loop().run_in_executor(
-                    None, _flush_and_shutdown, self._provider, self.logger
-                )
+                await asyncio.get_running_loop().run_in_executor(None, _flush_and_shutdown, self._provider, self.logger)
             return await self._do_downstream(_termination_obj)
 
         await self._lazy_init()
@@ -224,9 +222,7 @@ class OTelMetricsExporter(Flow):
                 name = item[self._metric_name_field]
                 value = float(item[self._value_field])
             except KeyError as e:
-                raise ValueError(
-                    f"OTelMetricsExporter: required field {e.args[0]!r} missing from event body"
-                ) from e
+                raise ValueError(f"OTelMetricsExporter: required field {e.args[0]!r} missing from event body") from e
             attrs = self._extract_attributes(item)
             itype = item.get(self._instrument_type_field, self._instrument_type)
 
