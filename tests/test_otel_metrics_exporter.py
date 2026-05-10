@@ -306,7 +306,7 @@ async def _termination_triggers_flush_and_shutdown():
     with patch("storey.otel_metrics_exporter._flush_and_shutdown") as mock_fs:
         await step._do(_termination_obj)
 
-    mock_fs.assert_called_once_with(provider)
+    mock_fs.assert_called_once_with(provider, step.logger)
 
 
 def test_termination_before_lazy_init():

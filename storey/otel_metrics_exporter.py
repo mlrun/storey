@@ -13,8 +13,9 @@
 # limitations under the License.
 
 import asyncio
+import math
 import re
-import sys
+import traceback
 from typing import Literal, Optional
 
 from storey.flow import Flow, _termination_obj
@@ -43,13 +44,16 @@ except ImportError:
     PeriodicExportingMetricReader = None
 
 
-def _flush_and_shutdown(provider) -> None:
+def _flush_and_shutdown(provider, logger=None) -> None:
     """Blocking flush + shutdown — always run via run_in_executor."""
     try:
         provider.force_flush(timeout_millis=10_000)
         provider.shutdown(timeout_millis=30_000)
     except Exception:
-        pass
+        if logger:
+            logger.warning("OTelMetricsExporter shutdown failed", exc_info=True)
+        else:
+            print(f"OTelMetricsExporter shutdown failed:\n{traceback.format_exc()}")
 
 
 class OTelMetricsExporter(Flow):
@@ -91,7 +95,9 @@ class OTelMetricsExporter(Flow):
         Ignored in "immediate" mode.
     :param insecure: Use a plaintext (non-TLS) gRPC channel. Default False.
     :param flush_mode: ``"periodic"`` — background timer exports at ``export_interval_millis``
-        cadence; ``"immediate"`` — every event triggers a synchronous flush. Default "periodic".
+        cadence (recommended for production); ``"immediate"`` — every event triggers a
+        synchronous flush, intended for low-volume or debugging use only as it is a
+        throughput bottleneck. Default "periodic".
     :param instrument_type: Default instrument type. One of ``"gauge"``, ``"counter"``,
         ``"updown_counter"``, ``"histogram"``. Default ``"gauge"``.
     :param instrument_type_field: Event body field that overrides ``instrument_type`` per metric.
@@ -187,7 +193,8 @@ class OTelMetricsExporter(Flow):
             return
         if OTLPMetricExporter is None:
             raise ImportError("Install with: pip install storey[otel]")
-        interval = sys.maxsize if self._flush_mode == "immediate" else self._export_interval_millis
+        # math.inf disables periodic collection per PeriodicExportingMetricReader docs.
+        interval = math.inf if self._flush_mode == "immediate" else self._export_interval_millis
         reader = PeriodicExportingMetricReader(
             OTLPMetricExporter(
                 endpoint=self._endpoint,
@@ -202,7 +209,9 @@ class OTelMetricsExporter(Flow):
     async def _do(self, event):
         if event is _termination_obj:
             if self._provider:
-                await asyncio.get_running_loop().run_in_executor(None, _flush_and_shutdown, self._provider)
+                await asyncio.get_running_loop().run_in_executor(
+                    None, _flush_and_shutdown, self._provider, self.logger
+                )
             return await self._do_downstream(_termination_obj)
 
         await self._lazy_init()
@@ -211,8 +220,13 @@ class OTelMetricsExporter(Flow):
         items = body[self._metrics_field] if self._metrics_field in body else [body]
 
         for item in items:
-            name = item[self._metric_name_field]
-            value = float(item[self._value_field])
+            try:
+                name = item[self._metric_name_field]
+                value = float(item[self._value_field])
+            except KeyError as e:
+                raise ValueError(
+                    f"OTelMetricsExporter: required field {e.args[0]!r} missing from event body"
+                ) from e
             attrs = self._extract_attributes(item)
             itype = item.get(self._instrument_type_field, self._instrument_type)
 
