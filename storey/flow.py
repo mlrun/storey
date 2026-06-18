@@ -336,21 +336,28 @@ class Flow:
             ex._raised_by_storey_step = self
             recovery_step = self._get_recovery_step(ex)
             if recovery_step is None:
-                if self.context and hasattr(self.context, "push_error"):
-                    message = traceback.format_exc()
-                    if event._awaitable_result:
-                        none_or_coroutine = event._awaitable_result._set_error(ex)
-                        if none_or_coroutine:
-                            await none_or_coroutine
-                    if self.logger:
-                        self.logger.error(f"Pushing error to error stream: {ex}\n{message}")
-                    self.context.push_error(event, f"{ex}\n{message}", source=self.name)
-                    return
-                else:
-                    raise ex
+                return await self._handle_unrecovered_error(event, ex)
             event.origin_state = self.name
             event.error = ex
-            return await recovery_step._do(event)
+            try:
+                return await recovery_step._do(event)
+            except BaseException as recovery_ex:
+                if getattr(recovery_ex, "_raised_by_storey_step", None) is None:
+                    recovery_ex._raised_by_storey_step = recovery_step
+                return await self._handle_unrecovered_error(event, recovery_ex)
+
+    async def _handle_unrecovered_error(self, event, ex):
+        if self.context and hasattr(self.context, "push_error"):
+            message = traceback.format_exc()
+            if event._awaitable_result:
+                none_or_coroutine = event._awaitable_result._set_error(ex)
+                if none_or_coroutine:
+                    await none_or_coroutine
+            if self.logger:
+                self.logger.error(f"Pushing error to error stream: {ex}\n{message}")
+            self.context.push_error(event, f"{ex}\n{message}", source=self.name)
+            return
+        raise ex
 
     @staticmethod
     def _event_string(event):

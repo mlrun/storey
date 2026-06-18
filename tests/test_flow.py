@@ -628,6 +628,63 @@ def test_async_offset_commit_error_on_termination():
     asyncio.run(async_offset_commit_error_on_termination())
 
 
+async def async_offset_commit_with_failing_step(with_failing_recovery_step):
+    # Scenario: explicit-ack stream + a step that always raises. In one variant the step also has a
+    # recovery step (error handler) that ALSO always raises. Emit 5 events on a single shard. Even
+    # though every event fails, each one should still be committed so the stream keeps advancing and
+    # the source is not permanently poisoned (currently only the first failing event is committed,
+    # then the flow is stuck). The outcome is the same with or without the failing recovery step.
+    platform = Committer()
+    logger = MockLogger()
+    context = CommitterContext(platform, logger=logger)
+
+    # Model the nuclio/mlrun context, which always provides an error stream. Failed events should
+    # be routed here (dead-lettered) and then committed, rather than poisoning the source.
+    errors = []
+    context.push_error = lambda event, message, source=None: errors.append(event.offset)
+
+    def always_raise(_):
+        raise ATestException("step failed")
+
+    def recovery_always_raises(event):
+        # event.error holds the original exception that triggered recovery
+        raise RuntimeError(f"error handler failed (orig={type(event.error).__name__})")
+
+    # In mlrun every step carries the context (and thus the error stream), so pass it down here too.
+    steps = [AsyncEmitSource(context=context, explicit_ack=True, max_wait_before_commit=1)]
+    if with_failing_recovery_step:
+        error_handler = Map(recovery_always_raises, full_event=True, context=context)
+        steps.append(Map(always_raise, recovery_step=error_handler, context=context))
+        steps.append(error_handler)
+    else:
+        steps.append(Map(always_raise, context=context))
+    controller = build_flow(steps).run()
+
+    for offset in range(1, 6):
+        event = Event(offset)
+        event.shard_id = 0
+        event.offset = offset
+        await controller.emit(event)
+    del event
+
+    await asyncio.sleep(2)
+
+    try:
+        await controller.terminate(wait=True)
+    except Exception:
+        pass  # flow is poisoned today; the contract we're asserting is about offsets
+
+    # All 5 events failed, but each should be routed to the error stream and committed so the
+    # stream keeps advancing (the source is no longer poisoned).
+    assert platform.offsets == {("/", 0): 5}
+    assert errors == [1, 2, 3, 4, 5]
+
+
+@pytest.mark.parametrize("with_failing_recovery_step", [False, True])
+def test_async_offset_commit_with_failing_step(with_failing_recovery_step):
+    asyncio.run(async_offset_commit_with_failing_step(with_failing_recovery_step))
+
+
 def test_multiple_upstreams():
     source = SyncEmitSource()
     map1 = Map(lambda x: x + 1)
