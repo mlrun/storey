@@ -4909,10 +4909,12 @@ def test_concurrent_execution_failing_recovery_step():
             await self._do_downstream(event)
 
     errors = []
+    messages = []
 
     class ContextWithPushError(Context):
         def push_error(self, event, message, source):
             errors.append(event.body)
+            messages.append(message)
 
     context = ContextWithPushError()
 
@@ -4929,6 +4931,9 @@ def test_concurrent_execution_failing_recovery_step():
     controller.await_termination()  # not poisoned: terminates cleanly
 
     assert sorted(errors) == [0, 1, 2, 3, 4]
+    # The dead-letter payload's traceback must be the recovery step's failure (captured while
+    # recovery_ex was the active exception), not the original step's traceback.
+    assert all("RuntimeError: error handler failed" in message for message in messages)
 
 
 def test_event_to_string():

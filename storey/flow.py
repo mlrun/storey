@@ -1221,6 +1221,7 @@ class _ConcurrentJobExecution(Flow):
                     recovery_step = self._get_recovery_step(ex)
                     try:
                         recovered = False
+                        recovery_message = None
                         if recovery_step is not None:
                             event.origin_state = self.name
                             event.error = ex
@@ -1235,13 +1236,17 @@ class _ConcurrentJobExecution(Flow):
                                 if getattr(recovery_ex, "_raised_by_storey_step", None) is None:
                                     recovery_ex._raised_by_storey_step = recovery_step
                                 ex = recovery_ex
+                                # Capture while recovery_ex is still the active exception; once this
+                                # except block exits, sys.exc_info() reverts to the outer ex, so a
+                                # later traceback.format_exc() would format the wrong traceback.
+                                recovery_message = traceback.format_exc()
                         if not recovered:
                             if event._awaitable_result:
                                 none_or_coroutine = event._awaitable_result._set_error(ex)
                                 if none_or_coroutine:
                                     await none_or_coroutine
                             if self.context and hasattr(self.context, "push_error"):
-                                message = traceback.format_exc()
+                                message = recovery_message if recovery_message is not None else traceback.format_exc()
                                 if self.logger:
                                     self.logger.error(f"Pushing error to error stream: {ex}\n{message}")
                                 self.context.push_error(event, f"{ex}\n{message}", source=self.name)
