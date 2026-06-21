@@ -81,6 +81,7 @@ from storey.flow import (
     RunnableExecutor,
     _Batching,
     _ConcurrentJobExecution,
+    is_batched_event,
 )
 from tests.helpers import MockContext, MockLogger
 
@@ -100,6 +101,20 @@ class RaiseEx:
         if self._counter == self._raise_after:
             raise ATestException("test")
         return element
+
+
+def test_is_batched_event_with_event_sub_events():
+    batched = Event(body=[Event(body=1), Event(body=2)])
+    assert is_batched_event(batched) is True
+
+
+def test_is_batched_event_excludes_non_event_body_objects():
+    class Response:
+        def __init__(self, body):
+            self.body = body
+
+    batched = Event(body=[Response(body=1), Response(body=2)])
+    assert is_batched_event(batched) is False
 
 
 def test_functional_flow():
