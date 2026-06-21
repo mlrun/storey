@@ -57,3 +57,5 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, testing, and codin
 ## License
 
 Apache License 2.0
+
+<!-- CI sanity check (no-op) -->
