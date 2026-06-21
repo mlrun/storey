@@ -628,6 +628,61 @@ def test_async_offset_commit_error_on_termination():
     asyncio.run(async_offset_commit_error_on_termination())
 
 
+async def async_offset_commit_with_failing_step(with_failing_recovery_step):
+    # Scenario: explicit-ack stream + a step that always raises. In one variant the step also has a
+    # recovery step (error handler) that ALSO always raises. Emit 5 events on a single shard. Even
+    # though every event fails, each one should still be committed so the stream keeps advancing and
+    # the source is not permanently poisoned (currently only the first failing event is committed,
+    # then the flow is stuck). The outcome is the same with or without the failing recovery step.
+    platform = Committer()
+    logger = MockLogger()
+    context = CommitterContext(platform, logger=logger)
+
+    # Model the nuclio/mlrun context, which always provides an error stream. Failed events should
+    # be routed here (dead-lettered) and then committed, rather than poisoning the source.
+    errors = []
+    context.push_error = lambda event, message, source=None: errors.append(event.offset)
+
+    def always_raise(_):
+        raise ATestException("step failed")
+
+    def recovery_always_raises(event):
+        # event.error holds the original exception that triggered recovery
+        raise RuntimeError(f"error handler failed (orig={type(event.error).__name__})")
+
+    # In mlrun every step carries the context (and thus the error stream), so pass it down here too.
+    steps = [AsyncEmitSource(context=context, explicit_ack=True, max_wait_before_commit=1)]
+    if with_failing_recovery_step:
+        error_handler = Map(recovery_always_raises, full_event=True, context=context)
+        steps.append(Map(always_raise, recovery_step=error_handler, context=context))
+        steps.append(error_handler)
+    else:
+        steps.append(Map(always_raise, context=context))
+    controller = build_flow(steps).run()
+
+    for offset in range(1, 6):
+        event = Event(offset)
+        event.shard_id = 0
+        event.offset = offset
+        await controller.emit(event)
+    del event
+
+    await asyncio.sleep(2)
+
+    # The source is no longer poisoned by the failing (recovery) step, so termination is clean.
+    await controller.terminate(wait=True)
+
+    # All 5 events failed, but each should be routed to the error stream and committed so the
+    # stream keeps advancing.
+    assert platform.offsets == {("/", 0): 5}
+    assert errors == [1, 2, 3, 4, 5]
+
+
+@pytest.mark.parametrize("with_failing_recovery_step", [False, True])
+def test_async_offset_commit_with_failing_step(with_failing_recovery_step):
+    asyncio.run(async_offset_commit_with_failing_step(with_failing_recovery_step))
+
+
 def test_multiple_upstreams():
     source = SyncEmitSource()
     map1 = Map(lambda x: x + 1)
@@ -4841,6 +4896,44 @@ def test_concurrent_execution_max_in_flight_push_error():
         awaitable_result.await_result()
     controller.terminate()
     controller.await_termination()
+
+
+# ML-12776: a concurrent step whose recovery step (error handler) also always raises must
+# dead-letter the event to the error stream instead of propagating raw and poisoning the flow.
+def test_concurrent_execution_failing_recovery_step():
+    class _RaisingConcurrentExecution(_ConcurrentJobExecution):
+        async def _process_event(self, event):
+            raise ATestException("step failed")
+
+        async def _handle_completed(self, event, response):
+            await self._do_downstream(event)
+
+    errors = []
+    messages = []
+
+    class ContextWithPushError(Context):
+        def push_error(self, event, message, source):
+            errors.append(event.body)
+            messages.append(message)
+
+    context = ContextWithPushError()
+
+    def recovery_always_raises(event):
+        raise RuntimeError("error handler failed")
+
+    error_handler = Map(recovery_always_raises, full_event=True, context=context)
+    concurrent_step = _RaisingConcurrentExecution(max_in_flight=2, context=context, recovery_step=error_handler)
+    controller = build_flow([SyncEmitSource(context=context), concurrent_step, error_handler]).run()
+
+    for i in range(5):
+        controller.emit(i)
+    controller.terminate()
+    controller.await_termination()  # not poisoned: terminates cleanly
+
+    assert sorted(errors) == [0, 1, 2, 3, 4]
+    # The dead-letter payload's traceback must be the recovery step's failure (captured while
+    # recovery_ex was the active exception), not the original step's traceback.
+    assert all("RuntimeError: error handler failed" in message for message in messages)
 
 
 def test_event_to_string():
