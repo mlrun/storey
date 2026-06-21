@@ -341,7 +341,7 @@ class Flow:
             event.error = ex
             try:
                 return await recovery_step._do(event)
-            except BaseException as recovery_ex:
+            except Exception as recovery_ex:
                 if getattr(recovery_ex, "_raised_by_storey_step", None) is None:
                     recovery_ex._raised_by_storey_step = recovery_step
                 return await self._handle_unrecovered_error(event, recovery_ex)
@@ -1220,11 +1220,22 @@ class _ConcurrentJobExecution(Flow):
                     ex._raised_by_storey_step = self
                     recovery_step = self._get_recovery_step(ex)
                     try:
+                        recovered = False
                         if recovery_step is not None:
                             event.origin_state = self.name
                             event.error = ex
-                            await recovery_step._do(event)
-                        else:
+                            try:
+                                await recovery_step._do(event)
+                                recovered = True
+                            except Exception as recovery_ex:
+                                # The recovery step (error handler) itself failed. Fall through to the
+                                # error-stream/raise handling below rather than propagating raw, which
+                                # would poison an explicit-ack source. recovery_step._do (not
+                                # _do_and_recover) is used to avoid infinite recovery loops.
+                                if getattr(recovery_ex, "_raised_by_storey_step", None) is None:
+                                    recovery_ex._raised_by_storey_step = recovery_step
+                                ex = recovery_ex
+                        if not recovered:
                             if event._awaitable_result:
                                 none_or_coroutine = event._awaitable_result._set_error(ex)
                                 if none_or_coroutine:

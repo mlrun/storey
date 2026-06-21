@@ -669,13 +669,11 @@ async def async_offset_commit_with_failing_step(with_failing_recovery_step):
 
     await asyncio.sleep(2)
 
-    try:
-        await controller.terminate(wait=True)
-    except Exception:
-        pass  # flow is poisoned today; the contract we're asserting is about offsets
+    # The source is no longer poisoned by the failing (recovery) step, so termination is clean.
+    await controller.terminate(wait=True)
 
     # All 5 events failed, but each should be routed to the error stream and committed so the
-    # stream keeps advancing (the source is no longer poisoned).
+    # stream keeps advancing.
     assert platform.offsets == {("/", 0): 5}
     assert errors == [1, 2, 3, 4, 5]
 
@@ -4898,6 +4896,39 @@ def test_concurrent_execution_max_in_flight_push_error():
         awaitable_result.await_result()
     controller.terminate()
     controller.await_termination()
+
+
+# ML-12776: a concurrent step whose recovery step (error handler) also always raises must
+# dead-letter the event to the error stream instead of propagating raw and poisoning the flow.
+def test_concurrent_execution_failing_recovery_step():
+    class _RaisingConcurrentExecution(_ConcurrentJobExecution):
+        async def _process_event(self, event):
+            raise ATestException("step failed")
+
+        async def _handle_completed(self, event, response):
+            await self._do_downstream(event)
+
+    errors = []
+
+    class ContextWithPushError(Context):
+        def push_error(self, event, message, source):
+            errors.append(event.body)
+
+    context = ContextWithPushError()
+
+    def recovery_always_raises(event):
+        raise RuntimeError("error handler failed")
+
+    error_handler = Map(recovery_always_raises, full_event=True, context=context)
+    concurrent_step = _RaisingConcurrentExecution(max_in_flight=2, context=context, recovery_step=error_handler)
+    controller = build_flow([SyncEmitSource(context=context), concurrent_step, error_handler]).run()
+
+    for i in range(5):
+        controller.emit(i)
+    controller.terminate()
+    controller.await_termination()  # not poisoned: terminates cleanly
+
+    assert sorted(errors) == [0, 1, 2, 3, 4]
 
 
 def test_event_to_string():
