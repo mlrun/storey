@@ -28,8 +28,12 @@ from urllib.parse import urlparse
 
 import pandas as pd
 import pyarrow
-import v3io_frames as frames
 import xxhash
+
+try:
+    import v3io_frames as frames
+except ImportError:
+    frames = None
 
 from . import Driver
 from .dtypes import Event, V3ioError
@@ -758,7 +762,12 @@ class TSDBTarget(_Batching, _Writer):
         self._aggr = aggr
         self.aggr_granularity = aggr_granularity
         self._created = False
-        self._frames_client = frames_client or frames.Client(address=v3io_frames, token=access_key, container=container)
+        self._if_exists = frames.frames_pb2.IGNORE if frames is not None else 1  # frames_pb2.IGNORE
+        if frames_client is None:
+            if frames is None:
+                raise ImportError("Install with: pip install storey[v3io-frames]")
+            frames_client = frames.Client(address=v3io_frames, token=access_key, container=container)
+        self._frames_client = frames_client
 
     def _init(self):
         _Batching._init(self)
@@ -780,7 +789,7 @@ class TSDBTarget(_Batching, _Writer):
             self._frames_client.create(
                 "tsdb",
                 table=self._path,
-                if_exists=frames.frames_pb2.IGNORE,
+                if_exists=self._if_exists,
                 rate=self._rate,
                 aggregates=self._aggr,
                 aggregation_granularity=self.aggr_granularity or "",

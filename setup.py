@@ -47,6 +47,7 @@ extras_require = {
         "opentelemetry-sdk>=1.25.0,<2.0.0",
         "opentelemetry-exporter-otlp-proto-grpc>=1.25.0,<2.0.0",
     ],
+    "v3io-frames": ["v3io-frames>=0.10.14, !=0.11.*, !=0.12.*"],
 }
 
 
