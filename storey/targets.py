@@ -762,6 +762,7 @@ class TSDBTarget(_Batching, _Writer):
         self._aggr = aggr
         self.aggr_granularity = aggr_granularity
         self._created = False
+        self._if_exists = frames.frames_pb2.IGNORE if frames is not None else 1  # frames_pb2.IGNORE
         if frames_client is None:
             if frames is None:
                 raise ImportError("Install with: pip install storey[v3io-frames]")
@@ -788,7 +789,7 @@ class TSDBTarget(_Batching, _Writer):
             self._frames_client.create(
                 "tsdb",
                 table=self._path,
-                if_exists=frames.frames_pb2.IGNORE,
+                if_exists=self._if_exists,
                 rate=self._rate,
                 aggregates=self._aggr,
                 aggregation_granularity=self.aggr_granularity or "",
