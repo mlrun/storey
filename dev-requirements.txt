@@ -3,13 +3,13 @@ black>=26.3.1,<27
 flake8~=5.0
 flake8-bugbear~=22.9
 isort~=5.7
-pytest~=6.2.5
+pytest>=9.0.3,<10
 coverage~=7.5
-pytest-benchmark~=3.2.3
+pytest-benchmark>=5.2.3,<6
 # Note: you might need a Lua installation to install lupa on Mac.
 # brew install lua
-lupa~=1.13
-fakeredis~=1.9
+lupa>=2.8,<3
+fakeredis[lua]>=2.37,<3
 redis~=4.3
 # in sqlalchemy>=2.0 there is breaking changes (such as in Table class autoload argument is removed)
 sqlalchemy~=1.4

@@ -68,7 +68,7 @@ def setup_kv_teardown_test(request):
     elif test_context.driver_name == "RedisDriver":
         create_temp_redis_kv(test_context)
     elif test_context.driver_name == "SQLDriver":
-        pytest.skip(msg="test not relevant for SQLDriver")
+        pytest.skip("test not relevant for SQLDriver")
     else:
         raise ValueError(f'Unsupported driver name "{test_context.driver_name}"')
 
