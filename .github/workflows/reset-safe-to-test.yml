@@ -17,6 +17,7 @@ name: Reset safe-to-test
 permissions:
   contents: read
   issues: write
+  pull-requests: write
 
 on:
   pull_request_target:
