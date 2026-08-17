@@ -24,7 +24,7 @@ import traceback
 import uuid
 from datetime import datetime
 from random import choice
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import fakeredis
 import pandas as pd
@@ -1969,6 +1969,27 @@ def test_awaitable_result_error_in_async_downstream():
             controller.emit(1).await_result()
     finally:
         controller.terminate()
+
+
+async def async_test_send_to_http_uses_default_tls_validation():
+    request = HttpRequest("POST", "https://example.com/resource", "request body", {"X-Test": "value"})
+    step = SendToHttp(lambda _: request, lambda event, response: event)
+    step._client_session = MagicMock()
+    step._client_session.request = AsyncMock()
+
+    await step._process_event(Event("event body"))
+
+    step._client_session.request.assert_awaited_once_with(
+        "POST",
+        "https://example.com/resource",
+        headers={"X-Test": "value"},
+        data="request body",
+    )
+    assert "ssl" not in step._client_session.request.await_args.kwargs
+
+
+def test_send_to_http_uses_default_tls_validation():
+    asyncio.run(async_test_send_to_http_uses_default_tls_validation())
 
 
 async def async_test_async_awaitable_result_error_in_async_downstream():
