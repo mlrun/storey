@@ -1528,6 +1528,9 @@ class ConcurrentExecution(_ConcurrentJobExecution, _StreamingStepMixin):
 class SendToHttp(_ConcurrentJobExecution):
     """Joins each event with data from any HTTP source. Used for event augmentation.
 
+    HTTPS certificates and hostnames are validated using aiohttp's default trust configuration. Deployments using
+    self-signed certificates or private certificate authorities must add their CA to the runtime trust configuration.
+
     :param request_builder: Creates an HTTP request from the event. This request is then sent to its destination.
     :type request_builder: Function (Event=>HttpRequest)
     :param join_from_response: Joins the original event with the HTTP response into a new event.
@@ -1557,7 +1560,7 @@ class SendToHttp(_ConcurrentJobExecution):
 
     async def _process_event(self, event):
         req = self._request_builder(event)
-        return await self._client_session.request(req.method, req.url, headers=req.headers, data=req.body, ssl=False)
+        return await self._client_session.request(req.method, req.url, headers=req.headers, data=req.body)
 
     async def _handle_completed(self, event, response):
         response_body = await response.text()
