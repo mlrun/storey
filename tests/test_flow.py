@@ -836,7 +836,7 @@ def test_csv_reader():
         [
             CSVSource("tests/test.csv"),
             FlatMap(lambda x: x),
-            Map(lambda x: int(x)),
+            Map(int),
             Reduce(0, lambda acc, x: acc + x),
         ]
     ).run()
@@ -862,7 +862,7 @@ def test_csv_reader_as_dict():
         [
             CSVSource("tests/test.csv", build_dict=True),
             FlatMap(lambda x: [x["n1"], x["n2"], x["n3"]]),
-            Map(lambda x: int(x)),
+            Map(int),
             Reduce(0, lambda acc, x: acc + x),
         ]
     ).run()
@@ -1946,11 +1946,9 @@ async def async_test_error_async_flow():
         ]
     ).run()
 
-    try:
+    with pytest.raises(ATestException):
         for i in range(10):
             await controller.emit(i)
-    except ATestException:
-        pass
 
 
 def test_awaitable_result_error_in_async_downstream():
@@ -2030,7 +2028,7 @@ def test_error_trace():
         try:
             awaitable_results.append(controller.emit(0))
         except ValueError:
-            pass
+            pass  # Expected synchronous failure; keep previously returned results.
 
     last_trace_size = None
     for awaitable_result in awaitable_results:
@@ -2186,7 +2184,7 @@ def test_batch():
         [
             SyncEmitSource(),
             Batch(4, 100, full_event=False),
-            Reduce([], lambda acc, x: append_and_return(acc, x), full_event=True),
+            Reduce([], append_and_return, full_event=True),
         ]
     ).run()
 
@@ -2234,7 +2232,7 @@ def test_batch_by_user_key(full_event):
         [
             SyncEmitSource(),
             Batch(2, 100, "value", **batch_kwargs),
-            Reduce([], lambda acc, x: append_and_return(acc, x)),
+            Reduce([], append_and_return),
         ]
     ).run()
 
@@ -3456,7 +3454,7 @@ def test_join_by_key():
             SyncEmitSource(),
             Filter(lambda x: x["col1"] > 8),
             JoinWithTable(table, lambda x: x["col1"]),
-            Reduce([], lambda acc, x: append_and_return(acc, x)),
+            Reduce([], append_and_return),
         ]
     ).run()
     for i in range(10):
@@ -3473,8 +3471,8 @@ def test_join_by_key_error():
     table._update_static_attrs("1", {"age": 1, "color": "blue"})
     table._update_static_attrs("3", {"age": 3, "color": "red"})
 
-    recovery_step = Reduce([], lambda acc, x: append_and_return(acc, x))
-    terminal_step = Reduce([], lambda acc, x: append_and_return(acc, x))
+    recovery_step = Reduce([], append_and_return)
+    terminal_step = Reduce([], append_and_return)
 
     controller = build_flow(
         [
@@ -3507,7 +3505,7 @@ def test_join_by_key_full_event():
             SyncEmitSource(),
             Filter(lambda x: x["col1"] > 8),
             JoinWithTable(table, "col1", full_event=True),
-            Reduce([], lambda acc, x: append_and_return(acc, x)),
+            Reduce([], append_and_return),
         ]
     ).run()
     for i in range(10):
@@ -3529,7 +3527,7 @@ def test_join_by_string_key():
             SyncEmitSource(),
             Filter(lambda x: x["col1"] > 8),
             JoinWithTable(table, "col1"),
-            Reduce([], lambda acc, x: append_and_return(acc, x)),
+            Reduce([], append_and_return),
         ]
     ).run()
     for i in range(10):
@@ -3556,7 +3554,7 @@ def test_join_with_join_function():
         [
             SyncEmitSource(),
             JoinWithTable(table, "col1", inner_join=True, join_function=join_function),
-            Reduce([], lambda acc, x: append_and_return(acc, x)),
+            Reduce([], append_and_return),
         ]
     ).run()
     for i in range(5):
@@ -5058,7 +5056,7 @@ def test_long_running_parameter(long_running, use_mapclass):
             SyncEmitSource(),
             map_step,
             check_time,
-            Reduce([], lambda acc, x: append_and_return(acc, x)),
+            Reduce([], append_and_return),
         ]
     ).run()
 
@@ -5079,7 +5077,7 @@ def test_rename():
             Rename({}),
             Rename({"a": "b", "c": "d"}),
             Rename({"d": "c"}),
-            Reduce([], lambda acc, x: append_and_return(acc, x)),
+            Reduce([], append_and_return),
         ]
     ).run()
 
@@ -5496,11 +5494,8 @@ def test_parallel_execution_with_large_data():
 
     assert len(termination_result) == num_records
     for n, result in enumerate(termination_result):
-        if num_runnables == 1:
-            assert result == {"data_size": data_size, "n": n, "gpu": 0}
-        else:
-            for expected_gpu, runnable_result in enumerate(result.values()):
-                assert runnable_result == {"data_size": data_size, "n": n, "gpu": expected_gpu}
+        for expected_gpu, runnable_result in enumerate(result.values()):
+            assert runnable_result == {"data_size": data_size, "n": n, "gpu": expected_gpu}
 
 
 class RunnableShared(ParallelExecutionRunnable):
@@ -5741,9 +5736,9 @@ def test_enrichment():
         "busy1": 1,
         "busy2": 1,
     }
-    assert (
-        "name" in total_metadata and total_metadata.pop("name") == "MyParallelExecution"
-    ), "Expected name in _metadata field"
+    assert "name" in total_metadata, "Expected name in _metadata field"
+    name = total_metadata.pop("name")
+    assert name == "MyParallelExecution"
     assert all(
         list(("when" in metadata and "microsec" in metadata) for metadata in total_metadata.values())
     ), "Expected _metadata to include 'when' and 'microsec' fields "
@@ -6295,7 +6290,7 @@ class TestBatchWithParallelExecution:
                 parallel_execution,
                 FlatMap(fn=lambda x: x.body, full_event=True),
                 Complete(),
-                Reduce(initial_value=[], fn=lambda acc, x: append_and_return(acc, x)),
+                Reduce(initial_value=[], fn=append_and_return),
             ]
         ).run()
 
@@ -6354,7 +6349,7 @@ class TestBatchWithParallelExecution:
         flat_map1 = FlatMap(fn=lambda x: x.body, full_event=True)
         flat_map2 = FlatMap(fn=lambda x: x.body, full_event=True)
         complete = Complete()
-        reducer = Reduce([], lambda acc, x: append_and_return(acc, x))
+        reducer = Reduce([], append_and_return)
 
         source.to(batch_step).to(parallel_execution)
         parallel_execution.to(flat_map1).to(complete).to(reducer)

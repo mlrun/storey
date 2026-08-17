@@ -60,7 +60,7 @@ def test_sliding_window_simple_aggregation_flow():
                 Table("test", NoopDriver()),
                 time_field="time",
             ),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -258,7 +258,7 @@ def test_aggregation_flow_with_aliases():
                     "number_of_stuff_max_24h": "a_number_of_stuff_max_24h",
                 },
             ),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -458,7 +458,7 @@ def test_sliding_window_sparse_data():
                 Table("test", NoopDriver()),
                 time_field="time",
             ),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -1058,7 +1058,7 @@ def test_sliding_window_sparse_data_uneven_feature_occurrence():
                 Table("test", NoopDriver()),
                 time_field="time",
             ),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -1404,7 +1404,7 @@ def test_sliding_window_multiple_keys_aggregation_flow():
                 Table("test", NoopDriver()),
                 time_field="time",
             ),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -1539,7 +1539,7 @@ def test_sliding_window_aggregations_with_filters_flow():
                 Table("test", NoopDriver()),
                 time_field="time",
             ),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -1684,7 +1684,7 @@ def test_sliding_window_aggregations_with_max_values_flow():
                 Table("test", NoopDriver()),
                 time_field="time",
             ),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -1775,7 +1775,7 @@ def test_sliding_window_simple_aggregation_flow_multiple_fields():
                 Table("test", NoopDriver()),
                 time_field="time",
             ),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -1959,7 +1959,7 @@ def test_fixed_window_simple_aggregation_flow():
                 Table("test", NoopDriver()),
                 time_field="time",
             ),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -2165,7 +2165,7 @@ def test_fixed_window_aggregation_with_uncommon_windows_flow():
                 Table("U235_test", NoopDriver()),
                 time_field="sample_time",
             ),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
     termination_result = controller.await_termination()
@@ -2432,7 +2432,7 @@ def test_fixed_window_aggregation_with_multiple_keys_flow():
                 Table("U235_test", NoopDriver()),
                 time_field="sample_time",
             ),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
     termination_result = controller.await_termination()
@@ -2672,7 +2672,7 @@ def test_sliding_window_aggregation_with_uncommon_windows_flow():
                 Table("U235_test", NoopDriver()),
                 time_field="sample_time",
             ),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
     termination_result = controller.await_termination()
@@ -2855,7 +2855,7 @@ def test_emit_max_event_sliding_window_multiple_keys_aggregation_flow():
                 time_field="time",
                 emit_policy=EmitAfterMaxEvent(3),
             ),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -2999,7 +2999,7 @@ def test_aggregate_dict_simple_aggregation_flow():
                 Table("test", NoopDriver()),
                 time_field="time",
             ),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -3194,7 +3194,7 @@ def test_aggregate_dict_fixed_window():
                 Table("test", NoopDriver()),
                 time_field="time",
             ),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -3308,7 +3308,7 @@ def test_sliding_window_old_event():
                 Table("test", NoopDriver()),
                 time_field="time",
             ),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -3393,7 +3393,7 @@ def test_fixed_window_old_event():
                 Table("test", NoopDriver()),
                 time_field="time",
             ),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -3447,7 +3447,7 @@ def test_fixed_window_out_of_order_event():
                 Table("test", NoopDriver()),
                 time_field="time",
             ),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -3514,7 +3514,7 @@ def test_fixed_window_roll_cached_buckets():
                 Table("test", NoopDriver()),
                 time_field="time",
             ),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -3618,7 +3618,7 @@ def test_sliding_window_roll_cached_buckets():
                 Table("test", NoopDriver()),
                 time_field="time",
             ),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -3779,7 +3779,7 @@ def test_aggregation_unique_fields():
                     Table("test", NoopDriver()),
                     time_field="time",
                 ),
-                Reduce([], lambda acc, x: append_return(acc, x)),
+                Reduce([], append_return),
             ]
         ).run()
 
@@ -3859,7 +3859,7 @@ def test_fixed_window_aggregation_with_first_and_last_aggregates(timestamp):
                 time_field="timestamp",
                 time_format="%Y-%m-%d %H:%M:%S.%f%z",
             ),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
     termination_result = controller.await_termination()

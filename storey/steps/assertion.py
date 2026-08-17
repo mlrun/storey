@@ -32,7 +32,6 @@ class _Operator:
 
 
 _EQUALS = _Operator("==", lambda x, y: x == y)
-_NOT_EQUAL = _Operator("!=", lambda x, y: x != y)
 _GREATER_THAN = _Operator(">", lambda x, y: x > y)
 _LESS_THEN = _Operator("<", lambda x, y: x < y)
 _GREATER_OR_EQUAL = _Operator(">=", lambda x, y: x >= y)

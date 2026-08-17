@@ -44,7 +44,7 @@ def kafka_topic_setup_teardown():
         kafka_admin_client.delete_topics([topic])
         sleep(1)
     except kafka.errors.UnknownTopicOrPartitionError:
-        pass
+        pass  # Topic may not exist.
     kafka_admin_client.create_topics([kafka.admin.NewTopic(topic, 1, 1)])
 
     # Test runs
@@ -126,7 +126,7 @@ async def async_test_write_to_kafka_full_event_readback(kafka_topic_setup_teardo
     controller = build_flow(
         [
             AsyncEmitSource(),
-            Reduce([], lambda acc, x: append_return(acc, x), full_event=True),
+            Reduce([], append_return, full_event=True),
         ]
     ).run()
     for record in readback_records:

@@ -110,7 +110,7 @@ def test_csv_reader_from_azure(azure_create_csv):
                 storage_options=storage_options,
             ),
             FlatMap(lambda x: x),
-            Map(lambda x: int(x)),
+            Map(int),
             Reduce(0, lambda acc, x: acc + x),
         ]
     ).run()
