@@ -205,7 +205,7 @@ class RedisDriver(NeedsRedisAccess, Driver):
                 try:
                     ret = int(value)
                 except ValueError:
-                    pass
+                    pass  # Keep the successful float conversion.
             except ValueError:
                 ret = str_value
         return ret
@@ -535,7 +535,6 @@ class RedisDriver(NeedsRedisAccess, Driver):
         return values
 
     async def _fetch_state_by_key(self, aggr_item, container, table_path, key):
-        redis_key_prefix = self._make_key(container, table_path, key)
         aggregations = {}
         # Aggregation Redis keys start with the Redis key prefix for this Storey container, table
         # path, and "key," followed by ":aggr_"
@@ -583,3 +582,4 @@ class RedisDriver(NeedsRedisAccess, Driver):
         schema = await RedisDriver.asyncify(self.redis.get)(redis_key)
         if schema:
             return json.loads(schema)
+        return None

@@ -372,7 +372,7 @@ class SyncEmitSource(Flow):
                         event = await loop.run_in_executor(None, self._q.get, True, self._max_wait_before_commit)
                         break
                     except queue.Empty:
-                        pass
+                        pass  # no event yet; commit outstanding offsets below and keep waiting
                     num_offsets_not_committed = await _commit_handled_events(
                         self._outstanding_offsets, committer, self.logger
                     )
@@ -657,7 +657,7 @@ async def _commit_handled_events(outstanding_offsets_by_qualified_shard, committ
             path, shard_id = qualified_shard
             try:
                 await committer(QualifiedOffset(path, shard_id, last_handled_offset))
-            except BaseException:
+            except Exception:
                 if logger:
                     logger.error(f"Failed to commit offsets due to error: {traceback.format_exc()}")
                 return num_offsets_not_handled + num_to_clear
@@ -752,7 +752,7 @@ class AsyncEmitSource(Flow):
                         event = await self._q.get(self._max_wait_before_commit)
                         break
                     except TimeoutError:
-                        pass
+                        pass  # no event yet; commit outstanding offsets below and keep waiting
                     num_offsets_not_handled = await _commit_handled_events(
                         self._outstanding_offsets, committer, self.logger
                     )

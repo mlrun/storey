@@ -421,8 +421,6 @@ class EmitEveryEvent(EmitPolicy):
     def name():
         return "everyEvent"
 
-    pass
-
 
 def _dict_to_emit_policy(policy_dict):
     mode = policy_dict.pop("mode")

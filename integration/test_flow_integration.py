@@ -232,7 +232,7 @@ async def async_test_write_to_v3io_stream(setup_stream_teardown_test):
     controller = build_flow(
         [
             AsyncEmitSource(),
-            Map(lambda x: str(x)),
+            Map(str),
             StreamTarget(
                 V3ioDriver(),
                 stream_path,
@@ -286,7 +286,7 @@ def test_write_to_v3io_stream_flow_reuse(assign_stream_teardown_test):
     flow = build_flow(
         [
             AsyncEmitSource(),
-            Map(lambda x: str(x)),
+            Map(str),
             StreamTarget(
                 V3ioDriver(),
                 stream_path,
@@ -349,7 +349,7 @@ async def async_test_write_to_v3io_stream_full_event_readback(
     controller = build_flow(
         [
             AsyncEmitSource(),
-            Reduce([], lambda acc, x: append_return(acc, x), full_event=True),
+            Reduce([], append_return, full_event=True),
         ]
     ).run()
     for record in shard0_data + shard1_data:
@@ -669,7 +669,7 @@ def test_join_by_key(setup_kv_teardown_test):
         [
             SyncEmitSource(),
             JoinWithTable(table, "col1", key="age"),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -688,7 +688,7 @@ def test_join_by_key_specific_attributes(setup_kv_teardown_test):
         [
             SyncEmitSource(),
             JoinWithTable(table, "col1", attributes=["age"]),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
     controller.emit({"col1": 9})
@@ -706,7 +706,7 @@ def test_outer_join_by_key(setup_kv_teardown_test):
         [
             SyncEmitSource(),
             JoinWithTable(table, "col1", attributes=["age"]),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
     for i in range(9, 11):
@@ -725,7 +725,7 @@ def test_inner_join_by_key(setup_kv_teardown_test):
         [
             SyncEmitSource(),
             JoinWithTable(table, "col1", attributes=["age"], inner_join=True),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
     for i in range(9, 11):
@@ -786,7 +786,7 @@ def test_write_table_specific_columns(setup_teardown_test):
             MapWithState(table, enrich, group_by_key=True),
             DropColumns("sometime"),
             NoSqlTarget(table, columns=["twice_total_activities", "index=$key"]),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -890,7 +890,7 @@ def test_write_table_specific_columns(setup_teardown_test):
             MapWithState(table, enrich, group_by_key=True),
             DropColumns("sometime"),
             NoSqlTarget(table, columns=["twice_total_activities", "index=$key"]),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -955,7 +955,7 @@ def test_write_table_metadata_columns(setup_teardown_test):
             MapWithState(table, enrich, group_by_key=True),
             DropColumns("sometime"),
             NoSqlTarget(table, columns=["twice_total_activities", "my_key=$key"]),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -1057,7 +1057,7 @@ def test_write_table_metadata_columns(setup_teardown_test):
             MapWithState(table, enrich, group_by_key=True),
             DropColumns("sometime"),
             NoSqlTarget(table, columns=["twice_total_activities", "my_key=$key"]),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 

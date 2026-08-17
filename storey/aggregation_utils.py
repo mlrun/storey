@@ -14,7 +14,6 @@
 #
 import math
 
-_aggrTypeNone = 0
 _aggrTypeCount = 1
 _aggrTypeSum = 2
 _aggrTypeSqr = 4
@@ -25,10 +24,8 @@ _aggrTypeFirst = 64
 
 # Derived aggregates
 _aggrTypeAvg = _aggrTypeCount | _aggrTypeSum
-_aggrTypeRate = _aggrTypeLast | 0x8000
 _aggrTypeStddev = _aggrTypeCount | _aggrTypeSum | _aggrTypeSqr
 _aggrTypeStdvar = _aggrTypeCount | _aggrTypeSum | _aggrTypeSqr | 0x8000
-_aggrTypeAll = 0xFFFF
 
 _raw_aggregates = [
     _aggrTypeCount,

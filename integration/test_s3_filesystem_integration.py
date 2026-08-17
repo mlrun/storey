@@ -117,7 +117,7 @@ def test_csv_reader_from_s3(s3_create_csv):
         [
             CSVSource(f"s3://{s3_create_csv}"),
             FlatMap(lambda x: x),
-            Map(lambda x: int(x)),
+            Map(int),
             Reduce(0, lambda acc, x: acc + x),
         ]
     ).run()

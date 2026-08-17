@@ -15,7 +15,6 @@
 import asyncio
 import copy
 import math
-from asyncio import Lock
 from typing import List, Optional
 
 from . import utils
@@ -102,12 +101,12 @@ class Table:
             cache_element = _CacheElement({}, None)
             self._attrs_cache[key] = cache_element
         if cache_element.lock is None:
-            cache_element.lock = Lock()
+            cache_element.lock = asyncio.Lock()
         return cache_element.lock
 
     def _get_schema_lock(self):
         if self._schema_lock is None:
-            self._schema_lock = Lock()
+            self._schema_lock = asyncio.Lock()
         return self._schema_lock
 
     def _update_static_attrs(self, key, data):
@@ -1169,6 +1168,8 @@ class AggregationValue:
             return LastValue(max_value, set_data, set_time)
         elif aggregation == "first":
             return FirstValue(max_value, set_data, set_time)
+        else:
+            raise ValueError(f"Unknown aggregation: {aggregation}")
 
     def _set_value_with_max(self, value):
         if value > self._max_value:

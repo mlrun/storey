@@ -76,7 +76,7 @@ def test_redis_driver_join(redis):
             [
                 SyncEmitSource(),
                 JoinWithTable(table, lambda x: x["col2"]),
-                Reduce([], lambda acc, x: append_return(acc, x)),
+                Reduce([], append_return),
             ]
         ).run()
 

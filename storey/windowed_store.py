@@ -199,6 +199,8 @@ def aggregate(self, aggregation, old_value, new_value):
         return new_value
     elif aggregation == "first":
         return old_value
+    else:
+        raise ValueError(f"Unknown aggregation: {aggregation}")
 
 
 class WindowedStore:

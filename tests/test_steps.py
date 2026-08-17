@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-from pytest import fail
+from pytest import fail, raises
 
 from storey import SyncEmitSource, build_flow
 from storey.dtypes import Event
@@ -20,25 +20,19 @@ from storey.steps import Assert, EmitPeriod, Flatten, ForEach, Partition, Sample
 
 
 def test_assert_each_event():
-    try:
+    with raises(AssertionError):
         controller = build_flow([SyncEmitSource(), Assert().each_event(lambda event: event > 10)]).run()
         controller.emit(1)
         controller.terminate()
         controller.await_termination()
-        fail("Assert not failing", False)
-    except AssertionError:
-        pass
 
 
 def test_assert_greater_or_equal_to():
-    try:
+    with raises(AssertionError):
         controller = build_flow([SyncEmitSource(), Assert().greater_or_equal_to(2)]).run()
         controller.emit(1)
         controller.terminate()
         controller.await_termination()
-        fail("Assert not failing", False)
-    except AssertionError:
-        pass
 
     try:
         controller = build_flow([SyncEmitSource(), Assert().greater_or_equal_to(2)]).run()
@@ -51,14 +45,11 @@ def test_assert_greater_or_equal_to():
 
 
 def test_assert_greater_than():
-    try:
+    with raises(AssertionError):
         controller = build_flow([SyncEmitSource(), Assert().greater_than(1)]).run()
         controller.emit(1)
         controller.terminate()
         controller.await_termination()
-        fail("Assert not failing", False)
-    except AssertionError:
-        pass
 
     try:
         controller = build_flow([SyncEmitSource(), Assert().greater_than(1)]).run()
@@ -71,16 +62,13 @@ def test_assert_greater_than():
 
 
 def test_assert_less_or_equal():
-    try:
+    with raises(AssertionError):
         controller = build_flow([SyncEmitSource(), Assert().less_or_equal_to(2)]).run()
         controller.emit(1)
         controller.emit(2)
         controller.emit(3)
         controller.terminate()
         controller.await_termination()
-        fail("Assert not failing", False)
-    except AssertionError:
-        pass
 
     try:
         controller = build_flow([SyncEmitSource(), Assert().less_or_equal_to(2)]).run()
@@ -93,25 +81,19 @@ def test_assert_less_or_equal():
 
 
 def test_assert_exactly():
-    try:
+    with raises(AssertionError):
         controller = build_flow([SyncEmitSource(), Assert().exactly(2)]).run()
         controller.emit(1)
         controller.terminate()
         controller.await_termination()
-        fail("Assert not failing", False)
-    except AssertionError:
-        pass
 
-    try:
+    with raises(AssertionError):
         controller = build_flow([SyncEmitSource(), Assert().exactly(2)]).run()
         controller.emit(1)
         controller.emit(1)
         controller.emit(1)
         controller.terminate()
         controller.await_termination()
-        fail("Assert not failing", False)
-    except AssertionError:
-        pass
 
     try:
         controller = build_flow([SyncEmitSource(), Assert().exactly(2)]).run()
@@ -124,15 +106,12 @@ def test_assert_exactly():
 
 
 def test_assert_match_exactly():
-    try:
+    with raises(AssertionError):
         controller = build_flow([SyncEmitSource(), Assert(full_event=False).match_exactly([1, 1, 1])]).run()
         controller.emit(1)
         controller.emit(1)
         controller.terminate()
         controller.await_termination()
-        fail("Assert not failing", False)
-    except AssertionError:
-        pass
 
     try:
         controller = build_flow([SyncEmitSource(), Assert().match_exactly([1, 1, 1])]).run()
@@ -146,7 +125,7 @@ def test_assert_match_exactly():
 
 
 def test_assert_all_of():
-    try:
+    with raises(AssertionError):
         controller = build_flow(
             [
                 SyncEmitSource(),
@@ -157,9 +136,6 @@ def test_assert_all_of():
         controller.emit([4, 5, 6])
         controller.terminate()
         controller.await_termination()
-        fail("Assert not failing", False)
-    except AssertionError:
-        pass
 
     try:
         controller = build_flow(
@@ -178,7 +154,7 @@ def test_assert_all_of():
 
 
 def test_assert_any_of():
-    try:
+    with raises(AssertionError):
         controller = build_flow(
             [
                 SyncEmitSource(),
@@ -188,9 +164,6 @@ def test_assert_any_of():
         controller.emit([10, 11, 12])
         controller.terminate()
         controller.await_termination()
-        fail("Assert not failing", False)
-    except AssertionError:
-        pass
 
     try:
         controller = build_flow(
@@ -220,7 +193,7 @@ def test_assert_none_of():
     except AssertionError:
         fail("Assert failed unexpectedly", False)
 
-    try:
+    with raises(AssertionError):
         controller = build_flow(
             [
                 SyncEmitSource(),
@@ -230,9 +203,6 @@ def test_assert_none_of():
         controller.emit([1, 2, 3])
         controller.terminate()
         controller.await_termination()
-        fail("Assert not failing", False)
-    except AssertionError:
-        pass
 
 
 def test_sample_emit_first():

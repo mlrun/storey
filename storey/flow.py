@@ -24,7 +24,6 @@ import time
 import traceback
 import uuid
 import warnings
-from asyncio import Task
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from typing import (
@@ -1603,7 +1602,7 @@ class _Batching(Flow):
         self._batch_first_event_time: Dict[Optional[str], datetime.datetime] = {}
         self._batch_last_event_time: Dict[Optional[str], datetime.datetime] = {}
         self._batch_start_time: Dict[Optional[str], float] = {}
-        self._timeout_task: Optional[Task] = None
+        self._timeout_task: Optional[asyncio.Task] = None
         self._terminating = False
         self._stop_timer_event: Optional[asyncio.Event] = None
 

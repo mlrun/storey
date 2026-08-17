@@ -51,7 +51,7 @@ def test_windowed_flow():
                 "time",
                 EmitAfterMaxEvent(max_events=3, emission_type=EmissionType.Incremental),
             ),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 

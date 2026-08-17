@@ -80,7 +80,7 @@ def test_aggregate_with_fixed_windows_and_query_past_and_future_times(
             ),
             DropColumns("time"),
             NoSqlTarget(table),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -539,7 +539,7 @@ def test_aggregate_with_fixed_windows_and_query_past_and_future_times(
                 fixed_window_type=fixed_window_type,
             ),
             DropColumns("time"),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -580,7 +580,7 @@ def test_aggregate_and_query_with_different_sliding_windows(setup_teardown_test,
                 time_field="time",
             ),
             NoSqlTarget(table),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -824,7 +824,7 @@ def test_aggregate_and_query_with_different_sliding_windows(setup_teardown_test,
                     table,
                     time_field="time",
                 ),
-                Reduce([], lambda acc, x: append_return(acc, x)),
+                Reduce([], append_return),
             ]
         ).run()
 
@@ -868,7 +868,7 @@ def test_aggregate_and_query_with_different_fixed_windows(setup_teardown_test, p
                 time_field="time",
             ),
             NoSqlTarget(table),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -1121,7 +1121,7 @@ def test_aggregate_and_query_with_different_fixed_windows(setup_teardown_test, p
                     time_field="time",
                     context=context,
                 ),
-                Reduce([], lambda acc, x: append_return(acc, x)),
+                Reduce([], append_return),
             ]
         ).run()
 
@@ -1159,7 +1159,7 @@ def test_query_virtual_aggregations_flow(setup_teardown_test):
                 time_field="time",
             ),
             NoSqlTarget(table),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -1263,7 +1263,7 @@ def test_query_virtual_aggregations_flow(setup_teardown_test):
                 other_table,
                 time_field="time",
             ),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -1323,7 +1323,7 @@ def test_query_aggregate_by_key(setup_teardown_test, partitioned_by_key, flush_i
                 time_field="time",
             ),
             NoSqlTarget(table),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -1553,7 +1553,7 @@ def test_query_aggregate_by_key(setup_teardown_test, partitioned_by_key, flush_i
                 other_table,
                 time_field="time",
             ),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -1613,7 +1613,7 @@ def test_aggregate_and_query_with_dependent_aggrs_different_windows(setup_teardo
                 time_field="time",
             ),
             NoSqlTarget(table),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -1716,7 +1716,7 @@ def test_aggregate_and_query_with_dependent_aggrs_different_windows(setup_teardo
         [
             SyncEmitSource(),
             QueryByKey(query_aggregations, other_table, time_field="time"),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -1839,7 +1839,7 @@ def test_aggregate_by_key_one_underlying_window(setup_teardown_test, partitioned
                     time_field="time",
                 ),
                 NoSqlTarget(table),
-                Reduce([], lambda acc, x: append_return(acc, x)),
+                Reduce([], append_return),
             ]
         ).run()
 
@@ -1955,7 +1955,7 @@ def test_aggregate_by_key_two_underlying_windows(setup_teardown_test, partitione
                     time_field="time",
                 ),
                 NoSqlTarget(table),
-                Reduce([], lambda acc, x: append_return(acc, x)),
+                Reduce([], append_return),
             ]
         ).run()
 
@@ -2007,7 +2007,7 @@ def test_aggregate_by_key_with_extra_aliases(setup_teardown_test):
                 time_field="sometime",
             ),
             NoSqlTarget(table),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -2137,7 +2137,7 @@ def test_aggregate_by_key_with_extra_aliases(setup_teardown_test):
                     "number_of_stuff_avg_2h": "my_avg",
                 },
             ),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -2201,7 +2201,7 @@ def test_write_cache_with_aggregations(setup_teardown_test, flush_interval):
                 time_field="sometime",
             ),
             NoSqlTarget(table),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -2330,7 +2330,7 @@ def test_write_cache_with_aggregations(setup_teardown_test, flush_interval):
                 other_table,
                 time_field="sometime",
             ),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -2382,7 +2382,7 @@ def test_write_cache(setup_teardown_test, flush_interval):
             SyncEmitSource(),
             MapWithState(table, enrich, group_by_key=True),
             NoSqlTarget(table),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -2476,7 +2476,7 @@ def test_write_cache(setup_teardown_test, flush_interval):
         [
             SyncEmitSource(),
             MapWithState(other_table, enrich, group_by_key=True),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -2522,7 +2522,7 @@ def test_aggregate_with_string_table(setup_teardown_test):
                 context=context,
             ),
             NoSqlTarget(table),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -2768,7 +2768,7 @@ def test_modify_schema(setup_teardown_test):
             ),
             DropColumns("time"),
             NoSqlTarget(table),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -2968,7 +2968,7 @@ def test_modify_schema(setup_teardown_test):
                 other_table,
                 time_field="time",
             ),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -3033,7 +3033,7 @@ def test_invalid_modify_schema(setup_teardown_test):
                 time_field="time",
             ),
             NoSqlTarget(table),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -3222,7 +3222,7 @@ def test_invalid_modify_schema(setup_teardown_test):
 
     other_table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
 
-    try:
+    with pytest.raises(ValueError):
         controller = build_flow(
             [
                 SyncEmitSource(),
@@ -3238,7 +3238,7 @@ def test_invalid_modify_schema(setup_teardown_test):
                     other_table,
                     time_field="time",
                 ),
-                Reduce([], lambda acc, x: append_return(acc, x)),
+                Reduce([], append_return),
             ]
         ).run()
 
@@ -3248,8 +3248,6 @@ def test_invalid_modify_schema(setup_teardown_test):
 
         controller.terminate()
         controller.await_termination()
-    except ValueError:
-        pass
 
 
 def test_query_aggregate_by_key_sliding_window_new_time_exceeds_stored_window(
@@ -3273,7 +3271,7 @@ def test_query_aggregate_by_key_sliding_window_new_time_exceeds_stored_window(
                 time_field="time",
             ),
             NoSqlTarget(table),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -3314,7 +3312,7 @@ def test_query_aggregate_by_key_sliding_window_new_time_exceeds_stored_window(
         [
             SyncEmitSource(),
             QueryByKey(["number_of_stuff_count_30m", "number_of_stuff_count_2h"], other_table, time_field="time"),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -3359,7 +3357,7 @@ def test_query_aggregate_by_key_fixed_window_new_time_exceeds_stored_window(
                 time_field="time",
             ),
             NoSqlTarget(table),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -3400,7 +3398,7 @@ def test_query_aggregate_by_key_fixed_window_new_time_exceeds_stored_window(
         [
             SyncEmitSource(),
             QueryByKey(["number_of_stuff_count_30m", "number_of_stuff_count_2h"], other_table, time_field="time"),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -3445,7 +3443,7 @@ def test_sliding_query_time_exceeds_stored_window_by_more_than_window(
                 time_field="time",
             ),
             NoSqlTarget(table),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -3486,7 +3484,7 @@ def test_sliding_query_time_exceeds_stored_window_by_more_than_window(
         [
             SyncEmitSource(),
             QueryByKey(["number_of_stuff_count_30m", "number_of_stuff_count_2h"], other_table, time_field="time"),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -3531,7 +3529,7 @@ def test_fixed_query_time_exceeds_stored_window_by_more_than_window(
                 time_field="time",
             ),
             NoSqlTarget(table),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -3576,7 +3574,7 @@ def test_fixed_query_time_exceeds_stored_window_by_more_than_window(
                 other_table,
                 time_field="time",
             ),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -3618,7 +3616,7 @@ def test_write_to_table_reuse(setup_teardown_test):
                 time_field="time",
             ),
             NoSqlTarget(table),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     )
     items_in_ingest_batch = 3
@@ -3727,7 +3725,7 @@ def test_aggregate_multiple_keys(setup_teardown_test):
         ]
     ).run()
 
-    actual = controller.await_termination()
+    controller.await_termination()
 
     other_table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     controller = build_flow(
@@ -3736,7 +3734,7 @@ def test_aggregate_multiple_keys(setup_teardown_test):
             QueryByKey(
                 ["number_of_stuff_sum_1h"], other_table, key_field=["first_name", "last_name"], time_field="time"
             ),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -3830,7 +3828,7 @@ def test_aggregate_multiple_keys_and_aggregationless_query(setup_teardown_test):
             QueryByKey(
                 ["number_of_stuff_sum_1h"], other_table, key_field=["first_name", "last_name"], time_field="time"
             ),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -3914,7 +3912,7 @@ def test_read_non_existing_key(setup_teardown_test):
         ]
     ).run()
 
-    actual = controller.await_termination()
+    controller.await_termination()
 
     other_table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     controller = build_flow(
@@ -3925,7 +3923,7 @@ def test_read_non_existing_key(setup_teardown_test):
                 other_table,
                 key_field="first_name",
             ),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -3986,7 +3984,7 @@ def test_concurrent_updates_to_kv_table(setup_teardown_test):
         [
             SyncEmitSource(),
             QueryByKey(["attr1", "attr2"], table, key_field="mykey", time_field="time"),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -4069,7 +4067,7 @@ def test_separate_aggregate_steps(setup_teardown_test):
                 key_field=["first_name"],
                 time_field="time",
             ),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -4129,7 +4127,7 @@ def test_write_read_first_last(setup_teardown_test):
         [
             SyncEmitSource(),
             QueryByKey(["attr_first_1h", "attr_last_1h"], table, key_field="mykey", time_field="time"),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -4217,14 +4215,14 @@ def test_multiple_keys_int(setup_teardown_test):
         ]
     ).run()
 
-    actual = controller.await_termination()
+    controller.await_termination()
 
     other_table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     controller = build_flow(
         [
             SyncEmitSource(),
             QueryByKey(["number_of_stuff_sum_1h"], other_table, key_field=keys, time_field="time"),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -4297,7 +4295,7 @@ def test_column_begin_t(setup_teardown_test):
         [
             SyncEmitSource(),
             QueryByKey(["number_of_stuff_sum_1h", "t_col"], other_table, key_field=keys, time_field="time"),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -4351,14 +4349,14 @@ def test_aggregate_float_key(setup_teardown_test):
         ]
     ).run()
 
-    actual = controller.await_termination()
+    controller.await_termination()
 
     other_table = Table(setup_teardown_test.table_name, setup_teardown_test.driver())
     controller = build_flow(
         [
             SyncEmitSource(),
             QueryByKey(["number_of_stuff_sum_1h"], other_table, key_field=keys, time_field="time"),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -4396,7 +4394,7 @@ def test_aggregate_and_query_persist_before_advancing_window(setup_teardown_test
                 time_field="time",
             ),
             NoSqlTarget(table),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -4562,7 +4560,7 @@ def test_aggregate_and_query_persist_before_advancing_window(setup_teardown_test
                 time_field="time",
                 fixed_window_type=FixedWindowType.LastClosedWindow,
             ),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
     data = {"sample": "U235", "time": setup_teardown_test.test_base_time}
@@ -4606,7 +4604,7 @@ def test_aggregate_and_query_by_key_with_holes(setup_teardown_test):
                 time_field="time",
             ),
             NoSqlTarget(table),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -4667,7 +4665,7 @@ def test_aggregate_and_query_by_key_with_holes(setup_teardown_test):
         [
             SyncEmitSource(),
             QueryByKey(["number_of_stuff_sum_1h"], other_table, time_field="time"),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
 
@@ -4730,7 +4728,7 @@ def test_float_format(setup_teardown_test):
         [
             SyncEmitSource(),
             QueryByKey(["float_data", "number_of_stuff_sum_1h"], other_table, key_field=keys, time_field="time"),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
     controller.emit({"key_column2": 8.6, "time": setup_teardown_test.test_base_time}, key=[8.6])
@@ -4786,7 +4784,7 @@ def test_huge_fixed_window_starting_at_epoch(setup_teardown_test):
         [
             SyncEmitSource(),
             QueryByKey(["number_of_stuff_count_30000d"], query1_table, key_field=["key"], time_field="time"),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
     controller.emit({"key": "tal", "time": setup_teardown_test.test_base_time}, key=[8.6])
@@ -4809,7 +4807,7 @@ def test_huge_fixed_window_starting_at_epoch(setup_teardown_test):
         [
             SyncEmitSource(),
             QueryByKey(["number_of_stuff_count_1h"], query2_table, key_field=["key"], time_field="time"),
-            Reduce([], lambda acc, x: append_return(acc, x)),
+            Reduce([], append_return),
         ]
     ).run()
     controller.emit({"key": "tal", "time": setup_teardown_test.test_base_time}, key=[8.6])
