@@ -90,6 +90,7 @@ class Window(Flow):
         ):
             await self.emit_window()
             self._events_in_batch = 0
+        return None
 
     async def emit_window(self):
         store_to_emit = copy.deepcopy(self._windowed_store)

@@ -45,3 +45,4 @@ class Partition(Flow):
             else:
                 event.body = Partitioned(left=None, right=event.body)
             await self._do_downstream(event)
+        return None

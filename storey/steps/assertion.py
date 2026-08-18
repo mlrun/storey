@@ -163,3 +163,4 @@ class Assert(Flow):
             assertion(element)
 
         await self._do_downstream(event)
+        return None

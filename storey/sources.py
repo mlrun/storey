@@ -247,6 +247,7 @@ class FlowController(FlowControllerBase):
         self._emit_fn(_termination_obj)
         if wait:
             return self._await_termination_fn()
+        return None
 
     def await_termination(self):
         """Awaits the termination of the flow. To be called after terminate. Returns the termination result of the
@@ -343,6 +344,19 @@ class SyncEmitSource(Flow):
                 )
             raise
 
+    @staticmethod
+    def _set_event_error(event, ex):
+        if event is not _termination_obj and event._awaitable_result:
+            event._awaitable_result._set_error(ex)
+
+    def _fail_queued_events(self, ex):
+        while True:
+            try:
+                event = self._q.get_nowait()
+            except queue.Empty:
+                return
+            self._set_event_error(event, ex)
+
     async def _run_loop(self):
         loop = asyncio.get_running_loop()
         self._termination_future = loop.create_future()
@@ -395,20 +409,22 @@ class SyncEmitSource(Flow):
                     # all downstream steps completed successfully.
                     await _commit_handled_events(self._outstanding_offsets, committer, self.logger, commit_all=True)
                     self._termination_future.set_result(termination_result)
-            except BaseException as ex:
+            except asyncio.CancelledError as ex:
+                self._set_event_error(event, ex)
+                self._ex = ex
+                self._fail_queued_events(ex)
+                self._termination_future.set_result(None)
+                break
+            except Exception as ex:
                 if self.logger:
                     message = "An error was raised"
                     raised_by = getattr(ex, "_raised_by_storey_step", None)
                     if raised_by:
                         message += f" by step {type(raised_by)}"
                     self.logger.error(f"{message}: {traceback.format_exc()}")
-                if event is not _termination_obj and event._awaitable_result:
-                    event._awaitable_result._set_error(ex)
+                self._set_event_error(event, ex)
                 self._ex = ex
-                if not self._q.empty():
-                    event = self._q.get()
-                    if event is not _termination_obj and event._awaitable_result:
-                        event._awaitable_result._set_error(ex)
+                self._fail_queued_events(ex)
                 self._termination_future.set_result(None)
                 break
             if event is _termination_obj:
@@ -424,8 +440,12 @@ class SyncEmitSource(Flow):
                     self.logger.error(f"Error trying to close {closeable}: {ex}")
 
     def _loop_thread_main(self):
-        asyncio.run(self._run_loop_and_log_unexpected_error())
-        self._termination_q.put(self._ex)
+        try:
+            asyncio.run(self._run_loop_and_log_unexpected_error())
+        except (KeyboardInterrupt, SystemExit) as ex:
+            self._ex = ex
+        finally:
+            self._termination_q.put(self._ex)
 
     def _raise_on_error(self, ex):
         if ex:
@@ -614,6 +634,7 @@ class AsyncFlowController(FlowControllerBase):
             if isinstance(result, BaseException):
                 raise result
             return result
+        return None
 
     async def terminate(self, wait=False):
         """
@@ -626,6 +647,7 @@ class AsyncFlowController(FlowControllerBase):
         await self._emit_fn(_termination_obj)
         if wait:
             return await self.await_termination()
+        return None
 
     async def await_termination(self):
         """
@@ -726,6 +748,18 @@ class AsyncEmitSource(Flow):
                 )
             raise
 
+    @staticmethod
+    async def _set_event_error(event, ex):
+        if event is not _termination_obj and event._awaitable_result:
+            awaitable = event._awaitable_result._set_error(ex)
+            if awaitable:
+                await awaitable
+
+    async def _fail_queued_events(self, ex):
+        while not self._q.empty():
+            event = await self._q.get()
+            await self._set_event_error(event, ex)
+
     async def _run_loop(self):
         committer = None
         num_offsets_not_handled = 0
@@ -774,7 +808,12 @@ class AsyncEmitSource(Flow):
                     # We can commit all at this point because termination of
                     # all downstream steps completed successfully.
                     return termination_result
-            except BaseException as ex:
+            except asyncio.CancelledError as ex:
+                self._ex = ex
+                await self._set_event_error(event, ex)
+                await self._fail_queued_events(ex)
+                raise
+            except Exception as ex:
                 if self.logger:
                     message = "An error was raised"
                     raised_by = getattr(ex, "_raised_by_storey_step", None)
@@ -782,12 +821,8 @@ class AsyncEmitSource(Flow):
                         message += f" by step {type(raised_by)}"
                     self.logger.error(f"{message}: {traceback.format_exc()}")
                 self._ex = ex
-                if event is not _termination_obj and event._awaitable_result:
-                    awaitable = event._awaitable_result._set_error(ex)
-                    if awaitable:
-                        await awaitable
-                if not self._q.empty():
-                    await self._q.get()
+                await self._set_event_error(event, ex)
+                await self._fail_queued_events(ex)
                 self._raise_on_error()
             finally:
                 if event is _termination_obj or self._ex:

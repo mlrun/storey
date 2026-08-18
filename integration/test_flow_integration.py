@@ -524,11 +524,16 @@ def test_write_to_v3io_stream_unbalanced(assign_stream_teardown_test, sharding_f
     else:
         raise ValueError(f"Bad sharding_func_type: {sharding_func_type}")
 
+    if sharding_func_type == "field":
+        map_fn = lambda x: {"n": x}  # noqa: E731
+    else:
+        map_fn = str
+
     stream_path = assign_stream_teardown_test
     controller = build_flow(
         [
             SyncEmitSource(),
-            Map((lambda x: {"n": x}) if sharding_func_type == "field" else (lambda x: str(x))),
+            Map(map_fn),
             StreamTarget(
                 V3ioDriver(),
                 stream_path,

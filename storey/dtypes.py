@@ -423,6 +423,8 @@ class EmitEveryEvent(EmitPolicy):
 
 
 def _dict_to_emit_policy(policy_dict):
+    if not isinstance(policy_dict, dict):
+        raise TypeError("emit policy must be a dict")
     mode = policy_dict.pop("mode")
     if mode == EmitEveryEvent.name():
         policy = EmitEveryEvent()

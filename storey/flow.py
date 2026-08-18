@@ -329,7 +329,7 @@ class Flow:
         try:
             self.check_and_update_iteration_number(event)
             return await self._do(event)
-        except BaseException as ex:
+        except Exception as ex:
             if getattr(ex, "_raised_by_storey_step", None) is not None:
                 raise ex
             ex._raised_by_storey_step = self
@@ -425,7 +425,7 @@ class Flow:
         outlets = self._outlets if outlets is None else outlets
 
         if not outlets:
-            return
+            return None
         if event is _termination_obj:
             if self.logger:
                 outlet_names = ", ".join([outlet.name for outlet in outlets])
@@ -472,6 +472,7 @@ class Flow:
             if self.verbose and self.logger:
                 self.logger.debug(f"{step_name} -> {outlets[i].name} | {event_string}")
             await task
+        return None
 
     def _get_event_or_body(self, event):
         if self._full_event:
@@ -646,12 +647,13 @@ class Recover(Flow):
         else:
             try:
                 await super()._do_downstream(event)
-            except BaseException as ex:
+            except Exception as ex:
                 typ = type(ex)
                 if typ in self._exception_to_downstream:
                     await self._exception_to_downstream[typ]._do(event)
                 else:
                     raise ex
+        return None
 
 
 class _StreamingStepMixin:
@@ -755,6 +757,7 @@ class _UnaryFunctionFlow(Flow):
         element = self._get_event_or_body(event)
         fn_result = await self._call(element, self._fn)
         await self._do_internal(event, fn_result)
+        return None
 
     def select_outlets(self, event_body) -> Optional[Collection[str]]:
         if self._outlets_selector:
@@ -920,6 +923,7 @@ class _FunctionWithStateFlow(Flow):
         else:
             fn_result = await self._call(event)
             await self._do_internal(event, fn_result)
+        return None
 
 
 class MapWithState(_FunctionWithStateFlow):
@@ -992,6 +996,7 @@ class MapClass(Flow, _StreamingStepMixin):
                 await self._do_downstream(mapped_event)
         else:
             self._filter = False  # clear the flag for future runs
+        return None
 
 
 class Rename(Flow):
@@ -1122,7 +1127,7 @@ class Reduce(Flow):
             return self._result
         # Skip StreamCompletion - Reduce only processes actual event bodies
         if isinstance(event, StreamCompletion):
-            return
+            return None
         if self._full_event:
             elem = event
         else:
@@ -1131,6 +1136,7 @@ class Reduce(Flow):
         if self._is_async:
             res = await res
         self._result = res
+        return None
 
 
 class HttpRequest:
@@ -1214,7 +1220,15 @@ class _ConcurrentJobExecution(Flow):
                     completed = await job[1]
                     await self._handle_completed(event, completed)
                     await self._q.get()
-                except BaseException as ex:
+                except asyncio.CancelledError as ex:
+                    if job is not None and not self._q.empty():
+                        await self._q.get()
+                    if event is not None and event._awaitable_result:
+                        none_or_coroutine = event._awaitable_result._set_error(ex)
+                        if none_or_coroutine:
+                            await none_or_coroutine
+                    raise
+                except Exception as ex:
                     await self._q.get()
                     ex._raised_by_storey_step = self
                     recovery_step = self._get_recovery_step(ex)
@@ -1330,6 +1344,7 @@ class _ConcurrentJobExecution(Flow):
                 await self._q.put((event, task))
                 if self._worker_awaitable.done():
                     await self._worker_awaitable
+        return None
 
 
 class ConcurrentExecution(_ConcurrentJobExecution, _StreamingStepMixin):
@@ -1691,6 +1706,7 @@ class _Batching(Flow):
 
         if self._do_downstream_per_event:
             await self._do_downstream(event)
+        return None
 
     async def _sleep_and_emit(self):
         try:

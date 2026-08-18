@@ -44,6 +44,11 @@ def test_emit_policy_wrong_type():
         _dict_to_emit_policy(policy_dict)
 
 
+def test_emit_policy_not_a_dict():
+    with pytest.raises(TypeError):
+        _dict_to_emit_policy(EmitEveryEvent.name())
+
+
 def test_emit_policy_wrong_args():
     policy_dict = {"mode": EmitAfterWindow.name(), "daily": 8}
     with pytest.raises(ValueError):
