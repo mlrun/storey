@@ -85,6 +85,7 @@ class ReduceToDataFrame(Flow):
                     self._id_column.append(event.id)
             else:
                 raise ValueError(f"ToDataFrame step only supports input of type dictionary or list, not {type(body)}")
+        return None
 
 
 class ToDataFrame(Flow):

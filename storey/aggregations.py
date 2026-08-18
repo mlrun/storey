@@ -238,6 +238,7 @@ class AggregateByKey(Flow):
                         await self._emit_event(key, event_from_batch["event"])
         except Exception as ex:
             raise ex
+        return None
 
     async def _sleep_and_emit(self):
         while self._events_in_batch:
@@ -388,8 +389,9 @@ class QueryByKey(AggregateByKey):
             if key is None or key == [None] or element is None:
                 event.body = None
                 await self._do_downstream(event)
-                return
+                return None
         await self._emit_event(key, event)
+        return None
 
     def _check_unique_names(self, aggregates):
         pass

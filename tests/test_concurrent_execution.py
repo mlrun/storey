@@ -104,6 +104,34 @@ def test_concurrent_execution_multiprocessing_and_complete():
     asyncio.run(async_test_concurrent_execution_multiprocessing_and_complete())
 
 
+async def async_test_concurrent_execution_cancellation_reaches_waiters():
+    async def cancel(_):
+        raise asyncio.CancelledError()
+
+    controller = build_flow(
+        [
+            AsyncEmitSource(),
+            ConcurrentExecution(
+                event_processor=cancel,
+                concurrency_mechanism="asyncio",
+                max_in_flight=2,
+            ),
+            Complete(),
+        ]
+    ).run()
+
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(controller.emit("cancel"), timeout=1)
+
+    await controller.terminate()
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(controller.await_termination(), timeout=1)
+
+
+def test_concurrent_execution_cancellation_reaches_waiters():
+    asyncio.run(async_test_concurrent_execution_cancellation_reaches_waiters())
+
+
 def test_concurrent_execution_multiprocessing_and_full_event():
     with pytest.raises(
         ValueError,

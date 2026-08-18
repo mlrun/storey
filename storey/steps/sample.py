@@ -113,6 +113,7 @@ class SampleWindow(Flow):
             if self._should_emit(count):
                 self._last_event = None
                 await self._do_downstream(event)
+        return None
 
     def _should_emit(self, count):
         if self._emit_period == EmitPeriod.FIRST and count == 1:

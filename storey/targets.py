@@ -981,7 +981,7 @@ class StreamTarget(Flow, _Writer):
                             await self._handle_response(req)
                             in_flight_events[shard_id] = None
                         self._send_batch(buffers, in_flight_reqs, buffer_events, in_flight_events, shard_id)
-                except BaseException as ex:
+                except Exception as ex:
                     ex._raised_by_storey_step = self
                     if self.context and hasattr(self.context, "push_error"):
                         message = traceback.format_exc()
@@ -1048,6 +1048,7 @@ class StreamTarget(Flow, _Writer):
             await self._q.put(event)
             if self._worker_exited:
                 await self._worker_awaitable
+        return None
 
 
 class KafkaTarget(Flow, _Writer):
@@ -1154,6 +1155,7 @@ class KafkaTarget(Flow, _Writer):
             future = self._producer.send(self._topic, record, key, partition=partition)
             # Prevent garbage collection of event until persisted to kafka
             future.add_callback(lambda x: event)
+        return None
 
 
 class NoSqlTarget(_Writer, Flow):
@@ -1229,3 +1231,4 @@ class NoSqlTarget(_Writer, Flow):
                 self._table._pending_events.append(event)
             self._table._init_flush_task()
             await self._do_downstream(event)
+        return None

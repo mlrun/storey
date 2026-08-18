@@ -388,9 +388,10 @@ class Table:
                         await self._persist(_PersistJob(key, None, None))
                         self._changed_keys.discard(key)
 
-        except BaseException as ex:
-            if not isinstance(ex, asyncio.CancelledError):
-                self._flush_exception = ex
+        except asyncio.CancelledError:
+            pass  # Expected when the flush task is cancelled during termination.
+        except Exception as ex:
+            self._flush_exception = ex
 
         self._pending_events = []
 

@@ -19,6 +19,7 @@ import multiprocessing.context
 import os
 import queue
 import tempfile
+import threading
 import time
 import traceback
 import uuid
@@ -35,7 +36,6 @@ from packaging import version
 from pandas.testing import assert_frame_equal
 
 import integration.conftest
-import storey
 from storey import (
     AsyncEmitSource,
     Batch,
@@ -49,6 +49,7 @@ from storey import (
     Extend,
     Filter,
     FlatMap,
+    Flow,
     HttpRequest,
     JoinWithTable,
     Map,
@@ -71,6 +72,7 @@ from storey import (
     V3ioDriver,
     build_flow,
 )
+from storey.dtypes import _termination_obj
 from storey.flow import (
     ConcurrentExecution,
     Context,
@@ -179,11 +181,11 @@ class CommitterContext:
         self.verbose = verbose
 
 
-class EventHoarder(storey.Flow):
+class EventHoarder(Flow):
     events = []
 
     async def _do(self, event):
-        if event is storey.dtypes._termination_obj:
+        if event is _termination_obj:
             self.events = []
             print("Hoarder terminated")
         else:
@@ -192,9 +194,9 @@ class EventHoarder(storey.Flow):
         return await self._do_downstream(event)
 
 
-class ErrorOnTermination(storey.Flow):
+class ErrorOnTermination(Flow):
     async def _do(self, event):
-        if event is storey.dtypes._termination_obj:
+        if event is _termination_obj:
             raise ATestException("We raise this error on termination on purpose")
         return await self._do_downstream(event)
 
@@ -755,13 +757,13 @@ def test_multiple_upstreams_completion():
 
 # ML-1167
 def test_multiple_upstreams_termination():
-    class FailOnSubsequentTermination(storey.Flow):
+    class FailOnSubsequentTermination(Flow):
         def _init(self):
             super()._init()
             self.terminated = False
 
         async def _do(self, event):
-            if event is storey.dtypes._termination_obj:
+            if event is _termination_obj:
                 if self.terminated:
                     raise AssertionError("Termination must only be received once")
                 self.terminated = True
@@ -1883,6 +1885,24 @@ def test_awaitable_result_error():
         controller.terminate()
 
 
+def test_awaitable_result_cancelled():
+    release = threading.Event()
+
+    def cancel(_):
+        release.wait()
+        raise asyncio.CancelledError()
+
+    controller = build_flow([SyncEmitSource(), Map(cancel), Complete()]).run()
+    awaitable_results = [controller.emit(i) for i in range(3)]
+    release.set()
+
+    for awaitable_result in awaitable_results:
+        with pytest.raises(asyncio.CancelledError):
+            awaitable_result.await_result()
+    with pytest.raises(asyncio.CancelledError):
+        controller.await_termination()
+
+
 async def async_test_async_awaitable_result_error():
     def boom(_):
         raise ValueError("boom")
@@ -1899,6 +1919,31 @@ async def async_test_async_awaitable_result_error():
 
 def test_async_awaitable_result_error():
     asyncio.run(async_test_async_awaitable_result_error())
+
+
+async def async_test_async_awaitable_result_cancelled():
+    release = asyncio.Event()
+    started = asyncio.Event()
+
+    async def cancel(_):
+        started.set()
+        await release.wait()
+        raise asyncio.CancelledError()
+
+    controller = build_flow([AsyncEmitSource(), Map(cancel), Complete()]).run()
+    emit_tasks = [asyncio.create_task(controller.emit(i)) for i in range(3)]
+    await started.wait()
+    await asyncio.sleep(0)
+    release.set()
+
+    results = await asyncio.wait_for(asyncio.gather(*emit_tasks, return_exceptions=True), timeout=1)
+    assert all(isinstance(result, asyncio.CancelledError) for result in results)
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(controller.await_termination(), timeout=1)
+
+
+def test_async_awaitable_result_cancelled():
+    asyncio.run(async_test_async_awaitable_result_cancelled())
 
 
 def test_complete_without_awaitable_result():
@@ -4311,7 +4356,7 @@ def test_split_flow_to_code():
     flow = build_flow(
         [
             SyncEmitSource(),
-            [Batch(5), Reduce([], lambda x: len(x))],
+            [Batch(5), Reduce([], lambda _acc, x: len(x))],
             Batch(5),
             ToDataFrame(index=[]),
             Reduce([], append_and_return, full_event=True),
@@ -5008,7 +5053,7 @@ def test_verbose_logs():
 
 # ML-1716
 def test_init_of_recovery_step():
-    class WasInitCalled(storey.Flow):
+    class WasInitCalled(Flow):
         def __init__(self):
             super().__init__()
             self.times_init_called = 0
@@ -5036,7 +5081,7 @@ def test_init_of_recovery_step():
     [(True, True), (True, False), (False, True), (False, False)],
 )
 def test_long_running_parameter(long_running, use_mapclass):
-    class CheckTime(storey.Flow):
+    class CheckTime(Flow):
         def __init__(self):
             super().__init__()
             self.failed = False
@@ -5054,7 +5099,7 @@ def test_long_running_parameter(long_running, use_mapclass):
         async def _do(self, event):
             if not self._worker_task:
                 self._worker_task = asyncio.create_task(self.worker())
-            if event is storey.dtypes._termination_obj:
+            if event is _termination_obj:
                 self._terminate = True
                 await self._worker_task
             return await self._do_downstream(event)
