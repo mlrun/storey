@@ -965,6 +965,8 @@ class StreamTarget(Flow, _Writer):
                     if isinstance(sharding_func_result, int):
                         shard_id = sharding_func_result
                     else:
+                        if isinstance(sharding_func_result, str):
+                            sharding_func_result = sharding_func_result.encode("utf-8")
                         h = xxhash.xxh32()
                         h.update(sharding_func_result)
                         shard_id = h.intdigest()
