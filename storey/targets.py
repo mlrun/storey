@@ -525,6 +525,10 @@ class ParquetTarget(_Batching, _Writer):
     :param flush_after_seconds: Maximum number of seconds to hold events before they are written. If None (default), all
         events will be written on flow termination, or after max_events are accumulated (if max_events is set).
     :type flush_after_seconds: int
+    :param flush_key_field: Event field used as the logical key for the public ``flush(flush_key)`` operation. Set to
+        ``"$key"`` to flush by event key, another ``"$attribute"`` to use event metadata, a body field name, or a
+        callable that receives an Event. If None (default), keyed flush is disabled. Keyed flush is not supported in
+        single-file mode because later writes would overwrite previously flushed data.
     :param storage_options: Extra options that make sense for a particular storage connection, e.g. host, port,
         username, password, etc., if using a URL that will be parsed by fsspec, e.g., starting
         "s3://”, "gcs://”. Optional.
@@ -544,6 +548,7 @@ class ParquetTarget(_Batching, _Writer):
         infer_columns_from_data: Optional[bool] = None,
         max_events: Optional[int] = None,
         flush_after_seconds: Union[int, float, None] = None,
+        flush_key_field: Optional[Union[str, Callable[[Event], str]]] = None,
         single_file: Optional[bool] = None,
         **kwargs,
     ):
@@ -558,6 +563,9 @@ class ParquetTarget(_Batching, _Writer):
         else:
             self._single_file_mode = single_file or False
             kwargs["partition_cols"] = partition_cols
+
+        if self._single_file_mode and flush_key_field is not None:
+            raise ValueError("flush_key_field is not supported when ParquetTarget writes in single-file mode")
 
         if self._single_file_mode and not partition_cols:
             max_events = None
@@ -584,6 +592,7 @@ class ParquetTarget(_Batching, _Writer):
             max_events=max_events,
             flush_after_seconds=flush_after_seconds,
             key_field=path_from_event,
+            flush_key_field=flush_key_field,
             **kwargs,
         )
         _Writer.__init__(
@@ -661,14 +670,14 @@ class ParquetTarget(_Batching, _Writer):
                 kwargs["schema"] = self._schema
             # version set for pyspark compatibility, and is needed as of pyarrow 13 due to timestamp incompatibility
             df.to_parquet(path=file, index=bool(self._index_cols), version="2.4", **kwargs)
-            if not self._last_written_event or last_event_time > self._last_written_event:
-                self._last_written_event = last_event_time
 
     async def _emit(self, batch, batch_key, batch_time, batch_events, last_event_time=None):
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(
             None, self._blocking_emit, batch, batch_key, batch_time, batch_events, last_event_time
         )
+        if not self._last_written_event or last_event_time > self._last_written_event:
+            self._last_written_event = last_event_time
 
     async def _terminate(self):
         if self._mlrun_callback:
