@@ -1397,6 +1397,36 @@ def test_write_parquet_flush(tmpdir):
     asyncio.run(async_test_write_parquet_flush(tmpdir))
 
 
+async def async_test_write_parquet_flush_by_logical_key(tmpdir):
+    out_dir = f"{tmpdir}/test_write_parquet_flush_by_logical_key/{uuid.uuid4().hex}/"
+    target = ParquetTarget(
+        out_dir,
+        columns=["v"],
+        partition_cols=["$hour"],
+        flush_key_field="$key",
+    )
+    controller = build_flow([AsyncEmitSource(), target, Complete()]).run()
+
+    await controller.emit(Event({"v": 1}, key="endpoint-A", processing_time=datetime(2026, 1, 1, 10)))
+    await controller.emit(Event({"v": 2}, key="endpoint-A", processing_time=datetime(2026, 1, 1, 11)))
+    await target.flush(flush_key="endpoint-A")
+
+    written = pq.read_table(out_dir).to_pandas()
+    assert sorted(written["v"].tolist()) == [1, 2]
+    assert os.path.isdir(f"{out_dir}/hour=10")
+    assert os.path.isdir(f"{out_dir}/hour=11")
+    await controller.terminate(wait=True)
+
+
+def test_write_parquet_flush_by_logical_key(tmpdir):
+    asyncio.run(async_test_write_parquet_flush_by_logical_key(tmpdir))
+
+
+def test_write_parquet_flush_by_logical_key_rejects_single_file(tmpdir):
+    with pytest.raises(ValueError, match="single-file mode"):
+        ParquetTarget(f"{tmpdir}/target.parquet", flush_key_field="$key")
+
+
 def test_parquet_flush_with_inconsistent_schema_logs_error(tmpdir):
     out_dir = f"{tmpdir}/test_parquet_flush_with_inconsistent_schema_logs_error/{uuid.uuid4().hex}/"
 
@@ -4265,13 +4295,14 @@ def test_flow_to_dict_read_csv():
 
 
 def test_flow_to_dict_write_to_parquet():
-    step = ParquetTarget("outdir", columns=["col1", "col2"], max_events=2)
+    step = ParquetTarget("outdir", columns=["col1", "col2"], max_events=2, flush_key_field="$key")
     assert step.to_dict() == {
         "class_name": "storey.targets.ParquetTarget",
         "class_args": {
             "path": "outdir",
             "columns": ["col1", "col2"],
             "max_events": 2,
+            "flush_key_field": "$key",
         },
         "name": "ParquetTarget",
     }

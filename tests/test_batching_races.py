@@ -27,6 +27,8 @@ import asyncio
 import time as _time
 from datetime import datetime as _dt
 
+import pytest
+
 from storey import AsyncEmitSource, Event, build_flow
 from storey.flow import _Batching
 
@@ -88,9 +90,86 @@ class RecordingTarget(_Batching):
         self.terminate_called = True
 
 
+class KeyedGatedTarget(_Batching):
+    """Keyed batching target with deterministic per-physical-batch emit gates."""
+
+    _do_downstream_per_event = True
+
+    def __init__(self, blocked_batch_keys=None, failed_batch_keys=None, **kwargs):
+        kwargs.setdefault("flush_key_field", "$key")
+        super().__init__(**kwargs)
+        self.blocked_batch_keys = set(blocked_batch_keys or ())
+        self.failed_batch_keys = set(failed_batch_keys or ())
+        self.emitted_batches = []
+        self.emitted_batch_events = []
+        self.emit_count_by_key = {}
+        self._accepted_events = {}
+        self._emit_started_events = {}
+        self._emit_count_events = {}
+        self._emit_finished_events = {}
+        self._release_events = {}
+
+    @staticmethod
+    def _event_for(events, key):
+        event = events.get(key)
+        if event is None:
+            event = asyncio.Event()
+            events[key] = event
+        return event
+
+    def accepted_event(self, value):
+        return self._event_for(self._accepted_events, value)
+
+    def emit_started_event(self, batch_key):
+        return self._event_for(self._emit_started_events, batch_key)
+
+    def emit_count_event(self, batch_key, count):
+        return self._event_for(self._emit_count_events, (batch_key, count))
+
+    def emit_finished_event(self, batch_key):
+        return self._event_for(self._emit_finished_events, batch_key)
+
+    def release(self, batch_key):
+        self._event_for(self._release_events, batch_key).set()
+
+    def _event_to_batch_entry(self, event):
+        entry = super()._event_to_batch_entry(event)
+        self.accepted_event(event.body["v"]).set()
+        return entry
+
+    async def _emit(self, batch, batch_key, batch_time, batch_events, last_event_time=None):
+        self.emit_count_by_key[batch_key] = self.emit_count_by_key.get(batch_key, 0) + 1
+        self.emit_count_event(batch_key, self.emit_count_by_key[batch_key]).set()
+        self.emit_started_event(batch_key).set()
+        try:
+            if batch_key in self.blocked_batch_keys:
+                await self._event_for(self._release_events, batch_key).wait()
+            if batch_key in self.failed_batch_keys:
+                raise RuntimeError(f"emit failed for {batch_key}")
+            self.emitted_batches.append((batch_key, list(batch)))
+            self.emitted_batch_events.append((batch_key, list(batch_events)))
+        finally:
+            self.emit_finished_event(batch_key).set()
+
+
 def _ev(value, key=None):
     """Create an Event with a dict body."""
     return Event({"v": value}, key=key)
+
+
+def _partitioned_ev(value, logical_key, physical_key):
+    return Event({"v": value, "partition": physical_key}, key=logical_key)
+
+
+async def _emit_and_wait_until_accepted(controller, target, event):
+    accepted = target.accepted_event(event.body["v"])
+    await controller.emit(event)
+    await accepted.wait()
+
+
+async def _assert_pending(task):
+    done, _ = await asyncio.wait({task}, timeout=0)
+    assert not done
 
 
 # ---------------------------------------------------------------------------
@@ -98,8 +177,8 @@ def _ev(value, key=None):
 # ---------------------------------------------------------------------------
 
 
-class TestBatchingRaceConditions:
-    """Verify race condition fixes in _Batching._emit_batch.
+class TestBatchingConcurrentEmitRace:
+    """Verify concurrent timer and max-events calls to _Batching._emit_batch.
 
     Production trigger: event source rebalance/drain →
     drain_callback calls controller.terminate(wait=True) →
@@ -159,6 +238,299 @@ class TestBatchingRaceConditions:
 
         asyncio.run(_test())
 
+
+class TestKeyedBatchFlush:
+    @staticmethod
+    def _target(**kwargs):
+        return KeyedGatedTarget(key_field=lambda event: event.body["partition"], **kwargs)
+
+    def test_flush_emits_buffered_matching_key(self):
+        async def _test():
+            target = self._target(blocked_batch_keys={"partition-A"})
+            controller = build_flow([AsyncEmitSource(), target]).run()
+            await _emit_and_wait_until_accepted(controller, target, _partitioned_ev(1, "endpoint-A", "partition-A"))
+
+            flush_task = asyncio.create_task(target.flush("endpoint-A"))
+            await target.emit_started_event("partition-A").wait()
+            await _assert_pending(flush_task)
+
+            target.release("partition-A")
+            await flush_task
+            assert target.emit_count_by_key == {"partition-A": 1}
+            assert [event.body["v"] for _, events in target.emitted_batch_events for event in events] == [1]
+
+            await controller.terminate(wait=True)
+
+        asyncio.run(_test())
+
+    def test_flush_waits_for_matching_batch_already_in_flight(self):
+        async def _test():
+            target = self._target(max_events=1, blocked_batch_keys={"partition-A"})
+            controller = build_flow([AsyncEmitSource(), target]).run()
+            await controller.emit(_partitioned_ev(1, "endpoint-A", "partition-A"))
+            await target.emit_started_event("partition-A").wait()
+
+            flush_task = asyncio.create_task(target.flush("endpoint-A"))
+            await _assert_pending(flush_task)
+
+            target.release("partition-A")
+            await flush_task
+            await controller.terminate(wait=True)
+
+        asyncio.run(_test())
+
+    def test_flush_isolates_unrelated_keys(self):
+        async def _test():
+            target = self._target(blocked_batch_keys={"partition-A"})
+            controller = build_flow([AsyncEmitSource(), target]).run()
+            await _emit_and_wait_until_accepted(controller, target, _partitioned_ev(1, "endpoint-A", "partition-A"))
+            await _emit_and_wait_until_accepted(controller, target, _partitioned_ev(2, "endpoint-B", "partition-B"))
+
+            flush_a = asyncio.create_task(target.flush("endpoint-A"))
+            await target.emit_started_event("partition-A").wait()
+            assert not target.emit_started_event("partition-B").is_set()
+
+            await target.flush("endpoint-B")
+            assert target.emit_finished_event("partition-B").is_set()
+            await _assert_pending(flush_a)
+
+            target.release("partition-A")
+            await flush_a
+            await controller.terminate(wait=True)
+
+        asyncio.run(_test())
+
+    def test_concurrent_fences_for_same_key_share_one_write(self):
+        async def _test():
+            target = self._target(blocked_batch_keys={"partition-A"})
+            controller = build_flow([AsyncEmitSource(), target]).run()
+            await _emit_and_wait_until_accepted(controller, target, _partitioned_ev(1, "endpoint-A", "partition-A"))
+
+            first_flush = asyncio.create_task(target.flush("endpoint-A"))
+            await target.emit_started_event("partition-A").wait()
+            second_flush = asyncio.create_task(target.flush("endpoint-A"))
+            await _assert_pending(first_flush)
+            await _assert_pending(second_flush)
+
+            target.release("partition-A")
+            await asyncio.gather(first_flush, second_flush)
+            assert target.emit_count_by_key == {"partition-A": 1}
+            assert [event.body["v"] for _, events in target.emitted_batch_events for event in events] == [1]
+
+            await controller.terminate(wait=True)
+
+        asyncio.run(_test())
+
+    def test_flush_awaits_all_physical_batches_for_logical_key(self):
+        async def _test():
+            target = self._target(blocked_batch_keys={"hour-10", "hour-11"})
+            controller = build_flow([AsyncEmitSource(), target]).run()
+            await _emit_and_wait_until_accepted(controller, target, _partitioned_ev(1, "endpoint-A", "hour-10"))
+            await _emit_and_wait_until_accepted(controller, target, _partitioned_ev(2, "endpoint-A", "hour-11"))
+
+            flush_task = asyncio.create_task(target.flush("endpoint-A"))
+            await asyncio.gather(
+                target.emit_started_event("hour-10").wait(),
+                target.emit_started_event("hour-11").wait(),
+            )
+
+            target.release("hour-10")
+            await target.emit_finished_event("hour-10").wait()
+            await _assert_pending(flush_task)
+
+            target.release("hour-11")
+            await flush_task
+            assert target.emit_count_by_key == {"hour-10": 1, "hour-11": 1}
+
+            await controller.terminate(wait=True)
+
+        asyncio.run(_test())
+
+    def test_mixed_logical_keys_share_physical_batch_completion(self):
+        async def _test():
+            target = self._target(blocked_batch_keys={"shared"})
+            controller = build_flow([AsyncEmitSource(), target]).run()
+            await _emit_and_wait_until_accepted(controller, target, _partitioned_ev(1, "endpoint-A", "shared"))
+            await _emit_and_wait_until_accepted(controller, target, _partitioned_ev(2, "endpoint-B", "shared"))
+
+            flush_a = asyncio.create_task(target.flush("endpoint-A"))
+            await target.emit_started_event("shared").wait()
+            flush_b = asyncio.create_task(target.flush("endpoint-B"))
+            await _assert_pending(flush_a)
+            await _assert_pending(flush_b)
+
+            target.release("shared")
+            await asyncio.gather(flush_a, flush_b)
+            assert target.emit_count_by_key == {"shared": 1}
+            assert sorted(event.body["v"] for _, events in target.emitted_batch_events for event in events) == [1, 2]
+
+            await controller.terminate(wait=True)
+
+        asyncio.run(_test())
+
+    def test_flush_propagates_and_retains_emit_failure(self):
+        async def _test():
+            target = self._target(failed_batch_keys={"partition-A"})
+            controller = build_flow([AsyncEmitSource(), target]).run()
+            await _emit_and_wait_until_accepted(controller, target, _partitioned_ev(1, "endpoint-A", "partition-A"))
+
+            with pytest.raises(RuntimeError, match="emit failed for partition-A"):
+                await target.flush("endpoint-A")
+            with pytest.raises(RuntimeError, match="emit failed for partition-A"):
+                await target.flush("endpoint-A")
+            assert target.emit_count_by_key == {"partition-A": 1}
+
+            with pytest.raises(RuntimeError, match="emit failed for partition-A"):
+                await controller.terminate(wait=True)
+
+        asyncio.run(_test())
+
+    def test_timer_and_max_events_race_with_keyed_tracking(self):
+        async def _test():
+            target = self._target(
+                max_events=2,
+                flush_after_seconds=0.01,
+                blocked_batch_keys={"partition-A"},
+            )
+            controller = build_flow([AsyncEmitSource(), target]).run()
+
+            await controller.emit(_partitioned_ev(1, "endpoint-A", "partition-A"))
+            await target.emit_count_event("partition-A", 1).wait()
+
+            await _emit_and_wait_until_accepted(controller, target, _partitioned_ev(2, "endpoint-A", "partition-A"))
+            await _emit_and_wait_until_accepted(controller, target, _partitioned_ev(3, "endpoint-A", "partition-A"))
+            await target.emit_count_event("partition-A", 2).wait()
+
+            target.release("partition-A")
+            await controller.terminate(wait=True)
+
+            emitted_values = [event.body["v"] for _, events in target.emitted_batch_events for event in events]
+            assert sorted(emitted_values) == [1, 2, 3]
+            assert target.emit_count_by_key == {"partition-A": 2}
+
+        asyncio.run(_test())
+
+    def test_events_arriving_after_fence_remain_for_next_flush(self):
+        async def _test():
+            target = self._target(blocked_batch_keys={"partition-A"})
+            controller = build_flow([AsyncEmitSource(), target]).run()
+            await _emit_and_wait_until_accepted(controller, target, _partitioned_ev(1, "endpoint-A", "partition-A"))
+
+            first_flush = asyncio.create_task(target.flush("endpoint-A"))
+            await target.emit_started_event("partition-A").wait()
+            await _emit_and_wait_until_accepted(controller, target, _partitioned_ev(2, "endpoint-A", "partition-A"))
+
+            target.release("partition-A")
+            await first_flush
+            assert target.emit_count_by_key == {"partition-A": 1}
+
+            await target.flush("endpoint-A")
+            assert target.emit_count_by_key == {"partition-A": 2}
+            emitted_values = [event.body["v"] for _, events in target.emitted_batch_events for event in events]
+            assert emitted_values == [1, 2]
+
+            await controller.terminate(wait=True)
+
+        asyncio.run(_test())
+
+    def test_timed_out_waiter_does_not_cancel_or_forget_write(self):
+        async def _test():
+            target = self._target(blocked_batch_keys={"partition-A"})
+            controller = build_flow([AsyncEmitSource(), target]).run()
+            await _emit_and_wait_until_accepted(controller, target, _partitioned_ev(1, "endpoint-A", "partition-A"))
+
+            flush_task = asyncio.create_task(target.flush("endpoint-A"))
+            await target.emit_started_event("partition-A").wait()
+            with pytest.raises(asyncio.TimeoutError):
+                await asyncio.wait_for(flush_task, timeout=0)
+
+            assert not next(iter(target._in_flight_batches["endpoint-A"])).cancelled()
+            target.release("partition-A")
+            await target.emit_finished_event("partition-A").wait()
+            await target.flush("endpoint-A")
+            assert target.emit_count_by_key == {"partition-A": 1}
+
+            await controller.terminate(wait=True)
+
+        asyncio.run(_test())
+
+    def test_failed_write_survives_waiter_timeout_and_reaches_termination(self):
+        async def _test():
+            target = self._target(
+                blocked_batch_keys={"partition-A"},
+                failed_batch_keys={"partition-A"},
+            )
+            controller = build_flow([AsyncEmitSource(), target]).run()
+            await _emit_and_wait_until_accepted(controller, target, _partitioned_ev(1, "endpoint-A", "partition-A"))
+
+            flush_task = asyncio.create_task(target.flush("endpoint-A"))
+            await target.emit_started_event("partition-A").wait()
+            with pytest.raises(asyncio.TimeoutError):
+                await asyncio.wait_for(flush_task, timeout=0)
+
+            target.release("partition-A")
+            await target.emit_finished_event("partition-A").wait()
+            with pytest.raises(RuntimeError, match="emit failed for partition-A"):
+                await target.flush("endpoint-A")
+            with pytest.raises(RuntimeError, match="emit failed for partition-A"):
+                await controller.terminate(wait=True)
+
+        asyncio.run(_test())
+
+    def test_termination_waits_for_active_keyed_flush(self):
+        async def _test():
+            target = self._target(blocked_batch_keys={"partition-A"})
+            controller = build_flow([AsyncEmitSource(), target]).run()
+            await _emit_and_wait_until_accepted(controller, target, _partitioned_ev(1, "endpoint-A", "partition-A"))
+
+            flush_task = asyncio.create_task(target.flush("endpoint-A"))
+            await target.emit_started_event("partition-A").wait()
+            termination_task = asyncio.create_task(controller.terminate(wait=True))
+            await _assert_pending(termination_task)
+
+            target.release("partition-A")
+            await asyncio.gather(flush_task, termination_task)
+            assert target.emit_count_by_key == {"partition-A": 1}
+            assert [event.body["v"] for _, events in target.emitted_batch_events for event in events] == [1]
+
+        asyncio.run(_test())
+
+    def test_termination_waits_for_active_write_after_another_batch_fails(self):
+        async def _test():
+            target = self._target(
+                blocked_batch_keys={"partition-A"},
+                failed_batch_keys={"partition-B"},
+            )
+            controller = build_flow([AsyncEmitSource(), target]).run()
+            await _emit_and_wait_until_accepted(controller, target, _partitioned_ev(1, "endpoint-A", "partition-A"))
+            await _emit_and_wait_until_accepted(controller, target, _partitioned_ev(2, "endpoint-B", "partition-B"))
+
+            flush_a = asyncio.create_task(target.flush("endpoint-A"))
+            await target.emit_started_event("partition-A").wait()
+            termination_task = asyncio.create_task(controller.terminate(wait=True))
+            await target.emit_finished_event("partition-B").wait()
+            await _assert_pending(termination_task)
+
+            target.release("partition-A")
+            await flush_a
+            with pytest.raises(RuntimeError, match="emit failed for partition-B"):
+                await termination_task
+            assert target.emit_count_by_key == {"partition-A": 1, "partition-B": 1}
+
+        asyncio.run(_test())
+
+    def test_flush_requires_logical_key_configuration(self):
+        async def _test():
+            target = GatedTarget()
+            controller = build_flow([AsyncEmitSource(), target]).run()
+            with pytest.raises(ValueError, match="flush_key_field"):
+                await target.flush("endpoint-A")
+            await controller.terminate(wait=True)
+
+        asyncio.run(_test())
+
+
+class TestBatchingRaceConditions:
     def test_race2_events_deleted_by_concurrent_finally(self):
         """Events arriving during a slow _emit go into a separate list.
 

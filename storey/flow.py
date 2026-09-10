@@ -1592,6 +1592,7 @@ class _Batching(Flow):
         max_events: Optional[int] = None,
         flush_after_seconds: Union[int, float, None] = None,
         key_field: Optional[Union[str, Callable[[Event], str]]] = None,
+        flush_key_field: Optional[Union[str, Callable[[Event], str]]] = None,
         drop_key_field=False,
         **kwargs,
     ):
@@ -1603,11 +1604,16 @@ class _Batching(Flow):
             kwargs["flush_after_seconds"] = flush_after_seconds
         if isinstance(key_field, str):
             kwargs["key_field"] = key_field
+        if isinstance(flush_key_field, str):
+            kwargs["flush_key_field"] = flush_key_field
         super().__init__(**kwargs)
 
         self._max_events = max_events
         self._flush_after_seconds = flush_after_seconds
         self._extract_key: Optional[Callable[[Event], str]] = self._create_key_extractor(key_field, drop_key_field)
+        self._extract_flush_key: Optional[Callable[[Event], str]] = (
+            self._create_key_extractor(flush_key_field, False) if flush_key_field is not None else None
+        )
 
     def _init(self):
         super()._init()
@@ -1620,6 +1626,12 @@ class _Batching(Flow):
         self._timeout_task: Optional[asyncio.Task] = None
         self._terminating = False
         self._stop_timer_event: Optional[asyncio.Event] = None
+        if self._extract_flush_key is not None:
+            self._batch_flush_keys: Dict[Optional[str], Set[str]] = defaultdict(set)
+            self._flush_key_batch_keys: Dict[str, Set[Optional[str]]] = defaultdict(set)
+            self._in_flight_batches: Dict[str, Set[asyncio.Task]] = defaultdict(set)
+            self._failed_batch_errors: Dict[str, BaseException] = {}
+            self._flush_locks: Dict[str, asyncio.Lock] = {}
 
     @staticmethod
     def _validate_max_events(max_events):
@@ -1670,12 +1682,26 @@ class _Batching(Flow):
             if self._timeout_task is not None:
                 await self._timeout_task
                 self._timeout_task = None
-            if self.logger:
-                self.logger.info(f"Terminating Batching step '{self.name}': emitting all remaining batches")
-            await self._emit_all()
-            if self.logger:
-                self.logger.info(f"Terminating Batching step '{self.name}': running custom termination code")
-            await self._terminate()
+            emit_error = None
+            try:
+                if self.logger:
+                    self.logger.info(f"Terminating Batching step '{self.name}': emitting all remaining batches")
+                try:
+                    await self._emit_all()
+                except BaseException as error:
+                    emit_error = error
+                if self._extract_flush_key is not None:
+                    try:
+                        await self._await_in_flight_batches()
+                    except BaseException as error:
+                        if emit_error is None:
+                            emit_error = error
+            finally:
+                if self.logger:
+                    self.logger.info(f"Terminating Batching step '{self.name}': running custom termination code")
+                await self._terminate()
+            if emit_error is not None:
+                raise emit_error
             if self.logger:
                 self.logger.info(f"Terminated Batching step '{self.name}'")
             return await self._do_downstream(_termination_obj)
@@ -1700,6 +1726,10 @@ class _Batching(Flow):
 
         self._batch[key].append(self._event_to_batch_entry(event))
         self._batch_events[key].append(event)
+        if self._extract_flush_key is not None:
+            flush_key = self._extract_flush_key(event)
+            self._batch_flush_keys[key].add(flush_key)
+            self._flush_key_batch_keys[flush_key].add(key)
 
         if len(self._batch[key]) == self._max_events:
             await self._emit_batch(key)
@@ -1734,17 +1764,119 @@ class _Batching(Flow):
     def _event_to_batch_entry(self, event):
         return self._get_event_or_body(event)
 
-    async def _emit_batch(self, batch_key: Optional[str] = None):
+    def _pop_batch(self, batch_key):
         batch_to_emit = self._batch.pop(batch_key, None)
         if batch_to_emit is None:
-            return
+            return None
         batch_time = self._batch_first_event_time.pop(batch_key)
         last_event_time = self._batch_last_event_time.pop(batch_key)
         self._batch_start_time.pop(batch_key, None)
         # Pop batch_events BEFORE the await so concurrent _do() calls create
         # a fresh list instead of appending to the one we're processing.
         batch_events = self._batch_events.pop(batch_key, [])
-        await self._emit(batch_to_emit, batch_key, batch_time, batch_events, last_event_time)
+        return batch_to_emit, batch_time, batch_events, last_event_time
+
+    def _start_tracked_batch_emit(self, batch_key):
+        popped_batch = self._pop_batch(batch_key)
+        if popped_batch is None:
+            return None
+
+        batch_to_emit, batch_time, batch_events, last_event_time = popped_batch
+        flush_keys = self._batch_flush_keys.pop(batch_key, set())
+        for flush_key in flush_keys:
+            batch_keys = self._flush_key_batch_keys[flush_key]
+            batch_keys.discard(batch_key)
+            if not batch_keys:
+                self._flush_key_batch_keys.pop(flush_key, None)
+
+        emit_task = asyncio.get_running_loop().create_task(
+            self._emit(batch_to_emit, batch_key, batch_time, batch_events, last_event_time)
+        )
+        for flush_key in flush_keys:
+            self._in_flight_batches[flush_key].add(emit_task)
+        emit_task.add_done_callback(lambda task: self._tracked_batch_emit_done(task, flush_keys))
+        return emit_task
+
+    def _tracked_batch_emit_done(self, emit_task, flush_keys):
+        if emit_task.cancelled():
+            error = asyncio.CancelledError()
+        else:
+            error = emit_task.exception()
+        for flush_key in flush_keys:
+            in_flight = self._in_flight_batches[flush_key]
+            in_flight.discard(emit_task)
+            if not in_flight:
+                self._in_flight_batches.pop(flush_key, None)
+            if error is not None and flush_key not in self._failed_batch_errors:
+                self._failed_batch_errors[flush_key] = copy.copy(error).with_traceback(None)
+
+    async def _emit_batch(self, batch_key: Optional[str] = None):
+        if self._extract_flush_key is None:
+            popped_batch = self._pop_batch(batch_key)
+            if popped_batch is None:
+                return
+            batch_to_emit, batch_time, batch_events, last_event_time = popped_batch
+            await self._emit(batch_to_emit, batch_key, batch_time, batch_events, last_event_time)
+            return
+
+        emit_task = self._start_tracked_batch_emit(batch_key)
+        if emit_task is not None:
+            await asyncio.shield(emit_task)
+
+    @staticmethod
+    def _raise_batch_error(error):
+        if error is not None:
+            raise copy.copy(error).with_traceback(None)
+
+    @classmethod
+    def _raise_on_failed_batch_tasks(cls, batch_tasks):
+        for batch_task in batch_tasks:
+            if batch_task.cancelled():
+                raise asyncio.CancelledError
+            error = batch_task.exception()
+            cls._raise_batch_error(error)
+
+    async def _await_in_flight_batches(self):
+        failed_batch_error = next(iter(self._failed_batch_errors.values()), None)
+        batch_tasks = set()
+        for in_flight_batches in self._in_flight_batches.values():
+            batch_tasks.update(in_flight_batches)
+        if batch_tasks:
+            await asyncio.gather(*(asyncio.shield(batch_task) for batch_task in batch_tasks), return_exceptions=True)
+        self._raise_batch_error(failed_batch_error)
+        if batch_tasks:
+            self._raise_on_failed_batch_tasks(batch_tasks)
+
+    async def flush(self, flush_key: str):
+        """Flush and await buffered and in-flight batches containing a logical key.
+
+        ``flush_key_field`` must be configured on the batching target. Cancelling this
+        waiter does not cancel writes that have already started.
+
+        :param flush_key: Logical key whose accepted events must be written before returning.
+        """
+        if self._extract_flush_key is None:
+            raise ValueError("flush_key_field must be configured before flushing by key")
+
+        flush_lock = self._flush_locks.get(flush_key)
+        if flush_lock is None:
+            flush_lock = asyncio.Lock()
+            self._flush_locks[flush_key] = flush_lock
+
+        async with flush_lock:
+            for batch_key in list(self._flush_key_batch_keys.get(flush_key, ())):
+                self._start_tracked_batch_emit(batch_key)
+
+            failed_batch_error = self._failed_batch_errors.get(flush_key)
+            in_flight_batches = set(self._in_flight_batches.get(flush_key, ()))
+            if in_flight_batches:
+                await asyncio.gather(
+                    *(asyncio.shield(batch_task) for batch_task in in_flight_batches),
+                    return_exceptions=True,
+                )
+
+            self._raise_batch_error(failed_batch_error)
+            self._raise_on_failed_batch_tasks(in_flight_batches)
 
     async def _emit_all(self):
         # Loop until empty instead of snapshot iteration, so keys added
