@@ -1305,7 +1305,6 @@ class SQLSource(_IterableSource, WithUUID):
             table = db.Table(
                 self.table_name,
                 metadata,
-                autoload=True,
                 autoload_with=engine,
             )
             select_object = db.select(table)

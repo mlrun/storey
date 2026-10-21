@@ -142,7 +142,6 @@ def _get_sql_by_key_all_attrs(
     sql_table = db.Table(
         table_name,
         metadata,
-        autoload=True,
         autoload_with=engine,
     )
     if isinstance(key, str):
