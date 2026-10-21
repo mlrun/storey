@@ -49,7 +49,6 @@ class SQLDriver(Driver):
         return db.Table(
             table_path.split("/")[-1],
             metadata,
-            autoload=True,
             autoload_with=self._engine,
         )
 
@@ -64,7 +63,9 @@ class SQLDriver(Driver):
         df = pd.DataFrame(additional_data, index=[0])
         try:
             df.to_sql(table.name, con=self._sql_connection, if_exists="append", index=False)
+            self._sql_connection.commit()
         except db.exc.IntegrityError:
+            self._sql_connection.rollback()
             self._update_by_key(key, additional_data, table)
 
     async def _load_aggregates_by_key(self, container, table_path, key):
@@ -130,6 +131,7 @@ class SQLDriver(Driver):
             .values({getattr(sql_table.c, k): v for k, v in data.items() if k not in self._primary_key})
             .where(db.and_(getattr(sql_table.c, self._primary_key[i]) == key[i] for i in range(len(self._primary_key))))
         )
+        self._sql_connection.commit()
 
     @staticmethod
     def _extract_list_of_keys(key):

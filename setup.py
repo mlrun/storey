@@ -41,7 +41,7 @@ tests_require = load_deps("dev-requirements.txt")
 extras_require = {
     "kafka": ["kafka-python~=2.0"],
     "redis": ["redis~=4.3"],
-    "sqlalchemy": ["sqlalchemy~=1.3"],
+    "sqlalchemy": ["sqlalchemy>=2.0,<3"],
     "psycopg": "psycopg[binary,pool]~=3.2",
     "otel": [
         "opentelemetry-sdk>=1.25.0,<2.0.0",

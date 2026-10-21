@@ -11,8 +11,7 @@ pytest-benchmark>=5.2.3,<6
 lupa>=2.8,<3
 fakeredis[lua]>=2.37,<3
 redis~=4.3
-# in sqlalchemy>=2.0 there is breaking changes (such as in Table class autoload argument is removed)
-sqlalchemy~=1.4
+sqlalchemy>=2.0,<3
 s3fs~=2023.9.2
 adlfs~=2023.9.0
 # If installing on MAC, you need to install PostgreSQL first using 'brew install postgresql'
